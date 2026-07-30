@@ -1,4 +1,5 @@
 import { timeframeSeconds } from '@/data/timeframeAgg';
+import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
 import type { Timeframe } from '@/types/ui';
 
 export type ReplayListener = (state: ReplayState) => void;
@@ -72,7 +73,10 @@ export function createReplayController(): ReplayController {
     Math.max(1, Math.round(timeframeSeconds(rateTf) / timeframeSeconds(baseTf)));
 
   const stopRaf = () => {
-    if (raf) cancelAnimationFrame(raf);
+    if (raf) {
+      cancelAnimationFrame(raf);
+      ledgerRelease('rafLoops');
+    }
     raf = 0;
     lastTs = 0;
     barCarryMs = 0;
@@ -103,9 +107,13 @@ export function createReplayController(): ReplayController {
   };
 
   const tick = (ts: number) => {
+    // This frame's raf token is consumed.
+    raf = 0;
+    ledgerRelease('rafLoops');
     if (!state.playing) return;
     if (lastTs === 0) {
       lastTs = ts;
+      ledgerAcquire('rafLoops');
       raf = requestAnimationFrame(tick);
       return;
     }
@@ -140,6 +148,7 @@ export function createReplayController(): ReplayController {
         });
       }
     }
+    ledgerAcquire('rafLoops');
     raf = requestAnimationFrame(tick);
   };
 
@@ -194,6 +203,7 @@ export function createReplayController(): ReplayController {
       notify();
       lastTs = 0;
       barCarryMs = 0;
+      ledgerAcquire('rafLoops');
       raf = requestAnimationFrame(tick);
     },
     pause() {

@@ -130,6 +130,7 @@ export function BottomBar({
       <div className="flex items-center gap-2 h-7 px-2 border-b border-[color:var(--tv-panel-line)]">
         <button
           type="button"
+          id="replay-cursor-label"
           className="shrink-0 h-6 px-1.5 rounded text-[11px] text-muted hover:text-foreground hover:bg-background/70 tabular-nums"
           title="Jump to date"
           onClick={openJump}
@@ -137,6 +138,7 @@ export function BottomBar({
           {cursorLabel}
         </button>
         <input
+          id="replay-scrub"
           type="range"
           min={0}
           max={1000}

@@ -16,6 +16,7 @@ import {
   type DrawingPlacement,
   type SeriesType,
 } from '@/chart';
+import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
 import type { Drawing } from '@/drawings/drawingStore';
 import type { HitResult } from '@/drawings/hitTest';
 import { getIndicatorDef } from '@/indicators/registry';
@@ -185,6 +186,7 @@ export function useChart(
       setChartSize(instance, entry.contentRect.width, entry.contentRect.height);
     });
     ro.observe(el);
+    ledgerAcquire('observers');
 
     return () => {
       unsubMove();
@@ -194,6 +196,7 @@ export function useChart(
       unsubSelect();
       unsubSync();
       ro.disconnect();
+      ledgerRelease('observers');
       unregisterChart(chartId, instance);
       destroyChart(instance);
       instanceRef.current = null;

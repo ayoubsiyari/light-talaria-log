@@ -28,6 +28,8 @@ import {
   timeframeSeconds,
 } from '@/data/timeframeAgg';
 import { createSessionController } from '@/session';
+import { ledgerAssertTeardown } from '@/dev/resourceLedger';
+import { warmCache } from '@/session/warmCache';
 import {
   loadDrawings,
   saveDrawings,
@@ -457,16 +459,45 @@ export default function App() {
   );
 
   /**
-   * Replay tick → session cursor (base TF grid) + sync derive from warm cache.
-   * Camera follow only when playing and not user-detached.
+   * Replay tick → session cursor (base TF grid).
+   * During playback: no React (addendum §6) — engines + DOM only.
+   * Discrete pause/seek: full derive + commitSessionViews.
    */
   const applyReplayReveal = useCallback(
     (cursorTime: number) => {
       if (!catalog || !viewportReloadEnabledRef.current) return;
       if (!sessionRef.current.get()) return;
-      const follow =
-        replayRef.current.get().playing && !cameraDetachedRef.current;
-      sessionRef.current.setCursorTime(cursorTime, { follow });
+      const playing = replayRef.current.get().playing;
+      const follow = playing && !cameraDetachedRef.current;
+
+      if (playing) {
+        sessionRef.current.setCursorTime(cursorTime, { follow, react: false });
+        const views = sessionRef.current.getViews();
+        for (const pane of panesRef.current) {
+          const chart = getChart(pane.id);
+          if (!chart) continue;
+          chart.setReplayCursorTime(cursorTime);
+          const tip = views[pane.id]?.bars[views[pane.id]!.bars.length - 1];
+          if (tip) chart.patchFormingBar(tip);
+        }
+        // Chrome scrubber / label — direct DOM, not useState
+        const rs = replayRef.current.get();
+        const label = document.getElementById('replay-cursor-label');
+        if (label) {
+          const d = new Date(cursorTime * 1000);
+          const pad = (n: number) => String(n).padStart(2, '0');
+          label.textContent = `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+        const scrub = document.getElementById('replay-scrub') as HTMLInputElement | null;
+        if (scrub) {
+          const span = Math.max(1, rs.endTime - rs.startTime);
+          const progress = Math.min(1, Math.max(0, (cursorTime - rs.startTime) / span));
+          scrub.value = String(Math.round(progress * 1000));
+        }
+        return;
+      }
+
+      sessionRef.current.setCursorTime(cursorTime, { follow, react: true });
       commitSessionViews();
     },
     [catalog, commitSessionViews],
@@ -603,12 +634,11 @@ export default function App() {
     });
   }, [commitSessionViews, catalog?.datasetId, session?.id]);
 
-  // Replay: cursor → session. Never publish sync time ranges during play —
-  // a trailing window maps to a left-aligned index range and snaps the camera.
+  // Replay: cursor → engines. React only on discrete play/pause/seek edges.
+  const wasPlayingRef = useRef(false);
   useEffect(() => {
     const ctrl = replayRef.current;
     return ctrl.subscribe((rs) => {
-      setReplayTick((n) => n + 1);
       if (!catalog || !viewportReloadEnabledRef.current) return;
       if (lastReplayCursorRef.current === rs.cursorTime && !rs.playing) return;
       lastReplayCursorRef.current = rs.cursorTime;
@@ -618,6 +648,16 @@ export default function App() {
         setCameraDetached(false);
       }
 
+      const playEdge = rs.playing !== wasPlayingRef.current;
+      wasPlayingRef.current = rs.playing;
+
+      if (rs.playing) {
+        if (playEdge) setReplayTick((n) => n + 1); // play button icon once
+        applyReplayReveal(rs.cursorTime);
+        return;
+      }
+
+      setReplayTick((n) => n + 1);
       applyReplayReveal(rs.cursorTime);
     });
   }, [catalog, applyReplayReveal]);
@@ -1086,6 +1126,16 @@ export default function App() {
     sessionRef.current.dispose();
     sessionRef.current = createSessionController();
     replayRef.current.pause();
+    if (import.meta.env.DEV) {
+      // charts/observers release async as ChartPane unmounts; defer assert a frame
+      requestAnimationFrame(() => {
+        const cache = warmCache.stats();
+        if (cache.entries !== 0) {
+          console.warn('[ledger] warmCache not empty at teardown', cache);
+        }
+        ledgerAssertTeardown('session-teardown');
+      });
+    }
     cameraDetachedRef.current = false;
     setCameraDetached(false);
     setSession(null);

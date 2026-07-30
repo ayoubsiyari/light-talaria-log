@@ -119,3 +119,90 @@ Ranked by severity:
 3. Confirm product intent: preserve **bar count** across TF (implemented) vs any remaining desire to preserve wall-clock window for small TF steps only?
 4. Priority for fixing `finalizeAgg` partial-bucket marking vs float64 OHLC vs dataset-delete orphans?
 5. OK to delete `replayBufferRef` / paint `maxBarIndex` after one release of field soak?
+
+## 10. Memory and CPU baseline vs after
+
+| Metric (budget) | Before | After | Pass/fail |
+|---|---|---|---|
+| Heap after session open, 1y 1m, 1 pane (&lt; 80 MB) | **not measured** — no Chrome heap session in agent | not measured | — |
+| Heap growth, 10 min max-speed replay (&lt; 5 MB) | not measured | not measured | — |
+| Heap after 20 TF switches (±10 MB) | not measured | not measured | — |
+| Heap after 10 open/close (±10 MB) | not measured | not measured | — |
+| Chart engines after teardown (= 0) | not measured in browser | DEV `ledgerAssertTeardown` wired; counter exists | code-ready, browser TBD |
+| Active rAF after teardown (= 0) | not measured | ledger on chart paint + replay clock | code-ready, browser TBD |
+| Frame time p95 playback (&lt; 8 ms) | not measured | not measured | — |
+| Long tasks &gt; 50 ms (= 0) | not measured | not measured | — |
+| React commits per replay tick (= 0) | **fail by inspection** — `setReplayTick` + `commitSessionViews` every notify | **code path removed** for playing ticks; commits only on play/pause edge | browser Profiler TBD |
+| TF switch click→paint p95 (&lt; 16 ms) | not measured | not measured | — |
+| Warm cache resident / pane (&lt; 3 MB) | unbounded ChartBar[] | LRU max 12 entries; still ChartBar objects (~1.8 MB for 6 TF) | bound OK; packed form TBD |
+
+**Why blank measurements:** this environment has no interactive Chrome DevTools Memory/Performance/React Profiler against a live session. Operator must run §8 protocol and fill the table.
+
+## 11. Leak hypotheses (§1)
+
+1. **Raw CSV string retained after ingest — partially present.** Worker is `terminate()`d on done/error (`ingestDataset.ts:137–148`). Main-thread `csvText` is a function arg to `runIngestWorker` / `postMessage` — not stored in a module-scope ref after return. **However** the same CSV is persisted permanently in IDB `datasetCsv` via `putDatasetCsv` (`datasetStore.ts:96`) and re-read by `getDatasetCsv` (`ingestDataset.ts:48`). That is disk + any future load into heap, not a post-ingest main-thread retainer of the ingest call’s string. Heap snapshot after ingest: **not checked**.
+
+2. **Chart engines accumulating — not present as a TF remount bug; teardown path exists.** Create effect deps `[containerRef]` only (`useChart.ts:202`). `destroy()` cancels rAF, disposes interaction, clears listeners, zeros canvas buffers, `ledgerRelease('charts')` (`createChart.ts` destroy). Open/close counter: **instrumented, not browser-verified**.
+
+3. **rAF loops never cancelled — mitigated, not browser-verified.** Chart `schedulePaint` / destroy cancel (`createChart.ts`); replay `stopRaf` on pause/dispose (`replayStore.ts`). Ledger tracks `rafLoops`. Residual risk: per-pane paint rAF + replay rAF = multiple loops (addendum wants one shared loop — still open).
+
+4. **Event listeners / observers not removed — dispose paths present.** Interaction removes the same function refs (`interaction.ts:339–345`). `ResizeObserver.disconnect` in `useChart` cleanup. `MutationObserver` for theme in `createChart.destroy`. Listener growth over 10 cycles: **not checked** in DevTools.
+
+5. **Unbounded warmCache — was present, now bounded.** Previously no max (`warmCache.ts` pre-fix). Now `MAX_ENTRIES = 12`, LRU eviction, `stats()`, `clearDataset` before symbol prefetch. Symbol×20 growth: **not browser-verified**.
+
+6. **`setState` per replay tick — was present, fixed in code.** `App.tsx` subscribe previously always `setReplayTick` + `commitSessionViews`. Now playing path uses `setCursorTime(..., { react: false })` + `getChart().setReplayCursorTime` / `patchFormingBar` + DOM scrubber ids. React Profiler count: **not measured**.
+
+7. **Worker not terminated / multiple workers — mixed.** Ingest/csv: terminate on completion (`ingestDataset.ts:137`). Indicator worker: **singleton never terminated** (`runIndicatorWorker.ts:11–20`) — lives for app lifetime. Backtest: terminate on cancel (`runBacktestWorker.ts`). Threads panel: **not checked**.
+
+8. **Duplicate buffers from incomplete refactor — still present.** `replayBufferRef` + `clockBufferRef` remain in `App.tsx:182–183`. Paint `maxBarIndex` remains alongside load-time reveal. `applyTimeWindowToPanes` LOD path still parallel to session. **Deleting these is still required** for memory; not done in this addendum pass beyond playback React bypass.
+
+**IDB raw-CSV duplicate — recommendation:** After successful ingest + checksum of chunk metas, **delete `datasetCsv` (or replace with sha256 + byteLength + source URL)**. Keep CSV only if re-ingest-without-redownload is a product requirement; if so, store **compressed** (gzip) and never hold the decompressed string outside the worker. Prefer re-download from Dukascopy/API over retaining a second full copy of the largest object in the system.
+
+## 12. Resource ledger
+
+| Counter | At teardown (expected) | Notes |
+|---|---|---|
+| charts | 0 | Acquired in `createChartInstance`, released in `destroy` |
+| rafLoops | 0 | Chart paint + replay clock; release on cancel/fire |
+| listeners | 0 | **not yet instrumented** per addEventListener |
+| workers | 0 | **not yet instrumented** on Worker construct/terminate |
+| subscriptions | 0 | **not yet instrumented** |
+| cacheEntries | 0 | warmCache clear on session dispose |
+| observers | 0 | ResizeObserver in useChart |
+
+Browser teardown log: **not run**. DEV calls `ledgerAssertTeardown('session-teardown')` one rAF after teardown in `App.tsx`.
+
+## 13. Allocation audit
+
+| Location | Allocation | Action |
+|---|---|---|
+| `App` replay subscribe → `setReplayTick` / `setPanes` | React commit + fiber work per tick | **Removed** during `playing` |
+| `session.setCursorTime` → `rederiveSync` / `truncateAtCursor` | new `ChartBar[]` via push/slice per tick | **Skipped** when `react: false`; in-place forming patch |
+| `setViewportBars` | always `.slice()` copy (`createChart.ts:799`) | Avoided on tick; new `patchFormingBar` mutates |
+| `renderer.ts:261` | `bars.slice` for volume path when masked | **Still present** — report only this pass |
+| `derivePane` / `revealedViewport` | `.filter`, spreads on discrete TF/load | OK (not per-frame); still object bars |
+| Draw path | Still consumes `ChartBar[]` objects, not SoA | **Unchanged** — packed path deferred |
+| `BottomBar` | `setInterval` 1s → `setNow` | **Still present** — wall-clock chrome; not playback |
+
+## 14. Cache inventory
+
+| Cache | Key | Max entries / bytes | Eviction | Miss |
+|---|---|---|---|---|
+| `warmCache` | `datasetId\|tf` | 12 entries; ~120 B×bars (objects) | LRU; `clearDataset`; `clear` on dispose | `[]` or coarser/finer placeholder + async fill |
+| `replayBufferRef` / `clockBufferRef` | paneId / datasetId | **unbounded** | cleared on session load/teardown only | N/A (legacy) |
+| Chart static/drawings layer canvases | pane | 1 each | destroyed with engine | rebuild on dirty |
+| `cachedAutoScale` / hit cache | instance locals | 1 | invalidate on bars/range/cursor | recompute |
+| Indicator worker singleton | process | 1 worker | **never** | spawn once |
+| IDB `barChunks` | chunkId | disk | dataset delete | load |
+| IDB `datasetCsv` | datasetId | **full CSV forever** | dataset delete only | load into worker |
+| localStorage drawings/sessions/journal | string keys | unbounded by policy | manual clear | read |
+| `chartRegistry` | paneId | live panes | unregister on unmount | null |
+
+---
+
+### Addendum work landed (this pass)
+
+- `src/dev/resourceLedger.ts`
+- `warmCache` LRU + docs + `stats()`
+- Playback path: no React commits; `patchFormingBar`; DOM scrubber ids
+- Report §§10–14 (measurements explicitly **not measured** where Chrome was unavailable)

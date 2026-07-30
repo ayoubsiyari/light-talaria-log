@@ -1,4 +1,5 @@
 import { bucketStart, timeframeSeconds } from '@/data/timeframeAgg';
+import { formBucketFromClock } from '@/replay/formingBars';
 import { derivePaneAsync, derivePaneSync } from '@/session/derivePane';
 import type {
   PaneConfig,
@@ -8,6 +9,7 @@ import type {
   SessionState,
 } from '@/session/sessionState';
 import { warmCache } from '@/session/warmCache';
+import type { ChartBar } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
 import { MAX_BARS_IN_MEMORY, REPLAY_VISIBLE_BARS } from '@/utils/constants';
 
@@ -137,21 +139,32 @@ export function createSessionController() {
       notify();
     },
 
-    /** Replay tick — cursor on base TF grid only. */
-    setCursorTime(cursorTime: number, opts?: { follow?: boolean }): void {
+    /**
+     * Replay tick — cursor on base TF grid only.
+     * `react: false` (playback): mutate forming tip in place, no listener notify
+     * (addendum §6 — must not drive React at frame rate).
+     */
+    setCursorTime(
+      cursorTime: number,
+      opts?: { follow?: boolean; react?: boolean },
+    ): void {
       if (!state) return;
       const period = timeframeSeconds(state.baseTf);
       const snapped = bucketStart(cursorTime, period);
       const clamped = Math.min(state.bounds.end, Math.max(state.bounds.start, snapped));
       const follow = opts?.follow ?? state.playing;
+      const react = opts?.react !== false;
       state = {
         ...state,
         cursorTime: clamped,
         anchorTime: follow ? clamped : state.anchorTime,
       };
+      if (!react) {
+        patchFormingInPlace(state, views);
+        return;
+      }
       rederiveSync();
       notify();
-      // Top up cache when cursor advances deep into window.
       void this.topUpCaches();
     },
 
@@ -219,6 +232,7 @@ export function createSessionController() {
           [paneId]: { ...pane, datasetId: meta.datasetId, pair: meta.pair },
         },
       };
+      // Evict old symbol before prefetching the new one (addendum §5).
       if (prevDs !== meta.datasetId) warmCache.clearDataset(prevDs);
       rederiveSync();
       notify();
@@ -260,3 +274,40 @@ export function createSessionController() {
 }
 
 export type SessionController = ReturnType<typeof createSessionController>;
+
+/** Mutate last bar / append forming tip without allocating a new bars array. */
+function patchFormingInPlace(
+  s: SessionState,
+  views: Record<string, PaneView>,
+): void {
+  if (s.revealMode !== 'replay') return;
+  for (const id of Object.keys(views)) {
+    const cfg = s.panes[id];
+    const view = views[id];
+    if (!cfg || !view) continue;
+    const tfPeriod = timeframeSeconds(cfg.tf);
+    const basePeriod = timeframeSeconds(s.baseTf);
+    if (tfPeriod <= basePeriod) continue;
+    const openBucket = bucketStart(s.cursorTime, tfPeriod);
+    const baseBars = warmCache.peek(cfg.datasetId, s.baseTf);
+    if (!baseBars || baseBars.length === 0) continue;
+    const forming = formBucketFromClock(baseBars, openBucket, tfPeriod, s.cursorTime);
+    if (!forming) continue;
+    const bars = view.bars as ChartBar[];
+    const last = bars[bars.length - 1];
+    if (last && last.time === forming.time) {
+      last.open = forming.open;
+      last.high = forming.high;
+      last.low = forming.low;
+      last.close = forming.close;
+      last.volume = forming.volume;
+    } else if (!last || last.time < forming.time) {
+      bars.push(forming);
+      const toIndex = bars.length - 1;
+      view.range = {
+        fromIndex: Math.max(0, toIndex - s.span + 1),
+        toIndex,
+      };
+    }
+  }
+}

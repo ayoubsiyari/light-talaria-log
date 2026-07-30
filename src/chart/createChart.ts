@@ -14,6 +14,7 @@ import type { ChartBar, VisibleRange } from '@/types/bar';
 import type { IndicatorOverlayResult, IndicatorPaneResult } from '@/types/indicator';
 import type { BacktestResult } from '@/types/backtest';
 import type { ChartOrder } from '@/types/order';
+import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
 import { markChartPaint } from '@/perf/perfMonitor';
 import { hitTestOrders } from './overlays/drawOrders';
 import { MAX_BARS_IN_MEMORY, VISIBLE_BARS_TARGET } from '@/utils/constants';
@@ -140,6 +141,8 @@ export interface ChartInstance {
   /** In-progress tool placement — engine owns rubber-band draft (no React per-move). */
   setPlacement: (placement: DrawingPlacement | null) => void;
   setReplayCursorTime: (time: number | null) => void;
+  /** In-place tip update during replay — no array copy (addendum §3/§6). */
+  patchFormingBar: (forming: ChartBar) => void;
   /** When true, each cursor update recenters the live candle (until user pans). */
   setReplayFollow: (follow: boolean) => void;
   /** Hit-test drawings at media coords (plot space). */
@@ -173,8 +176,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
 
   const ctx = canvas.getContext('2d');
   if (!ctx) {
+    canvas.remove();
     throw new Error('Canvas 2D context unavailable');
   }
+  ledgerAcquire('charts');
 
   let width = container.clientWidth || 800;
   let height = container.clientHeight || 500;
@@ -495,8 +500,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
 
   const schedulePaint = () => {
     if (rafId !== null || destroyed) return;
+    ledgerAcquire('rafLoops');
     rafId = requestAnimationFrame((t) => {
       rafId = null;
+      ledgerRelease('rafLoops');
       if (destroyed || (!sceneDirty && !drawingsDirty && !overlayDirty)) return;
 
       ensureLayerBuffers();
@@ -1015,6 +1022,31 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       markDirty();
     },
 
+    patchFormingBar(forming) {
+      if (destroyed) return;
+      const last = bars[bars.length - 1];
+      if (last && last.time === forming.time) {
+        last.open = forming.open;
+        last.high = forming.high;
+        last.low = forming.low;
+        last.close = forming.close;
+        last.volume = forming.volume;
+      } else if (!last || last.time < forming.time) {
+        bars.push({
+          time: forming.time,
+          open: forming.open,
+          high: forming.high,
+          low: forming.low,
+          close: forming.close,
+          volume: forming.volume,
+        });
+      } else {
+        return;
+      }
+      invalidateScaleCache();
+      markSceneDirty();
+    },
+
     setReplayFollow(follow) {
       if (replayFollow === follow) return;
       replayFollow = follow;
@@ -1056,12 +1088,14 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     },
 
     destroy() {
+      if (destroyed) return;
       destroyed = true;
       themeObserver?.disconnect();
       themeObserver = null;
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
         rafId = null;
+        ledgerRelease('rafLoops');
       }
       interaction?.dispose();
       interaction = null;
@@ -1073,11 +1107,22 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       drawingSelectListeners.clear();
       drawingDrag = null;
       bars = [];
+      if (staticCanvas) {
+        staticCanvas.width = 0;
+        staticCanvas.height = 0;
+      }
+      if (drawingsCanvas) {
+        drawingsCanvas.width = 0;
+        drawingsCanvas.height = 0;
+      }
       staticCanvas = null;
       staticCtx = null;
       drawingsCanvas = null;
       drawingsCtx = null;
+      canvas.width = 0;
+      canvas.height = 0;
       canvas.remove();
+      ledgerRelease('charts');
     },
   };
 

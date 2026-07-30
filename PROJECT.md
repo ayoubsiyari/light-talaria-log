@@ -643,6 +643,7 @@ fast-chart/
 | 2026-07-29 | Step 12: Phase 11 backend architecture + schema sketch in ARCHITECTURE.md (CDN chunks, Postgres meta, API, ACL) | Step 13 API/CDN scaffolding |
 | 2026-07-29 | Step 13: Vite `/api/v1` stub + disk chunks + job queue + `ingestRemoteChunksToIdb` (local path default) | Step 14 journal or remote UI |
 | 2026-07-29 | Step 14: Journal page + localStorage per session; stats/trades/equity sparkline; nav from sessions + BottomBar | Optional remote journal / Import-from-API UI |
+| 2026-07-30 | TF switch refactor: session controller, load-time reveal, warm cache, base-TF clock split; see `docs/TF-REFACTOR-REPORT.md` | Manual §8 matrix + p95 latency in browser |
 
 ---
 

@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:session": "node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/session/__tests__/tfSwitch.property.test.ts"
   },
   "dependencies": {
     "@heroui/react": "^3.0.0",

@@ -197,8 +197,22 @@ export function paintBaseFrame(
     return;
   }
 
+  // Load-time reveal should truncate; maxBarIndex remains a safety net + DEV assert.
   const maxBarIndex =
     replayCursorTime != null ? indexAtOrBeforeBars(bars, replayCursorTime) : null;
+  if (
+    import.meta.env?.DEV &&
+    replayCursorTime != null &&
+    maxBarIndex != null &&
+    maxBarIndex < bars.length - 1
+  ) {
+    console.warn('[reveal] paint-mask fallback active', {
+      bars: bars.length,
+      maxBarIndex,
+      lastTime: bars[bars.length - 1]?.time,
+      cursorTime: replayCursorTime,
+    });
+  }
   const scale =
     priceScale.min < priceScale.max
       ? priceScale

@@ -1,0 +1,45 @@
+---
+description: Core project standards for Talaria-Log — always apply
+alwaysApply: true
+---
+
+# Talaria-Log — Core Rules
+
+## First rule (non-negotiable)
+Every chart/data decision must serve: **low browser memory, low CPU, fast load + fast redraw**.
+
+## Scope
+Phase 1 = chart rendering only. Do not add replay, orders, multi-chart, or backend until PROJECT.md Phase 6 is complete.
+
+## Chart engine
+- Custom Canvas 2D engine in `src/chart/` — never add TradingView Lightweight Charts or other third-party chart libs
+- Engine is a **dumb viewport renderer**: it never owns the full dataset
+- No “load entire series into the chart” API
+
+## Design
+- All UI chrome uses **Hero UI** components and CSS tokens (`--background`, `--accent`, `--success`, `--danger`, etc.)
+- Never hardcode hex colors in components; map chart colors via `src/chart/chartTheme.ts`
+- Default theme: dark mode
+
+## Mobile-friendly (always)
+Everything new or changed must work on mobile as well as desktop — do not ship desktop-only UI or interactions.
+- Layouts: responsive (flex/grid, stacking, safe areas); no horizontal page overflow
+- Touch: controls ≥44px hit targets; support touch/pointer (not mouse-only hover)
+- Chart: pan/zoom/follow/nav controls usable with fingers; overlays must not block the plot on small screens (collapse, reposition, or hide behind a toggle when needed)
+- Chrome: top/left/bottom bars and toolbars must remain usable on narrow viewports
+- Verify mentally (or in DevTools) at ~390px width before finishing a UI change
+
+## Checklist discipline
+- Mark completed tasks in `PROJECT.md` when finishing a phase step
+- Add session log entry in `PROJECT.md`
+
+## TypeScript
+- Strict mode always on
+- Shared types in `src/types/`
+- No `any` unless documented with a TODO
+
+## Do not break
+- Do not remove or weaken Cursor rules in `.cursor/rules/`
+- Do not load full CSV into memory as JS objects
+- Do not parse CSV on the main thread
+- Do not compute indicators on the main thread (Worker only, even as a temporary shortcut)

@@ -1,0 +1,487 @@
+import type { ChartBar, VisibleRange } from '@/types/bar';
+import { indexAtOrBeforeBars } from '@/data/timeframeAgg';
+import type { Drawing } from '@/drawings/drawingStore';
+import { getChartColors, type ChartColors } from './chartTheme';
+import { formatPrice, formatTime } from './format';
+import { drawCrosshair } from './overlays/drawCrosshair';
+import { drawDrawings } from './overlays/drawDrawings';
+import { drawLastPriceLine } from './overlays/drawLastPrice';
+import {
+  computePriceScale,
+  priceToY,
+  indexToX,
+  type PlotRect,
+  type PriceScale,
+} from './scales';
+import { drawIndicators } from './series/drawIndicators';
+import { drawIndicatorPane } from './series/drawIndicatorPane';
+import { drawSeries, drawVolume } from './series/drawSeries';
+import { nicePriceTicks, niceTimeTicks } from './ticks';
+import type { ChartViewOptions, CrosshairPoint } from './types';
+import type { IndicatorOverlayResult, IndicatorPaneResult } from '@/types/indicator';
+import type { BacktestResult } from '@/types/backtest';
+import type { ChartOrder } from '@/types/order';
+import { drawBacktest } from './overlays/drawBacktest';
+import { drawOrders } from './overlays/drawOrders';
+
+export interface LayoutOptions {
+  showVolume?: boolean;
+  /** Number of oscillator panes stacked under volume. */
+  indicatorPaneCount?: number;
+}
+
+export interface RenderLayout {
+  width: number;
+  height: number;
+  dpr: number;
+  /** Main price pane */
+  plot: PlotRect;
+  /** Volume band under main plot (height 0 when disabled) */
+  volumePlot: PlotRect;
+  /** Indicator sub-panes (RSI, MACD, …) below volume */
+  indicatorPlots: PlotRect[];
+  priceAxisWidth: number;
+  timeAxisHeight: number;
+}
+
+export const PRICE_AXIS_WIDTH = 64;
+export const TIME_AXIS_HEIGHT = 28;
+const PLOT_PAD_LEFT = 8;
+const PLOT_PAD_TOP = 8;
+const VOLUME_GAP = 4;
+const VOLUME_RATIO = 0.18;
+const INDICATOR_PANE_RATIO = 0.14;
+const MIN_MAIN_RATIO = 0.32;
+
+/** Bottom of all stacked content (main + volume + indicator panes). */
+export function contentBottom(layout: RenderLayout): number {
+  const last = layout.indicatorPlots[layout.indicatorPlots.length - 1];
+  if (last && last.height > 0) return last.top + last.height;
+  if (layout.volumePlot.height > 0) {
+    return layout.volumePlot.top + layout.volumePlot.height;
+  }
+  return layout.plot.top + layout.plot.height;
+}
+
+export function createLayout(
+  width: number,
+  height: number,
+  dpr: number,
+  showVolumeOrOpts: boolean | LayoutOptions = true,
+): RenderLayout {
+  const opts: LayoutOptions =
+    typeof showVolumeOrOpts === 'boolean'
+      ? { showVolume: showVolumeOrOpts, indicatorPaneCount: 0 }
+      : showVolumeOrOpts;
+  const showVolume = opts.showVolume ?? true;
+  const paneCount = Math.max(0, opts.indicatorPaneCount ?? 0);
+
+  const contentH = Math.max(0, height - PLOT_PAD_TOP - TIME_AXIS_HEIGHT);
+  const contentW = Math.max(0, width - PLOT_PAD_LEFT - PRICE_AXIS_WIDTH);
+
+  let volumeH = showVolume ? Math.floor(contentH * VOLUME_RATIO) : 0;
+  let paneH = paneCount > 0 ? Math.floor(contentH * INDICATOR_PANE_RATIO) : 0;
+  // Keep main plot usable on short mobile viewports
+  const gaps =
+    (showVolume ? VOLUME_GAP : 0) + (paneCount > 0 ? VOLUME_GAP * paneCount : 0);
+  let reserved = volumeH + paneH * paneCount + gaps;
+  const minMain = Math.floor(contentH * MIN_MAIN_RATIO);
+  if (contentH - reserved < minMain && reserved > 0) {
+    const scale = Math.max(0, (contentH - minMain - gaps) / Math.max(1, volumeH + paneH * paneCount));
+    volumeH = showVolume ? Math.floor(volumeH * scale) : 0;
+    paneH = paneCount > 0 ? Math.max(28, Math.floor(paneH * scale)) : 0;
+    reserved = volumeH + paneH * paneCount + gaps;
+  }
+  const mainH = Math.max(0, contentH - reserved);
+
+  const plot: PlotRect = {
+    left: PLOT_PAD_LEFT,
+    top: PLOT_PAD_TOP,
+    width: contentW,
+    height: mainH,
+  };
+
+  let y = PLOT_PAD_TOP + mainH;
+  const volumePlot: PlotRect = {
+    left: PLOT_PAD_LEFT,
+    top: y + (showVolume && volumeH > 0 ? VOLUME_GAP : 0),
+    width: contentW,
+    height: volumeH,
+  };
+  if (showVolume && volumeH > 0) y = volumePlot.top + volumeH;
+
+  const indicatorPlots: PlotRect[] = [];
+  for (let i = 0; i < paneCount; i++) {
+    y += VOLUME_GAP;
+    indicatorPlots.push({
+      left: PLOT_PAD_LEFT,
+      top: y,
+      width: contentW,
+      height: paneH,
+    });
+    y += paneH;
+  }
+
+  return {
+    width,
+    height,
+    dpr,
+    plot,
+    volumePlot,
+    indicatorPlots,
+    priceAxisWidth: PRICE_AXIS_WIDTH,
+    timeAxisHeight: TIME_AXIS_HEIGHT,
+  };
+}
+
+export type HitZone = 'plot' | 'timeAxis' | 'priceAxis' | 'none';
+
+export function hitTestZone(x: number, y: number, layout: RenderLayout): HitZone {
+  const { plot, width, height, priceAxisWidth, timeAxisHeight } = layout;
+  const priceLeft = width - priceAxisWidth;
+  const timeTop = height - timeAxisHeight;
+  const plotBottom = contentBottom(layout);
+
+  if (x >= priceLeft && y >= plot.top && y <= plotBottom) {
+    return 'priceAxis';
+  }
+  if (y >= timeTop && x >= plot.left && x <= plot.left + plot.width) {
+    return 'timeAxis';
+  }
+  if (x >= plot.left && x <= plot.left + plot.width && y >= plot.top && y <= plotBottom) {
+    return 'plot';
+  }
+  return 'none';
+}
+
+export interface PaintState {
+  bars: readonly ChartBar[];
+  range: VisibleRange;
+  priceScale: PriceScale;
+  options: ChartViewOptions;
+  crosshair: CrosshairPoint | null;
+  drawings?: readonly Drawing[];
+  draftDrawing?: Drawing | null;
+  selectedDrawingId?: string | null;
+  hoveredDrawingId?: string | null;
+  drawingsHidden?: boolean;
+  replayCursorTime?: number | null;
+  indicators?: readonly IndicatorOverlayResult[];
+  indicatorPanes?: readonly IndicatorPaneResult[];
+  orders?: readonly ChartOrder[];
+  selectedOrderId?: string | null;
+  /** Strategy backtest markers / equity (outside engine). */
+  backtestResult?: BacktestResult | null;
+}
+
+/**
+ * Series scene: grid → series → volume → indicator overlays/panes → last price → axes.
+ * Cached; pan/zoom/data invalidate this layer.
+ */
+export function paintBaseFrame(
+  ctx: CanvasRenderingContext2D,
+  layout: RenderLayout,
+  state: PaintState,
+  colors: ChartColors = getChartColors(),
+): void {
+  const { width, height, dpr, plot } = layout;
+  const { bars, range, priceScale, options, replayCursorTime, indicators, indicatorPanes } =
+    state;
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = colors.background;
+  ctx.fillRect(0, 0, width, height);
+
+  if (bars.length === 0 || range.toIndex <= range.fromIndex || plot.width <= 0 || plot.height <= 0) {
+    return;
+  }
+
+  const maxBarIndex =
+    replayCursorTime != null ? indexAtOrBeforeBars(bars, replayCursorTime) : null;
+  const scale =
+    priceScale.min < priceScale.max
+      ? priceScale
+      : computePriceScale(bars, range, maxBarIndex);
+
+  const priceTicks = nicePriceTicks(scale.min, scale.max, 6);
+  const timeTicks = niceTimeTicks(range, bars, 6);
+
+  drawGrid(ctx, layout, scale, range, priceTicks, timeTicks, colors);
+  drawSeries(ctx, bars, range, plot, scale, colors, options.seriesType, maxBarIndex);
+
+  if (indicators?.length) {
+    drawIndicators(ctx, indicators, bars, range, plot, scale, maxBarIndex);
+  }
+
+  if (options.showVolume && layout.volumePlot.height > 0) {
+    drawVolume(
+      ctx,
+      bars,
+      range,
+      layout.volumePlot,
+      colors,
+      options.volumeOpacity,
+      maxBarIndex,
+    );
+  }
+
+  if (indicatorPanes?.length) {
+    const count = Math.min(indicatorPanes.length, layout.indicatorPlots.length);
+    for (let i = 0; i < count; i++) {
+      const panePlot = layout.indicatorPlots[i]!;
+      drawIndicatorPane(
+        ctx,
+        indicatorPanes[i]!,
+        panePlot,
+        bars,
+        range,
+        maxBarIndex,
+        colors,
+      );
+    }
+  }
+
+  if (options.showLastPrice) {
+    const lastIdx = maxBarIndex ?? bars.length - 1;
+    const lastBars = lastIdx >= 0 ? bars.slice(0, lastIdx + 1) : bars;
+    drawLastPriceLine(ctx, layout, lastBars, scale, colors);
+  }
+
+  drawPriceAxis(ctx, layout, scale, priceTicks, colors);
+  drawTimeAxis(ctx, layout, range, timeTicks, colors);
+}
+
+/**
+ * Committed drawings (+ selection/hover handles). Separate cache so handle-hover
+ * does not rebuild the candle layer.
+ */
+export function paintDrawingsFrame(
+  ctx: CanvasRenderingContext2D,
+  layout: RenderLayout,
+  state: PaintState,
+  colors: ChartColors = getChartColors(),
+  opts: { clear?: boolean } = {},
+): void {
+  const { width, height, dpr, plot } = layout;
+  const {
+    bars,
+    range,
+    priceScale,
+    drawings,
+    selectedDrawingId,
+    hoveredDrawingId,
+    drawingsHidden,
+    replayCursorTime,
+  } = state;
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (opts.clear !== false) {
+    ctx.clearRect(0, 0, width, height);
+  }
+
+  if (
+    drawingsHidden ||
+    !drawings?.length ||
+    bars.length === 0 ||
+    range.toIndex <= range.fromIndex ||
+    plot.width <= 0 ||
+    plot.height <= 0
+  ) {
+    return;
+  }
+
+  const maxBarIndex =
+    replayCursorTime != null ? indexAtOrBeforeBars(bars, replayCursorTime) : null;
+  const scale =
+    priceScale.min < priceScale.max
+      ? priceScale
+      : computePriceScale(bars, range, maxBarIndex);
+
+  drawDrawings(
+    ctx,
+    drawings,
+    bars,
+    range,
+    plot,
+    scale,
+    colors,
+    null,
+    selectedDrawingId ?? null,
+    false,
+    hoveredDrawingId ?? null,
+  );
+}
+
+/** Crosshair + in-progress draft — cheap path for pointer moves. */
+export function paintOverlayFrame(
+  ctx: CanvasRenderingContext2D,
+  layout: RenderLayout,
+  state: PaintState,
+  colors: ChartColors = getChartColors(),
+): void {
+  const { plot, dpr } = layout;
+  const {
+    bars,
+    range,
+    priceScale,
+    options,
+    crosshair,
+    draftDrawing,
+    replayCursorTime,
+    orders,
+    selectedOrderId,
+    backtestResult,
+  } = state;
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  if (bars.length === 0 || range.toIndex <= range.fromIndex || plot.width <= 0 || plot.height <= 0) {
+    return;
+  }
+
+  const maxBarIndex =
+    replayCursorTime != null ? indexAtOrBeforeBars(bars, replayCursorTime) : null;
+  const scale =
+    priceScale.min < priceScale.max
+      ? priceScale
+      : computePriceScale(bars, range, maxBarIndex);
+
+  if (backtestResult) {
+    drawBacktest(ctx, backtestResult, bars, range, plot, scale, colors);
+  }
+
+  if (orders?.length) {
+    drawOrders(ctx, orders, plot, scale, colors, selectedOrderId ?? null);
+  }
+
+  if (draftDrawing) {
+    drawDrawings(
+      ctx,
+      [],
+      bars,
+      range,
+      plot,
+      scale,
+      colors,
+      draftDrawing,
+      null,
+      false,
+      null,
+    );
+  }
+
+  if (crosshair && options.crosshairMode !== 'hidden') {
+    drawCrosshair(ctx, layout, crosshair, colors);
+  }
+}
+
+/** Full paint (tests / fallback) — series → drawings → overlay. */
+export function paintFrame(
+  ctx: CanvasRenderingContext2D,
+  layout: RenderLayout,
+  state: PaintState,
+  colors: ChartColors = getChartColors(),
+): void {
+  paintBaseFrame(ctx, layout, state, colors);
+  paintDrawingsFrame(ctx, layout, state, colors, { clear: false });
+  paintOverlayFrame(ctx, layout, state, colors);
+}
+
+export { computePriceScale };
+
+function drawGrid(
+  ctx: CanvasRenderingContext2D,
+  layout: RenderLayout,
+  priceScale: PriceScale,
+  range: VisibleRange,
+  priceTicks: number[],
+  timeTicks: { index: number }[],
+  colors: ChartColors,
+): void {
+  const { plot } = layout;
+  ctx.strokeStyle = colors.grid;
+  ctx.lineWidth = 1;
+
+  for (const price of priceTicks) {
+    const y = Math.round(priceToY(price, priceScale, plot)) + 0.5;
+    if (y < plot.top || y > plot.top + plot.height) continue;
+    ctx.beginPath();
+    ctx.moveTo(plot.left, y);
+    ctx.lineTo(plot.left + plot.width, y);
+    ctx.stroke();
+  }
+
+  const gridBottom = contentBottom(layout);
+
+  for (const tick of timeTicks) {
+    const x = indexToX(tick.index, range, plot) + 0.5;
+    if (x < plot.left || x > plot.left + plot.width) continue;
+    ctx.beginPath();
+    ctx.moveTo(x, plot.top);
+    ctx.lineTo(x, gridBottom);
+    ctx.stroke();
+  }
+}
+
+function drawPriceAxis(
+  ctx: CanvasRenderingContext2D,
+  layout: RenderLayout,
+  priceScale: PriceScale,
+  priceTicks: number[],
+  colors: ChartColors,
+): void {
+  const { plot, width, priceAxisWidth } = layout;
+  const axisX = width - priceAxisWidth;
+
+  ctx.fillStyle = colors.background;
+  ctx.fillRect(axisX, 0, priceAxisWidth, layout.height);
+
+  ctx.strokeStyle = colors.border;
+  ctx.beginPath();
+  ctx.moveTo(axisX + 0.5, plot.top);
+  ctx.lineTo(axisX + 0.5, plot.top + plot.height);
+  ctx.stroke();
+
+  ctx.fillStyle = colors.muted;
+  ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+
+  for (const price of priceTicks) {
+    const y = priceToY(price, priceScale, plot);
+    if (y < plot.top - 4 || y > plot.top + plot.height + 4) continue;
+    ctx.fillText(formatPrice(price), axisX + 6, y);
+  }
+}
+
+function drawTimeAxis(
+  ctx: CanvasRenderingContext2D,
+  layout: RenderLayout,
+  range: VisibleRange,
+  timeTicks: { index: number; time: number }[],
+  colors: ChartColors,
+): void {
+  const { plot, height, timeAxisHeight, width } = layout;
+  const axisY = height - timeAxisHeight;
+
+  ctx.fillStyle = colors.background;
+  ctx.fillRect(0, axisY, width, timeAxisHeight);
+
+  ctx.strokeStyle = colors.border;
+  ctx.beginPath();
+  ctx.moveTo(plot.left, axisY + 0.5);
+  ctx.lineTo(plot.left + plot.width, axisY + 0.5);
+  ctx.stroke();
+
+  ctx.fillStyle = colors.muted;
+  ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+
+  for (const tick of timeTicks) {
+    const x = indexToX(tick.index, range, plot);
+    if (x < plot.left || x > plot.left + plot.width) continue;
+    ctx.fillText(formatTime(tick.time), x, axisY + 8);
+  }
+}

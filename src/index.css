@@ -1,0 +1,118 @@
+@import 'tailwindcss';
+@import '@heroui/styles';
+
+/*
+ * Theme: Hero UI tokens via `.dark` / `[data-theme]` on <html>.
+ * Default dark; toggle persists in localStorage (`fast-chart.theme`).
+ */
+
+/* Marketing landing — dark blue theme aligned to brand mark */
+.marketing-root {
+  --m-ink: #050a18;
+  --m-ink-raised: #0b1428;
+  --m-hairline: #1a2b4d;
+  --m-parchment: #e8eef8;
+  --m-accent: #2f6bff;
+  --m-accent-deep: #1e4fd9;
+  --m-brass: var(--m-accent); /* legacy alias used in components */
+  --m-signal: #37c99e;
+  --m-drawdown: #d8695f;
+  --m-muted: #8a9bb8;
+  --m-logbook: #e8eef8;
+  --m-logbook-ink: #050a18;
+  --font-m-display: 'Archivo', system-ui, sans-serif;
+  --font-m-mono: 'JetBrains Mono', ui-monospace, monospace;
+  color-scheme: dark;
+  background:
+    radial-gradient(ellipse 80% 50% at 70% 0%, color-mix(in srgb, var(--m-accent) 14%, transparent), transparent 55%),
+    var(--m-ink);
+}
+
+.marketing-grid {
+  background-image: none;
+}
+
+@media (min-width: 1024px) {
+  .marketing-grid {
+    background-image: repeating-linear-gradient(
+      to right,
+      color-mix(in srgb, var(--m-hairline) 3%, transparent) 0,
+      color-mix(in srgb, var(--m-hairline) 3%, transparent) 1px,
+      transparent 1px,
+      transparent 96px
+    );
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    height: 100dvh;
+  }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    color-scheme: light dark;
+  }
+
+  html.dark body {
+    color-scheme: dark;
+  }
+
+  html:not(.dark) body {
+    color-scheme: light;
+  }
+
+  /* Native form controls follow theme tokens */
+  select,
+  input,
+  textarea,
+  button {
+    color: inherit;
+  }
+
+  select,
+  input:not([type='checkbox']):not([type='range']):not([type='color']),
+  textarea {
+    background-color: var(--background);
+    border-color: var(--border);
+  }
+
+  /* Indicator palette (derived from accent) — used via chartTheme when needed */
+  :root,
+  .dark {
+    --chart-1: oklch(from var(--accent) calc(l - 0.24) c h);
+    --chart-2: oklch(from var(--accent) calc(l - 0.12) c h);
+    --chart-3: var(--accent);
+    --chart-4: oklch(from var(--accent) calc(l + 0.12) c h);
+    --chart-5: oklch(from var(--accent) calc(l + 0.24) c h);
+  }
+
+  /*
+   * TradingView-style chrome: 1px panel lines between top / left / bottom.
+   * Prefer --separator (lighter) over --border so the L-frame reads like TV.
+   */
+  :root {
+    --tv-panel-line: var(--separator, var(--border));
+  }
+
+  .tv-panel-b {
+    border-bottom: 1px solid var(--tv-panel-line);
+  }
+  .tv-panel-r {
+    border-right: 1px solid var(--tv-panel-line);
+  }
+  .tv-panel-t {
+    border-top: 1px solid var(--tv-panel-line);
+  }
+  .tv-divider-y {
+    width: 1px;
+    align-self: stretch;
+    background: var(--tv-panel-line);
+    flex-shrink: 0;
+  }
+}

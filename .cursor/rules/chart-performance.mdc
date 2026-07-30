@@ -1,0 +1,53 @@
+---
+description: Chart performance and memory rules — non-negotiable
+globs: src/chart/**/*,src/data/**/*
+alwaysApply: false
+---
+
+# Chart Performance Rules
+
+## First rule
+Low memory, low CPU, fast load + fast redraw. Everything else is secondary.
+
+## Memory cap
+```typescript
+// ❌ BAD — loads entire dataset into the engine
+engine.setViewportBars(allBars); // 1M rows
+
+// ✅ GOOD — viewport window only
+engine.setViewportBars(windowBars); // max 2500 bars
+```
+
+## Constants (from src/utils/constants.ts)
+- `MAX_BARS_IN_MEMORY = 2500`
+- `VISIBLE_BARS_TARGET = 1500`
+- `BUFFER_BARS = 500`
+- `DEBOUNCE_MS = 50`
+- Never increase without updating PROJECT.md and running memory benchmarks
+
+## Chart lifecycle
+- Store chart engine in `useRef`, never `useState`
+- Call `engine.destroy()` in cleanup
+- Use `ResizeObserver` for resize, not window resize + state
+- Redraw via single dirty-flag + `requestAnimationFrame` — never paint on every pointer event
+
+## Data ownership
+- Engine holds only the current viewport buffer + `VisibleRange`
+- Full dataset lives in IndexedDB; TypedArrays in worker/chunks
+- Convert to plain objects only for the visible window (≤ 2500)
+- Parse CSV only inside `csvWorker.ts`
+
+## Visible range (sync-ready)
+- Primary coordinate is **logical index**, not DOM state
+- Interaction updates `VisibleRange` `{ fromIndex, toIndex }` then marks dirty
+- Expose `getVisibleRange` / `setVisibleRange` / `onVisibleRangeChange` for future multi-chart sync
+
+## Updates during pan
+- Debounce visible range changes (50ms)
+- Fetch padded range: `from - BUFFER` to `to + BUFFER`
+- Replace with `setViewportBars`, do not accumulate unbounded arrays
+
+## Future-phase contracts (do not violate)
+- Replay: feed viewport / last-bar updates only — never mutate history inside the canvas buffer
+- Multi-chart: share one `VisibleRange` store → N engines
+- Indicators: Worker-only math; overlay series capped at `MAX_BARS_IN_MEMORY`

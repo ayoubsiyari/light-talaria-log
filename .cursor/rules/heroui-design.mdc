@@ -1,0 +1,34 @@
+---
+description: Hero UI design system enforcement
+globs: src/components/**/*,src/**/*.tsx,src/index.css
+alwaysApply: false
+---
+
+# Hero UI Design Rules
+
+## Components
+Use Hero UI for all interactive UI:
+- `Button`, `Card`, `Progress`, `Alert`, `Spinner`, `Tooltip`
+
+```tsx
+// ❌ BAD
+<button className="bg-blue-500">Upload</button>
+
+// ✅ GOOD
+import { Button } from '@heroui/react';
+<Button color="primary" variant="solid">Upload CSV</Button>
+```
+
+## Colors
+- UI: Tailwind classes tied to Hero tokens (`bg-background`, `text-foreground`, `border-border`)
+- Chart: read CSS variables in `chartTheme.ts`, not hardcoded in chart options
+
+## Candle colors
+- Up: `--success`
+- Down: `--danger`
+
+## Layout
+- Chart panel: `Card` with `className="bg-surface"`
+- Page: `min-h-screen bg-background text-foreground`
+
+See `docs/DESIGN.md` for full token table.

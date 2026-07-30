@@ -69,7 +69,7 @@ Implemented the session-controller architecture: load-time reveal (`revealedView
 5. **Shared rAF for all chart panes** not introduced — engines keep their own paint scheduling; replay uses one rAF for the clock (coalesced). Full §2.8 multi-pane dirty-flag loop not built.
 6. **Zero-allocation draw path** not audited/changed (out of scope / renderer rewrite forbidden).
 7. **Manual matrix + p95 latency** not run in-browser here.
-8. **Repo had zero commits** — added a baseline commit then phase-tagged commits; Phases 2–4 share the `src/session/` module and are not perfectly bisect-isolated.
+8. **Repo had zero commits** — added a baseline commit then phase-tagged commits. **Phase 4 (warmCache) was committed before Phase 3 (controller)** because the controller imports the cache; git history order is P1→P2→P4→P3→P5→P6.
 
 ## 6. Test results
 

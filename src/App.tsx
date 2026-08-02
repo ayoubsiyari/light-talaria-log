@@ -59,10 +59,10 @@ import {
 } from '@/backtest/backtestStore';
 import { cancelBacktest, runBacktest } from '@/backtest/runBacktestWorker';
 import {
-  createMockOrder,
-  listOrdersForSession,
-  saveOrdersForSession,
-} from '@/orders/orderStore';
+  createOrderSessionBridge,
+  type OrderSessionBridge,
+} from '@/orders/sessionBridge';
+import { OrderPanel } from '@/components/orders/OrderPanel';
 import type { EnabledIndicator } from '@/types/indicator';
 import { DEFAULT_BACKTEST_PARAMS } from '@/types/backtest';
 import type { ChartOrder } from '@/types/order';
@@ -185,6 +185,11 @@ export default function App() {
   const [enabledIndicators, setEnabledIndicators] = useState<EnabledIndicator[]>([]);
   const [orders, setOrders] = useState<ChartOrder[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [orderEngineTick, setOrderEngineTick] = useState(0);
+  const [lastOrderReject, setLastOrderReject] = useState<string | null>(null);
+  const orderBridgeRef = useRef<OrderSessionBridge | null>(null);
+  const stepOrderEngineRef = useRef<(cursorTime: number) => void>(() => {});
+  void orderEngineTick;
   const [backtestTick, setBacktestTick] = useState(0);
   const [chartLayout, setChartLayout] = useState<ChartLayout>('1');
   const [layoutSync, setLayoutSync] = useState<LayoutSyncOptions>(DEFAULT_LAYOUT_SYNC);
@@ -617,6 +622,8 @@ export default function App() {
 
       if (playing) {
         sessionRef.current.setCursorTime(cursorTime, { follow, react: false });
+        // Step order engine on every base bar the cursor passes (§4.1).
+        stepOrderEngineRef.current(cursorTime);
         const views = sessionRef.current.getViews();
         if (opts?.playEdge) detachedPanesRef.current.clear();
 
@@ -668,10 +675,124 @@ export default function App() {
       }
 
       sessionRef.current.setCursorTime(cursorTime, { follow, react: true });
+      stepOrderEngineRef.current(cursorTime);
       commitSessionViews();
     },
     [catalog, commitSessionViews],
   );
+
+  const syncOrdersFromBridge = useCallback(() => {
+    const bridge = orderBridgeRef.current;
+    const sessId = sessionIdRef.current;
+    if (!bridge || !sessId) return;
+    const next = bridge.toChartOrders(sessId);
+    setOrders(next);
+    setLastOrderReject(bridge.getLastReject());
+    setOrderEngineTick((n) => n + 1);
+  }, []);
+
+  stepOrderEngineRef.current = (cursorTime: number) => {
+    const bridge = orderBridgeRef.current;
+    const sess = sessionRef.current.get();
+    if (!bridge || !sess) return;
+    const ds =
+      panesRef.current.find((p) => p.id === activePaneId)?.datasetId ??
+      panesRef.current[0]?.datasetId;
+    if (!ds) return;
+    const events = bridge.advanceTo(cursorTime, (fromExclusive, toInclusive) => {
+      const raw = warmCache.peek(ds, sess.baseTf) ?? [];
+      const out: ChartBar[] = [];
+      for (const b of raw) {
+        if (b.time <= fromExclusive) continue;
+        if (b.time > toInclusive) break;
+        if (b.time > cursorTime) break;
+        out.push(b);
+      }
+      return out;
+    });
+    if (events.length === 0) return;
+    if (!replayRef.current.get().playing) {
+      syncOrdersFromBridge();
+    } else {
+      const chartOrders = bridge.toChartOrders(sessionIdRef.current ?? '');
+      for (const pane of panesRef.current) {
+        getChart(pane.id)?.setOrders(chartOrders, selectedOrderId);
+      }
+    }
+  };
+
+  // Order-level drag context + commit (overlay-only during drag; one modify on up).
+  useEffect(() => {
+    const bridge = orderBridgeRef.current;
+    if (!bridge || loadStatus !== 'ready') return;
+    const spec = bridge.getSpec();
+    const st = bridge.getState();
+    const unsubs: Array<() => void> = [];
+    for (const pane of panesRef.current) {
+      const chart = getChart(pane.id);
+      if (!chart?.setOrderDragContext) continue;
+      const container = chart.canvas.parentElement;
+      if (!container) continue;
+      chart.setOrderDragContext({
+        tickSize: spec.tickSize,
+        digits: spec.digits,
+        pipSize: spec.pipSize,
+        contractSize: spec.contractSize,
+        lotStep: spec.lotStep,
+        minLot: spec.minLot,
+        maxLot: spec.maxLot,
+        baseCurrency: spec.baseCurrency,
+        quoteCurrency: spec.quoteCurrency,
+        equity: st.account.equity,
+        riskPercent: 0.01,
+        riskLocked: true,
+        container,
+      });
+      unsubs.push(
+        chart.onOrderLevelCommit((hit) => {
+          if (hit.cancelled || hit.kind === 'entry') {
+            syncOrdersFromBridge();
+            return;
+          }
+          const b = orderBridgeRef.current;
+          if (!b) return;
+          const cursorTime = replayRef.current.get().cursorTime;
+          const last = panesRef.current[0]?.bars.slice(-1)[0];
+          const bid = last?.close ?? hit.price;
+          const ask = bid + b.getSpec().typicalSpread;
+          // Map chart overlay id → working protective order
+          const state = b.getState();
+          const protective = state.workingIds
+            .map((id) => state.orders[id])
+            .find(
+              (o) =>
+                o &&
+                o.positionId === hit.orderId &&
+                ((hit.kind === 'sl' && o.role === 'stopLoss') ||
+                  (hit.kind === 'tp' && o.role === 'takeProfit')),
+            );
+          if (!protective) {
+            syncOrdersFromBridge();
+            return;
+          }
+          b.modify({
+            orderId: protective.id,
+            cursorTime,
+            price: hit.price,
+            bid,
+            ask,
+          });
+          syncOrdersFromBridge();
+        }),
+      );
+    }
+    return () => {
+      for (const u of unsubs) u();
+      for (const pane of panesRef.current) {
+        getChart(pane.id)?.setOrderDragContext?.(null);
+      }
+    };
+  }, [loadStatus, panes, orderEngineTick, syncOrdersFromBridge]);
 
   /**
    * Before Play: sync session pane configs to the React multi-pane set and warm
@@ -849,8 +970,16 @@ export default function App() {
 
         const key = `${fresh.id}:${primary.datasetId}`;
         setDrawings(loadDrawings(key));
-        setOrders(listOrdersForSession(fresh.id));
+        orderBridgeRef.current = createOrderSessionBridge({
+          sessionId: fresh.id,
+          symbol: primary.pair,
+          accountCurrency: 'USD',
+          balance: 10_000,
+        });
+        setOrders([]);
         setSelectedOrderId(null);
+        setLastOrderReject(null);
+        setOrderEngineTick((n) => n + 1);
 
         setLoadStatus('ready');
 
@@ -1491,6 +1620,8 @@ export default function App() {
     setEnabledIndicators([]);
     setOrders([]);
     setSelectedOrderId(null);
+    setLastOrderReject(null);
+    orderBridgeRef.current = null;
     cancelBacktest();
     clearBacktestResult();
     syncStoreRef.current = null;
@@ -1511,28 +1642,33 @@ export default function App() {
     setView('journal');
   };
 
-  const persistOrders = useCallback(
-    (next: ChartOrder[]) => {
-      setOrders(next);
-      if (session) saveOrdersForSession(session.id, next);
-    },
-    [session],
-  );
-
   const handlePlaceOrder = useCallback(() => {
-    if (!session) return;
+    // TopBar quick-place: market buy at next bar (full ticket is in OrderPanel).
+    const bridge = orderBridgeRef.current;
+    if (!bridge || !session) return;
     const pane = panesRef.current.find((p) => p.id === activePaneId) ?? panesRef.current[0];
     if (!pane || pane.bars.length === 0) return;
     const last = pane.bars[pane.bars.length - 1]!;
-    const order = createMockOrder({
-      sessionId: session.id,
-      pair: pane.pair,
-      side: 'buy',
-      entry: last.close,
+    const spread = bridge.getSpec().typicalSpread;
+    const cursorTime = replayRef.current.get().cursorTime || last.time;
+    const id = `ord-${cursorTime}-${bridge.getState().seq + 1}`;
+    bridge.submit({
+      cursorTime,
+      bid: last.close,
+      ask: last.close + spread,
+      order: {
+        id,
+        symbol: bridge.getState().symbol,
+        side: 'BUY',
+        type: 'MARKET',
+        size: 0.1,
+        tif: 'GTC',
+        createdAt: cursorTime,
+      },
     });
-    persistOrders([...orders, order]);
-    setSelectedOrderId(order.id);
-  }, [session, activePaneId, orders, persistOrders]);
+    syncOrdersFromBridge();
+    setSelectedOrderId(id);
+  }, [session, activePaneId, syncOrdersFromBridge]);
 
   useEffect(() => subscribeBacktest(() => setBacktestTick((n) => n + 1)), []);
 
@@ -1953,6 +2089,60 @@ export default function App() {
         </div>
       </div>
 
+      {loadStatus === 'ready' && (
+        <OrderPanel
+          key={orderEngineTick}
+          state={orderBridgeRef.current?.getState() ?? null}
+          spec={orderBridgeRef.current?.getSpec() ?? null}
+          bid={
+            (panes.find((p) => p.id === activePaneId) ?? panes[0])?.bars.slice(-1)[0]
+              ?.close ?? 0
+          }
+          ask={
+            ((panes.find((p) => p.id === activePaneId) ?? panes[0])?.bars.slice(-1)[0]
+              ?.close ?? 0) + (orderBridgeRef.current?.getSpec().typicalSpread ?? 0)
+          }
+          lastReject={lastOrderReject}
+          disabled={replayState.playing}
+          onSubmit={(ticket) => {
+            const bridge = orderBridgeRef.current;
+            if (!bridge) return;
+            const pane =
+              panesRef.current.find((p) => p.id === activePaneId) ?? panesRef.current[0];
+            if (!pane || pane.bars.length === 0) return;
+            const last = pane.bars[pane.bars.length - 1]!;
+            const spread = bridge.getSpec().typicalSpread;
+            const cursorTime = replayRef.current.get().cursorTime || last.time;
+            const id = `ord-${cursorTime}-${bridge.getState().seq + 1}`;
+            bridge.submit({
+              cursorTime,
+              bid: last.close,
+              ask: last.close + spread,
+              order: {
+                id,
+                symbol: bridge.getState().symbol,
+                side: ticket.side,
+                type: ticket.type,
+                size: ticket.size,
+                price: ticket.price,
+                stopLoss: ticket.stopLoss,
+                takeProfit: ticket.takeProfit,
+                tif: ticket.tif,
+                createdAt: cursorTime,
+              },
+            });
+            syncOrdersFromBridge();
+            setSelectedOrderId(id);
+          }}
+          onCancel={(orderId) => {
+            const bridge = orderBridgeRef.current;
+            if (!bridge) return;
+            const cursorTime = replayRef.current.get().cursorTime;
+            bridge.cancel(orderId, cursorTime);
+            syncOrdersFromBridge();
+          }}
+        />
+      )}
       <BottomBar
         activeTab={activeTab}
         onTabChange={(tab) => {
@@ -1981,6 +2171,12 @@ export default function App() {
         onSpeed={(s) => replayRef.current.setSpeed(s)}
         onSeek={(t) => {
           // Scrub keeps camera detached; Play re-attaches
+          const prev = replayRef.current.get().cursorTime;
+          if (t < prev) {
+            // Backward seek with open book: reset engine (report §11.5).
+            orderBridgeRef.current?.onSeekBackward(t);
+            syncOrdersFromBridge();
+          }
           replayRef.current.seek(t);
         }}
         equityLabel={equityLabel}

@@ -62,7 +62,11 @@ import {
   createOrderSessionBridge,
   type OrderSessionBridge,
 } from '@/orders/sessionBridge';
-import { OrderPanel } from '@/components/orders/OrderPanel';
+import {
+  OrderTicket,
+  type OrderTicketDraft,
+} from '@/components/orders/OrderTicket';
+import { TradeDock, tradeDockCounts } from '@/components/orders/TradeDock';
 import type { EnabledIndicator } from '@/types/indicator';
 import { DEFAULT_BACKTEST_PARAMS } from '@/types/backtest';
 import type { ChartOrder } from '@/types/order';
@@ -187,6 +191,8 @@ export default function App() {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [orderEngineTick, setOrderEngineTick] = useState(0);
   const [lastOrderReject, setLastOrderReject] = useState<string | null>(null);
+  const [ticketOpen, setTicketOpen] = useState(false);
+  const [ticketDraft, setTicketDraft] = useState<OrderTicketDraft | null>(null);
   const orderBridgeRef = useRef<OrderSessionBridge | null>(null);
   const stepOrderEngineRef = useRef<(cursorTime: number) => void>(() => {});
   void orderEngineTick;
@@ -1643,32 +1649,85 @@ export default function App() {
   };
 
   const handlePlaceOrder = useCallback(() => {
-    // TopBar quick-place: market buy at next bar (full ticket is in OrderPanel).
-    const bridge = orderBridgeRef.current;
-    if (!bridge || !session) return;
-    const pane = panesRef.current.find((p) => p.id === activePaneId) ?? panesRef.current[0];
-    if (!pane || pane.bars.length === 0) return;
-    const last = pane.bars[pane.bars.length - 1]!;
-    const spread = bridge.getSpec().typicalSpread;
-    const cursorTime = replayRef.current.get().cursorTime || last.time;
-    const id = `ord-${cursorTime}-${bridge.getState().seq + 1}`;
-    bridge.submit({
-      cursorTime,
-      bid: last.close,
-      ask: last.close + spread,
-      order: {
-        id,
-        symbol: bridge.getState().symbol,
-        side: 'BUY',
-        type: 'MARKET',
-        size: 0.1,
-        tif: 'GTC',
-        createdAt: cursorTime,
-      },
-    });
-    syncOrdersFromBridge();
-    setSelectedOrderId(id);
-  }, [session, activePaneId, syncOrdersFromBridge]);
+    setTicketOpen(true);
+    setActiveTab('open');
+  }, []);
+
+  const chartOrdersWithDraft = useMemo(() => {
+    if (!ticketDraft || !session) return orders;
+    const draftOrder: ChartOrder = {
+      id: '__draft__',
+      sessionId: session.id,
+      pair: session.legs[0]?.pair ?? '',
+      side: ticketDraft.side === 'BUY' ? 'buy' : 'sell',
+      entry: ticketDraft.entry,
+      stopLoss: ticketDraft.stopLoss,
+      takeProfit: ticketDraft.takeProfit,
+      createdAt: 0,
+      draft: true,
+      working: true,
+    };
+    return [...orders, draftOrder];
+  }, [orders, ticketDraft, session]);
+
+  const orderCounts = useMemo(
+    () => tradeDockCounts(orderBridgeRef.current?.getState() ?? null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tick drives refresh
+    [orderEngineTick],
+  );
+
+  const liveBidAsk = useMemo(() => {
+    const pane = panes.find((p) => p.id === activePaneId) ?? panes[0];
+    const last = pane?.bars[pane.bars.length - 1];
+    const bid = last?.close ?? 0;
+    const spread = orderBridgeRef.current?.getSpec().typicalSpread ?? 0;
+    return { bid, ask: bid + spread };
+  }, [panes, activePaneId, orderEngineTick]);
+
+  const submitTicket = useCallback(
+    (ticket: {
+      side: 'BUY' | 'SELL';
+      type: 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT' | 'TRAILING_STOP';
+      size: number;
+      price?: number;
+      stopLoss?: number;
+      takeProfit?: number;
+      tif: 'GTC' | 'DAY' | 'GTD' | 'IOC' | 'FOK';
+    }) => {
+      const bridge = orderBridgeRef.current;
+      if (!bridge) return;
+      const pane =
+        panesRef.current.find((p) => p.id === activePaneId) ?? panesRef.current[0];
+      if (!pane || pane.bars.length === 0) return;
+      const last = pane.bars[pane.bars.length - 1]!;
+      const spread = bridge.getSpec().typicalSpread;
+      const cursorTime = replayRef.current.get().cursorTime || last.time;
+      const id = `ord-${cursorTime}-${bridge.getState().seq + 1}`;
+      bridge.submit({
+        cursorTime,
+        bid: last.close,
+        ask: last.close + spread,
+        order: {
+          id,
+          symbol: bridge.getState().symbol,
+          side: ticket.side,
+          type: ticket.type,
+          size: ticket.size,
+          price: ticket.price,
+          stopLoss: ticket.stopLoss,
+          takeProfit: ticket.takeProfit,
+          tif: ticket.tif,
+          createdAt: cursorTime,
+        },
+      });
+      syncOrdersFromBridge();
+      setSelectedOrderId(id);
+      setTicketOpen(false);
+      setTicketDraft(null);
+      setActiveTab('open');
+    },
+    [activePaneId, syncOrdersFromBridge],
+  );
 
   useEffect(() => subscribeBacktest(() => setBacktestTick((n) => n + 1)), []);
 
@@ -2015,7 +2074,7 @@ export default function App() {
               onVolumeOpacityChange={handleVolumeOpacityChange}
               enabledIndicators={enabledIndicators}
               onEnabledIndicatorsChange={setEnabledIndicators}
-              orders={orders}
+              orders={chartOrdersWithDraft}
               selectedOrderId={selectedOrderId}
               onOrderSelect={setSelectedOrderId}
               backtestResult={btResult}
@@ -2086,59 +2145,84 @@ export default function App() {
           {chartSettingsOpen && (
             <ChartSettingsModal onClose={() => setChartSettingsOpen(false)} />
           )}
+
+          {loadStatus === 'ready' && (
+            <OrderTicket
+              open={ticketOpen}
+              onClose={() => {
+                setTicketOpen(false);
+                setTicketDraft(null);
+              }}
+              symbol={
+                (panes.find((p) => p.id === activePaneId) ?? panes[0])?.pair ??
+                session.legs[0]?.pair ??
+                'EURUSD'
+              }
+              bid={liveBidAsk.bid}
+              ask={liveBidAsk.ask}
+              digits={orderBridgeRef.current?.getSpec().digits ?? 5}
+              pipSize={orderBridgeRef.current?.getSpec().pipSize ?? 0.01}
+              tickSize={orderBridgeRef.current?.getSpec().tickSize ?? 0.00001}
+              contractSize={orderBridgeRef.current?.getSpec().contractSize ?? 100_000}
+              leverage={
+                orderBridgeRef.current?.getState().account.leverage ??
+                orderBridgeRef.current?.getSpec().leverage ??
+                100
+              }
+              freeMargin={orderBridgeRef.current?.getState().account.freeMargin ?? 10_000}
+              accountCurrency={
+                orderBridgeRef.current?.getState().account.currency ?? 'USD'
+              }
+              lastReject={lastOrderReject}
+              disabled={replayState.playing}
+              onSubmit={submitTicket}
+              onDraftChange={setTicketDraft}
+            />
+          )}
         </div>
       </div>
 
       {loadStatus === 'ready' && (
-        <OrderPanel
+        <TradeDock
           key={orderEngineTick}
+          activeTab={activeTab}
           state={orderBridgeRef.current?.getState() ?? null}
           spec={orderBridgeRef.current?.getSpec() ?? null}
-          bid={
-            (panes.find((p) => p.id === activePaneId) ?? panes[0])?.bars.slice(-1)[0]
-              ?.close ?? 0
-          }
-          ask={
-            ((panes.find((p) => p.id === activePaneId) ?? panes[0])?.bars.slice(-1)[0]
-              ?.close ?? 0) + (orderBridgeRef.current?.getSpec().typicalSpread ?? 0)
-          }
-          lastReject={lastOrderReject}
-          disabled={replayState.playing}
-          onSubmit={(ticket) => {
+          bid={liveBidAsk.bid}
+          ask={liveBidAsk.ask}
+          onCancel={(orderId) => {
             const bridge = orderBridgeRef.current;
             if (!bridge) return;
+            bridge.cancel(orderId, replayRef.current.get().cursorTime);
+            syncOrdersFromBridge();
+          }}
+          onSelectPosition={(id) => setSelectedOrderId(id)}
+          onClosePosition={(positionId) => {
+            const bridge = orderBridgeRef.current;
+            if (!bridge) return;
+            const pos = bridge.getState().positions[positionId];
+            if (!pos) return;
             const pane =
               panesRef.current.find((p) => p.id === activePaneId) ?? panesRef.current[0];
-            if (!pane || pane.bars.length === 0) return;
-            const last = pane.bars[pane.bars.length - 1]!;
+            const last = pane?.bars[pane.bars.length - 1];
+            if (!last) return;
             const spread = bridge.getSpec().typicalSpread;
             const cursorTime = replayRef.current.get().cursorTime || last.time;
-            const id = `ord-${cursorTime}-${bridge.getState().seq + 1}`;
+            const id = `close-${cursorTime}-${bridge.getState().seq + 1}`;
             bridge.submit({
               cursorTime,
               bid: last.close,
               ask: last.close + spread,
               order: {
                 id,
-                symbol: bridge.getState().symbol,
-                side: ticket.side,
-                type: ticket.type,
-                size: ticket.size,
-                price: ticket.price,
-                stopLoss: ticket.stopLoss,
-                takeProfit: ticket.takeProfit,
-                tif: ticket.tif,
+                symbol: pos.symbol,
+                side: pos.side === 'BUY' ? 'SELL' : 'BUY',
+                type: 'MARKET',
+                size: pos.size,
+                tif: 'IOC',
                 createdAt: cursorTime,
               },
             });
-            syncOrdersFromBridge();
-            setSelectedOrderId(id);
-          }}
-          onCancel={(orderId) => {
-            const bridge = orderBridgeRef.current;
-            if (!bridge) return;
-            const cursorTime = replayRef.current.get().cursorTime;
-            bridge.cancel(orderId, cursorTime);
             syncOrdersFromBridge();
           }}
         />
@@ -2146,7 +2230,7 @@ export default function App() {
       <BottomBar
         activeTab={activeTab}
         onTabChange={(tab) => {
-          if (tab === 'analytics' || tab === 'history') {
+          if (tab === 'analytics') {
             handleOpenJournal(session.id);
             return;
           }
@@ -2179,10 +2263,35 @@ export default function App() {
           }
           replayRef.current.seek(t);
         }}
-        equityLabel={equityLabel}
-        pnlLabel={pnlLabel}
-        pnlPositive={pnlPositive}
-        tradeCount={btResult?.trades.length}
+        balanceLabel={
+          orderBridgeRef.current
+            ? orderBridgeRef.current.getState().account.balance.toFixed(2)
+            : undefined
+        }
+        equityLabel={
+          orderBridgeRef.current
+            ? orderBridgeRef.current.getState().account.equity.toFixed(2)
+            : equityLabel
+        }
+        pnlLabel={
+          orderBridgeRef.current
+            ? (
+                orderBridgeRef.current.getState().account.equity -
+                orderBridgeRef.current.getState().account.balance
+              ).toFixed(2)
+            : pnlLabel
+        }
+        pnlPositive={
+          orderBridgeRef.current
+            ? orderBridgeRef.current.getState().account.equity -
+                orderBridgeRef.current.getState().account.balance >=
+              0
+            : pnlPositive
+        }
+        tradeCount={orderCounts.history}
+        pendingCount={orderCounts.pending}
+        openCount={orderCounts.open}
+        historyCount={orderCounts.history}
       />
     </div>
   );

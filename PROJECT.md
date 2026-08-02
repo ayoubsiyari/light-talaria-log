@@ -669,6 +669,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-02 | Multi-chart replay: armPlay warms all pane caches; extendReveal fill-ahead + keep tip on gap | Verify 3-pair Play advances all panes |
 | 2026-08-02 | Level-2 SaaS full: `docs/SAAS-LEVEL-2.md`, Docker (PG/Redis/MinIO), Fastify API, auth, jobs, Datasets login | `npm run saas:up` → migrate/seed/api → `saas:dev` |
 | 2026-08-02 | Order system Phases 1–7: pure engine, §4.3 fills, margin/swap, journal determinism, drag overlay, order UI — `docs/ORDER-SYSTEM-REPORT.md` | Measure drag Profiler/p95; journal rebuild on reload |
+| 2026-08-02 | TV-style order UX: floating ticket, bottom TradeDock tabs, draft+live SL/TP chart levels | Place Order → drag SL/TP on chart |
 
 ---
 

@@ -181,8 +181,8 @@ export function createOrderSessionBridge(input: {
     toChartOrders(sessionId) {
       const out: ChartOrder[] = [];
       for (const pos of Object.values(state.positions)) {
-        let sl = 0;
-        let tp = 0;
+        let sl: number | null = null;
+        let tp: number | null = null;
         for (const id of state.workingIds) {
           const o = state.orders[id];
           if (!o || o.positionId !== pos.id) continue;
@@ -195,27 +195,33 @@ export function createOrderSessionBridge(input: {
           pair: pos.symbol,
           side: pos.side === 'BUY' ? 'buy' : 'sell',
           entry: pos.entryPrice,
-          stopLoss: sl || pos.entryPrice,
-          takeProfit: tp || pos.entryPrice,
+          stopLoss: sl,
+          takeProfit: tp,
           createdAt: pos.openedAt,
           enginePositionId: pos.id,
           ambiguousFill: pos.ambiguousFill,
         });
       }
-      // Working entry orders (limits/stops not yet filled)
+      // Working entry orders (limits/stops/markets awaiting next-bar fill)
       for (const id of state.workingIds) {
         const o = state.orders[id];
         if (!o || o.role === 'stopLoss' || o.role === 'takeProfit') continue;
-        if (o.price == null && o.type !== 'MARKET') continue;
-        if (o.type === 'MARKET') continue;
+        if (o.type !== 'MARKET' && o.price == null) continue;
+        if (
+          o.type === 'MARKET' &&
+          o.stopLoss == null &&
+          o.takeProfit == null
+        ) {
+          continue;
+        }
         out.push({
           id: o.id,
           sessionId,
           pair: o.symbol,
           side: o.side === 'BUY' ? 'buy' : 'sell',
-          entry: o.price ?? 0,
-          stopLoss: o.stopLoss ?? o.price ?? 0,
-          takeProfit: o.takeProfit ?? o.price ?? 0,
+          entry: o.type === 'MARKET' ? null : (o.price ?? null),
+          stopLoss: o.stopLoss ?? null,
+          takeProfit: o.takeProfit ?? null,
           createdAt: o.createdAt,
           engineOrderId: o.id,
           working: true,

@@ -1,20 +1,22 @@
 export type OrderSide = 'buy' | 'sell';
 
-/** Chart overlay projection of an engine position or working order. */
+/** Chart overlay projection of an engine position, working order, or draft ticket. */
 export interface ChartOrder {
   id: string;
   sessionId: string;
   pair: string;
   side: OrderSide;
-  entry: number;
-  stopLoss: number;
-  takeProfit: number;
+  /** null = do not draw entry (e.g. pending market waiting next bar) */
+  entry: number | null;
+  /** null = do not draw this level */
+  stopLoss: number | null;
+  takeProfit: number | null;
   createdAt: number;
-  /** Engine position id when backed by a live position. */
   enginePositionId?: string;
-  /** Engine order id when backed by a working entry order. */
   engineOrderId?: string;
   working?: boolean;
+  /** Preview from open order ticket (not yet submitted). */
+  draft?: boolean;
   ambiguousFill?: boolean;
 }
 

@@ -9,17 +9,22 @@ import {
 import type { ReplayState } from '@/replay/replayStore';
 import type { BottomTabId } from '@/types/ui';
 
-function buildTabs(tradeCount: number | undefined): {
+function buildTabs(counts: {
+  all?: number;
+  pending?: number;
+  open?: number;
+  history?: number;
+}): {
   id: BottomTabId;
   label: string;
   short: string;
   count?: number;
 }[] {
   return [
-    { id: 'all', label: 'All Trade', short: 'All', count: tradeCount ?? 0 },
-    { id: 'pending', label: 'Pending', short: 'Pend', count: 0 },
-    { id: 'open', label: 'Open Positions', short: 'Open', count: 0 },
-    { id: 'history', label: 'History', short: 'Hist', count: tradeCount ?? 0 },
+    { id: 'all', label: 'All Trade', short: 'All', count: counts.all },
+    { id: 'pending', label: 'Pending', short: 'Pend', count: counts.pending ?? 0 },
+    { id: 'open', label: 'Open Positions', short: 'Open', count: counts.open ?? 0 },
+    { id: 'history', label: 'History', short: 'Hist', count: counts.history ?? 0 },
     { id: 'analytics', label: 'Analytics', short: 'Anal' },
   ];
 }
@@ -39,6 +44,10 @@ interface BottomBarProps {
   pnlLabel?: string;
   pnlPositive?: boolean | null;
   tradeCount?: number;
+  pendingCount?: number;
+  openCount?: number;
+  historyCount?: number;
+  balanceLabel?: string;
 }
 
 function formatClock(d: Date): string {
@@ -89,6 +98,10 @@ export function BottomBar({
   pnlLabel,
   pnlPositive = null,
   tradeCount,
+  pendingCount,
+  openCount,
+  historyCount,
+  balanceLabel,
 }: BottomBarProps) {
   const [now, setNow] = useState(() => new Date());
   const [jumpOpen, setJumpOpen] = useState(false);
@@ -124,7 +137,16 @@ export function BottomBar({
     if (label) label.textContent = cursorLabel;
   }, [replay.playing, scrubValue, cursorLabel]);
 
-  const tabs = useMemo(() => buildTabs(tradeCount), [tradeCount]);
+  const tabs = useMemo(
+    () =>
+      buildTabs({
+        all: (openCount ?? 0) + (pendingCount ?? 0) + (historyCount ?? tradeCount ?? 0),
+        pending: pendingCount,
+        open: openCount,
+        history: historyCount ?? tradeCount,
+      }),
+    [openCount, pendingCount, historyCount, tradeCount],
+  );
 
   const openJump = () => {
     setJumpValue(toDatetimeLocalValue(replay.cursorTime || replay.startTime));
@@ -251,7 +273,7 @@ export function BottomBar({
         <div className="hidden md:flex items-center gap-3 shrink-0 tabular-nums text-[11px]">
           <div>
             <span className="text-muted mr-1">BALANCE</span>
-            <span>1.00</span>
+            <span>{balanceLabel ?? '—'}</span>
           </div>
           <div>
             <span className="text-muted mr-1">EQUITY</span>

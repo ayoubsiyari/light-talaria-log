@@ -796,6 +796,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       if (orderHit && orderHit.kind !== 'entry') {
         const order = chartOrders.find((o) => o.id === orderHit.orderId);
         if (order && orderDragCtx) {
+          if (order.entry == null) {
+            // Need entry for protective validation — skip drag if unknown
+            return false;
+          }
           beginLevelDrag({
             orderId: order.id,
             kind: orderHit.kind,

@@ -1,5 +1,5 @@
 /**
- * Pure order engine reducer. No React, no IDB, no Date.now(), no Math.random().
+ * Pure order engine reducer. No React, no IDB, no wall clock, no unseeded RNG.
  *
  * Fills are handed one base-TF bar at a time via stepEngine — the engine never
  * asks for bars, which makes lookahead structurally impossible.
@@ -82,7 +82,7 @@ export function createInitialState(input: {
     rngState: seedFromSessionId(input.sessionId),
     mode: input.mode ?? 'netting',
     lastBarTime: null,
-    lastSwapDay: null,
+    lastSwapUtcDay: null,
     symbol: input.symbol,
   };
 }
@@ -753,21 +753,18 @@ function refreshEquity(
   return { state: { ...state, account }, unrealizedById };
 }
 
-function utcDayKey(unixSec: number): string {
-  const d = new Date(unixSec * 1000);
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+/** Whole UTC days since Unix epoch — no Date object (determinism ban). */
+function utcDayIndex(unixSec: number): number {
+  return Math.floor(unixSec / 86400);
 }
 
+/** 0=Sun … 6=Sat. Epoch day 0 was Thursday. */
 function utcWeekday(unixSec: number): number {
-  return new Date(unixSec * 1000).getUTCDay();
+  return (utcDayIndex(unixSec) + 4) % 7;
 }
 
 function secondsIntoUtcDay(unixSec: number): number {
-  const d = new Date(unixSec * 1000);
-  return d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds();
+  return ((unixSec % 86400) + 86400) % 86400;
 }
 
 /**
@@ -786,12 +783,12 @@ function accrueSwapIfNeeded(
   const wd = utcWeekday(bar.time);
   if (wd === 0 || wd === 6) return state; // Sunday / Saturday
 
-  const dayKey = utcDayKey(bar.time);
-  if (state.lastSwapDay === dayKey) return state;
+  const dayIdx = utcDayIndex(bar.time);
+  if (state.lastSwapUtcDay === dayIdx) return state;
 
   const sod = secondsIntoUtcDay(bar.time);
   const prevSod =
-    prevBarTime != null && utcDayKey(prevBarTime) === dayKey
+    prevBarTime != null && utcDayIndex(prevBarTime) === dayIdx
       ? secondsIntoUtcDay(prevBarTime)
       : -1;
   const crossed =
@@ -830,16 +827,16 @@ function accrueSwapIfNeeded(
       positionId: id,
       amount: swap.amount,
       triple,
-      dayKey,
+      dayIdx,
     });
   }
   if (!any && Object.keys(positions).length === 0) {
-    return { ...next, lastSwapDay: dayKey };
+    return { ...next, lastSwapUtcDay: dayIdx };
   }
   return {
     ...next,
     positions,
-    lastSwapDay: dayKey,
+    lastSwapUtcDay: dayIdx,
   };
 }
 
@@ -1143,7 +1140,7 @@ export function hashState(state: OrderEngineState): string {
       .sort()
       .map((k) => state.positions[k]),
     lastBarTime: state.lastBarTime,
-    lastSwapDay: state.lastSwapDay,
+    lastSwapUtcDay: state.lastSwapUtcDay,
     mode: state.mode,
     symbol: state.symbol,
   };

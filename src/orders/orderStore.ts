@@ -53,6 +53,6 @@ export function createMockOrder(input: {
     entry: input.entry,
     stopLoss: input.entry - dir * risk,
     takeProfit: input.entry + dir * reward,
-    createdAt: Date.now(),
+    createdAt: input.entry, // placeholder; real engine uses cursorTime
   };
 }

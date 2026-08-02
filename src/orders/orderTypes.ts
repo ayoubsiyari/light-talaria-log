@@ -124,10 +124,10 @@ export interface OrderEngineState {
   /** Last bar time handed to stepEngine (for gap / monotonic asserts). */
   lastBarTime: number | null;
   /**
-   * UTC day key (YYYY-MM-DD) of last swap accrual, or null.
+   * UTC day index (Math.floor(unixSec/86400)) of last swap accrual, or null.
    * Prevents double-accrual within the same session day.
    */
-  lastSwapDay: string | null;
+  lastSwapUtcDay: number | null;
   symbol: string;
 }
 

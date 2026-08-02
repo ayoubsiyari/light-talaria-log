@@ -620,13 +620,9 @@ export default function App() {
         const views = sessionRef.current.getViews();
         if (opts?.playEdge) detachedPanesRef.current.clear();
 
-        let missingPane = false;
         for (const pane of panesRef.current) {
           const chart = getChart(pane.id);
-          if (!chart) {
-            missingPane = true;
-            continue;
-          }
+          if (!chart) continue;
           const v = views[pane.id];
           const paneDetached = detachedPanesRef.current.has(pane.id);
 
@@ -650,19 +646,9 @@ export default function App() {
             // Append/patch revealed bars as cursor advances.
             chart.syncReplayReveal(v.bars, cursorTime);
           } else {
-            missingPane = true;
-            // Cache/view not ready for this pane — still advance cursor on
-            // whatever bars the engine already has (paint-time mask).
+            // Cache/view not ready — advance paint mask on whatever the engine has.
             chart.setReplayCursorTime(cursorTime);
           }
-        }
-        // Secondary panes after layout can miss warm-cache coverage; recover once.
-        if (missingPane && opts?.playEdge) {
-          void sessionRef.current.refreshViews().then(() => {
-            if (!viewportReloadEnabledRef.current) return;
-            if (!replayRef.current.get().playing) return;
-            syncEnginesFromSession();
-          });
         }
         // Chrome scrubber / label — direct DOM, not useState
         const rs = replayRef.current.get();
@@ -684,8 +670,64 @@ export default function App() {
       sessionRef.current.setCursorTime(cursorTime, { follow, react: true });
       commitSessionViews();
     },
-    [catalog, commitSessionViews, syncEnginesFromSession],
+    [catalog, commitSessionViews],
   );
+
+  /**
+   * Before Play: sync session pane configs to the React multi-pane set and warm
+   * IDB caches around the cursor so every pair can extendReveal immediately.
+   */
+  const armReplayPlay = useCallback(async () => {
+    detachedPanesRef.current.clear();
+    cameraDetachedRef.current = false;
+    setCameraDetached(false);
+
+    const s = sessionRef.current.get();
+    const list = panesRef.current;
+    if (!s || list.length === 0) {
+      replayRef.current.play();
+      return;
+    }
+
+    const cfgs: Record<
+      string,
+      { datasetId: string; tf: Timeframe; selectedTf: Timeframe; pair: string }
+    > = {};
+    for (const p of list) {
+      cfgs[p.id] = {
+        datasetId: p.datasetId,
+        tf: p.timeframe,
+        selectedTf: p.selectedTf,
+        pair: p.pair,
+      };
+    }
+
+    const views = sessionRef.current.getViews();
+    const configsMatch = list.every((p) => {
+      const c = s.panes[p.id];
+      return !!c && c.datasetId === p.datasetId && c.tf === p.timeframe;
+    });
+    const allHaveBars = list.every((p) => (views[p.id]?.bars.length ?? 0) > 0);
+
+    try {
+      if (!configsMatch || !allHaveBars || list.length !== Object.keys(s.panes).length) {
+        await sessionRef.current.replacePanes(cfgs, s.activePaneId);
+        commitSessionViews();
+        syncEnginesFromSession();
+      } else {
+        await sessionRef.current.topUpCaches();
+      }
+    } catch (err) {
+      console.warn('[replay] arm multi-pane caches failed', err);
+    }
+
+    for (const pane of panesRef.current) {
+      const chart = getChart(pane.id);
+      if (!chart) continue;
+      chart.setReplayFollow(true);
+    }
+    replayRef.current.play();
+  }, [commitSessionViews, syncEnginesFromSession]);
 
   const loadSessionData = useCallback(
     async (next: BacktestSession) => {
@@ -1922,19 +1964,15 @@ export default function App() {
         }}
         replay={replayState}
         onPlay={() => {
-          detachedPanesRef.current.clear();
-          cameraDetachedRef.current = false;
-          setCameraDetached(false);
-          replayRef.current.play();
+          void armReplayPlay();
         }}
         onPause={() => replayRef.current.pause()}
         onToggle={() => {
-          if (!replayRef.current.get().playing) {
-            detachedPanesRef.current.clear();
-            cameraDetachedRef.current = false;
-            setCameraDetached(false);
+          if (replayRef.current.get().playing) {
+            replayRef.current.pause();
+          } else {
+            void armReplayPlay();
           }
-          replayRef.current.toggle();
         }}
         onStep={(d) => {
           // Keep camera where the user left it — only Play / double-click re-attach

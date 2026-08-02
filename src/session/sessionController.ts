@@ -315,6 +315,23 @@ export function createSessionController() {
 
 export type SessionController = ReturnType<typeof createSessionController>;
 
+/** Throttle IDB top-ups while the clock is advancing (one fill per dataset×tf). */
+const fillAheadInflight = new Set<string>();
+
+function scheduleFillAhead(
+  datasetId: string,
+  tf: Timeframe,
+  cursorTime: number,
+  span: number,
+): void {
+  const k = `${datasetId}|${tf}`;
+  if (fillAheadInflight.has(k)) return;
+  fillAheadInflight.add(k);
+  void warmCache
+    .fill(datasetId, tf, cursorTime, span)
+    .finally(() => fillAheadInflight.delete(k));
+}
+
 /**
  * Mutate each pane's bars array in place as cursor advances:
  * append newly closed buckets from warmCache + refresh forming tip.
@@ -330,15 +347,29 @@ function extendRevealInPlace(
     const view = views[id];
     if (!cfg || !view) continue;
 
-    const raw = warmCache.peek(cfg.datasetId, cfg.tf);
-    if (!raw || raw.length === 0) continue;
-
     const tfPeriod = timeframeSeconds(cfg.tf);
     const openBucket = bucketStart(s.cursorTime, tfPeriod);
     const bars = view.bars as ChartBar[];
+    const raw = warmCache.peek(cfg.datasetId, cfg.tf);
     const baseBars = warmCache.peek(cfg.datasetId, s.baseTf);
 
-    // Drop tip at/after open bucket — rebuild from cache + forming.
+    // Keep requesting data when the warm window does not cover the open bucket.
+    const rawEnd = raw && raw.length > 0 ? raw[raw.length - 1]!.time : null;
+    if (!raw || raw.length === 0 || (rawEnd != null && rawEnd < openBucket)) {
+      scheduleFillAhead(cfg.datasetId, cfg.tf, s.cursorTime, s.span);
+      if (cfg.tf !== s.baseTf) {
+        scheduleFillAhead(cfg.datasetId, s.baseTf, s.cursorTime, s.span);
+      }
+      if (!raw || raw.length === 0) {
+        // Nothing to append yet — leave existing tip so the pane does not go blank.
+        continue;
+      }
+    }
+
+    // Snapshot tip before rebuild — restore if forming cannot be rebuilt (cache gap).
+    const prevTip =
+      bars.length > 0 ? ({ ...bars[bars.length - 1]! } as ChartBar) : null;
+
     while (bars.length > 0 && bars[bars.length - 1]!.time >= openBucket) {
       bars.pop();
     }
@@ -374,7 +405,12 @@ function extendRevealInPlace(
         close: forming.close,
         volume: forming.volume,
       });
+    } else if (prevTip && prevTip.time <= s.cursorTime) {
+      // Cache gap: keep last tip so multi-pane charts do not freeze empty.
+      bars.push(prevTip);
     }
+
+    if (bars.length === 0) continue;
 
     const toIndex = Math.max(0, bars.length - 1);
     // Keep span in index-space (exclusive toIndex style via +1 pad on right).

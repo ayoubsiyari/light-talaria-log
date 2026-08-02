@@ -133,7 +133,7 @@ export function useChart(
     if (optionsRef.current.placement) {
       instance.setPlacement(optionsRef.current.placement);
     }
-    if (optionsRef.current.replayCursorTime !== undefined) {
+    if (typeof optionsRef.current.replayCursorTime === 'number') {
       instance.setReplayCursorTime(optionsRef.current.replayCursorTime);
     }
     if (optionsRef.current.replayFollow !== undefined) {

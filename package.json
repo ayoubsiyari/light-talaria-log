@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test:session": "node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/session/__tests__/tfSwitch.property.test.ts",
+    "test:orders": "node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/orders/__tests__/*.test.ts",
     "saas:up": "docker compose up -d postgres redis minio createbuckets",
     "saas:down": "docker compose down",
     "saas:api": "npm --prefix services/api run dev",

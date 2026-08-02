@@ -1,5 +1,6 @@
 import {
   deleteDatasetCsv,
+  deleteSeriesForDataset,
   openDb,
   putDatasetCsv,
 } from '@/data/idbStore';
@@ -12,6 +13,10 @@ import type {
   DownloadedDataset,
   DukascopyDownloadResponse,
 } from '@/types/dataset';
+import type { RemoteDatasetMeta } from '@/types/remoteApi';
+import { PAIR_OPTIONS, type PairSymbol } from '@/types/session';
+import type { Timeframe } from '@/types/ui';
+
 const STORAGE_KEY = 'fast-chart.datasets.v1';
 const MAX_DATASETS = 50;
 
@@ -52,6 +57,52 @@ export function validateDownloadDates(startDate: string, endDate: string): strin
   return null;
 }
 
+/** Map remote API symbol (`EURUSD` or `EUR/USD`) to a catalog PairSymbol. */
+export function remoteSymbolToPair(symbol: string): PairSymbol {
+  const raw = symbol.trim().toUpperCase().replace(/\s+/g, '');
+  const compact = raw.replace(/\//g, '');
+  const match = PAIR_OPTIONS.find((p) => p.id.replace(/\//g, '') === compact);
+  if (match) return match.id;
+  throw new Error(`Unsupported remote symbol: ${symbol}`);
+}
+
+function unixToIsoDate(sec: number): string {
+  if (!Number.isFinite(sec) || sec <= 0) return '1970-01-01';
+  return new Date(sec * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * Upsert a local catalog entry for a remote API dataset (keeps remote `id`
+ * so Create Session / rehydrate can find it).
+ */
+export function registerRemoteDataset(remote: RemoteDatasetMeta): DownloadedDataset {
+  const pair = remoteSymbolToPair(remote.symbol);
+  const timeframe = (remote.baseTimeframe as Timeframe) || '1m';
+  const rowCount =
+    remote.rowCounts?.[timeframe] ??
+    Object.values(remote.rowCounts ?? {})[0] ??
+    0;
+
+  const existing = readAll().find((d) => d.id === remote.id);
+  const dataset: DownloadedDataset = {
+    id: remote.id,
+    pair,
+    timeframe,
+    startDate: unixToIsoDate(remote.timeStart),
+    endDate: unixToIsoDate(remote.timeEnd),
+    rowCount,
+    source: 'remote',
+    createdAt: existing?.createdAt ?? Date.now(),
+  };
+
+  const next = [dataset, ...readAll().filter((d) => d.id !== remote.id)].slice(
+    0,
+    MAX_DATASETS,
+  );
+  writeAll(next);
+  return dataset;
+}
+
 /** Download from Vite /api/dukascopy, persist catalog + CSV blob. */
 export async function downloadAndStoreDataset(
   input: DownloadDatasetInput,
@@ -73,12 +124,25 @@ export async function downloadAndStoreDataset(
     }),
   });
 
-  const payload = (await res.json()) as DukascopyDownloadResponse & { error?: string };
-  if (!res.ok) {
-    throw new Error(payload.error ?? `Download failed (${res.status})`);
+  const raw = await res.text();
+  let payload: (DukascopyDownloadResponse & { error?: string }) | null = null;
+  if (raw) {
+    try {
+      payload = JSON.parse(raw) as DukascopyDownloadResponse & { error?: string };
+    } catch {
+      throw new Error(
+        'Download API returned a non-JSON response. Run the app with `npm run dev` (or preview after rebuild) so /api/dukascopy is available.',
+      );
+    }
   }
-  if (!payload.csv) {
-    throw new Error('Download returned empty CSV.');
+  if (!res.ok) {
+    throw new Error(payload?.error ?? `Download failed (${res.status})`);
+  }
+  if (!payload?.csv) {
+    throw new Error(
+      payload?.error ??
+        'Download returned empty CSV. Confirm `npm run dev` is running and the date range has market data.',
+    );
   }
 
   const dataset: DownloadedDataset = {
@@ -105,8 +169,9 @@ export async function deleteDataset(id: string): Promise<void> {
   try {
     const db = await openDb();
     await deleteDatasetCsv(db, id);
+    await deleteSeriesForDataset(db, id);
   } catch {
-    // Catalog already updated; CSV cleanup is best-effort
+    // Catalog already updated; IDB cleanup is best-effort
   }
 }
 

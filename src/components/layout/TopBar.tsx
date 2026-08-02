@@ -90,7 +90,7 @@ export function TopBar({
   onCancelBacktest,
 }: TopBarProps) {
   return (
-    <header className="tv-panel-b shrink-0 h-10 sm:h-[38px] bg-surface flex items-center gap-0 px-1 sm:px-2 pt-[env(safe-area-inset-top)] min-h-10">
+    <header className="chrome-topbar tv-panel-b shrink-0 h-10 sm:h-[38px] flex items-center gap-0 px-1 sm:px-2 pt-[env(safe-area-inset-top)] min-h-10">
       {/* Left: symbol + chart chrome */}
       <div className="flex items-center min-w-0 shrink-0">
         <SymbolPicker

@@ -204,6 +204,14 @@ export function ChartPane({
         showFollowControl={showFollowControl}
         onReattachFollow={onReattachFollow}
       />
+
+      {bars.length === 0 && (
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center px-4">
+          <p className="text-sm text-muted text-center max-w-xs">
+            No bars in this viewport. Pan toward data or reload the session.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

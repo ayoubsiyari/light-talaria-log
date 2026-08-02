@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button, Card, Label } from '@heroui/react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import {
@@ -8,16 +8,26 @@ import {
   listDatasets,
   validateDownloadDates,
 } from '@/datasets/datasetStore';
+import { ingestRemoteDatasetAllTfs } from '@/datasets/ingestRemoteChunks';
 import {
   assessDownloadSize,
   HARD_MAX_ESTIMATED_ROWS,
   MAX_DOWNLOAD_SPAN_DAYS,
 } from '@/datasets/ingestLimits';
 import {
+  fetchHealth,
+  fetchMe,
+  listRemoteDatasets,
+  loginRemote,
+  logoutRemote,
+  registerRemote,
+} from '@/datasets/remoteApi';
+import {
   PAIR_OPTIONS,
   TIMEFRAME_OPTIONS,
   type PairSymbol,
 } from '@/types/session';
+import type { RemoteDatasetMeta, RemoteUser } from '@/types/remoteApi';
 import type { Timeframe } from '@/types/ui';
 
 interface DatasetsPageProps {
@@ -46,7 +56,56 @@ export function DatasetsPage({ onGoSessions }: DatasetsPageProps) {
   const [downloading, setDownloading] = useState(false);
   const [datasets, setDatasets] = useState(() => listDatasets());
 
+  const [remoteDatasets, setRemoteDatasets] = useState<RemoteDatasetMeta[]>([]);
+  const [remoteStatus, setRemoteStatus] = useState<'loading' | 'ready' | 'error'>(
+    'loading',
+  );
+  const [remoteError, setRemoteError] = useState<string | null>(null);
+  const [importingId, setImportingId] = useState<string | null>(null);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [apiUser, setApiUser] = useState<RemoteUser | null>(null);
+  const [apiMode, setApiMode] = useState<string | null>(null);
+  const [authEmail, setAuthEmail] = useState('admin@localhost');
+  const [authPassword, setAuthPassword] = useState('admin12345');
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
   const refresh = () => setDatasets(listDatasets());
+
+  const loadRemote = () => {
+    setRemoteStatus('loading');
+    setRemoteError(null);
+    void (async () => {
+      try {
+        const health = await fetchHealth();
+        setApiMode('mode' in health && typeof health.mode === 'string' ? health.mode : null);
+        try {
+          setApiUser(await fetchMe());
+        } catch {
+          setApiUser(null);
+        }
+        const list = await listRemoteDatasets();
+        setRemoteDatasets(list);
+        setRemoteStatus('ready');
+      } catch (err) {
+        setRemoteDatasets([]);
+        setApiUser(null);
+        setApiMode(null);
+        setRemoteStatus('error');
+        setRemoteError(
+          err instanceof Error
+            ? err.message
+            : 'Remote API unreachable. Use `npm run dev` (stub) or `npm run saas:dev` (Level-2).',
+        );
+      }
+    })();
+  };
+
+  useEffect(() => {
+    loadRemote();
+  }, []);
+
+  const localIds = useMemo(() => new Set(datasets.map((d) => d.id)), [datasets]);
 
   const sizeAssess = useMemo(
     () => assessDownloadSize(startDate, endDate, timeframe),
@@ -95,6 +154,29 @@ export function DatasetsPage({ onGoSessions }: DatasetsPageProps) {
     }
   };
 
+  const handleImportRemote = async (remote: RemoteDatasetMeta) => {
+    setImportingId(remote.id);
+    setImportStatus(`Importing ${remote.name}…`);
+    setRemoteError(null);
+    try {
+      const catalog = await ingestRemoteDatasetAllTfs(remote.id, (p) => {
+        setImportStatus(
+          `Importing ${remote.name} · ${p.timeframe} (${p.index + 1}/${p.total})…`,
+        );
+      });
+      refresh();
+      const rows = catalog.rowCounts[catalog.baseTf] ?? 0;
+      setImportStatus(
+        `Imported ${remote.name} · ${rows.toLocaleString()} bars · ${catalog.timeframes.join(', ')}`,
+      );
+    } catch (err) {
+      setImportStatus(null);
+      setRemoteError(err instanceof Error ? err.message : 'Import failed');
+    } finally {
+      setImportingId(null);
+    }
+  };
+
   const handleDelete = (id: string) => {
     void deleteDataset(id).then(refresh);
   };
@@ -107,12 +189,13 @@ export function DatasetsPage({ onGoSessions }: DatasetsPageProps) {
             <p className="text-xs uppercase tracking-[0.2em] text-muted">Talaria-Log</p>
             <h1 className="text-3xl font-semibold tracking-tight">Datasets</h1>
             <p className="text-sm text-muted max-w-xl">
-              Download OHLC history from Dukascopy. Saved datasets appear on the session page.
+              Download OHLC history from Dukascopy or import shared datasets from the
+              API. Saved datasets appear on the session page.
             </p>
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <Button variant="secondary" size="sm" onPress={onGoSessions}>
+            <Button variant="secondary" size="sm" className="min-h-11" onPress={onGoSessions}>
               Sessions
             </Button>
           </div>
@@ -241,12 +324,212 @@ export function DatasetsPage({ onGoSessions }: DatasetsPageProps) {
           </Card.Content>
         </Card>
 
+        {remoteStatus === 'ready' && apiMode === 'saas-level-2' && (
+          <Card className="bg-surface border border-border">
+            <Card.Header className="px-6 pt-6 pb-2">
+              <Card.Title className="text-lg">SaaS account</Card.Title>
+              <Card.Description className="text-muted text-sm">
+                Level-2 API session (cookie). Default seed: admin@localhost / admin12345
+              </Card.Description>
+            </Card.Header>
+            <Card.Content className="px-6 pb-6 space-y-3">
+              {apiUser ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="text-sm min-w-0 flex-1">
+                    Signed in as <span className="font-medium">{apiUser.email}</span>
+                    {apiUser.displayName ? ` · ${apiUser.displayName}` : ''}
+                  </p>
+                  <Button
+                    variant="secondary"
+                    className="min-h-11"
+                    isDisabled={authBusy}
+                    onPress={() => {
+                      setAuthBusy(true);
+                      void logoutRemote()
+                        .then(() => {
+                          setApiUser(null);
+                          loadRemote();
+                        })
+                        .catch((err) =>
+                          setAuthError(err instanceof Error ? err.message : 'Logout failed'),
+                        )
+                        .finally(() => setAuthBusy(false));
+                    }}
+                  >
+                    Log out
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Email</Label>
+                      <input
+                        className={fieldClass}
+                        type="email"
+                        autoComplete="username"
+                        value={authEmail}
+                        onChange={(e) => setAuthEmail(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Password</Label>
+                      <input
+                        className={fieldClass}
+                        type="password"
+                        autoComplete="current-password"
+                        value={authPassword}
+                        onChange={(e) => setAuthPassword(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  {authError && (
+                    <p className="text-sm text-danger" role="alert">
+                      {authError}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="primary"
+                      className="min-h-11"
+                      isDisabled={authBusy}
+                      onPress={() => {
+                        setAuthBusy(true);
+                        setAuthError(null);
+                        void loginRemote(authEmail, authPassword)
+                          .then((u) => {
+                            setApiUser(u);
+                            loadRemote();
+                          })
+                          .catch((err) =>
+                            setAuthError(err instanceof Error ? err.message : 'Login failed'),
+                          )
+                          .finally(() => setAuthBusy(false));
+                      }}
+                    >
+                      Log in
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      className="min-h-11"
+                      isDisabled={authBusy}
+                      onPress={() => {
+                        setAuthBusy(true);
+                        setAuthError(null);
+                        void registerRemote(authEmail, authPassword)
+                          .then((u) => {
+                            setApiUser(u);
+                            loadRemote();
+                          })
+                          .catch((err) =>
+                            setAuthError(
+                              err instanceof Error ? err.message : 'Register failed',
+                            ),
+                          )
+                          .finally(() => setAuthBusy(false));
+                      }}
+                    >
+                      Register
+                    </Button>
+                  </div>
+                </>
+              )}
+            </Card.Content>
+          </Card>
+        )}
+
+        <Card className="bg-surface border border-border">
+          <Card.Header className="px-6 pt-6 pb-2">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <Card.Title className="text-lg">Import from API</Card.Title>
+                <Card.Description className="text-muted text-sm">
+                  Shared datasets via <code className="text-xs">/api/v1</code>. Pulls all
+                  available timeframes into IndexedDB (no full series in React state).
+                </Card.Description>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="min-h-11 shrink-0"
+                onPress={loadRemote}
+                isDisabled={remoteStatus === 'loading' || importingId != null}
+              >
+                {remoteStatus === 'loading' ? 'Checking…' : 'Refresh'}
+              </Button>
+            </div>
+          </Card.Header>
+          <Card.Content className="px-6 pb-6 space-y-3">
+            {remoteStatus === 'loading' && (
+              <p className="text-sm text-muted" role="status">
+                Checking remote API…
+              </p>
+            )}
+            {remoteStatus === 'error' && (
+              <p className="text-sm text-danger" role="alert">
+                {remoteError ?? 'Remote API unreachable.'}
+              </p>
+            )}
+            {remoteStatus === 'ready' && remoteDatasets.length === 0 && (
+              <p className="text-sm text-muted">No remote datasets available.</p>
+            )}
+            {remoteStatus === 'ready' && remoteDatasets.length > 0 && (
+              <ul className="space-y-2">
+                {remoteDatasets.map((r) => {
+                  const imported = localIds.has(r.id);
+                  const busy = importingId === r.id;
+                  const tfs = r.timeframes?.length
+                    ? r.timeframes.join(', ')
+                    : r.baseTimeframe;
+                  const rows =
+                    r.rowCounts?.[r.baseTimeframe] ??
+                    Object.values(r.rowCounts ?? {})[0] ??
+                    0;
+                  return (
+                    <li
+                      key={r.id}
+                      className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-background px-4 py-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{r.name}</p>
+                        <p className="text-xs text-muted tabular-nums break-words">
+                          {r.symbol} · {tfs} · {rows.toLocaleString()} bars
+                          {imported ? ' · imported' : ''}
+                        </p>
+                      </div>
+                      <Button
+                        variant={imported ? 'secondary' : 'primary'}
+                        size="sm"
+                        className="min-h-11"
+                        onPress={() => void handleImportRemote(r)}
+                        isDisabled={importingId != null}
+                      >
+                        {busy ? 'Importing…' : imported ? 'Re-import' : 'Import'}
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {importStatus && !remoteError && (
+              <p className="text-sm text-muted" role="status">
+                {importStatus}
+              </p>
+            )}
+            {remoteError && remoteStatus === 'ready' && (
+              <p className="text-sm text-danger" role="alert">
+                {remoteError}
+              </p>
+            )}
+          </Card.Content>
+        </Card>
+
         <section className="space-y-3">
           <h2 className="text-sm font-medium text-muted uppercase tracking-wide">
             Downloaded datasets
           </h2>
           {datasets.length === 0 ? (
-            <p className="text-sm text-muted">No datasets yet. Download one above.</p>
+            <p className="text-sm text-muted">No datasets yet. Download or import one above.</p>
           ) : (
             <ul className="space-y-2">
               {datasets.map((d) => (
@@ -260,7 +543,12 @@ export function DatasetsPage({ onGoSessions }: DatasetsPageProps) {
                       {d.rowCount.toLocaleString()} bars · {d.source}
                     </p>
                   </div>
-                  <Button variant="ghost" size="sm" onPress={() => handleDelete(d.id)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="min-h-11"
+                    onPress={() => handleDelete(d.id)}
+                  >
                     Delete
                   </Button>
                 </li>

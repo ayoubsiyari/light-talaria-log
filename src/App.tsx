@@ -11,6 +11,7 @@ import {
 import { DatasetsPage } from '@/components/dataset/DatasetsPage';
 import { DrawingFloatingToolbar } from '@/components/drawings/DrawingFloatingToolbar';
 import { DrawingSettingsModal } from '@/components/drawings/DrawingSettingsModal';
+import { ChartSettingsModal } from '@/components/chart/ChartSettingsModal';
 import { JournalPage } from '@/components/journal/JournalPage';
 import { BottomBar } from '@/components/layout/BottomBar';
 import { ChartGrid } from '@/components/layout/ChartGrid';
@@ -19,10 +20,12 @@ import { TopBar } from '@/components/layout/TopBar';
 import { MarketingHome } from '@/components/landing/MarketingHome';
 import { CreateSessionPage } from '@/components/session/CreateSessionPage';
 import { saveJournalResult } from '@/journal/journalStore';
-import { getSession } from '@/sessions/sessionStore';
+import { getSession, updateSessionProgress } from '@/sessions/sessionStore';
 import { LoadingProgress } from '@/components/LoadingProgress';
 import { PerfOverlay } from '@/components/perf/PerfOverlay';
 import { getChart } from '@/chart';
+/** Per-switch camera preserve: tip candle screen fraction + bar-count zoom. */
+type LiveCamera = { anchorTime: number; span: number; tipRatio: number };
 import {
   canAggregateFrom,
   timeframeSeconds,
@@ -78,10 +81,33 @@ import { DEFAULT_LAYOUT_SYNC, type LayoutSyncOptions } from '@/types/layout';
 import { paneCountForLayout } from '@/types/pane';
 import type { BottomTabId, ChartLayout, ChartToolId, Timeframe } from '@/types/ui';
 import { debounce } from '@/utils/debounce';
-import { LOD_DEBOUNCE_MS, REPLAY_VISIBLE_BARS } from '@/utils/constants';
+import {
+  LOD_DEBOUNCE_MS,
+  MAX_BARS_IN_MEMORY,
+  REPLAY_VISIBLE_BARS,
+} from '@/utils/constants';
+import {
+  formatAppRoute,
+  parseAppRoute,
+  type AppView,
+} from '@/navigation/appRoute';
 
-type AppView = 'landing' | 'sessions' | 'datasets' | 'journal' | 'chart';
+/** Throttle localStorage writes while replay is playing. */
+const REPLAY_PROGRESS_SAVE_MS = 2500;
+
 type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
+
+function bootRoute(): { view: AppView; journalSessionId: string | null } {
+  const route = parseAppRoute();
+  if (route.view === 'chart') {
+    // Chart restore runs after loadSessionData is ready; keep view=chart.
+    return { view: route.sessionId ? 'chart' : 'sessions', journalSessionId: null };
+  }
+  if (route.view === 'journal') {
+    return { view: 'journal', journalSessionId: route.sessionId };
+  }
+  return { view: route.view, journalSessionId: null };
+}
 
 interface PaneSeries {
   pair: PairSymbol;
@@ -125,8 +151,13 @@ export default function App() {
   const { state, importCsv } = useCsvImport();
   const importing = state.status === 'importing';
 
-  const [view, setView] = useState<AppView>('landing');
-  const [journalSessionId, setJournalSessionId] = useState<string | null>(null);
+  const boot = useMemo(() => bootRoute(), []);
+  const [view, setView] = useState<AppView>(boot.view);
+  const [journalSessionId, setJournalSessionId] = useState<string | null>(
+    boot.journalSessionId,
+  );
+  /** Ignore hashchange triggered by our own URL sync. */
+  const suppressHashRef = useRef(false);
   const [session, setSession] = useState<BacktestSession | null>(null);
   const [catalog, setCatalog] = useState<SeriesCatalog | null>(null);
   const [loadStatus, setLoadStatus] = useState<LoadStatus>('idle');
@@ -155,6 +186,7 @@ export default function App() {
   const [draftPoints, setDraftPoints] = useState<DrawingPoint[]>([]);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [chartSettingsOpen, setChartSettingsOpen] = useState(false);
   const [magnet, setMagnet] = useState(false);
   const [stayInDrawingMode, setStayInDrawingMode] = useState(false);
   const [drawingsLocked, setDrawingsLocked] = useState(false);
@@ -180,13 +212,22 @@ export default function App() {
    * applyTimeWindowToPanes is fully session-owned. Reveal/TF paths use session.
    */
   const replayBufferRef = useRef<Map<string, ChartBar[]>>(new Map());
-  const clockBufferRef = useRef<Map<string, ChartBar[]>>(new Map());
   /** Invalidates in-flight pan/zoom IDB window refills (edge prefetch). */
   const prefetchGenRef = useRef(0);
   /** User pan/zoom during play detaches camera follow (stops fighting the drag). */
   const [cameraDetached, setCameraDetached] = useState(false);
   const cameraDetachedRef = useRef(false);
   cameraDetachedRef.current = cameraDetached;
+  /** Per-pane follow detach — panning one chart must not freeze the others. */
+  const detachedPanesRef = useRef(new Set<string>());
+  /**
+   * Last TF/pair switch camera: keep tip candle at the same horizontal fraction
+   * and the same bar-count zoom after derive (incl. async warm-cache fills).
+   */
+  const cameraPreserveRef = useRef<LiveCamera | null>(null);
+  /** Open session id for progress persist (survives teardown order). */
+  const sessionIdRef = useRef<string | null>(null);
+  const lastProgressSaveRef = useRef(0);
 
   /** Push session PaneViews into React pane state (preserves pane order). */
   const commitSessionViews = useCallback(() => {
@@ -220,6 +261,80 @@ export default function App() {
       return next;
     });
   }, []);
+
+  /**
+   * Imperative engine sync after TF/pair switch.
+   * Required during replay: useChart skips React bar props while replayFollow is on.
+   * Restores captured tipRatio + span so the last candle and zoom stay put.
+   */
+  const syncEnginesFromSession = useCallback(() => {
+    const s = sessionRef.current.get();
+    const views = sessionRef.current.getViews();
+    if (!s) return;
+    const replay = replayRef.current.get();
+    const cursor = replay.cursorTime;
+    const preserved = cameraPreserveRef.current;
+    const span = Math.max(10, preserved?.span ?? s.span);
+    // Default ≈ rangeRightAnchored tip placement when no capture exists.
+    const tipRatio = preserved?.tipRatio ?? 0.9;
+
+    for (const pane of panesRef.current) {
+      const chart = getChart(pane.id);
+      const v = views[pane.id];
+      if (!chart || !v || v.bars.length === 0) continue;
+
+      const tipTime = Number.isFinite(cursor)
+        ? cursor
+        : v.bars[v.bars.length - 1]!.time;
+      chart.syncReplayReveal(v.bars, tipTime);
+
+      const tipIndex = v.bars.length - 1;
+      const fromIndex = tipIndex - tipRatio * span;
+      chart.setVisibleRange(fromIndex, fromIndex + span, { silent: true });
+
+      if (replay.playing && !detachedPanesRef.current.has(pane.id)) {
+        chart.setReplayFollow(true);
+      }
+    }
+  }, []);
+
+  /** Capture live zoom + tip position from the engine (not stale React pane.bars). */
+  const captureLiveCamera = useCallback(
+    (paneId: string): LiveCamera => {
+      const pane = panesRef.current.find((p) => p.id === paneId);
+      const engine = getChart(paneId);
+      const liveRange = engine?.getVisibleRange() ?? pane?.range ?? { fromIndex: 0, toIndex: 120 };
+      const span = Math.max(10, liveRange.toIndex - liveRange.fromIndex);
+      const bars = engine?.getBars() ?? pane?.bars ?? [];
+      const replay = replayRef.current.get();
+      const cursor = replay.cursorTime;
+      const tipIndex = Math.max(0, bars.length - 1);
+      // Where the tip candle sits in the viewport (0 = left, 1 = right).
+      const tipRatio = Math.max(
+        0,
+        Math.min(1.2, (tipIndex - liveRange.fromIndex) / span),
+      );
+
+      // While following replay, the tip time IS the cursor (last revealed candle).
+      const following =
+        replay.playing && !detachedPanesRef.current.has(paneId);
+      let anchorTime: number;
+      if (following && Number.isFinite(cursor)) {
+        anchorTime = cursor;
+      } else {
+        const tr = bars.length > 0 ? timeRangeFromVisible(bars, liveRange) : null;
+        anchorTime =
+          tr?.toTime ??
+          bars[bars.length - 1]?.time ??
+          (Number.isFinite(cursor) ? cursor : (catalog?.timeEnd ?? 0));
+        if (Number.isFinite(cursor)) {
+          anchorTime = Math.min(anchorTime, cursor);
+        }
+      }
+      return { anchorTime, span, tipRatio };
+    },
+    [catalog?.timeEnd],
+  );
 
   const availableTimeframes = useMemo(() => {
     if (seriesRef.current.length > 0) return intersectTimeframes(seriesRef.current);
@@ -458,13 +573,33 @@ export default function App() {
     [catalog, paneFromViewport, seriesForPane, syncReplayClockTf],
   );
 
+  /** Save replay cursor (+ zoom) so exit/refresh → reopen resumes mid-session. */
+  const persistReplayProgress = useCallback((force = false) => {
+    const id = sessionIdRef.current;
+    if (!id) return;
+    if (!force && !viewportReloadEnabledRef.current) return;
+    const now = Date.now();
+    if (!force && now - lastProgressSaveRef.current < REPLAY_PROGRESS_SAVE_MS) return;
+    const rs = replayRef.current.get();
+    if (!Number.isFinite(rs.cursorTime) || rs.cursorTime <= 0) return;
+    const sess = sessionRef.current.get();
+    lastProgressSaveRef.current = now;
+    const updated = updateSessionProgress(id, {
+      cursorTime: rs.cursorTime,
+      span: sess?.span,
+    });
+    if (updated) {
+      setSession((prev) => (prev && prev.id === id ? { ...prev, ...updated } : prev));
+    }
+  }, []);
+
   /**
    * Replay tick → session cursor (base TF grid).
    * During playback: no React (addendum §6) — engines + DOM only.
    * Discrete pause/seek: full derive + commitSessionViews.
    */
   const applyReplayReveal = useCallback(
-    (cursorTime: number) => {
+    (cursorTime: number, opts?: { playEdge?: boolean }) => {
       if (!catalog || !viewportReloadEnabledRef.current) return;
       if (!sessionRef.current.get()) return;
       const playing = replayRef.current.get().playing;
@@ -473,12 +608,38 @@ export default function App() {
       if (playing) {
         sessionRef.current.setCursorTime(cursorTime, { follow, react: false });
         const views = sessionRef.current.getViews();
+        if (opts?.playEdge) detachedPanesRef.current.clear();
+
         for (const pane of panesRef.current) {
           const chart = getChart(pane.id);
           if (!chart) continue;
-          chart.setReplayCursorTime(cursorTime);
-          const tip = views[pane.id]?.bars[views[pane.id]!.bars.length - 1];
-          if (tip) chart.patchFormingBar(tip);
+          const v = views[pane.id];
+          const paneDetached = detachedPanesRef.current.has(pane.id);
+
+          // Keep follow alive on every tick for panes the user hasn't panned.
+          // (React props alone are not enough after layout changes mid-play.)
+          if (!paneDetached) {
+            chart.setReplayFollow(true);
+          }
+
+          if (opts?.playEdge && v && v.bars.length > 0 && !paneDetached) {
+            // Restore a real zoom window — start-of-series reveal often has 1 bar
+            // which previously collapsed the camera to a single candle width.
+            const span = Math.max(10, sessionRef.current.get()?.span ?? 120);
+            const anchor = Math.max(0, v.bars.length - 1);
+            const rightPad = Math.floor(span * 0.1);
+            const toIndex = anchor + 1 + rightPad;
+            chart.setVisibleRange(toIndex - span, toIndex, { silent: true });
+          }
+
+          if (v && v.bars.length > 0) {
+            // Append/patch revealed bars as cursor advances.
+            chart.syncReplayReveal(v.bars, cursorTime);
+          } else {
+            // Cache/view not ready for this pane — still advance cursor on
+            // whatever bars the engine already has (paint-time mask).
+            chart.setReplayCursorTime(cursorTime);
+          }
         }
         // Chrome scrubber / label — direct DOM, not useState
         const rs = replayRef.current.get();
@@ -507,15 +668,19 @@ export default function App() {
     async (next: BacktestSession) => {
       viewportReloadEnabledRef.current = false;
       lastReplayCursorRef.current = null;
+      lastProgressSaveRef.current = 0;
       replayBufferRef.current.clear();
-      clockBufferRef.current.clear();
       cameraDetachedRef.current = false;
       setCameraDetached(false);
       replayRef.current.pause();
       sessionRef.current.dispose();
       sessionRef.current = createSessionController();
 
-      setSession(next);
+      // Prefer disk copy so reopen after exit picks up last saved cursor.
+      const fresh = getSession(next.id) ?? next;
+      sessionIdRef.current = fresh.id;
+
+      setSession(fresh);
       setLoadStatus('loading');
       setLoadError(null);
       setIngestPct(0);
@@ -526,7 +691,7 @@ export default function App() {
       setDraftPoints([]);
 
       try {
-        const resolved = resolveBaseDatasetsForSession(next);
+        const resolved = resolveBaseDatasetsForSession(fresh);
         if (resolved.length === 0) throw new Error('No dataset found for this session.');
 
         const seriesList: PaneSeries[] = [];
@@ -543,20 +708,33 @@ export default function App() {
         setCatalog(primary.catalog);
 
         const sharedTfs = intersectTimeframes(seriesList);
-        const openTf = sharedTfs.includes(next.timeframe)
-          ? next.timeframe
+        const openTf = sharedTfs.includes(fresh.timeframe)
+          ? fresh.timeframe
           : (sharedTfs[0] ?? primary.catalog.baseTf);
 
-        const { timeStart, timeEnd } = replayBounds(next, seriesList);
+        const { timeStart, timeEnd } = replayBounds(fresh, seriesList);
         const baseTf = primary.catalog.baseTf;
-        const windowSec = timeframeSeconds(baseTf) * REPLAY_VISIBLE_BARS;
+        const resumeCursor =
+          typeof fresh.cursorTime === 'number' && Number.isFinite(fresh.cursorTime)
+            ? Math.min(timeEnd, Math.max(timeStart, fresh.cursorTime))
+            : timeStart;
+        const resumeSpan = Math.max(
+          10,
+          Math.min(
+            MAX_BARS_IN_MEMORY,
+            typeof fresh.span === 'number' && fresh.span > 0
+              ? fresh.span
+              : REPLAY_VISIBLE_BARS,
+          ),
+        );
+        const windowSec = timeframeSeconds(baseTf) * resumeSpan;
 
         // Replay clock on base TF; rate from open pane TF.
         replayRef.current.setBaseTf(baseTf);
         replayRef.current.setRateTf(openTf);
         replayRef.current.configure(timeStart, timeEnd, windowSec);
-        replayRef.current.seek(timeStart, { silent: true });
-        lastReplayCursorRef.current = timeStart;
+        replayRef.current.seek(resumeCursor, { silent: true });
+        lastReplayCursorRef.current = resumeCursor;
 
         await sessionRef.current.configure({
           baseTf,
@@ -570,10 +748,10 @@ export default function App() {
             },
           },
           activePaneId: 'pane-0',
-          cursorTime: timeStart,
+          cursorTime: resumeCursor,
           availableTfs: sharedTfs,
           revealMode: 'replay',
-          span: REPLAY_VISIBLE_BARS,
+          span: resumeSpan,
         });
 
         const views = sessionRef.current.getViews();
@@ -604,9 +782,9 @@ export default function App() {
         setActivePaneId('pane-0');
         setChartLayout('1');
 
-        const key = `${next.id}:${primary.datasetId}`;
+        const key = `${fresh.id}:${primary.datasetId}`;
         setDrawings(loadDrawings(key));
-        setOrders(listOrdersForSession(next.id));
+        setOrders(listOrdersForSession(fresh.id));
         setSelectedOrderId(null);
 
         setLoadStatus('ready');
@@ -626,41 +804,75 @@ export default function App() {
     [],
   );
 
+  // Right-click chart → TradingView-style appearance settings
+  useEffect(() => {
+    const open = () => setChartSettingsOpen(true);
+    window.addEventListener('talaria:open-chart-settings', open);
+    return () => window.removeEventListener('talaria:open-chart-settings', open);
+  }, []);
+
+  // Flush replay progress on tab close / refresh.
+  useEffect(() => {
+    const flush = () => persistReplayProgress(true);
+    window.addEventListener('pagehide', flush);
+    window.addEventListener('beforeunload', flush);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      window.removeEventListener('beforeunload', flush);
+    };
+  }, [persistReplayProgress]);
+
   // Session async fills (warm-cache miss) → push views when epoch commits.
   useEffect(() => {
     return sessionRef.current.subscribe(() => {
       if (!viewportReloadEnabledRef.current) return;
       commitSessionViews();
+      // Async warm-cache fills (TF/pair) must reach engines even while replayFollow
+      // blocks the React → setViewportData path.
+      syncEnginesFromSession();
     });
-  }, [commitSessionViews, catalog?.datasetId, session?.id]);
+  }, [commitSessionViews, syncEnginesFromSession, catalog?.datasetId, session?.id]);
 
-  // Replay: cursor → engines. React only on discrete play/pause/seek edges.
+  // Replay: cursor → engines. React only on discrete play/pause/seek/speed edges.
   const wasPlayingRef = useRef(false);
+  const lastSpeedRef = useRef(replayRef.current.get().speed);
   useEffect(() => {
     const ctrl = replayRef.current;
     return ctrl.subscribe((rs) => {
       if (!catalog || !viewportReloadEnabledRef.current) return;
-      if (lastReplayCursorRef.current === rs.cursorTime && !rs.playing) return;
+
+      const playEdge = rs.playing !== wasPlayingRef.current;
+      const cursorChanged = lastReplayCursorRef.current !== rs.cursorTime;
+      const speedChanged = rs.speed !== lastSpeedRef.current;
+      // Pause/speed keep the same cursorTime — must not early-return or chrome
+      // (Play/Pause icon, speed slider) stays stale while the controller moved on.
+      if (!playEdge && !cursorChanged && !speedChanged) return;
+
       lastReplayCursorRef.current = rs.cursorTime;
+      wasPlayingRef.current = rs.playing;
+      lastSpeedRef.current = rs.speed;
 
       if (rs.playing && rs.cursorTime <= rs.startTime + 1) {
         cameraDetachedRef.current = false;
         setCameraDetached(false);
       }
 
-      const playEdge = rs.playing !== wasPlayingRef.current;
-      wasPlayingRef.current = rs.playing;
-
       if (rs.playing) {
-        if (playEdge) setReplayTick((n) => n + 1); // play button icon once
-        applyReplayReveal(rs.cursorTime);
+        // React only on play edge or speed change — not every cursor tick.
+        if (playEdge || speedChanged) setReplayTick((n) => n + 1);
+        if (cursorChanged || playEdge) {
+          applyReplayReveal(rs.cursorTime, { playEdge });
+          if (cursorChanged) persistReplayProgress(false);
+        }
         return;
       }
 
       setReplayTick((n) => n + 1);
       applyReplayReveal(rs.cursorTime);
+      // Pause / seek / step — always flush progress so exit/reopen resumes here.
+      if (playEdge || cursorChanged) persistReplayProgress(true);
     });
-  }, [catalog, applyReplayReveal]);
+  }, [catalog, applyReplayReveal, persistReplayProgress]);
 
   // Pan/zoom sync → edge-prefetch IDB windows when near buffer (not replay/session)
   useEffect(() => {
@@ -685,7 +897,8 @@ export default function App() {
       ) {
         return;
       }
-      // User dragged during play → detach camera so pan stays smooth
+      // User dragged during play → detach camera so pan stays smooth.
+      // Still allow edge prefetch while detached (empty pad fix).
       if (
         replayRef.current.get().playing &&
         state.origin != null &&
@@ -693,9 +906,10 @@ export default function App() {
       ) {
         cameraDetachedRef.current = true;
         setCameraDetached(true);
+        reload(state.timeRange.fromTime, state.timeRange.toTime);
         return;
       }
-      if (replayRef.current.get().playing) return;
+      if (replayRef.current.get().playing && !cameraDetachedRef.current) return;
       reload(state.timeRange.fromTime, state.timeRange.toTime);
     });
   }, [catalog, syncStore, applyTimeWindowToPanes]);
@@ -802,8 +1016,13 @@ export default function App() {
             selectedTf: p.selectedTf,
             pair: p.pair,
           };
+          // Seed warm cache so multi-pane replay can extendReveal immediately.
+          if (p.bars.length > 0) {
+            warmCache.put(p.datasetId, p.timeframe, p.bars, sess.cursorTime);
+          }
         }
         sessionRef.current.replacePanes(cfgs, next[0]?.id ?? 'pane-0');
+        void sessionRef.current.topUpCaches();
       }
       syncReplayClockTf(next);
       setActivePaneId((cur) => {
@@ -814,8 +1033,8 @@ export default function App() {
   };
 
   /**
-   * TF switch = capture camera into session, then one field change per pane.
-   * Warm cache makes the sync derive zero-await; async fill is epoch-guarded.
+   * TF switch = capture camera (span + right edge), one field change, push engines.
+   * During replay the right edge stays on the cursor candle; bar count is preserved.
    */
   const applyPaneTimeframe = useCallback(
     (paneId: string, tf: Timeframe) => {
@@ -833,31 +1052,9 @@ export default function App() {
         ? panesRef.current.map((p) => p.id)
         : [paneId];
 
-      // Capture live camera (right edge + bar count) before the TF field change.
-      const focusPane = panesRef.current.find((p) => p.id === paneId) ?? existing;
-      const engine = getChart(paneId);
-      const liveRange = engine?.getVisibleRange() ?? focusPane.range;
-      const span = Math.max(1, liveRange.toIndex - liveRange.fromIndex);
-      const liveTr =
-        timeRangeFromVisible(focusPane.bars, liveRange) ??
-        syncStoreRef.current?.get().timeRange ??
-        null;
-      const cursorTime = replayRef.current.get().cursorTime;
-      let anchorTime =
-        liveTr != null
-          ? liveTr.toTime
-          : (focusPane.bars[focusPane.bars.length - 1]?.time ?? catalog.timeEnd);
-      if (Number.isFinite(cursorTime)) {
-        anchorTime = Math.min(anchorTime, cursorTime);
-      }
-      sessionRef.current.setCamera(anchorTime, span);
-
-      const replay = replayRef.current.get();
-      if (replay.playing) {
-        cameraDetachedRef.current = false;
-        setCameraDetached(false);
-        for (const id of targets) getChart(id)?.setReplayFollow(true);
-      }
+      const camera = captureLiveCamera(paneId);
+      cameraPreserveRef.current = camera;
+      sessionRef.current.setCamera(camera.anchorTime, camera.span);
 
       for (const id of targets) {
         sessionRef.current.setPaneTimeframe(id, tf);
@@ -865,6 +1062,7 @@ export default function App() {
       setActivePaneId(paneId);
       sessionRef.current.setActivePane(paneId);
       commitSessionViews();
+      syncEnginesFromSession();
       syncReplayClockTf(panesRef.current);
 
       const focus = panesRef.current.find((p) => p.id === paneId);
@@ -874,10 +1072,19 @@ export default function App() {
         replayBufferRef.current.set(paneId, focus.bars);
       }
     },
-    [catalog, commitSessionViews, syncReplayClockTf],
+    [
+      catalog,
+      captureLiveCamera,
+      commitSessionViews,
+      syncEnginesFromSession,
+      syncReplayClockTf,
+    ],
   );
 
-  /** Rebind pane(s) to another session symbol (TV symbol switcher). */
+  /**
+   * Symbol switch via session controller — same camera preserve as TF switch.
+   * Truncates at cursor in replay; never loads future bars into the engine.
+   */
   const applyPaneSymbol = useCallback(
     (paneId: string, pair: PairSymbol) => {
       if (!catalog) return;
@@ -889,39 +1096,50 @@ export default function App() {
         setActivePaneId(paneId);
         return;
       }
-      const anchor =
-        syncStoreRef.current?.get().timeRange?.toTime ?? catalog.timeEnd;
+      if (!sessionRef.current.get()) return;
+
       const syncAll = layoutSyncRef.current.symbol;
       const targets = syncAll
         ? panesRef.current.map((p) => p.id)
         : [paneId];
-      void (async () => {
-        const updates = new Map<string, ChartPaneState>();
-        for (const id of targets) {
-          const pane = panesRef.current.find((p) => p.id === id);
-          if (!pane) continue;
-          const rebuilt = await buildPane(
-            id,
-            pane.selectedTf,
-            anchor,
-            { pair: series.pair, datasetId: series.datasetId },
-            pane.selectedTf,
-          );
-          if (rebuilt) {
-            updates.set(id, rebuilt);
-            replayBufferRef.current.delete(id);
-          }
-        }
-        if (updates.size === 0) return;
-        setPanes((prev) => {
-          const next = prev.map((p) => updates.get(p.id) ?? p);
-          panesRef.current = next;
-          return next;
-        });
-        setActivePaneId(paneId);
-      })();
+
+      const camera = captureLiveCamera(paneId);
+      cameraPreserveRef.current = camera;
+      sessionRef.current.setCamera(camera.anchorTime, camera.span);
+
+      const tfs =
+        seriesRef.current.length > 0
+          ? intersectTimeframes(seriesRef.current)
+          : (catalog.timeframes ?? [existing.selectedTf]);
+
+      for (const id of targets) {
+        sessionRef.current.setPaneSymbol(
+          id,
+          { datasetId: series.datasetId, pair: series.pair },
+          tfs,
+        );
+        replayBufferRef.current.delete(id);
+      }
+      setActivePaneId(paneId);
+      sessionRef.current.setActivePane(paneId);
+      commitSessionViews();
+      syncEnginesFromSession();
+      syncReplayClockTf(panesRef.current);
+
+      const focus = panesRef.current.find((p) => p.id === paneId);
+      if (focus && focus.bars.length > 0) {
+        const newTr = timeRangeFromVisible(focus.bars, focus.range);
+        if (newTr) syncStoreRef.current?.setTimeRange(newTr, 'symbol-switch');
+        replayBufferRef.current.set(paneId, focus.bars);
+      }
     },
-    [buildPane, catalog],
+    [
+      catalog,
+      captureLiveCamera,
+      commitSessionViews,
+      syncEnginesFromSession,
+      syncReplayClockTf,
+    ],
   );
 
   const handleChartPoint = useCallback(
@@ -1120,9 +1338,11 @@ export default function App() {
   };
 
   const teardownChartSession = () => {
+    // Flush before disabling viewport — resume cursor on next open.
+    persistReplayProgress(true);
     viewportReloadEnabledRef.current = false;
+    sessionIdRef.current = null;
     replayBufferRef.current.clear();
-    clockBufferRef.current.clear();
     sessionRef.current.dispose();
     sessionRef.current = createSessionController();
     replayRef.current.pause();
@@ -1164,7 +1384,10 @@ export default function App() {
 
   const handleOpenJournal = (sessionId?: string | null) => {
     const id = sessionId ?? session?.id ?? null;
-    if (session) teardownChartSession();
+    // Soft navigate: pause replay but keep session in memory so "Back to chart"
+    // does not force a full re-ingest. Explicit Exit / Sessions still teardowns.
+    replayRef.current.pause();
+    persistReplayProgress(true);
     setJournalSessionId(id);
     setView('journal');
   };
@@ -1241,6 +1464,86 @@ export default function App() {
     };
   }, []);
 
+  const loadSessionDataRef = useRef(loadSessionData);
+  loadSessionDataRef.current = loadSessionData;
+  const teardownChartSessionRef = useRef(teardownChartSession);
+  teardownChartSessionRef.current = teardownChartSession;
+  const sessionNavRef = useRef(session);
+  sessionNavRef.current = session;
+
+  // Keep the URL hash in sync so refresh restores chart / sessions / journal.
+  useEffect(() => {
+    const routeSessionId =
+      view === 'chart'
+        ? (session?.id ?? null)
+        : view === 'journal'
+          ? journalSessionId
+          : null;
+    if (view === 'chart' && !routeSessionId) return;
+    const next = formatAppRoute({ view, sessionId: routeSessionId });
+    if (window.location.hash === next) return;
+    suppressHashRef.current = true;
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${window.location.search}${next}`,
+    );
+    queueMicrotask(() => {
+      suppressHashRef.current = false;
+    });
+  }, [view, session?.id, journalSessionId]);
+
+  // Cold start: reopen #/chart/:sessionId after refresh.
+  useEffect(() => {
+    const route = parseAppRoute();
+    if (route.view !== 'chart' || !route.sessionId) return;
+    const s = getSession(route.sessionId);
+    if (!s) {
+      setView('sessions');
+      return;
+    }
+    void loadSessionDataRef.current(s);
+  }, []);
+
+  // Back / forward / manual hash edits.
+  useEffect(() => {
+    const onHashChange = () => {
+      if (suppressHashRef.current) return;
+      const route = parseAppRoute();
+      if (route.view === 'chart') {
+        if (!route.sessionId) {
+          teardownChartSessionRef.current();
+          setView('sessions');
+          return;
+        }
+        if (sessionNavRef.current?.id === route.sessionId) {
+          setView('chart');
+          return;
+        }
+        const s = getSession(route.sessionId);
+        if (s) void loadSessionDataRef.current(s);
+        else {
+          teardownChartSessionRef.current();
+          setView('sessions');
+        }
+        return;
+      }
+      if (route.view === 'journal') {
+        replayRef.current.pause();
+        setJournalSessionId(route.sessionId);
+        setView('journal');
+        return;
+      }
+      if (sessionNavRef.current) {
+        teardownChartSessionRef.current();
+      }
+      setJournalSessionId(null);
+      setView(route.view);
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
   if (view === 'landing') {
     return (
       <MarketingHome
@@ -1258,15 +1561,48 @@ export default function App() {
     return (
       <JournalPage
         initialSessionId={journalSessionId}
+        canReturnToChart={!!session && session.id === (journalSessionId ?? session.id)}
         onGoSessions={() => {
           setJournalSessionId(null);
+          if (session) teardownChartSession();
           setView('sessions');
         }}
         onOpenChart={(id) => {
+          // Same open session still in memory — remount chart without re-ingest.
+          if (session && session.id === id && panesRef.current.length > 0) {
+            setJournalSessionId(null);
+            setView('chart');
+            return;
+          }
           const s = getSession(id);
           if (s) void loadSessionData(s);
         }}
       />
+    );
+  }
+
+  // Refresh restore: #/chart/:id before session state is hydrated.
+  if (view === 'chart' && (!session || loadStatus === 'loading')) {
+    return (
+      <div className="min-h-dvh bg-background text-foreground flex flex-col items-center justify-center gap-3 px-4">
+        <p className="text-sm text-muted text-center">
+          {loadStatus === 'error'
+            ? (loadError ?? 'Failed to restore chart session')
+            : 'Restoring chart session…'}
+        </p>
+        {loadStatus === 'error' && (
+          <Button
+            variant="secondary"
+            className="min-h-11"
+            onPress={() => {
+              teardownChartSession();
+              setView('sessions');
+            }}
+          >
+            Back to sessions
+          </Button>
+        )}
+      </div>
     );
   }
 
@@ -1378,6 +1714,29 @@ export default function App() {
             </div>
           )}
 
+          {loadStatus === 'ready' && bt.status === 'error' && bt.error && (
+            <div className="absolute top-10 left-3 right-3 z-30 max-w-md">
+              <Alert status="danger">
+                <Alert.Indicator />
+                <Alert.Content>
+                  <Alert.Title>Backtest failed</Alert.Title>
+                  <Alert.Description>{bt.error}</Alert.Description>
+                </Alert.Content>
+              </Alert>
+            </div>
+          )}
+
+          {loadStatus === 'ready' && panes.length === 0 && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 px-4">
+              <p className="text-sm text-muted text-center max-w-sm">
+                No chart data loaded for this session. Check Datasets or re-open the session.
+              </p>
+              <Button variant="secondary" className="min-h-11" onPress={handleExitSession}>
+                Back to sessions
+              </Button>
+            </div>
+          )}
+
           {(importing || state.status === 'error' || state.status === 'done') && (
             <div className="absolute top-10 left-3 right-3 z-20 max-w-md pointer-events-auto space-y-2">
               <LoadingProgress state={state} />
@@ -1412,13 +1771,19 @@ export default function App() {
               selectedDrawingId={selectedDrawingId}
               drawingsHidden={drawingsHidden}
               replayCursorTime={replayState.cursorTime}
-              replayFollow={replayState.playing && !cameraDetached}
+              // Keep React follow=true while playing so useChart does not clobber
+              // engines; per-pane detach is handled imperatively below.
+              replayFollow={replayState.playing}
               showFollowControl={
                 replayState.cursorTime != null && cameraDetached
               }
               onReattachFollow={() => {
+                detachedPanesRef.current.clear();
                 cameraDetachedRef.current = false;
                 setCameraDetached(false);
+                for (const p of panesRef.current) {
+                  getChart(p.id)?.setReplayFollow(true);
+                }
               }}
               drawingToolActive={isDrawingTool(activeTool)}
               drawingsLocked={drawingsLocked}
@@ -1426,7 +1791,9 @@ export default function App() {
               onCrosshairSample={handleCrosshairForDrawings}
               onDrawingsChange={handleEngineDrawingsChange}
               onDrawingSelect={handleEngineDrawingSelect}
-              onUserGesture={() => {
+              onUserGesture={(paneId) => {
+                detachedPanesRef.current.add(paneId);
+                getChart(paneId)?.setReplayFollow(false);
                 cameraDetachedRef.current = true;
                 setCameraDetached(true);
               }}
@@ -1456,6 +1823,10 @@ export default function App() {
               onClose={() => setSettingsOpen(false)}
             />
           )}
+
+          {chartSettingsOpen && (
+            <ChartSettingsModal onClose={() => setChartSettingsOpen(false)} />
+          )}
         </div>
       </div>
 
@@ -1470,6 +1841,7 @@ export default function App() {
         }}
         replay={replayState}
         onPlay={() => {
+          detachedPanesRef.current.clear();
           cameraDetachedRef.current = false;
           setCameraDetached(false);
           replayRef.current.play();
@@ -1477,6 +1849,7 @@ export default function App() {
         onPause={() => replayRef.current.pause()}
         onToggle={() => {
           if (!replayRef.current.get().playing) {
+            detachedPanesRef.current.clear();
             cameraDetachedRef.current = false;
             setCameraDetached(false);
           }

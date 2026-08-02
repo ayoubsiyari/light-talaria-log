@@ -256,14 +256,15 @@ export function paintBaseFrame(
     }
   }
 
-  if (options.showLastPrice) {
-    const lastIdx = maxBarIndex ?? bars.length - 1;
-    const lastBars = lastIdx >= 0 ? bars.slice(0, lastIdx + 1) : bars;
-    drawLastPriceLine(ctx, layout, lastBars, scale, colors);
-  }
-
   drawPriceAxis(ctx, layout, scale, priceTicks, colors);
   drawTimeAxis(ctx, layout, range, timeTicks, colors);
+
+  // Last-price chip must paint AFTER the axis fill or it is covered.
+  if (options.showLastPrice) {
+    const lastIdx = maxBarIndex ?? bars.length - 1;
+    const last = lastIdx >= 0 ? bars[lastIdx] : undefined;
+    if (last) drawLastPriceLine(ctx, layout, last, scale, colors);
+  }
 }
 
 /**
@@ -404,6 +405,12 @@ export function paintFrame(
 
 export { computePriceScale };
 
+function dashFor(style: ChartColors['gridHStyle']): number[] {
+  if (style === 'dashed') return [5, 4];
+  if (style === 'dotted') return [1.5, 3];
+  return [];
+}
+
 function drawGrid(
   ctx: CanvasRenderingContext2D,
   layout: RenderLayout,
@@ -414,28 +421,36 @@ function drawGrid(
   colors: ChartColors,
 ): void {
   const { plot } = layout;
-  ctx.strokeStyle = colors.grid;
   ctx.lineWidth = 1;
-
-  for (const price of priceTicks) {
-    const y = Math.round(priceToY(price, priceScale, plot)) + 0.5;
-    if (y < plot.top || y > plot.top + plot.height) continue;
-    ctx.beginPath();
-    ctx.moveTo(plot.left, y);
-    ctx.lineTo(plot.left + plot.width, y);
-    ctx.stroke();
-  }
-
   const gridBottom = contentBottom(layout);
 
-  for (const tick of timeTicks) {
-    const x = indexToX(tick.index, range, plot) + 0.5;
-    if (x < plot.left || x > plot.left + plot.width) continue;
-    ctx.beginPath();
-    ctx.moveTo(x, plot.top);
-    ctx.lineTo(x, gridBottom);
-    ctx.stroke();
+  if (colors.showGridH) {
+    ctx.strokeStyle = colors.gridHorizontal;
+    ctx.setLineDash(dashFor(colors.gridHStyle));
+    for (const price of priceTicks) {
+      const y = Math.round(priceToY(price, priceScale, plot)) + 0.5;
+      if (y < plot.top || y > plot.top + plot.height) continue;
+      ctx.beginPath();
+      ctx.moveTo(plot.left, y);
+      ctx.lineTo(plot.left + plot.width, y);
+      ctx.stroke();
+    }
   }
+
+  if (colors.showGridV) {
+    ctx.strokeStyle = colors.gridVertical;
+    ctx.setLineDash(dashFor(colors.gridVStyle));
+    for (const tick of timeTicks) {
+      const x = indexToX(tick.index, range, plot) + 0.5;
+      if (x < plot.left || x > plot.left + plot.width) continue;
+      ctx.beginPath();
+      ctx.moveTo(x, plot.top);
+      ctx.lineTo(x, gridBottom);
+      ctx.stroke();
+    }
+  }
+
+  ctx.setLineDash([]);
 }
 
 function drawPriceAxis(

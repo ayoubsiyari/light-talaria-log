@@ -18,6 +18,13 @@ export {
 export type { ViewportLoader, LoadBarsFn, BufferEdgeCheck } from './viewportLoader';
 export { getChartColors } from './chartTheme';
 export type { ChartColors } from './chartTheme';
+export {
+  getAppearance,
+  setAppearance,
+  resetAppearance,
+  initAppearance,
+  subscribeAppearance,
+} from './appearanceStore';
 export { registerChart, unregisterChart, getChart } from './chartRegistry';
 export { nicePriceTicks, niceTimeTicks } from './ticks';
 export { resolveCrosshair } from './crosshair';

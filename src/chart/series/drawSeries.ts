@@ -61,20 +61,33 @@ function drawCandles(
     const yHigh = priceToY(bar.high, priceScale, plot);
     const yLow = priceToY(bar.low, priceScale, plot);
     const up = bar.close >= bar.open;
-    const color = up ? colors.upColor : colors.downColor;
-
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineWidth = 1;
-
-    ctx.beginPath();
-    ctx.moveTo(x + 0.5, yHigh);
-    ctx.lineTo(x + 0.5, yLow);
-    ctx.stroke();
+    const body = up ? colors.upBody : colors.downBody;
+    const border = up ? colors.upBorder : colors.downBorder;
+    const wick = up ? colors.upWick : colors.downWick;
 
     const top = Math.min(yOpen, yClose);
     const h = Math.max(1, Math.abs(yClose - yOpen));
-    ctx.fillRect(x - bodyW / 2, top, bodyW, h);
+    const left = x - bodyW / 2;
+
+    if (colors.showWick) {
+      ctx.strokeStyle = wick;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x + 0.5, yHigh);
+      ctx.lineTo(x + 0.5, yLow);
+      ctx.stroke();
+    }
+
+    if (colors.showBody) {
+      ctx.fillStyle = body;
+      ctx.fillRect(left, top, bodyW, h);
+    }
+
+    if (colors.showBorder) {
+      ctx.strokeStyle = border;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(left + 0.5, top + 0.5, Math.max(0, bodyW - 1), Math.max(0, h - 1));
+    }
   }
 }
 

@@ -4,6 +4,9 @@ dist
 *.local
 .env
 .env.*
+!.env.example
 # Step 13 local disk chunk store (CDN stub) — seeded at dev-server start
 data/
 landing/
+services/api/node_modules
+services/api/dist

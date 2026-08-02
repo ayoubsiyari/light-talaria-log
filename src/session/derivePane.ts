@@ -6,6 +6,7 @@ import type { PaneView, SessionState } from '@/session/sessionState';
 import { warmCache } from '@/session/warmCache';
 import { bucketStart, timeframeSeconds } from '@/data/timeframeAgg';
 import { formBucketFromClock } from '@/replay/formingBars';
+import { rangeRightAnchored } from '@/chart/rangeAnchor';
 import type { ChartBar } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
 
@@ -47,13 +48,11 @@ export function derivePaneSync(s: SessionState, paneId: string): PaneView | null
     };
   }
 
-  const toIndex = bars.length - 1;
-  const useSpan = Math.min(s.span, bars.length);
-  const fromIndex = Math.max(0, toIndex - useSpan + 1);
-
+  // Keep perceptual zoom (session.span) even when few bars are revealed —
+  // collapsing to 1-bar width freezes the "candles moving" feel at session start.
   return {
     bars,
-    range: { fromIndex, toIndex },
+    range: rangeRightAnchored(bars.length - 1, s.span),
     timeframe: cfg.tf,
     selectedTf: cfg.selectedTf,
     datasetId: cfg.datasetId,

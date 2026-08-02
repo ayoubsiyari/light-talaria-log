@@ -54,6 +54,7 @@ export async function runBacktest(input: RunBacktestInput): Promise<BacktestResu
     input.timeframe,
     input.timeStart,
     input.timeEnd,
+    { isCancelled: () => gen !== generation },
   );
   if (gen !== generation) {
     throw new DOMException('Backtest cancelled', 'AbortError');

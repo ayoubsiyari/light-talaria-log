@@ -9,7 +9,15 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test:session": "node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/session/__tests__/tfSwitch.property.test.ts"
+    "test:session": "node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/session/__tests__/tfSwitch.property.test.ts",
+    "saas:up": "docker compose up -d postgres redis minio createbuckets",
+    "saas:down": "docker compose down",
+    "saas:api": "npm --prefix services/api run dev",
+    "saas:migrate": "npm --prefix services/api run migrate",
+    "saas:seed": "npm --prefix services/api run seed",
+    "saas:install": "npm --prefix services/api install",
+    "saas:dev": "TALARIA_API_PROXY=http://127.0.0.1:8787 vite",
+    "saas:stack": "docker compose up -d --build"
   },
   "dependencies": {
     "@heroui/react": "^3.0.0",

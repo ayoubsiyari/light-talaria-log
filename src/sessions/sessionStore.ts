@@ -35,6 +35,14 @@ function normalizeSession(raw: unknown): BacktestSession | null {
   const legs = normalizeLegs(s);
   if (!legs) return null;
   const primary = legs[0]!;
+  const cursorTime =
+    typeof s.cursorTime === 'number' && Number.isFinite(s.cursorTime)
+      ? s.cursorTime
+      : undefined;
+  const span =
+    typeof s.span === 'number' && Number.isFinite(s.span) && s.span > 0
+      ? s.span
+      : undefined;
   return {
     id: s.id,
     name: s.name ?? `${primary.pair} ${s.timeframe}`,
@@ -45,6 +53,8 @@ function normalizeSession(raw: unknown): BacktestSession | null {
     datasetId: primary.datasetId,
     legs,
     createdAt: typeof s.createdAt === 'number' ? s.createdAt : Date.now(),
+    ...(cursorTime !== undefined ? { cursorTime } : {}),
+    ...(span !== undefined ? { span } : {}),
   };
 }
 
@@ -99,6 +109,27 @@ export function createSession(input: CreateSessionInput): BacktestSession {
 
 export function deleteSession(id: string): void {
   writeAll(readAll().filter((s) => s.id !== id));
+}
+
+/** Persist replay progress so reopen/refresh can resume at the last candle. */
+export function updateSessionProgress(
+  id: string,
+  patch: { cursorTime?: number; span?: number },
+): BacktestSession | null {
+  const all = readAll();
+  const idx = all.findIndex((s) => s.id === id);
+  if (idx < 0) return null;
+  const cur = all[idx]!;
+  const next: BacktestSession = { ...cur };
+  if (typeof patch.cursorTime === 'number' && Number.isFinite(patch.cursorTime)) {
+    next.cursorTime = patch.cursorTime;
+  }
+  if (typeof patch.span === 'number' && Number.isFinite(patch.span) && patch.span > 0) {
+    next.span = patch.span;
+  }
+  all[idx] = next;
+  writeAll(all);
+  return next;
 }
 
 export function validateSessionDates(startDate: string, endDate: string): string | null {

@@ -18,6 +18,7 @@ import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
 import { markChartPaint } from '@/perf/perfMonitor';
 import { hitTestOrders } from './overlays/drawOrders';
 import { MAX_BARS_IN_MEMORY, VISIBLE_BARS_TARGET } from '@/utils/constants';
+import { subscribeAppearance } from './appearanceStore';
 import { getChartColors } from './chartTheme';
 import { resolveCrosshair, resolveCrosshairFromLogical } from './crosshair';
 import {
@@ -55,6 +56,7 @@ export interface DrawingPlacement {
 export type VisibleRangeListener = (range: VisibleRange) => void;
 export type PlotClickListener = (point: CrosshairPoint) => void;
 export type UserGestureListener = () => void;
+export type ContextMenuListener = (x: number, y: number) => void;
 export type DrawingsChangeListener = (drawings: readonly Drawing[]) => void;
 export type DrawingSelectListener = (drawingId: string) => void;
 
@@ -98,12 +100,16 @@ function clampNavRange(next: VisibleRange, barCount: number): VisibleRange {
 export interface ChartInstance {
   canvas: HTMLCanvasElement;
   setViewportBars: (bars: readonly ChartBar[]) => void;
+  /** Live engine bars (may be ahead of React props during replay). */
+  getBars: () => readonly ChartBar[];
   setVisibleRange: (fromIndex: number, toIndex: number, opts?: { silent?: boolean }) => void;
   getVisibleRange: () => VisibleRange;
   onVisibleRangeChange: (cb: VisibleRangeListener) => () => void;
   onCrosshairMove: (cb: CrosshairListener) => () => void;
   onPlotClick: (cb: PlotClickListener) => () => void;
   onUserGesture: (cb: UserGestureListener) => () => void;
+  /** Right-click on canvas — open chart settings. */
+  onContextMenu: (cb: ContextMenuListener) => () => void;
   /** Multi-chart: apply logical crosshair (local x/y recomputed). */
   setCrosshairLogical: (logical: SyncCrosshair | null) => void;
   setCrosshairMode: (mode: CrosshairMode) => void;
@@ -143,6 +149,11 @@ export interface ChartInstance {
   setReplayCursorTime: (time: number | null) => void;
   /** In-place tip update during replay — no array copy (addendum §3/§6). */
   patchFormingBar: (forming: ChartBar) => void;
+  /**
+   * Sync revealed bars during playback without a full slice when possible:
+   * append new bars + patch overlap tip, then set cursor / follow.
+   */
+  syncReplayReveal: (nextBars: readonly ChartBar[], cursorTime: number) => void;
   /** When true, each cursor update recenters the live candle (until user pans). */
   setReplayFollow: (follow: boolean) => void;
   /** Hit-test drawings at media coords (plot space). */
@@ -249,8 +260,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   const crosshairListeners = new Set<CrosshairListener>();
   const plotClickListeners = new Set<PlotClickListener>();
   const userGestureListeners = new Set<UserGestureListener>();
+  const contextMenuListeners = new Set<ContextMenuListener>();
   const drawingsChangeListeners = new Set<DrawingsChangeListener>();
   const drawingSelectListeners = new Set<DrawingSelectListener>();
+  let unsubAppearance: (() => void) | null = null;
 
   const invalidateScaleCache = () => {
     cachedAutoScale = null;
@@ -718,6 +731,14 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       for (const cb of plotClickListeners) cb(point);
     },
     onUserGesture: notifyUserGesture,
+    onContextMenu: (x, y) => {
+      for (const cb of contextMenuListeners) cb(x, y);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('talaria:open-chart-settings', { detail: { x, y } }),
+        );
+      }
+    },
     getDrawingCursor: (x, y) => {
       const hit = hitDrawingAt(x, y);
       if (!hit) return null;
@@ -820,6 +841,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       markSceneDirty();
     },
 
+    getBars() {
+      return bars;
+    },
+
     setVisibleRange(fromIndex: number, toIndex: number, opts) {
       if (toIndex <= fromIndex) return;
       // silent: React/replay applying a controlled range — do not echo into sync
@@ -855,6 +880,13 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       userGestureListeners.add(cb);
       return () => {
         userGestureListeners.delete(cb);
+      };
+    },
+
+    onContextMenu(cb: ContextMenuListener) {
+      contextMenuListeners.add(cb);
+      return () => {
+        contextMenuListeners.delete(cb);
       };
     },
 
@@ -1047,6 +1079,53 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       markSceneDirty();
     },
 
+    syncReplayReveal(nextBars, cursorTime) {
+      if (destroyed) return;
+      const nextLen = nextBars.length;
+      const prevLen = bars.length;
+
+      // Grow/patch when the visible prefix is unchanged; otherwise full replace.
+      const canAppend =
+        prevLen > 0 &&
+        nextLen >= prevLen &&
+        bars[0]!.time === nextBars[0]!.time &&
+        bars[prevLen - 1]!.time === nextBars[prevLen - 1]!.time;
+
+      if (prevLen === 0 || nextLen < prevLen || !canAppend) {
+        bars =
+          nextLen > MAX_BARS_IN_MEMORY
+            ? (nextBars.slice(0, MAX_BARS_IN_MEMORY) as ChartBar[])
+            : (nextBars.slice() as ChartBar[]);
+      } else {
+        const srcTip = nextBars[prevLen - 1]!;
+        const dstTip = bars[prevLen - 1]!;
+        dstTip.open = srcTip.open;
+        dstTip.high = srcTip.high;
+        dstTip.low = srcTip.low;
+        dstTip.close = srcTip.close;
+        dstTip.volume = srcTip.volume;
+        for (let i = prevLen; i < nextLen; i++) {
+          const b = nextBars[i]!;
+          bars.push({
+            time: b.time,
+            open: b.open,
+            high: b.high,
+            low: b.low,
+            close: b.close,
+            volume: b.volume,
+          });
+        }
+      }
+
+      replayCursorTime = cursorTime;
+      if (replayFollow) {
+        centerOnReplayCursor(false);
+      }
+      invalidateScaleCache();
+      invalidateHitCache();
+      markSceneDirty();
+    },
+
     setReplayFollow(follow) {
       if (replayFollow === follow) return;
       replayFollow = follow;
@@ -1092,6 +1171,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       destroyed = true;
       themeObserver?.disconnect();
       themeObserver = null;
+      unsubAppearance?.();
+      unsubAppearance = null;
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
         rafId = null;
@@ -1103,6 +1184,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       crosshairListeners.clear();
       plotClickListeners.clear();
       userGestureListeners.clear();
+      contextMenuListeners.clear();
       drawingsChangeListeners.clear();
       drawingSelectListeners.clear();
       drawingDrag = null;
@@ -1131,9 +1213,11 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     themeObserver = new MutationObserver(() => markDirty());
     themeObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['class', 'data-theme'],
+      attributeFilter: ['class', 'data-theme', 'style'],
     });
   }
+
+  unsubAppearance = subscribeAppearance(() => markDirty());
 
   return instance;
 }

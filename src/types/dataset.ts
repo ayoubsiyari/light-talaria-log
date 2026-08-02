@@ -1,7 +1,10 @@
 import type { PairSymbol } from '@/types/session';
 import type { Timeframe } from '@/types/ui';
 
-/** Catalog entry for a Dukascopy (or other) download stored in the browser. */
+/** How the dataset was obtained for the local catalog. */
+export type DatasetSource = 'dukascopy' | 'remote' | 'csv';
+
+/** Catalog entry for a Dukascopy / remote / CSV dataset stored in the browser. */
 export interface DownloadedDataset {
   id: string;
   pair: PairSymbol;
@@ -11,7 +14,7 @@ export interface DownloadedDataset {
   /** ISO date YYYY-MM-DD */
   endDate: string;
   rowCount: number;
-  source: 'dukascopy';
+  source: DatasetSource;
   createdAt: number;
 }
 

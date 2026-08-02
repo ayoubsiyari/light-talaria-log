@@ -3,7 +3,6 @@ import {
   attachChartSync,
   createChartInstance,
   destroyChart,
-  generateFakeBars,
   getChartColors,
   registerChart,
   setChartSize,
@@ -76,11 +75,12 @@ function ordersKey(orders: readonly ChartOrder[] | undefined): string {
   return orders.map((o) => o.id).join(',');
 }
 
-const FALLBACK_BARS = generateFakeBars(500);
+const EMPTY_BARS: readonly ChartBar[] = [];
 
 /**
  * Chart lives in refs — never in React state.
  * Sync uses wall-clock time so multi-TF panes stay aligned.
+ * Empty bars = empty canvas (no fake OHLC masking load/error).
  */
 export function useChart(
   containerRef: React.RefObject<HTMLElement | null>,
@@ -89,8 +89,8 @@ export function useChart(
   const instanceRef = useRef<ChartInstance | null>(null);
   const optionsRef = useRef(options);
   optionsRef.current = options;
-  const barsRef = useRef(options.bars ?? FALLBACK_BARS);
-  barsRef.current = options.bars ?? FALLBACK_BARS;
+  const barsRef = useRef(options.bars ?? EMPTY_BARS);
+  barsRef.current = options.bars ?? EMPTY_BARS;
 
   useEffect(() => {
     const el = containerRef.current;
@@ -232,7 +232,7 @@ export function useChart(
     const instance = instanceRef.current;
     if (!instance) return;
 
-    const bars = options.bars ?? FALLBACK_BARS;
+    const bars = options.bars ?? EMPTY_BARS;
     const theme = getChartColors();
     const enabled = (options.enabledIndicators ?? []).filter((e) => e.visible !== false);
     const instances: IndicatorInstance[] = enabled.map((e) => {
@@ -340,11 +340,18 @@ export function useChart(
   const rangeFrom = options.initialRange?.fromIndex;
   const rangeTo = options.initialRange?.toIndex;
 
-  // Apply bars + range range in one layout pass so TF switches don't flash/jump.
+  // Apply bars + visible range in one layout pass so TF switches don't flash/jump.
   useLayoutEffect(() => {
     const instance = instanceRef.current;
     if (!instance || !options.bars) return;
     barsRef.current = options.bars;
+
+    // While replay follow is active, App drives bars/camera via syncReplayReveal.
+    // Applying React props here clobbers multi-pane engines mid-playback.
+    if (options.replayFollow) {
+      return;
+    }
+
     setViewportData(instance, options.bars);
 
     // Explicit React range wins over setViewportBars side-effects (e.g. replay follow).
@@ -357,7 +364,7 @@ export function useChart(
       return;
     }
     instance.setVisibleRange(rangeFrom, rangeTo, { silent: true });
-  }, [options.bars, rangeFrom, rangeTo]);
+  }, [options.bars, rangeFrom, rangeTo, options.replayFollow]);
 
   return instanceRef;
 }

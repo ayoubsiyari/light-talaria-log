@@ -172,14 +172,12 @@ describe('TF switch properties', () => {
                 }
 
                 if (view.bars.length > 0) {
-                  const sliced = view.bars.slice(
-                    view.range.fromIndex,
-                    view.range.toIndex + 1,
-                  );
-                  const expected = Math.min(span, view.bars.length);
-                  if (sliced.length !== expected) {
+                  // Camera span is perceptual (index-space width), not clamped to
+                  // currently revealed bar count — allows empty future pad at start.
+                  const rangeSpan = view.range.toIndex - view.range.fromIndex;
+                  if (Math.abs(rangeSpan - span) > 1e-6) {
                     failures.push(
-                      `${tag}: visible count ${sliced.length} !== min(span,avail)=${expected}`,
+                      `${tag}: range span ${rangeSpan} !== ${span}`,
                     );
                   }
                 }

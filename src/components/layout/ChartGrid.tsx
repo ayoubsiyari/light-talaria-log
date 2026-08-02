@@ -41,7 +41,7 @@ interface ChartGridProps {
   drawingsLocked?: boolean;
   onChartPoint: (point: CrosshairPoint, hit: HitResult | null) => void;
   onCrosshairSample?: (point: CrosshairPoint | null) => void;
-  onUserGesture?: () => void;
+  onUserGesture?: (paneId: string) => void;
   onDrawingsChange?: (drawings: readonly Drawing[]) => void;
   onDrawingSelect?: (drawingId: string) => void;
   orders?: readonly ChartOrder[];
@@ -142,13 +142,19 @@ export function ChartGrid({
           drawingsLocked={drawingsLocked}
           onChartPoint={onChartPoint}
           onCrosshairSample={onCrosshairSample}
-          onUserGesture={onUserGesture}
+          onUserGesture={
+            onUserGesture ? () => onUserGesture(pane.id) : undefined
+          }
           onDrawingsChange={onDrawingsChange}
           onDrawingSelect={onDrawingSelect}
           orders={orders}
           selectedOrderId={selectedOrderId}
           onOrderSelect={onOrderSelect}
-          backtestResult={backtestResult}
+          backtestResult={
+            backtestResult && pane.datasetId === backtestResult.datasetId
+              ? backtestResult
+              : null
+          }
           syncCrosshair={syncCrosshair}
           syncDateRange={syncDateRange}
           showSelectionBorder={panes.length > 1}

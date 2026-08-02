@@ -160,7 +160,9 @@ export function createSessionController() {
         anchorTime: follow ? clamped : state.anchorTime,
       };
       if (!react) {
-        patchFormingInPlace(state, views);
+        // Grow revealed bars as the cursor advances (1m append + higher-TF forming).
+        // Only patching the tip left base-TF charts frozen after load-time truncate.
+        extendRevealInPlace(state, views);
         return;
       }
       rederiveSync();
@@ -224,6 +226,7 @@ export function createSessionController() {
       if (!state) return;
       const pane = state.panes[paneId];
       if (!pane) return;
+      if (pane.datasetId === meta.datasetId && pane.pair === meta.pair) return;
       const prevDs = pane.datasetId;
       state = {
         ...state,
@@ -232,8 +235,18 @@ export function createSessionController() {
           [paneId]: { ...pane, datasetId: meta.datasetId, pair: meta.pair },
         },
       };
-      // Evict old symbol before prefetching the new one (addendum §5).
-      if (prevDs !== meta.datasetId) warmCache.clearDataset(prevDs);
+      // Right edge stays on cursor while in replay reveal (never look ahead).
+      if (state.revealMode === 'replay') {
+        state = {
+          ...state,
+          anchorTime: Math.min(state.anchorTime, state.cursorTime),
+        };
+      }
+      // Evict old symbol only when no pane still references it (addendum §5).
+      if (prevDs !== meta.datasetId) {
+        const stillUsed = Object.values(state.panes).some((p) => p.datasetId === prevDs);
+        if (!stillUsed) warmCache.clearDataset(prevDs);
+      }
       rederiveSync();
       notify();
       void warmCache
@@ -275,8 +288,12 @@ export function createSessionController() {
 
 export type SessionController = ReturnType<typeof createSessionController>;
 
-/** Mutate last bar / append forming tip without allocating a new bars array. */
-function patchFormingInPlace(
+/**
+ * Mutate each pane's bars array in place as cursor advances:
+ * append newly closed buckets from warmCache + refresh forming tip.
+ * Does not allocate a replacement array (addendum §3/§6).
+ */
+function extendRevealInPlace(
   s: SessionState,
   views: Record<string, PaneView>,
 ): void {
@@ -285,29 +302,58 @@ function patchFormingInPlace(
     const cfg = s.panes[id];
     const view = views[id];
     if (!cfg || !view) continue;
+
+    const raw = warmCache.peek(cfg.datasetId, cfg.tf);
+    if (!raw || raw.length === 0) continue;
+
     const tfPeriod = timeframeSeconds(cfg.tf);
-    const basePeriod = timeframeSeconds(s.baseTf);
-    if (tfPeriod <= basePeriod) continue;
     const openBucket = bucketStart(s.cursorTime, tfPeriod);
-    const baseBars = warmCache.peek(cfg.datasetId, s.baseTf);
-    if (!baseBars || baseBars.length === 0) continue;
-    const forming = formBucketFromClock(baseBars, openBucket, tfPeriod, s.cursorTime);
-    if (!forming) continue;
     const bars = view.bars as ChartBar[];
-    const last = bars[bars.length - 1];
-    if (last && last.time === forming.time) {
-      last.open = forming.open;
-      last.high = forming.high;
-      last.low = forming.low;
-      last.close = forming.close;
-      last.volume = forming.volume;
-    } else if (!last || last.time < forming.time) {
-      bars.push(forming);
-      const toIndex = bars.length - 1;
-      view.range = {
-        fromIndex: Math.max(0, toIndex - s.span + 1),
-        toIndex,
-      };
+    const baseBars = warmCache.peek(cfg.datasetId, s.baseTf);
+
+    // Drop tip at/after open bucket — rebuild from cache + forming.
+    while (bars.length > 0 && bars[bars.length - 1]!.time >= openBucket) {
+      bars.pop();
     }
+
+    const lastTime = bars.length > 0 ? bars[bars.length - 1]!.time : Number.NEGATIVE_INFINITY;
+    for (let i = 0; i < raw.length; i++) {
+      const b = raw[i]!;
+      if (b.time <= lastTime) continue;
+      if (b.time >= openBucket) break;
+      bars.push(b);
+    }
+
+    let forming: ChartBar | null = null;
+    if (tfPeriod > timeframeSeconds(s.baseTf) && baseBars && baseBars.length > 0) {
+      forming = formBucketFromClock(baseBars, openBucket, tfPeriod, s.cursorTime);
+    } else {
+      for (let i = 0; i < raw.length; i++) {
+        const b = raw[i]!;
+        if (b.time === openBucket && b.time <= s.cursorTime) {
+          forming = b;
+          break;
+        }
+        if (b.time > openBucket) break;
+      }
+    }
+
+    if (forming) {
+      bars.push({
+        time: forming.time,
+        open: forming.open,
+        high: forming.high,
+        low: forming.low,
+        close: forming.close,
+        volume: forming.volume,
+      });
+    }
+
+    const toIndex = Math.max(0, bars.length - 1);
+    // Keep span in index-space (exclusive toIndex style via +1 pad on right).
+    const span = Math.max(1, s.span);
+    const rightPad = Math.floor(span * 0.1);
+    const rangeTo = toIndex + 1 + rightPad;
+    view.range = { fromIndex: rangeTo - span, toIndex: rangeTo };
   }
 }

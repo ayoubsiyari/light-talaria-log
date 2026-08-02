@@ -97,7 +97,24 @@
    * Prefer --separator (lighter) over --border so the L-frame reads like TV.
    */
   :root {
-    --tv-panel-line: var(--separator, var(--border));
+    --tv-panel-line: var(--chrome-border, var(--separator, var(--border)));
+    --chrome-topbar: var(--surface);
+    --chrome-bottombar: var(--surface);
+    --chrome-toolbar: var(--surface);
+    --chrome-foreground: var(--foreground);
+  }
+
+  .chrome-topbar {
+    background: var(--chrome-topbar, var(--surface));
+    color: var(--chrome-foreground, var(--foreground));
+  }
+  .chrome-bottombar {
+    background: var(--chrome-bottombar, var(--surface));
+    color: var(--chrome-foreground, var(--foreground));
+  }
+  .chrome-toolbar {
+    background: var(--chrome-toolbar, var(--surface));
+    color: var(--chrome-foreground, var(--foreground));
   }
 
   .tv-panel-b {

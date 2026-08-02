@@ -16,6 +16,8 @@ interface JournalPageProps {
   initialSessionId?: string | null;
   onGoSessions: () => void;
   onOpenChart?: (sessionId: string) => void;
+  /** True when the chart session is still in memory (soft journal navigate). */
+  canReturnToChart?: boolean;
 }
 
 function formatTime(unixSec: number): string {
@@ -139,6 +141,7 @@ export function JournalPage({
   initialSessionId = null,
   onGoSessions,
   onOpenChart,
+  canReturnToChart = false,
 }: JournalPageProps) {
   const [entries, setEntries] = useState(() => listJournalEntries());
   const [selectedId, setSelectedId] = useState<string | null>(() => {
@@ -168,11 +171,12 @@ export function JournalPage({
 
   const openChart = () => {
     if (!selectedId || !onOpenChart) return;
-    const session = getSession(selectedId);
-    if (session) onOpenChart(selectedId);
+    if (canReturnToChart || getSession(selectedId)) onOpenChart(selectedId);
   };
 
-  const canOpenChart = !!selectedId && !!onOpenChart && !!getSession(selectedId);
+  const sessionAlive = !!selectedId && !!getSession(selectedId);
+  const canOpenChart =
+    !!selectedId && !!onOpenChart && (canReturnToChart || sessionAlive);
 
   return (
     <div className="min-h-full bg-background text-foreground overflow-auto">
@@ -232,16 +236,20 @@ export function JournalPage({
 
             {selected && stats && (
               <>
-                <div className="flex flex-wrap gap-2">
-                  {canOpenChart && (
+                <div className="flex flex-wrap gap-2 items-center">
+                  {canOpenChart ? (
                     <Button
                       variant="primary"
                       size="sm"
                       className="min-h-11 sm:min-h-8"
                       onPress={openChart}
                     >
-                      Open chart
+                      {canReturnToChart ? 'Back to chart' : 'Open chart'}
                     </Button>
+                  ) : (
+                    <p className="text-xs text-muted min-h-11 flex items-center">
+                      Session deleted — result kept. Clear to remove.
+                    </p>
                   )}
                   <Button
                     variant="ghost"

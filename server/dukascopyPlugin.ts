@@ -167,18 +167,25 @@ async function handleDownload(
   }
 }
 
+function attachDukascopyMiddleware(middlewares: Connect.Server): void {
+  middlewares.use((req, res, next) => {
+    if (req.url?.split('?')[0] !== '/api/dukascopy') {
+      next();
+      return;
+    }
+    void handleDownload(req, res);
+  });
+}
+
 /** Vite middleware: POST /api/dukascopy → dukascopy-node CSV download. */
 export function dukascopyApiPlugin(): Plugin {
   return {
     name: 'fast-chart-dukascopy-api',
     configureServer(server) {
-      server.middlewares.use((req, res, next) => {
-        if (req.url?.split('?')[0] !== '/api/dukascopy') {
-          next();
-          return;
-        }
-        void handleDownload(req, res);
-      });
+      attachDukascopyMiddleware(server.middlewares);
+    },
+    configurePreviewServer(server) {
+      attachDukascopyMiddleware(server.middlewares);
     },
   };
 }

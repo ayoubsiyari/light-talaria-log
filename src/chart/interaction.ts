@@ -34,6 +34,8 @@ export interface InteractionCallbacks {
   endDrawingDrag?: () => void;
   /** Cursor while dragging a drawing (optional override). */
   getDrawingDragCursor?: () => string | null;
+  /** Right-click / context menu on the canvas (media coords). */
+  onContextMenu?: (x: number, y: number) => void;
 }
 
 export interface InteractionHandle {
@@ -113,6 +115,8 @@ export function attachInteraction(
   };
 
   const onPointerDown = (e: PointerEvent) => {
+    // Only primary button pans / draws — right-click opens settings via contextmenu.
+    if (e.button !== 0) return;
     if (activePointerId !== null) return;
     const { x, y } = pointerPos(e);
     const layout = callbacks.getLayout();
@@ -325,6 +329,19 @@ export function attachInteraction(
     if (zone === 'plot') callbacks.onHover(x, y);
   };
 
+  const onContextMenu = (e: MouseEvent) => {
+    e.preventDefault();
+    const layout = callbacks.getLayout();
+    const { x, y } = clientToMedia(
+      e.clientX,
+      e.clientY,
+      canvas,
+      layout.width,
+      layout.height,
+    );
+    callbacks.onContextMenu?.(x, y);
+  };
+
   canvas.style.cursor = 'default';
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
@@ -333,6 +350,7 @@ export function attachInteraction(
   canvas.addEventListener('pointerleave', onPointerLeave);
   canvas.addEventListener('dblclick', onDblClick);
   canvas.addEventListener('wheel', onWheel, { passive: false });
+  canvas.addEventListener('contextmenu', onContextMenu);
 
   return {
     dispose: () => {
@@ -343,6 +361,7 @@ export function attachInteraction(
       canvas.removeEventListener('pointerleave', onPointerLeave);
       canvas.removeEventListener('dblclick', onDblClick);
       canvas.removeEventListener('wheel', onWheel);
+      canvas.removeEventListener('contextmenu', onContextMenu);
     },
   };
 }

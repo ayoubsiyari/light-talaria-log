@@ -125,7 +125,7 @@ export function BottomBar({
   };
 
   return (
-    <footer className="tv-panel-t shrink-0 bg-surface flex flex-col pb-[env(safe-area-inset-bottom)] text-xs">
+    <footer className="chrome-bottombar tv-panel-t shrink-0 flex flex-col pb-[env(safe-area-inset-bottom)] text-xs">
       {/* Scrub track — thin TV-style progress under the chart */}
       <div className="flex items-center gap-2 h-7 px-2 border-b border-[color:var(--tv-panel-line)]">
         <button

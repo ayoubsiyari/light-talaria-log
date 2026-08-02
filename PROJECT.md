@@ -138,11 +138,11 @@ Engine is a **dumb viewport renderer** — never owns the full dataset. Primary 
 
 **Goal:** Production-ready chart shell.
 
-- [ ] Error states (Hero UI `Alert`)
-- [ ] Empty state (no data loaded)
-- [ ] Responsive resize (`ResizeObserver`)
-- [ ] Chart cleanup on unmount (`engine.destroy()`)
-- [ ] `docs/ARCHITECTURE.md` updated with final patterns
+- [x] Error states (Hero UI `Alert`) — load + backtest
+- [x] Empty state (no data loaded / empty viewport)
+- [x] Responsive resize (`ResizeObserver` in `useChart`)
+- [x] Chart cleanup on unmount (`engine.destroy()`)
+- [x] `docs/ARCHITECTURE.md` updated with Phase 11 + Step 13/14 patterns
 
 **Done when:** No memory leaks after mount/unmount cycles.
 
@@ -171,8 +171,8 @@ Engine is a **dumb viewport renderer** — never owns the full dataset. Primary 
 - [x] **Pan edge prefetch** — paint from buffer first; refill IDB before user hits empty edge (Step 9)
 - [x] **Zoom LOD auto-switch** — pick TF from bar spacing so zoomed-out stays ≤2500 dense bars (Step 10 / Phase 5)
 - [x] **Strategy backtest engine** — signals → fills → equity (not mock lines) (Step 11)
-- [ ] **Backend / CDN / auth** for multi-user dataset delivery (Steps 12–13 / Phase 11)
-- [x] **Journal / analytics** (Step 14 / Phase 12) — localStorage trades/equity; no OHLC
+- [x] **Backend stub + Import from API** (Step 13) — Postgres / real CDN deferred
+- [x] **Journal / analytics** (Step 14 local) — Postgres sync deferred
 
 ### Rough memory reality (after A)
 | Piece | Cost |
@@ -551,14 +551,16 @@ fast-chart/
 
 ### Step 13 — Backend API scaffolding + CDN chunk delivery
 **Goal:** Multi-user dataset delivery without putting full history in Postgres rows.  
-**Status:** Partial / Passed (2026-07-29) — solid API + disk stub + client helper; default chart path still local-only.  
+**Status:** Done (2026-08-02) — API stub + Datasets “Import from API” + catalog/rehydrate; local Dukascopy/CSV/IDB path unchanged.  
 **Deliverables:**
 - [x] Auth + dataset list API (dev stub; seeded demo dataset — no upload UI yet)
 - [x] Chunked bar files on local disk stub (`data/chunks/…`, gitignored)
-- [x] Client fetch-by-range → same IDB ingest/cache path (`ingestRemoteChunksToIdb`; **not** default Create Session)
+- [x] Client fetch-by-range → same IDB ingest/cache path (`ingestRemoteChunksToIdb` / `ingestRemoteDatasetAllTfs`)
 - [x] Job queue stub for ingest (+ placeholder server backtest) — in-memory, no Redis
+- [x] Datasets UI “Import from API” (health-gated list; import all remote TFs → IDB; catalog `source: 'remote'`)
+- [x] `ensureDatasetIngested` rehydrates remote entries without CSV; `deleteDataset` clears IDB chunks + series meta
 **Done when:** Second browser can open a shared dataset via API; chart still ≤2500.  
-**Partial note:** API + helper ready (curl / `ingestRemoteChunksToIdb`). No Datasets UI “Import from API” yet — local CSV/Dukascopy/IDB unchanged and zero-server. Full multi-browser chart UX can wire the helper later without migrating Postgres.  
+**Notes:** UI always probes `/api/v1/health` (soft error if down); `VITE_REMOTE_DATASETS=1` optional override only. No Postgres/CDN yet — disk stub under `data/chunks/`. Local Dukascopy download + CSV ingest remain the zero-server default.  
 **Depends on:** Steps 9–12.
 
 ### Step 14 — Journal / analytics (Phase 12)
@@ -569,14 +571,26 @@ fast-chart/
 - [x] Basic stats (win rate, net P&L, payoff R, equity sparkline summary)
 - [x] Mobile-usable layouts (~390px stack, ≥44px controls)
 **Done when:** After a backtest, journal shows trades without reloading full OHLC into memory.  
-**Partial note:** No Postgres/API journal sync; latest result per session only; Payoff R = avg win / |avg loss| (no SL-based R). Entry: Sessions → Journal, per-session Journal, or chart BottomBar History/Analytics.  
+**Notes:** No Postgres/API journal sync (deferred); latest result per session only; Payoff R = avg win / |avg loss| (no SL-based R). Soft navigate from chart keeps session in memory (“Back to chart”); Sessions exit teardowns. Orphan results show “Session deleted — result kept”.  
 **Depends on:** Steps 11 + 13 (or 11 local-only interim).
 
 ### Suggested order (this wave)
 `9 (prefetch) → 10 (LOD) → 11 (backtest Worker) → 12 (backend doc) → 13 (API/CDN) → 14 (journal)` ✅
 
+### Level 2 SaaS (2026-08-02)
+**Full multi-user foundation shipped** — see `docs/SAAS-LEVEL-2.md`.
+
+| Piece | Command / path |
+|---|---|
+| Compose | `npm run saas:up` (Postgres + Redis + MinIO) |
+| API | `npm run saas:install && npm run saas:migrate && npm run saas:seed && npm run saas:api` |
+| Vite → API | `npm run saas:dev` (`TALARIA_API_PROXY`) |
+| Zero-Docker chart | `npm run dev` (Vite disk stub unchanged) |
+
+Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, quotas, Datasets login + Import, launch checklist + cost model.
+
 ### Waiting on
-- Steps 9–14 client wave complete (Step 13 API stub partial; Step 14 local journal done). Optional: Datasets “Import from API”, Postgres journal. Call **fix Step N: …** to rewind.
+- Level-2 local verify (docker + import → chart). Deferred Level-3: SSO, billing, multi-region HA, full 1M stress. Call **fix Step N: …** to rewind.
 
 ---
 
@@ -645,6 +659,12 @@ fast-chart/
 | 2026-07-29 | Step 14: Journal page + localStorage per session; stats/trades/equity sparkline; nav from sessions + BottomBar | Optional remote journal / Import-from-API UI |
 | 2026-07-30 | TF switch refactor: session controller, load-time reveal, warm cache, base-TF clock split; see `docs/TF-REFACTOR-REPORT.md` | Manual §8 matrix + p95 latency in browser |
 | 2026-07-30 | Perf addendum: resourceLedger, warmCache LRU, no React commits on replay tick; report §§10–14 | Chrome §8 heap/Profiler baselines by operator |
+| 2026-08-02 | Chart settings (right-click): Symbol/Canvas/Layout/Scales — candles, grid, bg, chrome colors; persist localStorage | Optional status-line tab / TopBar entry |
+| 2026-08-02 | Replay TF/pair switch keeps tip candle position + bar-count zoom (`cameraPreserveRef`); load-time truncate; no lookahead | Manual check play/pause multi-pane TF+pair |
+| 2026-08-02 | Step 13 wiring: Datasets Import from API, all-TF remote→IDB, catalog `source:'remote'`, rehydrate + delete chunks | Manual import → Create Session; Postgres/CDN later |
+| 2026-08-02 | Fix pass: backtest pane filter + dense markers + cancel abort; empty chart (no fake bars); soft journal nav; Phase 6 polish; play-pan prefetch | Manual: multi-pane backtest, Cancel mid-run, Import API, Journal↔chart |
+| 2026-08-02 | Persist replay `cursorTime`/`span` on session (pause/seek/exit/unload); reopen resumes last candle | Optional “Restart from start” control |
+| 2026-08-02 | Level-2 SaaS full: `docs/SAAS-LEVEL-2.md`, Docker (PG/Redis/MinIO), Fastify API, auth, jobs, Datasets login | `npm run saas:up` → migrate/seed/api → `saas:dev` |
 
 ---
 

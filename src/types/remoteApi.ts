@@ -59,7 +59,10 @@ export interface RemoteJob {
   updatedAt: string;
 }
 
-/** Opt-in only — Create Session / Datasets stay local-IDB by default. */
+/**
+ * Optional override flag. Datasets UI probes `/api/v1/health` regardless;
+ * this can force-enable remote helpers in non-UI call sites.
+ */
 export function isRemoteDatasetsEnabled(): boolean {
   return import.meta.env.VITE_REMOTE_DATASETS === '1';
 }

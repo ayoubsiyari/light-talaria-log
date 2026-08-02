@@ -1,12 +1,13 @@
 /**
- * Optional remote → IDB path (Step 13).
+ * Remote → IDB path (Step 13).
  * Fetches chunk binaries by range and writes them with the same `putChunk` /
  * `putSeriesMeta` used by local CSV ingest. Does not replace viewport loader.
  *
- * Not wired into Create Session / Datasets UI — call explicitly or behind
- * `VITE_REMOTE_DATASETS=1`.
+ * Datasets UI imports via `ingestRemoteDatasetAllTfs`. Local Dukascopy/CSV
+ * Create Session path is unchanged.
  */
 import { getChunk, openDb, putChunk, putSeriesMeta } from '@/data/idbStore';
+import { registerRemoteDataset } from '@/datasets/datasetStore';
 import { fetchChunkBinary, fetchRemoteChunks, getRemoteDataset } from '@/datasets/remoteApi';
 import type { SeriesCatalog, SeriesMeta } from '@/types/series';
 import type { Timeframe } from '@/types/ui';
@@ -17,6 +18,12 @@ export interface IngestRemoteOptions {
   toTime?: number;
   /** Skip fetch when chunk already present in IDB (default true). */
   skipExisting?: boolean;
+}
+
+export interface IngestRemoteAllProgress {
+  timeframe: Timeframe;
+  index: number;
+  total: number;
 }
 
 /**
@@ -79,5 +86,43 @@ export async function ingestRemoteChunksToIdb(
     rowCounts,
     timeStart: remote.timeStart || meta.timeStart,
     timeEnd: remote.timeEnd || meta.timeEnd,
+  };
+}
+
+/**
+ * Ingest every TF listed on the remote dataset, then register a local catalog
+ * entry (`source: 'remote'`) so Create Session can see it.
+ */
+export async function ingestRemoteDatasetAllTfs(
+  datasetId: string,
+  onProgress?: (p: IngestRemoteAllProgress) => void,
+): Promise<SeriesCatalog> {
+  const remote = await getRemoteDataset(datasetId);
+  const tfs = (
+    remote.timeframes?.length
+      ? remote.timeframes
+      : [remote.baseTimeframe || '1m']
+  ) as Timeframe[];
+
+  let last: SeriesCatalog | null = null;
+  for (let i = 0; i < tfs.length; i++) {
+    const tf = tfs[i]!;
+    onProgress?.({ timeframe: tf, index: i, total: tfs.length });
+    last = await ingestRemoteChunksToIdb(datasetId, tf);
+  }
+
+  registerRemoteDataset(remote);
+
+  if (!last) {
+    throw new Error('Remote dataset has no timeframes to ingest.');
+  }
+
+  // Prefer catalog spanning all ingested TFs from remote meta
+  return {
+    ...last,
+    timeframes: tfs,
+    baseTf: (remote.baseTimeframe as Timeframe) || last.baseTf,
+    timeStart: remote.timeStart || last.timeStart,
+    timeEnd: remote.timeEnd || last.timeEnd,
   };
 }

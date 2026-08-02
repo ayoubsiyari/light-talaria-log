@@ -8,6 +8,8 @@ import {
   putSeriesMeta,
   getDatasetCsv,
 } from '@/data/idbStore';
+import { getDataset } from '@/datasets/datasetStore';
+import { ingestRemoteDatasetAllTfs } from '@/datasets/ingestRemoteChunks';
 import { aggregatableTimeframes } from '@/data/timeframeAgg';
 import type { CsvWorkerResponse } from '@/types/bar';
 import type { SeriesCatalog, SeriesMeta } from '@/types/series';
@@ -34,6 +36,7 @@ async function seriesChunksHealthy(
 /**
  * Ensure dataset is ingested into IDB chunks (base TF + aggregated TFs).
  * No-op if base series meta + chunks already exist.
+ * Remote catalog entries rehydrate via API (no CSV required).
  */
 export async function ensureDatasetIngested(
   datasetId: string,
@@ -43,6 +46,21 @@ export async function ensureDatasetIngested(
   const db = await openDb();
   if (await seriesChunksHealthy(db, datasetId, baseTf)) {
     return buildCatalog(db, datasetId, baseTf);
+  }
+
+  const catalogEntry = getDataset(datasetId);
+  if (catalogEntry?.source === 'remote') {
+    const catalog = await ingestRemoteDatasetAllTfs(datasetId, (p) => {
+      const percent =
+        p.total > 0 ? Math.round(((p.index + 1) / p.total) * 100) : 0;
+      onProgress?.({ percent, rowsParsed: 0 });
+    });
+    if (!(await seriesChunksHealthy(db, datasetId, baseTf))) {
+      throw new Error(
+        'Remote ingest finished but bar chunks are missing from IndexedDB.',
+      );
+    }
+    return catalog;
   }
 
   const csv = await getDatasetCsv(db, datasetId);

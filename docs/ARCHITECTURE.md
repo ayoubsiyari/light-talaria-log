@@ -549,9 +549,11 @@ Do not invent a second trade/equity shape for the server — extend `BacktestRes
 
 Auth: fixed dev user; optional `X-Talaria-User-Id` header (display only). Not production security.
 
-**Default client path unchanged:** Create Session / Dukascopy / local IDB ingest remain offline-capable. Remote → IDB is opt-in via `ingestRemoteChunksToIdb` (or `VITE_REMOTE_DATASETS=1` when UI is added later).
+**Default client path unchanged:** Create Session / Dukascopy / local IDB ingest remain offline-capable. Remote → IDB is available from Datasets → **Import from API** (`ingestRemoteDatasetAllTfs` → catalog `source: 'remote'`).
 
-Out of scope still: Express/Fastify production server, Postgres, Redis, OAuth, journal UI (Step 14).
+**Journal (Step 14):** local-only `journalStore` + `JournalPage` (trades/equity stats; no OHLC). Postgres journal sync still out of scope.
+
+Out of scope still: Express/Fastify production server, Postgres, Redis, OAuth.
 
 ---
 

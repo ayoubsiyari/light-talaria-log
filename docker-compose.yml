@@ -1,0 +1,100 @@
+# Talaria-Log Level 2 SaaS stack
+# Usage: npm run saas:up
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: talaria
+      POSTGRES_PASSWORD: talaria
+      POSTGRES_DB: talaria
+    ports:
+      - '5432:5432'
+    volumes:
+      - talaria_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U talaria -d talaria']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - talaria_redis:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: talaria
+      MINIO_ROOT_PASSWORD: talaria-secret
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - talaria_minio:/data
+  createbuckets:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 3;
+      mc alias set local http://minio:9000 talaria talaria-secret;
+      mc mb -p local/talaria-chunks || true;
+      mc anonymous set download local/talaria-chunks || true;
+      exit 0;
+      "
+
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    environment:
+      API_PORT: 8787
+      API_HOST: 0.0.0.0
+      NODE_ENV: production
+      PUBLIC_API_URL: http://127.0.0.1:8787
+      CORS_ORIGIN: http://127.0.0.1:5173
+      SECURE_COOKIES: 'false'
+      SESSION_SECRET: change-me-in-production-use-openssl-rand
+      SESSION_TTL_DAYS: 14
+      DATABASE_URL: postgres://talaria:talaria@postgres:5432/talaria
+      REDIS_URL: redis://redis:6379
+      STORAGE_DRIVER: s3
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: talaria-chunks
+      S3_ACCESS_KEY: talaria
+      S3_SECRET_KEY: talaria-secret
+      S3_FORCE_PATH_STYLE: 'true'
+      SEED_ADMIN_EMAIL: admin@localhost
+      SEED_ADMIN_PASSWORD: admin12345
+      SEED_DEMO: 'true'
+    ports:
+      - '8787:8787'
+    volumes:
+      - ./data/chunks:/app/data/chunks
+
+volumes:
+  talaria_pg:
+  talaria_redis:
+  talaria_minio:

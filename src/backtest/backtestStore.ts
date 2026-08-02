@@ -36,7 +36,8 @@ export function subscribeBacktest(listener: () => void): () => void {
 }
 
 export function setBacktestRunning(): void {
-  state = { status: 'running', result: state.result, error: null, note: null };
+  // Clear previous overlays so cancel/re-run never paints stale markers.
+  state = { status: 'running', result: null, error: null, note: null };
   emit();
 }
 
@@ -46,12 +47,12 @@ export function setBacktestResult(result: BacktestResult, note: string | null = 
 }
 
 export function setBacktestError(message: string): void {
-  state = { status: 'error', result: state.result, error: message, note: null };
+  state = { status: 'error', result: null, error: message, note: null };
   emit();
 }
 
 export function setBacktestCancelled(): void {
-  state = { status: 'cancelled', result: state.result, error: null, note: null };
+  state = { status: 'cancelled', result: null, error: null, note: null };
   emit();
 }
 

@@ -24,6 +24,11 @@ export interface BacktestBarBuffers {
   totalSeriesBars: number;
 }
 
+export interface LoadBarsForBacktestOptions {
+  /** Return null between chunks when this returns true (cancel). */
+  isCancelled?: () => boolean;
+}
+
 /**
  * Load bars for [timeStart, timeEnd], capped at MAX_BACKTEST_BARS (newest kept).
  */
@@ -32,10 +37,12 @@ export async function loadBarsForBacktest(
   timeframe: Timeframe,
   timeStart: number,
   timeEnd: number,
+  opts: LoadBarsForBacktestOptions = {},
 ): Promise<BacktestBarBuffers | null> {
   const db = await openDb();
   const meta = await getSeriesMeta(db, datasetId, timeframe);
   if (!meta || meta.rowCount === 0) return null;
+  if (opts.isCancelled?.()) return null;
 
   let fromIndex = await timeToLogicalIndex(datasetId, timeframe, timeStart);
   let toIndex = await timeToLogicalIndex(datasetId, timeframe, timeEnd) + 1;
@@ -61,6 +68,8 @@ export async function loadBarsForBacktest(
   let chunkIdx = chunkIndexForLogical(meta, fromIndex);
 
   while (chunkIdx < meta.chunkIds.length && write < count) {
+    if (opts.isCancelled?.()) return null;
+
     const chunkStart = meta.chunkStarts[chunkIdx]!;
     const chunkEnd =
       chunkIdx + 1 < meta.chunkStarts.length

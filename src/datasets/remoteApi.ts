@@ -1,9 +1,9 @@
 /**
  * Thin client for Step 13 `/api/v1` stub.
  *
- * Not the default Create Session path. Use when:
- * - `VITE_REMOTE_DATASETS=1`, or
- * - calling helpers explicitly (e.g. `ingestRemoteChunksToIdb`).
+ * Datasets UI probes `/health` and lists remote datasets when the API is up.
+ * Local Dukascopy / CSV / IDB Create Session path stays the default offline path.
+ * `VITE_REMOTE_DATASETS=1` remains an optional override for non-UI call sites.
  *
  * Flow: API chunk meta + binaries → same IDB `putChunk` / `putSeriesMeta` as CSV ingest.
  */
@@ -20,12 +20,15 @@ export const REMOTE_API_BASE = '/api/v1';
 export { isRemoteDatasetsEnabled };
 
 async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  headers.set('Accept', 'application/json');
+  if (init?.body != null && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
   const res = await fetch(`${REMOTE_API_BASE}${path}`, {
     ...init,
-    headers: {
-      Accept: 'application/json',
-      ...(init?.headers ?? {}),
-    },
+    credentials: 'include', // Level-2 session cookie
+    headers,
   });
   const payload = (await res.json()) as T & { error?: string };
   if (!res.ok) {
@@ -36,7 +39,36 @@ async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   return payload;
 }
 
-export async function fetchHealth(): Promise<{ ok: boolean; service: string }> {
+export async function loginRemote(email: string, password: string): Promise<RemoteUser> {
+  const body = await apiJson<{ user: RemoteUser }>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+  return body.user;
+}
+
+export async function registerRemote(
+  email: string,
+  password: string,
+  displayName?: string,
+): Promise<RemoteUser> {
+  const body = await apiJson<{ user: RemoteUser }>('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ email, password, displayName }),
+  });
+  return body.user;
+}
+
+export async function logoutRemote(): Promise<void> {
+  await apiJson<{ ok: boolean }>('/auth/logout', { method: 'POST' });
+}
+
+export async function fetchHealth(): Promise<{
+  ok: boolean;
+  service: string;
+  mode?: string;
+  storage?: string;
+}> {
   return apiJson('/health');
 }
 
@@ -73,7 +105,7 @@ export async function fetchRemoteChunks(opts: {
 
 /** Fetch packed OHLCV ArrayBuffer for a chunk URL from the API. */
 export async function fetchChunkBinary(url: string): Promise<ArrayBuffer> {
-  const res = await fetch(url);
+  const res = await fetch(url, { credentials: 'include' });
   if (!res.ok) {
     throw new Error(`Chunk fetch failed (${res.status}): ${url}`);
   }

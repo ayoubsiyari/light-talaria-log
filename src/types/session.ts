@@ -58,6 +58,13 @@ export interface BacktestSession {
   /** All pairs in this session (length ≥ 1). */
   legs: SessionLeg[];
   createdAt: number;
+  /**
+   * Last replay cursor (unix seconds). Restored when reopening the session
+   * so refresh / exit → reopen continues from the last candle.
+   */
+  cursorTime?: number;
+  /** Last bar-count zoom (session.span). Optional camera restore. */
+  span?: number;
 }
 
 export interface CreateSessionInput {

@@ -668,6 +668,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-02 | Fix play chrome fight (uncontrolled scrub/label) + multi-pane stuck (fill around cursor on layout) | Manual 3-pane play at 4x |
 | 2026-08-02 | Multi-chart replay: armPlay warms all pane caches; extendReveal fill-ahead + keep tip on gap | Verify 3-pair Play advances all panes |
 | 2026-08-02 | Level-2 SaaS full: `docs/SAAS-LEVEL-2.md`, Docker (PG/Redis/MinIO), Fastify API, auth, jobs, Datasets login | `npm run saas:up` → migrate/seed/api → `saas:dev` |
+| 2026-08-02 | Order system Phases 1–7: pure engine, §4.3 fills, margin/swap, journal determinism, drag overlay, order UI — `docs/ORDER-SYSTEM-REPORT.md` | Measure drag Profiler/p95; journal rebuild on reload |
 
 ---
 

@@ -91,6 +91,60 @@ function validateDates(from: string, to: string): string | null {
   return null;
 }
 
+/**
+ * dukascopy-node treats string `{ from, to }` as exclusive/empty when from===to
+ * (returns `[]` instead of CSV). Use inclusive UTC day Date bounds instead.
+ */
+function inclusiveUtcRange(from: string, to: string): { from: Date; to: Date } {
+  return {
+    from: new Date(`${from}T00:00:00.000Z`),
+    to: new Date(`${to}T23:59:59.999Z`),
+  };
+}
+
+/** Normalize dukascopy-node output to a CSV string (it may return [] on empty). */
+function toCsvString(result: unknown): string | null {
+  if (typeof result === 'string') return result;
+  if (!Array.isArray(result)) return null;
+  if (result.length === 0) return '';
+
+  // Array of [timestamp, open, high, low, close, volume?]
+  const first = result[0];
+  if (Array.isArray(first)) {
+    const lines = ['timestamp,open,high,low,close,volume'];
+    for (const row of result) {
+      if (!Array.isArray(row) || row.length < 5) continue;
+      const vol = row.length >= 6 ? row[5] : 0;
+      lines.push(`${row[0]},${row[1]},${row[2]},${row[3]},${row[4]},${vol}`);
+    }
+    return lines.join('\n');
+  }
+
+  // Array of objects { timestamp|time, open, high, low, close, volume? }
+  if (first && typeof first === 'object') {
+    const lines = ['timestamp,open,high,low,close,volume'];
+    for (const row of result as Array<Record<string, unknown>>) {
+      const ts = row.timestamp ?? row.time;
+      if (ts == null) continue;
+      lines.push(
+        `${ts},${row.open},${row.high},${row.low},${row.close},${row.volume ?? 0}`,
+      );
+    }
+    return lines.join('\n');
+  }
+
+  return null;
+}
+
+function countCsvRows(csv: string): number {
+  const lines = csv.trim().split('\n').filter(Boolean);
+  if (lines.length === 0) return 0;
+  const hasHeader =
+    lines[0]!.toLowerCase().includes('timestamp') ||
+    lines[0]!.toLowerCase().includes('time');
+  return Math.max(0, lines.length - (hasHeader ? 1 : 0));
+}
+
 async function handleDownload(
   req: Connect.IncomingMessage,
   res: Connect.ServerResponse,
@@ -139,18 +193,32 @@ async function handleDownload(
   }
 
   try {
-    const csv = await getHistoricalRates({
+    const dates = inclusiveUtcRange(from, to);
+    const raw = await getHistoricalRates({
       instrument,
-      dates: { from, to },
+      dates,
       timeframe: dukaTf,
       format: 'csv',
       volumes: true,
       priceType: 'bid',
     });
 
-    const lines = csv.trim().split('\n').filter(Boolean);
-    // dukascopy-node CSV usually has a header row
-    const rowCount = Math.max(0, lines.length - (lines[0]?.toLowerCase().includes('timestamp') || lines[0]?.toLowerCase().includes('time') ? 1 : 0));
+    const csv = toCsvString(raw);
+    if (csv == null) {
+      sendJson(res, 502, {
+        error: 'Unexpected Dukascopy response format (expected CSV string).',
+      });
+      return;
+    }
+
+    const rowCount = countCsvRows(csv);
+    if (rowCount === 0) {
+      sendJson(res, 404, {
+        error:
+          'No market data for this range (weekend/holiday, or market closed). Try weekdays or a wider range.',
+      });
+      return;
+    }
 
     sendJson(res, 200, {
       csv,
@@ -163,6 +231,14 @@ async function handleDownload(
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Dukascopy download failed';
+    // dukascopy-node sometimes throws on empty/weekend slices
+    if (/slice|undefined/i.test(message)) {
+      sendJson(res, 404, {
+        error:
+          'No market data for this range (weekend/holiday, or market closed). Try weekdays or a wider range.',
+      });
+      return;
+    }
     sendJson(res, 502, { error: message });
   }
 }

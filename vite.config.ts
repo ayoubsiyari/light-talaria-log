@@ -37,7 +37,7 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, 'src'),
-        '@landing-content': path.resolve(__dirname, 'landing/src/content'),
+        '@landing-content': path.resolve(__dirname, 'src/marketing-content'),
       },
     },
     server: {

@@ -6,7 +6,8 @@ dist
 .env.*
 !.env.example
 # Step 13 local disk chunk store (CDN stub) — seeded at dev-server start
-data/
-landing/
+/data/
+# Standalone Vite landing package (local only; chart app uses src/marketing-content)
+/landing/
 services/api/node_modules
 services/api/dist

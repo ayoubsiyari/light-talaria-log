@@ -19,8 +19,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@landing-content/*": ["landing/src/content/*"]
+      "@landing-content/*": ["src/marketing-content/*"]
     }
   },
-  "include": ["src", "landing/src/content"]
+  "include": ["src"]
 }

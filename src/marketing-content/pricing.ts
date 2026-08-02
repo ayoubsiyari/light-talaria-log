@@ -1,0 +1,50 @@
+export const pricingCopy = {
+  h2: "Priced like a tool, not a subscription trap.",
+  saveChip: "Save 20%",
+  monthlyLabel: "Monthly",
+  yearlyLabel: "Yearly",
+  plans: [
+    {
+      id: "logbook",
+      name: "Logbook",
+      monthly: 0,
+      yearly: 0,
+      featured: false,
+      features: [
+        "100 trades",
+        "1 year of history",
+        "CSV import",
+        "Core metrics",
+      ],
+    },
+    {
+      id: "operator",
+      name: "Operator",
+      monthly: 19,
+      yearly: 15,
+      featured: true,
+      badge: "MOST PICKED",
+      features: [
+        "Unlimited trades",
+        "15 years of data",
+        "Bar-by-bar replay",
+        "Broker sync",
+        "Screenshot storage",
+      ],
+    },
+    {
+      id: "desk",
+      name: "Desk",
+      monthly: 49,
+      yearly: 39,
+      featured: false,
+      features: [
+        "Everything in Operator",
+        "5 seats",
+        "Strategy comparison",
+        "API access",
+        "Priority support",
+      ],
+    },
+  ],
+} as const;

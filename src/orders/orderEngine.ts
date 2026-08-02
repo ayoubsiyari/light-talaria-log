@@ -20,10 +20,17 @@ import {
   type InstrumentSpec,
 } from './instrumentSpec';
 import {
+  isMarginCall,
+  isStopOut,
+  stopOutCloseOrder,
+  totalUsedMargin,
+} from './margin';
+import {
   commissionForSide,
   grossPnL,
   notionalQty,
   quoteToAccountRate,
+  swapPointsToAccount,
   unrealizedPnL,
   type FxRateContext,
 } from './pnl';
@@ -75,6 +82,7 @@ export function createInitialState(input: {
     rngState: seedFromSessionId(input.sessionId),
     mode: input.mode ?? 'netting',
     lastBarTime: null,
+    lastSwapDay: null,
     symbol: input.symbol,
   };
 }
@@ -248,7 +256,22 @@ export function reduceCommand(
   const roundedStop =
     draft.stopPrice != null ? roundToTick(draft.stopPrice, spec) : undefined;
 
-  if (reason) {
+  // Margin check at submit for market / immediate risk (Phase 4).
+  let marginReject: RejectReason | null = reason;
+  if (!marginReject && (draft.type === 'MARKET' || draft.type === 'STOP')) {
+    const estPrice = draft.side === 'BUY' ? cmd.ask : cmd.bid;
+    const estMargin =
+      (notionalQty(draft.size, spec) *
+        (spec.baseCurrency.toUpperCase() === state.account.currency.toUpperCase()
+          ? 1
+          : estPrice)) /
+      Math.max(1, state.account.leverage);
+    if (estMargin > state.account.freeMargin + 1e-9) {
+      marginReject = 'INSUFFICIENT_MARGIN';
+    }
+  }
+
+  if (marginReject) {
     const rejected: Order = {
       ...draft,
       price: roundedPrice,
@@ -256,7 +279,7 @@ export function reduceCommand(
       status: 'REJECTED',
       revision: 0,
       updatedAt: cmd.cursorTime,
-      rejectReason: reason,
+      rejectReason: marginReject,
     };
     let next: OrderEngineState = {
       ...state,
@@ -264,7 +287,7 @@ export function reduceCommand(
     };
     next = pushEvent(events, next, cmd.cursorTime, 'ORDER_REJECTED', {
       orderId: rejected.id,
-      reason,
+      reason: marginReject,
     });
     return { state: next, events };
   }
@@ -701,11 +724,13 @@ function refreshEquity(
   spread: number,
   spec: InstrumentSpec,
   ctx: MarketContext,
-): OrderEngineState {
+): { state: OrderEngineState; unrealizedById: Record<string, number> } {
   const bid = bar.close;
   const ask = bar.close + spread;
   let unreal = 0;
-  for (const pos of Object.values(state.positions)) {
+  const unrealizedById: Record<string, number> = {};
+  const positions = Object.values(state.positions);
+  for (const pos of positions) {
     const u = unrealizedPnL(
       pos.side,
       pos.entryPrice,
@@ -715,11 +740,166 @@ function refreshEquity(
       spec,
       fxCtx(state, bid, ctx),
     );
+    unrealizedById[pos.id] = u.amount;
     unreal += u.amount;
   }
-  // usedMargin left for Phase 4; keep 0 here
-  const account = recomputeAccount(state.account, unreal, state.account.usedMargin);
-  return { ...state, account };
+  const used = totalUsedMargin(
+    positions,
+    spec,
+    fxCtx(state, bid, ctx),
+    state.account.leverage,
+  );
+  const account = recomputeAccount(state.account, unreal, used);
+  return { state: { ...state, account }, unrealizedById };
+}
+
+function utcDayKey(unixSec: number): string {
+  const d = new Date(unixSec * 1000);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function utcWeekday(unixSec: number): number {
+  return new Date(unixSec * 1000).getUTCDay();
+}
+
+function secondsIntoUtcDay(unixSec: number): number {
+  const d = new Date(unixSec * 1000);
+  return d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds();
+}
+
+/**
+ * Accrue swap when the bar crosses session swap time on a weekday.
+ * Never on weekends (Sat/Sun). Triple on configured weekday.
+ */
+function accrueSwapIfNeeded(
+  state: OrderEngineState,
+  bar: ChartBar,
+  prevBarTime: number | null,
+  spec: InstrumentSpec,
+  ctx: MarketContext,
+  events: EngineEvent[],
+): OrderEngineState {
+  if (ctx.marketOpen === false) return state;
+  const wd = utcWeekday(bar.time);
+  if (wd === 0 || wd === 6) return state; // Sunday / Saturday
+
+  const dayKey = utcDayKey(bar.time);
+  if (state.lastSwapDay === dayKey) return state;
+
+  const sod = secondsIntoUtcDay(bar.time);
+  const prevSod =
+    prevBarTime != null && utcDayKey(prevBarTime) === dayKey
+      ? secondsIntoUtcDay(prevBarTime)
+      : -1;
+  const crossed =
+    prevSod < spec.swapTimeUtc && sod >= spec.swapTimeUtc;
+  if (!crossed) return state;
+
+  const triple = wd === spec.tripleSwapWeekday;
+  let next = state;
+  const positions = { ...next.positions };
+  let any = false;
+  for (const id of Object.keys(positions)) {
+    const pos = positions[id]!;
+    const swap = swapPointsToAccount(
+      pos.side,
+      pos.size,
+      spec,
+      fxCtx(next, bar.close, ctx),
+      triple,
+    );
+    if (swap.amount === 0) continue;
+    any = true;
+    positions[id] = {
+      ...pos,
+      swapAccruedAccount: pos.swapAccruedAccount + swap.amount,
+      updatedAt: bar.time,
+    };
+    // Swap amount is signed (usually negative). Apply directly to balance.
+    next = {
+      ...next,
+      account: {
+        ...next.account,
+        balance: next.account.balance + swap.amount,
+      },
+    };
+    next = pushEvent(events, next, bar.time, 'SWAP_ACCRUED', {
+      positionId: id,
+      amount: swap.amount,
+      triple,
+      dayKey,
+    });
+  }
+  if (!any && Object.keys(positions).length === 0) {
+    return { ...next, lastSwapDay: dayKey };
+  }
+  return {
+    ...next,
+    positions,
+    lastSwapDay: dayKey,
+  };
+}
+
+function applyStopOut(
+  state: OrderEngineState,
+  bar: ChartBar,
+  spread: number,
+  spec: InstrumentSpec,
+  ctx: MarketContext,
+  unrealizedById: Record<string, number>,
+  events: EngineEvent[],
+): OrderEngineState {
+  let next = state;
+  let guard = 0;
+  while (isStopOut(next.account, spec) && guard++ < 32) {
+    const list = Object.values(next.positions);
+    if (list.length === 0) break;
+    const ordered = stopOutCloseOrder(list, unrealizedById);
+    const victim = ordered[0]!;
+    const bid = bar.close;
+    const ask = bar.close + spread;
+    const fillPrice = victim.side === 'BUY' ? bid : ask;
+    const closeOrder: Order = {
+      id: `stopout-${victim.id}-${next.seq + 1}`,
+      symbol: victim.symbol,
+      side: victim.side === 'BUY' ? 'SELL' : 'BUY',
+      type: 'MARKET',
+      size: victim.size,
+      tif: 'IOC',
+      status: 'WORKING',
+      revision: 0,
+      createdAt: bar.time,
+      updatedAt: bar.time,
+      positionId: victim.id,
+    };
+    next = {
+      ...next,
+      orders: { ...next.orders, [closeOrder.id]: closeOrder },
+    };
+    next = addWorking(next, closeOrder.id);
+    next = applyFillToPosition(
+      next,
+      closeOrder,
+      fillPrice,
+      bar.time,
+      spec,
+      ctx,
+      false,
+      events,
+    );
+    next = pushEvent(events, next, bar.time, 'STOP_OUT', {
+      positionId: victim.id,
+      fillPrice,
+      size: victim.size,
+    });
+    const refreshed = refreshEquity(next, bar, spread, spec, ctx);
+    next = refreshed.state;
+    unrealizedById = refreshed.unrealizedById;
+  }
+  return next;
 }
 
 function evictTerminalOrders(state: OrderEngineState): OrderEngineState {
@@ -907,7 +1087,32 @@ export function stepEngine(
   // Trailing ratchet AFTER trigger evaluation (§4.8)
   next = updateTrailingStops(next, bar, spec);
 
-  next = refreshEquity(next, bar, spread, spec, ctx);
+  // Swap before equity/stop-out so overnight charge can push margin level down.
+  next = accrueSwapIfNeeded(next, bar, state.lastBarTime, spec, ctx, events);
+
+  let refreshed = refreshEquity(next, bar, spread, spec, ctx);
+  next = refreshed.state;
+
+  if (isMarginCall(next.account, spec)) {
+    next = pushEvent(events, next, cursorTime, 'MARGIN_CALL', {
+      marginLevel: next.account.marginLevel,
+      equity: next.account.equity,
+      usedMargin: next.account.usedMargin,
+    });
+  }
+
+  next = applyStopOut(
+    next,
+    bar,
+    spread,
+    spec,
+    ctx,
+    refreshed.unrealizedById,
+    events,
+  );
+  refreshed = refreshEquity(next, bar, spread, spec, ctx);
+  next = refreshed.state;
+
   next = evictTerminalOrders(next);
 
   // DEV: no fill in the future
@@ -938,6 +1143,7 @@ export function hashState(state: OrderEngineState): string {
       .sort()
       .map((k) => state.positions[k]),
     lastBarTime: state.lastBarTime,
+    lastSwapDay: state.lastSwapDay,
     mode: state.mode,
     symbol: state.symbol,
   };

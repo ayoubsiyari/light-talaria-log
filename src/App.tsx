@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button } from '@heroui/react';
 import {
   createChartSyncStore,
+  getAppearance,
+  patchAppearance,
+  subscribeAppearance,
   type ChartSyncStore,
   type CrosshairMode,
   type CrosshairPoint,
@@ -169,10 +172,16 @@ export default function App() {
 
   const [activeTool, setActiveTool] = useState<ChartToolId>('cursor');
   const [activeTab, setActiveTab] = useState<BottomTabId>('all');
-  const [seriesType, setSeriesType] = useState<SeriesType>('candle');
-  const [crosshairMode, setCrosshairMode] = useState<CrosshairMode>('normal');
-  const [showVolume, setShowVolume] = useState(false);
-  const [volumeOpacity, setVolumeOpacity] = useState(0.4);
+  const [seriesType, setSeriesType] = useState<SeriesType>(
+    () => getAppearance().seriesType,
+  );
+  const [crosshairMode, setCrosshairMode] = useState<CrosshairMode>(
+    () => getAppearance().crosshairMode,
+  );
+  const [showVolume, setShowVolume] = useState(() => getAppearance().showVolume);
+  const [volumeOpacity, setVolumeOpacity] = useState(
+    () => getAppearance().volumeOpacity,
+  );
   const [enabledIndicators, setEnabledIndicators] = useState<EnabledIndicator[]>([]);
   const [orders, setOrders] = useState<ChartOrder[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -809,6 +818,33 @@ export default function App() {
     const open = () => setChartSettingsOpen(true);
     window.addEventListener('talaria:open-chart-settings', open);
     return () => window.removeEventListener('talaria:open-chart-settings', open);
+  }, []);
+
+  // Settings modal ↔ TopBar / volume: keep view state in sync with appearance store
+  useEffect(() => {
+    return subscribeAppearance((a) => {
+      setSeriesType(a.seriesType);
+      setCrosshairMode(a.crosshairMode);
+      setShowVolume(a.showVolume);
+      setVolumeOpacity(a.volumeOpacity);
+    });
+  }, []);
+
+  const handleSeriesTypeChange = useCallback((t: SeriesType) => {
+    setSeriesType(t);
+    patchAppearance({ seriesType: t });
+  }, []);
+  const handleCrosshairModeChange = useCallback((m: CrosshairMode) => {
+    setCrosshairMode(m);
+    patchAppearance({ crosshairMode: m });
+  }, []);
+  const handleShowVolumeChange = useCallback((v: boolean) => {
+    setShowVolume(v);
+    patchAppearance({ showVolume: v });
+  }, []);
+  const handleVolumeOpacityChange = useCallback((v: number) => {
+    setVolumeOpacity(v);
+    patchAppearance({ volumeOpacity: v });
   }, []);
 
   // Flush replay progress on tab close / refresh.
@@ -1652,15 +1688,15 @@ export default function App() {
         onTimeframeChange={(tf) => applyPaneTimeframe(activePaneId, tf)}
         availableTimeframes={availableTimeframes}
         seriesType={seriesType}
-        onSeriesTypeChange={setSeriesType}
+        onSeriesTypeChange={handleSeriesTypeChange}
         crosshairMode={crosshairMode}
-        onCrosshairModeChange={setCrosshairMode}
+        onCrosshairModeChange={handleCrosshairModeChange}
         chartLayout={chartLayout}
         onChartLayoutChange={handleLayoutChange}
         layoutSync={layoutSync}
         onLayoutSyncChange={setLayoutSync}
         showVolume={showVolume}
-        onShowVolumeChange={setShowVolume}
+        onShowVolumeChange={handleShowVolumeChange}
         enabledIndicators={enabledIndicators}
         onEnabledIndicatorsChange={setEnabledIndicators}
         onImportCsv={(f) => void importCsv(f)}
@@ -1755,9 +1791,9 @@ export default function App() {
               crosshairMode={crosshairMode}
               seriesType={seriesType}
               showVolume={showVolume}
-              onShowVolumeChange={setShowVolume}
+              onShowVolumeChange={handleShowVolumeChange}
               volumeOpacity={volumeOpacity}
-              onVolumeOpacityChange={setVolumeOpacity}
+              onVolumeOpacityChange={handleVolumeOpacityChange}
               enabledIndicators={enabledIndicators}
               onEnabledIndicatorsChange={setEnabledIndicators}
               orders={orders}

@@ -4,9 +4,14 @@ import { formatPrice } from '../format';
 import type { RenderLayout } from '../renderer';
 import { priceToY, type PriceScale } from '../scales';
 
+function dashForStyle(style: ChartColors['lastPriceLineStyle']): number[] {
+  if (style === 'solid') return [];
+  if (style === 'dotted') return [1, 3];
+  return [4, 3];
+}
+
 /**
- * TradingView-style last price: dashed line across the plot + solid
- * colored chip on the right price axis (must paint AFTER the axis fill).
+ * TradingView-style last price: line across the plot + optional chip on price axis.
  */
 export function drawLastPriceLine(
   ctx: CanvasRenderingContext2D,
@@ -25,11 +30,10 @@ export function drawLastPriceLine(
 
   ctx.save();
 
-  // Dashed line through the main plot only
   ctx.strokeStyle = color;
   ctx.globalAlpha = 0.9;
   ctx.lineWidth = 1;
-  ctx.setLineDash([4, 3]);
+  ctx.setLineDash(dashForStyle(colors.lastPriceLineStyle));
   ctx.beginPath();
   ctx.moveTo(plot.left, yMid);
   ctx.lineTo(plot.left + plot.width, yMid);
@@ -37,7 +41,11 @@ export function drawLastPriceLine(
   ctx.setLineDash([]);
   ctx.globalAlpha = 1;
 
-  // Axis chip — TradingView: full axis width, contrasting text
+  if (!colors.showLastPriceLabel || priceAxisWidth <= 0) {
+    ctx.restore();
+    return;
+  }
+
   const label = formatPrice(last.close);
   const labelH = 18;
   const axisX = width - priceAxisWidth;
@@ -46,7 +54,6 @@ export function drawLastPriceLine(
     plot.top + plot.height - labelH,
   );
 
-  // Small left-pointing notch into the plot
   const notch = 4;
   ctx.fillStyle = color;
   ctx.beginPath();

@@ -660,6 +660,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-07-30 | TF switch refactor: session controller, load-time reveal, warm cache, base-TF clock split; see `docs/TF-REFACTOR-REPORT.md` | Manual §8 matrix + p95 latency in browser |
 | 2026-07-30 | Perf addendum: resourceLedger, warmCache LRU, no React commits on replay tick; report §§10–14 | Chrome §8 heap/Profiler baselines by operator |
 | 2026-08-02 | Chart settings (right-click): Symbol/Canvas/Layout/Scales — candles, grid, bg, chrome colors; persist localStorage | Optional status-line tab / TopBar entry |
+| 2026-08-02 | Full chart settings: Symbol/Status/Scales/Canvas/Layout — series, volume, legend, axes, watermark, chrome show/color, theme; live + persist v2 | — |
 | 2026-08-02 | Replay TF/pair switch keeps tip candle position + bar-count zoom (`cameraPreserveRef`); load-time truncate; no lookahead | Manual check play/pause multi-pane TF+pair |
 | 2026-08-02 | Step 13 wiring: Datasets Import from API, all-TF remote→IDB, catalog `source:'remote'`, rehydrate + delete chunks | Manual import → Create Session; Postgres/CDN later |
 | 2026-08-02 | Fix pass: backtest pane filter + dense markers + cancel abort; empty chart (no fake bars); soft journal nav; Phase 6 polish; play-pan prefetch | Manual: multi-pane backtest, Cancel mid-run, Import API, Journal↔chart |

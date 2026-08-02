@@ -1,4 +1,4 @@
-import type { GridLineStyle } from '@/types/chartAppearance';
+import type { GridLineStyle, LastPriceLineStyle } from '@/types/chartAppearance';
 
 /**
  * Maps Hero UI CSS variables (+ appearance overrides) to canvas theme colors.
@@ -27,7 +27,22 @@ export interface ChartColors {
   showBody: boolean;
   showBorder: boolean;
   showWick: boolean;
+  hollowCandles: boolean;
+  colorBasedOnPrevClose: boolean;
+  lineColor: string;
+  lineWidth: number;
   crosshair: string;
+  axisText: string;
+  showPriceScale: boolean;
+  showTimeScale: boolean;
+  showLastPrice: boolean;
+  showLastPriceLabel: boolean;
+  lastPriceLineStyle: LastPriceLineStyle;
+  watermarkEnabled: boolean;
+  watermarkText: string;
+  watermarkColor: string;
+  watermarkOpacity: number;
+  watermarkFontSize: number;
   accent: string;
   /** Handle fill (selection points). */
   handleFill: string;
@@ -56,6 +71,12 @@ function cssStyle(name: string, fallback: GridLineStyle): GridLineStyle {
   return fallback;
 }
 
+function cssNumber(name: string, fallback: number): number {
+  const v = cssVar(name, String(fallback));
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 function isDarkTheme(): boolean {
   if (typeof document === 'undefined') return true;
   return document.documentElement.classList.contains('dark');
@@ -70,11 +91,18 @@ export function getChartColors(): ChartColors {
   const down = cssVar('--danger', '#f31260');
   const upBody = cssVar('--chart-up-body', up);
   const downBody = cssVar('--chart-down-body', down);
+  const text = cssVar('--foreground', dark ? '#ecedee' : '#18181b');
+  const muted = cssVar('--muted', dark ? '#71717a' : '#71717a');
+  const lastStyle = cssVar('--chart-last-price-style', 'dashed');
+  const lastPriceLineStyle: LastPriceLineStyle =
+    lastStyle === 'solid' || lastStyle === 'dotted' || lastStyle === 'dashed'
+      ? lastStyle
+      : 'dashed';
 
   return {
     background: cssVar('--chart-bg', themeBg),
-    text: cssVar('--foreground', dark ? '#ecedee' : '#18181b'),
-    muted: cssVar('--muted', dark ? '#71717a' : '#71717a'),
+    text,
+    muted,
     grid: themeGrid,
     gridHorizontal: cssVar('--chart-grid-h', themeGrid),
     gridVertical: cssVar('--chart-grid-v', themeGrid),
@@ -94,7 +122,22 @@ export function getChartColors(): ChartColors {
     showBody: cssFlag('--chart-show-body', true),
     showBorder: cssFlag('--chart-show-border', true),
     showWick: cssFlag('--chart-show-wick', true),
-    crosshair: cssVar('--chart-crosshair', cssVar('--muted', '#71717a')),
+    hollowCandles: cssFlag('--chart-hollow', false),
+    colorBasedOnPrevClose: cssFlag('--chart-color-prev-close', false),
+    lineColor: cssVar('--chart-line', upBody),
+    lineWidth: Math.min(8, Math.max(1, cssNumber('--chart-line-width', 2))),
+    crosshair: cssVar('--chart-crosshair', muted),
+    axisText: cssVar('--chart-axis-text', muted),
+    showPriceScale: cssFlag('--chart-show-price-scale', true),
+    showTimeScale: cssFlag('--chart-show-time-scale', true),
+    showLastPrice: cssFlag('--chart-show-last-price', true),
+    showLastPriceLabel: cssFlag('--chart-show-last-price-label', true),
+    lastPriceLineStyle,
+    watermarkEnabled: cssFlag('--chart-watermark', false),
+    watermarkText: cssVar('--chart-watermark-text', ''),
+    watermarkColor: cssVar('--chart-watermark-color', muted),
+    watermarkOpacity: Math.min(1, Math.max(0, cssNumber('--chart-watermark-opacity', 0.12))),
+    watermarkFontSize: Math.min(120, Math.max(16, cssNumber('--chart-watermark-size', 48))),
     accent: cssVar('--accent', '#006fee'),
     handleFill: cssVar('--surface', dark ? '#18181b' : '#ffffff'),
     labelBg: dark ? 'rgba(19,23,34,0.88)' : 'rgba(255,255,255,0.92)',

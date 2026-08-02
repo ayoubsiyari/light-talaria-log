@@ -119,6 +119,7 @@ export interface ChartInstance {
   setShowVolume: (show: boolean) => void;
   setVolumeOpacity: (opacity: number) => void;
   getVolumeSettings: () => { visible: boolean; opacity: number };
+  setShowLastPrice: (show: boolean) => void;
   /** Viewport-sized price overlays (Worker-computed). */
   setIndicatorOverlays: (overlays: readonly IndicatorOverlayResult[]) => void;
   /** Oscillator panes (RSI/MACD) — rebuilds layout stack. */
@@ -201,15 +202,20 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   let indicatorPanes: readonly IndicatorPaneResult[] = [];
 
   const rebuildLayout = () => {
+    const colors = getChartColors();
     layout = createLayout(width, height, dpr, {
       showVolume: options.showVolume,
       indicatorPaneCount: indicatorPanes.length,
+      showPriceScale: colors.showPriceScale,
+      showTimeScale: colors.showTimeScale,
     });
   };
 
   let layout: RenderLayout = createLayout(width, height, dpr, {
     showVolume: options.showVolume,
     indicatorPaneCount: 0,
+    showPriceScale: getChartColors().showPriceScale,
+    showTimeScale: getChartColors().showTimeScale,
   });
 
   let bars: ChartBar[] = [];
@@ -1002,6 +1008,12 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       return { visible: options.showVolume, opacity: options.volumeOpacity };
     },
 
+    setShowLastPrice(show: boolean) {
+      if (options.showLastPrice === show) return;
+      options = { ...options, showLastPrice: show };
+      markDirty();
+    },
+
     setSize(nextWidth: number, nextHeight: number) {
       if (nextWidth <= 0 || nextHeight <= 0) return;
       if (nextWidth === width && nextHeight === height) return;
@@ -1217,7 +1229,18 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     });
   }
 
-  unsubAppearance = subscribeAppearance(() => markDirty());
+  unsubAppearance = subscribeAppearance((a) => {
+    if (options.showLastPrice !== a.showLastPrice) {
+      options = { ...options, showLastPrice: a.showLastPrice };
+    }
+    rebuildLayout();
+    staticCanvas = null;
+    staticCtx = null;
+    drawingsCanvas = null;
+    drawingsCtx = null;
+    updateCrosshairFromHover();
+    markDirty();
+  });
 
   return instance;
 }

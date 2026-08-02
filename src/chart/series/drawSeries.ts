@@ -38,6 +38,13 @@ function visibleRange(
   };
 }
 
+function isUp(bar: ChartBar, prev: ChartBar | undefined, colors: ChartColors): boolean {
+  if (colors.colorBasedOnPrevClose && prev) {
+    return bar.close >= prev.close;
+  }
+  return bar.close >= bar.open;
+}
+
 function drawCandles(
   ctx: CanvasRenderingContext2D,
   bars: readonly ChartBar[],
@@ -60,7 +67,7 @@ function drawCandles(
     const yClose = priceToY(bar.close, priceScale, plot);
     const yHigh = priceToY(bar.high, priceScale, plot);
     const yLow = priceToY(bar.low, priceScale, plot);
-    const up = bar.close >= bar.open;
+    const up = isUp(bar, bars[i - 1], colors);
     const body = up ? colors.upBody : colors.downBody;
     const border = up ? colors.upBorder : colors.downBorder;
     const wick = up ? colors.upWick : colors.downWick;
@@ -68,6 +75,7 @@ function drawCandles(
     const top = Math.min(yOpen, yClose);
     const h = Math.max(1, Math.abs(yClose - yOpen));
     const left = x - bodyW / 2;
+    const hollow = colors.hollowCandles && up;
 
     if (colors.showWick) {
       ctx.strokeStyle = wick;
@@ -78,12 +86,12 @@ function drawCandles(
       ctx.stroke();
     }
 
-    if (colors.showBody) {
+    if (colors.showBody && !hollow) {
       ctx.fillStyle = body;
       ctx.fillRect(left, top, bodyW, h);
     }
 
-    if (colors.showBorder) {
+    if (colors.showBorder || hollow) {
       ctx.strokeStyle = border;
       ctx.lineWidth = 1;
       ctx.strokeRect(left + 0.5, top + 0.5, Math.max(0, bodyW - 1), Math.max(0, h - 1));
@@ -112,7 +120,7 @@ function drawOhclBars(
     const yClose = priceToY(bar.close, priceScale, plot);
     const yHigh = priceToY(bar.high, priceScale, plot);
     const yLow = priceToY(bar.low, priceScale, plot);
-    const up = bar.close >= bar.open;
+    const up = isUp(bar, bars[i - 1], colors);
     ctx.strokeStyle = up ? colors.upColor : colors.downColor;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -137,8 +145,10 @@ function drawLine(
 ): void {
   const { from, to } = visibleRange(bars, range, maxBarIndex);
 
-  ctx.strokeStyle = colors.upColor;
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = colors.lineColor;
+  ctx.lineWidth = colors.lineWidth;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
   ctx.beginPath();
   let started = false;
   for (let i = from; i <= to; i++) {
@@ -182,7 +192,7 @@ export function drawVolume(
     if (!bar || !(bar.volume && bar.volume > 0)) continue;
     const x = indexToX(i, range, volumePlot);
     const h = (bar.volume / maxVol) * volumePlot.height;
-    const up = bar.close >= bar.open;
+    const up = isUp(bar, bars[i - 1], colors);
     ctx.fillStyle = up ? colors.upColor : colors.downColor;
     ctx.globalAlpha = baseAlpha;
     ctx.fillRect(x - bodyW / 2, volumePlot.top + volumePlot.height - h, bodyW, h);

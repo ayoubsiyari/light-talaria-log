@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useSyncExternalStore } from 'react';
 import type {
   ChartSyncStore,
   CrosshairMode,
@@ -6,7 +6,11 @@ import type {
   DrawingPlacement,
   SeriesType,
 } from '@/chart';
-import { formatPrice } from '@/chart';
+import {
+  formatPrice,
+  getAppearance,
+  subscribeAppearance,
+} from '@/chart';
 import { ChartContainer } from '@/components/ChartContainer';
 import { OverlayIndicators } from '@/components/layout/OverlayIndicators';
 import { VolumeIndicator } from '@/components/layout/VolumeIndicator';
@@ -112,6 +116,11 @@ export function ChartPane({
   const changeRef = useRef<HTMLSpanElement>(null);
   const sampleRef = useRef(onCrosshairSample);
   sampleRef.current = onCrosshairSample;
+  const appearance = useSyncExternalStore(
+    subscribeAppearance,
+    getAppearance,
+    getAppearance,
+  );
 
   const onCrosshairMove = useCallback((point: CrosshairPoint | null) => {
     sampleRef.current?.(point);
@@ -148,22 +157,43 @@ export function ChartPane({
           className="pointer-events-none absolute inset-0 z-30 rounded-[1px] shadow-[inset_0_0_0_2px_color-mix(in_oklab,var(--accent)_55%,transparent)]"
         />
       )}
-      <div className="pointer-events-none absolute top-2 left-3 z-10 text-xs font-medium tracking-wide flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className={selected ? 'text-accent' : 'text-foreground'}>{symbol}</span>
-        <span className="text-muted">·</span>
-        <span className={selected ? 'text-accent' : 'text-muted'}>{timeframe}</span>
-        <span ref={ohlcRef} className="text-foreground tabular-nums">
-          O — H — L — C —
-        </span>
-        <span ref={changeRef} className="tabular-nums" hidden />
-      </div>
+      {(appearance.statusShowSymbol ||
+        appearance.statusShowInterval ||
+        appearance.statusShowOhlc ||
+        appearance.statusShowChange) && (
+        <div className="pointer-events-none absolute top-2 left-3 z-10 text-xs font-medium tracking-wide flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          {appearance.statusShowSymbol && (
+            <span className={selected ? 'text-accent' : 'text-foreground'}>
+              {symbol}
+            </span>
+          )}
+          {appearance.statusShowSymbol && appearance.statusShowInterval && (
+            <span className="text-muted">·</span>
+          )}
+          {appearance.statusShowInterval && (
+            <span className={selected ? 'text-accent' : 'text-muted'}>
+              {timeframe}
+            </span>
+          )}
+          {appearance.statusShowOhlc && (
+            <span ref={ohlcRef} className="text-foreground tabular-nums">
+              O — H — L — C —
+            </span>
+          )}
+          {appearance.statusShowChange && (
+            <span ref={changeRef} className="tabular-nums" hidden />
+          )}
+        </div>
+      )}
 
-      <VolumeIndicator
-        visible={showVolume}
-        opacity={volumeOpacity}
-        onVisibleChange={onShowVolumeChange}
-        onOpacityChange={onVolumeOpacityChange}
-      />
+      {appearance.statusShowVolumeLegend && (
+        <VolumeIndicator
+          visible={showVolume}
+          opacity={volumeOpacity}
+          onVisibleChange={onShowVolumeChange}
+          onOpacityChange={onVolumeOpacityChange}
+        />
+      )}
 
       <OverlayIndicators
         enabled={enabledIndicators}

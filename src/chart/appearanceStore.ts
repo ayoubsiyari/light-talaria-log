@@ -3,7 +3,7 @@ import {
   type ChartAppearance,
 } from '@/types/chartAppearance';
 
-const STORAGE_KEY = 'talaria.chartAppearance.v1';
+const STORAGE_KEY = 'talaria.chartAppearance.v2';
 
 type Listener = (a: ChartAppearance) => void;
 
@@ -12,7 +12,9 @@ const listeners = new Set<Listener>();
 
 function readStored(): ChartAppearance {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw =
+      localStorage.getItem(STORAGE_KEY) ??
+      localStorage.getItem('talaria.chartAppearance.v1');
     if (!raw) return { ...DEFAULT_CHART_APPEARANCE };
     const parsed = JSON.parse(raw) as Partial<ChartAppearance>;
     return { ...DEFAULT_CHART_APPEARANCE, ...parsed };
@@ -31,6 +33,15 @@ function setCssVar(name: string, value: string | null | undefined): void {
   }
 }
 
+function setFlag(name: string, on: boolean): void {
+  setCssVar(name, on ? '1' : '0');
+}
+
+function setData(name: string, on: boolean): void {
+  if (typeof document === 'undefined') return;
+  document.documentElement.dataset[name] = on ? '1' : '0';
+}
+
 /** Push appearance into CSS variables consumed by chrome + chartTheme. */
 export function applyAppearanceToDom(a: ChartAppearance): void {
   setCssVar('--chart-bg', a.background);
@@ -43,6 +54,14 @@ export function applyAppearanceToDom(a: ChartAppearance): void {
   setCssVar('--chart-down-border', a.downBorder);
   setCssVar('--chart-up-wick', a.upWick);
   setCssVar('--chart-down-wick', a.downWick);
+  setCssVar('--chart-line', a.lineColor);
+  setCssVar('--chart-line-width', String(a.lineWidth));
+  setCssVar('--chart-axis-text', a.axisText);
+  setCssVar('--chart-last-price-style', a.lastPriceLineStyle);
+  setCssVar('--chart-watermark-text', a.watermarkEnabled ? a.watermarkText : '');
+  setCssVar('--chart-watermark-color', a.watermarkColor);
+  setCssVar('--chart-watermark-opacity', String(a.watermarkOpacity));
+  setCssVar('--chart-watermark-size', String(a.watermarkFontSize));
 
   setCssVar('--chrome-topbar', a.topBarBg);
   setCssVar('--chrome-bottombar', a.bottomBarBg);
@@ -50,14 +69,24 @@ export function applyAppearanceToDom(a: ChartAppearance): void {
   setCssVar('--chrome-foreground', a.chromeText);
   setCssVar('--chrome-border', a.chromeBorder);
 
-  // Boolean / style flags for canvas (read in getChartColors)
-  setCssVar('--chart-show-body', a.showBody ? '1' : '0');
-  setCssVar('--chart-show-border', a.showBorder ? '1' : '0');
-  setCssVar('--chart-show-wick', a.showWick ? '1' : '0');
-  setCssVar('--chart-show-grid-h', a.showGridH ? '1' : '0');
-  setCssVar('--chart-show-grid-v', a.showGridV ? '1' : '0');
+  setFlag('--chart-show-body', a.showBody);
+  setFlag('--chart-show-border', a.showBorder);
+  setFlag('--chart-show-wick', a.showWick);
+  setFlag('--chart-hollow', a.hollowCandles);
+  setFlag('--chart-color-prev-close', a.colorBasedOnPrevClose);
+  setFlag('--chart-show-grid-h', a.showGridH);
+  setFlag('--chart-show-grid-v', a.showGridV);
+  setFlag('--chart-show-last-price', a.showLastPrice);
+  setFlag('--chart-show-last-price-label', a.showLastPriceLabel);
+  setFlag('--chart-show-price-scale', a.showPriceScale);
+  setFlag('--chart-show-time-scale', a.showTimeScale);
+  setFlag('--chart-watermark', a.watermarkEnabled);
   setCssVar('--chart-grid-h-style', a.gridHStyle);
   setCssVar('--chart-grid-v-style', a.gridVStyle);
+
+  setData('showTopbar', a.showTopBar);
+  setData('showBottombar', a.showBottomBar);
+  setData('showToolbar', a.showToolbar);
 }
 
 export function getAppearance(): ChartAppearance {
@@ -73,6 +102,10 @@ export function setAppearance(next: ChartAppearance): void {
   }
   applyAppearanceToDom(current);
   for (const cb of listeners) cb(current);
+}
+
+export function patchAppearance(partial: Partial<ChartAppearance>): void {
+  setAppearance({ ...current, ...partial });
 }
 
 export function resetAppearance(): void {

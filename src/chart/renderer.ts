@@ -28,6 +28,8 @@ export interface LayoutOptions {
   showVolume?: boolean;
   /** Number of oscillator panes stacked under volume. */
   indicatorPaneCount?: number;
+  showPriceScale?: boolean;
+  showTimeScale?: boolean;
 }
 
 export interface RenderLayout {
@@ -75,9 +77,11 @@ export function createLayout(
       : showVolumeOrOpts;
   const showVolume = opts.showVolume ?? true;
   const paneCount = Math.max(0, opts.indicatorPaneCount ?? 0);
+  const priceAxisW = opts.showPriceScale === false ? 0 : PRICE_AXIS_WIDTH;
+  const timeAxisH = opts.showTimeScale === false ? 0 : TIME_AXIS_HEIGHT;
 
-  const contentH = Math.max(0, height - PLOT_PAD_TOP - TIME_AXIS_HEIGHT);
-  const contentW = Math.max(0, width - PLOT_PAD_LEFT - PRICE_AXIS_WIDTH);
+  const contentH = Math.max(0, height - PLOT_PAD_TOP - timeAxisH);
+  const contentW = Math.max(0, width - PLOT_PAD_LEFT - priceAxisW);
 
   let volumeH = showVolume ? Math.floor(contentH * VOLUME_RATIO) : 0;
   let paneH = paneCount > 0 ? Math.floor(contentH * INDICATOR_PANE_RATIO) : 0;
@@ -129,8 +133,8 @@ export function createLayout(
     plot,
     volumePlot,
     indicatorPlots,
-    priceAxisWidth: PRICE_AXIS_WIDTH,
-    timeAxisHeight: TIME_AXIS_HEIGHT,
+    priceAxisWidth: priceAxisW,
+    timeAxisHeight: timeAxisH,
   };
 }
 
@@ -222,6 +226,7 @@ export function paintBaseFrame(
   const timeTicks = niceTimeTicks(range, bars, 6);
 
   drawGrid(ctx, layout, scale, range, priceTicks, timeTicks, colors);
+  drawWatermark(ctx, layout, colors);
   drawSeries(ctx, bars, range, plot, scale, colors, options.seriesType, maxBarIndex);
 
   if (indicators?.length) {
@@ -256,11 +261,15 @@ export function paintBaseFrame(
     }
   }
 
-  drawPriceAxis(ctx, layout, scale, priceTicks, colors);
-  drawTimeAxis(ctx, layout, range, timeTicks, colors);
+  if (layout.priceAxisWidth > 0) {
+    drawPriceAxis(ctx, layout, scale, priceTicks, colors);
+  }
+  if (layout.timeAxisHeight > 0) {
+    drawTimeAxis(ctx, layout, range, timeTicks, colors);
+  }
 
   // Last-price chip must paint AFTER the axis fill or it is covered.
-  if (options.showLastPrice) {
+  if (options.showLastPrice && colors.showLastPrice) {
     const lastIdx = maxBarIndex ?? bars.length - 1;
     const last = lastIdx >= 0 ? bars[lastIdx] : undefined;
     if (last) drawLastPriceLine(ctx, layout, last, scale, colors);
@@ -472,7 +481,7 @@ function drawPriceAxis(
   ctx.lineTo(axisX + 0.5, plot.top + plot.height);
   ctx.stroke();
 
-  ctx.fillStyle = colors.muted;
+  ctx.fillStyle = colors.axisText;
   ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
@@ -503,7 +512,7 @@ function drawTimeAxis(
   ctx.lineTo(plot.left + plot.width, axisY + 0.5);
   ctx.stroke();
 
-  ctx.fillStyle = colors.muted;
+  ctx.fillStyle = colors.axisText;
   ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
@@ -513,4 +522,23 @@ function drawTimeAxis(
     if (x < plot.left || x > plot.left + plot.width) continue;
     ctx.fillText(formatTime(tick.time), x, axisY + 8);
   }
+}
+
+function drawWatermark(
+  ctx: CanvasRenderingContext2D,
+  layout: RenderLayout,
+  colors: ChartColors,
+): void {
+  if (!colors.watermarkEnabled) return;
+  const text = colors.watermarkText.trim();
+  if (!text) return;
+  const { plot } = layout;
+  ctx.save();
+  ctx.globalAlpha = colors.watermarkOpacity;
+  ctx.fillStyle = colors.watermarkColor;
+  ctx.font = `600 ${colors.watermarkFontSize}px ui-sans-serif, system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, plot.left + plot.width / 2, plot.top + plot.height / 2);
+  ctx.restore();
 }

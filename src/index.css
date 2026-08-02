@@ -117,6 +117,17 @@
     color: var(--chrome-foreground, var(--foreground));
   }
 
+  /* Layout chrome visibility (chart settings → Layout) */
+  html[data-show-topbar='0'] .chrome-topbar {
+    display: none !important;
+  }
+  html[data-show-bottombar='0'] .chrome-bottombar {
+    display: none !important;
+  }
+  html[data-show-toolbar='0'] .chrome-toolbar {
+    display: none !important;
+  }
+
   .tv-panel-b {
     border-bottom: 1px solid var(--tv-panel-line);
   }

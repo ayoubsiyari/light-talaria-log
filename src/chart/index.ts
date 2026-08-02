@@ -21,6 +21,7 @@ export type { ChartColors } from './chartTheme';
 export {
   getAppearance,
   setAppearance,
+  patchAppearance,
   resetAppearance,
   initAppearance,
   subscribeAppearance,

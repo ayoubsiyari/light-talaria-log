@@ -143,21 +143,17 @@ function validateSubmit(
     // Protective on entry bracket preview
   }
 
-  if (o.role === 'stopLoss' || o.stopLoss != null) {
-    const sl = o.role === 'stopLoss' ? level : o.stopLoss;
+  // Bracket children (role set) are validated against market / parent at attach time;
+  // their own price is the protective level, not the entry.
+  if (!o.role && o.stopLoss != null) {
     const entry = level ?? (o.side === 'BUY' ? ask : bid);
-    if (sl != null) {
-      if (o.side === 'BUY' && sl >= entry) return 'PROTECTIVE_WRONG_SIDE';
-      if (o.side === 'SELL' && sl <= entry) return 'PROTECTIVE_WRONG_SIDE';
-    }
+    if (o.side === 'BUY' && o.stopLoss >= entry) return 'PROTECTIVE_WRONG_SIDE';
+    if (o.side === 'SELL' && o.stopLoss <= entry) return 'PROTECTIVE_WRONG_SIDE';
   }
-  if (o.role === 'takeProfit' || o.takeProfit != null) {
-    const tp = o.role === 'takeProfit' ? level : o.takeProfit;
+  if (!o.role && o.takeProfit != null) {
     const entry = level ?? (o.side === 'BUY' ? ask : bid);
-    if (tp != null) {
-      if (o.side === 'BUY' && tp <= entry) return 'PROTECTIVE_WRONG_SIDE';
-      if (o.side === 'SELL' && tp >= entry) return 'PROTECTIVE_WRONG_SIDE';
-    }
+    if (o.side === 'BUY' && o.takeProfit <= entry) return 'PROTECTIVE_WRONG_SIDE';
+    if (o.side === 'SELL' && o.takeProfit >= entry) return 'PROTECTIVE_WRONG_SIDE';
   }
 
   return null;

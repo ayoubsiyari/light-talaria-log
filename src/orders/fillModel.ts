@@ -157,8 +157,10 @@ export function fillKindForOrder(
   type: 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT' | 'TRAILING_STOP',
   role?: 'entry' | 'stopLoss' | 'takeProfit' | 'stop',
 ): FillKind | null {
-  if (role === 'stopLoss') return side === 'BUY' ? 'LONG_SL' : 'SHORT_SL';
-  if (role === 'takeProfit') return side === 'BUY' ? 'LONG_TP' : 'SHORT_TP';
+  // Protective orders use position-exit fill rules. Order.side is the close side
+  // (SELL closes a long → LONG_SL/LONG_TP; BUY closes a short → SHORT_*).
+  if (role === 'stopLoss') return side === 'SELL' ? 'LONG_SL' : 'SHORT_SL';
+  if (role === 'takeProfit') return side === 'SELL' ? 'LONG_TP' : 'SHORT_TP';
 
   if (type === 'MARKET') return side === 'BUY' ? 'BUY_MARKET' : 'SELL_MARKET';
   if (type === 'LIMIT') return side === 'BUY' ? 'BUY_LIMIT' : 'SELL_LIMIT';

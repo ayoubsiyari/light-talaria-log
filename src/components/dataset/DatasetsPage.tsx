@@ -5,13 +5,15 @@ import {
   datasetLabel,
   deleteDataset,
   downloadAndStoreDataset,
+  findSamePairTfDataset,
   listDatasets,
   validateDownloadDates,
 } from '@/datasets/datasetStore';
+import { splitRangeByYear } from '@/datasets/downloadChunks';
 import { ingestRemoteDatasetAllTfs } from '@/datasets/ingestRemoteChunks';
 import {
   assessDownloadSize,
-  HARD_MAX_ESTIMATED_ROWS,
+  HARD_MAX_CHUNKED_ESTIMATED_ROWS,
   MAX_DOWNLOAD_SPAN_DAYS,
 } from '@/datasets/ingestLimits';
 import {
@@ -112,6 +114,16 @@ export function DatasetsPage({ onGoSessions }: DatasetsPageProps) {
     [startDate, endDate, timeframe],
   );
 
+  const yearChunks = useMemo(
+    () => splitRangeByYear(startDate, endDate),
+    [startDate, endDate],
+  );
+
+  const existingSame = useMemo(
+    () => findSamePairTfDataset(pair, timeframe),
+    [pair, timeframe, datasets],
+  );
+
   const handleDownload = async () => {
     const dateError = validateDownloadDates(startDate, endDate);
     if (dateError) {
@@ -125,8 +137,11 @@ export function DatasetsPage({ onGoSessions }: DatasetsPageProps) {
       return;
     }
     if (sizeAssess.level === 'confirm') {
+      const mergeNote = existingSame
+        ? `\n\nWill merge into existing dataset:\n${datasetLabel(existingSame)}`
+        : '\n\nAll years save into one dataset.';
       const ok = window.confirm(
-        `${sizeAssess.message}\n\nThis can take several minutes and use significant disk space. Continue?`,
+        `${sizeAssess.message}${mergeNote}\n\nThis can take several minutes and use significant disk space. Continue?`,
       );
       if (!ok) {
         setStatus(null);
@@ -135,7 +150,11 @@ export function DatasetsPage({ onGoSessions }: DatasetsPageProps) {
       }
     }
     setError(null);
-    setStatus('Downloading from Dukascopy…');
+    setStatus(
+      yearChunks.length > 1
+        ? `Downloading ${yearChunks.length} year chunks from Dukascopy…`
+        : 'Downloading from Dukascopy…',
+    );
     setDownloading(true);
     try {
       const dataset = await downloadAndStoreDataset({
@@ -143,9 +162,18 @@ export function DatasetsPage({ onGoSessions }: DatasetsPageProps) {
         timeframe,
         startDate,
         endDate,
+        mergeIntoSamePairTf: true,
+        onProgress: (p) => {
+          setStatus(
+            `Year ${p.label} (${p.chunkIndex + 1}/${p.chunkTotal}) · +${p.rowsInChunk.toLocaleString()} · total ${p.rowsSoFar.toLocaleString()} bars`,
+          );
+        },
       });
       refresh();
-      setStatus(`Saved ${dataset.rowCount.toLocaleString()} bars · ${datasetLabel(dataset)}`);
+      setStatus(
+        `Saved ${dataset.rowCount.toLocaleString()} bars · ${datasetLabel(dataset)}` +
+          (yearChunks.length > 1 ? ` · ${yearChunks.length} years` : ''),
+      );
     } catch (err) {
       setStatus(null);
       setError(err instanceof Error ? err.message : 'Download failed');
@@ -206,8 +234,10 @@ export function DatasetsPage({ onGoSessions }: DatasetsPageProps) {
             <Card.Title className="text-lg">Download from Dukascopy</Card.Title>
             <Card.Description className="text-muted text-sm">
               Prefer <strong className="text-foreground font-medium">1 Minute</strong> — higher
-              timeframes are built from it on the chart. Max {MAX_DOWNLOAD_SPAN_DAYS} days · ~
-              {HARD_MAX_ESTIMATED_ROWS.toLocaleString()} bars. Needs{' '}
+              TFs are built on the chart. Multi-year ranges download{' '}
+              <strong className="text-foreground font-medium">year-by-year</strong> into one
+              dataset (same pair/TF merges). Max {MAX_DOWNLOAD_SPAN_DAYS} days · ~
+              {HARD_MAX_CHUNKED_ESTIMATED_ROWS.toLocaleString()} bars. Needs{' '}
               <code className="text-xs">npm run dev</code>.
             </Card.Description>
           </Card.Header>
@@ -301,6 +331,17 @@ export function DatasetsPage({ onGoSessions }: DatasetsPageProps) {
               </p>
             )}
 
+            {existingSame && !downloading && (
+              <p className="text-xs text-muted" role="status">
+                Will merge into existing: {datasetLabel(existingSame)}
+              </p>
+            )}
+            {yearChunks.length > 1 && !downloading && (
+              <p className="text-xs text-muted" role="status">
+                {yearChunks.length} year chunks: {yearChunks.map((c) => c.label).join(', ')}
+              </p>
+            )}
+
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-2">
               <Button
                 variant="primary"
@@ -310,9 +351,11 @@ export function DatasetsPage({ onGoSessions }: DatasetsPageProps) {
               >
                 {downloading
                   ? 'Downloading…'
-                  : sizeAssess.level === 'confirm'
-                    ? 'Download (confirm)…'
-                    : 'Download'}
+                  : yearChunks.length > 1
+                    ? `Download ${yearChunks.length} years…`
+                    : sizeAssess.level === 'confirm'
+                      ? 'Download (confirm)…'
+                      : 'Download'}
               </Button>
               <p className="text-xs text-muted min-w-0 break-words">
                 {pair} · {timeframe} · {startDate} → {endDate}

@@ -23,6 +23,21 @@ export interface DownloadDatasetInput {
   timeframe: Timeframe;
   startDate: string;
   endDate: string;
+  /**
+   * When true (default), merge into an existing Dukascopy catalog entry with the
+   * same pair + timeframe instead of creating a second dataset.
+   */
+  mergeIntoSamePairTf?: boolean;
+  /** Progress while downloading year chunks. */
+  onProgress?: (p: {
+    chunkIndex: number;
+    chunkTotal: number;
+    from: string;
+    to: string;
+    label: string;
+    rowsInChunk: number;
+    rowsSoFar: number;
+  }) => void;
 }
 
 /** Response from POST /api/dukascopy */

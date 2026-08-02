@@ -1,15 +1,25 @@
 import type { Timeframe } from '@/types/ui';
 
-/** Calendar-day hard cap (client + server). */
-export const MAX_DOWNLOAD_SPAN_DAYS = 365;
+/**
+ * Max calendar span for a download job (client).
+ * Dukascopy API still fetches ≤365 days per request; the client splits by year.
+ */
+export const MAX_DOWNLOAD_SPAN_DAYS = 3650; // ~10 years
+
+/** Per-request cap (must match server/dukascopyPlugin.ts). */
+export const MAX_CHUNK_SPAN_DAYS = 365;
 
 /**
  * Estimated row thresholds (upper-bound calendar minutes, not FX sessions).
  * Soft warn → confirm → hard block.
+ * Single-request path used HARD_MAX; chunked year-by-year uses CHUNKED hard max.
  */
 export const WARN_ESTIMATED_ROWS = 100_000;
 export const CONFIRM_ESTIMATED_ROWS = 250_000;
+/** Soft ceiling for one Dukascopy HTTP call (~1y 1m). */
 export const HARD_MAX_ESTIMATED_ROWS = 550_000;
+/** Total bars across all year chunks into one dataset. */
+export const HARD_MAX_CHUNKED_ESTIMATED_ROWS = 2_000_000;
 
 /** CSV upload size / rough row estimate caps. */
 export const MAX_CSV_UPLOAD_BYTES = 80 * 1024 * 1024; // 80 MB
@@ -74,20 +84,25 @@ export function assessDownloadSize(
   timeframe: Timeframe,
 ): IngestLimitResult {
   const estimatedRows = estimateDownloadRows(startDate, endDate, timeframe);
-  if (estimatedRows > HARD_MAX_ESTIMATED_ROWS) {
+  const days = spanDays(startDate, endDate);
+  const chunked = days > MAX_CHUNK_SPAN_DAYS;
+
+  if (estimatedRows > HARD_MAX_CHUNKED_ESTIMATED_ROWS) {
     return {
       level: 'block',
       estimatedRows,
-      error: `Estimated ~${formatRowCount(estimatedRows)} bars exceeds the safe client limit (${formatRowCount(HARD_MAX_ESTIMATED_ROWS)}). Shorten the range or use a higher timeframe.`,
+      error: `Estimated ~${formatRowCount(estimatedRows)} bars exceeds the chunked limit (${formatRowCount(HARD_MAX_CHUNKED_ESTIMATED_ROWS)}). Shorten the range or use a higher timeframe.`,
       message: null,
     };
   }
-  if (estimatedRows >= CONFIRM_ESTIMATED_ROWS) {
+  if (estimatedRows >= CONFIRM_ESTIMATED_ROWS || chunked) {
     return {
       level: 'confirm',
       estimatedRows,
       error: null,
-      message: `Large download: ~${formatRowCount(estimatedRows)} bars (upper bound). Confirm to continue.`,
+      message: chunked
+        ? `Multi-year download: ~${formatRowCount(estimatedRows)} bars — fetched year-by-year into one dataset.`
+        : `Large download: ~${formatRowCount(estimatedRows)} bars (upper bound). Confirm to continue.`,
     };
   }
   if (estimatedRows >= WARN_ESTIMATED_ROWS) {

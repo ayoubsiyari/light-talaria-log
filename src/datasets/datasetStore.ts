@@ -1,11 +1,17 @@
 import {
   deleteDatasetCsv,
   deleteSeriesForDataset,
+  getDatasetCsv,
   openDb,
   putDatasetCsv,
 } from '@/data/idbStore';
 import {
+  mergeCsvParts,
+  splitRangeByYear,
+} from '@/datasets/downloadChunks';
+import {
   assessDownloadSize,
+  HARD_MAX_ESTIMATED_ROWS,
   MAX_DOWNLOAD_SPAN_DAYS,
 } from '@/datasets/ingestLimits';
 import type {
@@ -104,24 +110,40 @@ export function registerRemoteDataset(remote: RemoteDatasetMeta): DownloadedData
   return dataset;
 }
 
-/** Download from Vite /api/dukascopy, persist catalog + CSV blob. */
-export async function downloadAndStoreDataset(
-  input: DownloadDatasetInput,
-): Promise<DownloadedDataset> {
-  const dateError = validateDownloadDates(input.startDate, input.endDate);
-  if (dateError) throw new Error(dateError);
+/** Existing Dukascopy catalog row for the same pair + timeframe (for merge). */
+export function findSamePairTfDataset(
+  pair: PairSymbol,
+  timeframe: Timeframe,
+): DownloadedDataset | null {
+  return (
+    readAll().find(
+      (d) => d.source === 'dukascopy' && d.pair === pair && d.timeframe === timeframe,
+    ) ?? null
+  );
+}
 
-  const size = assessDownloadSize(input.startDate, input.endDate, input.timeframe);
-  if (size.level === 'block' && size.error) throw new Error(size.error);
+async function fetchDukascopyYear(opts: {
+  pair: PairSymbol;
+  timeframe: Timeframe;
+  from: string;
+  to: string;
+}): Promise<{ csv: string; rowCount: number }> {
+  // Guard each HTTP call — server also enforces ≤365d / ~550k est.
+  const size = assessDownloadSize(opts.from, opts.to, opts.timeframe);
+  if (size.estimatedRows > HARD_MAX_ESTIMATED_ROWS) {
+    throw new Error(
+      `Year chunk ${opts.from}→${opts.to} is too large (~${size.estimatedRows.toLocaleString()} bars). Use a higher timeframe.`,
+    );
+  }
 
   const res = await fetch('/api/dukascopy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      pair: input.pair,
-      timeframe: input.timeframe,
-      from: input.startDate,
-      to: input.endDate,
+      pair: opts.pair,
+      timeframe: opts.timeframe,
+      from: opts.from,
+      to: opts.to,
     }),
   });
 
@@ -137,30 +159,106 @@ export async function downloadAndStoreDataset(
     }
   }
   if (!res.ok) {
+    // Empty weekend year → skip (404); hard errors bubble.
+    if (res.status === 404) {
+      return { csv: '', rowCount: 0 };
+    }
     throw new Error(payload?.error ?? `Download failed (${res.status})`);
   }
   if (!payload?.csv) {
+    return { csv: '', rowCount: 0 };
+  }
+  return { csv: payload.csv, rowCount: payload.rowCount };
+}
+
+/**
+ * Download from Dukascopy year-by-year, merge into one CSV + one catalog entry.
+ * If a Dukascopy dataset already exists for the same pair/TF, extends it (same id).
+ */
+export async function downloadAndStoreDataset(
+  input: DownloadDatasetInput,
+): Promise<DownloadedDataset> {
+  const dateError = validateDownloadDates(input.startDate, input.endDate);
+  if (dateError) throw new Error(dateError);
+
+  const size = assessDownloadSize(input.startDate, input.endDate, input.timeframe);
+  if (size.level === 'block' && size.error) throw new Error(size.error);
+
+  const chunks = splitRangeByYear(input.startDate, input.endDate);
+  if (chunks.length === 0) throw new Error('Invalid date range.');
+
+  const merge = input.mergeIntoSamePairTf !== false;
+  const existing = merge
+    ? findSamePairTfDataset(input.pair, input.timeframe)
+    : null;
+
+  const csvParts: string[] = [];
+  if (existing) {
+    const db = await openDb();
+    const prev = await getDatasetCsv(db, existing.id);
+    if (prev) csvParts.push(prev);
+  }
+
+  let rowsSoFar = 0;
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i]!;
+    const { csv, rowCount } = await fetchDukascopyYear({
+      pair: input.pair,
+      timeframe: input.timeframe,
+      from: chunk.from,
+      to: chunk.to,
+    });
+    if (csv) csvParts.push(csv);
+    rowsSoFar += rowCount;
+    input.onProgress?.({
+      chunkIndex: i,
+      chunkTotal: chunks.length,
+      from: chunk.from,
+      to: chunk.to,
+      label: chunk.label,
+      rowsInChunk: rowCount,
+      rowsSoFar,
+    });
+  }
+
+  const { csv, rowCount } = mergeCsvParts(csvParts);
+  if (rowCount === 0) {
     throw new Error(
-      payload?.error ??
-        'Download returned empty CSV. Confirm `npm run dev` is running and the date range has market data.',
+      'No market data for this range (weekend/holiday, or market closed). Try weekdays or a wider range.',
     );
   }
 
+  const startDate = existing
+    ? existing.startDate < input.startDate
+      ? existing.startDate
+      : input.startDate
+    : input.startDate;
+  const endDate = existing
+    ? existing.endDate > input.endDate
+      ? existing.endDate
+      : input.endDate
+    : input.endDate;
+
   const dataset: DownloadedDataset = {
-    id: newId(),
+    id: existing?.id ?? newId(),
     pair: input.pair,
     timeframe: input.timeframe,
-    startDate: input.startDate,
-    endDate: input.endDate,
-    rowCount: payload.rowCount,
+    startDate,
+    endDate,
+    rowCount,
     source: 'dukascopy',
-    createdAt: Date.now(),
+    createdAt: existing?.createdAt ?? Date.now(),
   };
 
   const db = await openDb();
-  await putDatasetCsv(db, dataset.id, payload.csv);
+  await putDatasetCsv(db, dataset.id, csv);
+  // Force re-ingest of bar chunks on next session open (CSV changed).
+  await deleteSeriesForDataset(db, dataset.id);
 
-  const next = [dataset, ...readAll()].slice(0, MAX_DATASETS);
+  const next = [dataset, ...readAll().filter((d) => d.id !== dataset.id)].slice(
+    0,
+    MAX_DATASETS,
+  );
   writeAll(next);
   return dataset;
 }

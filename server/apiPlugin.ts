@@ -287,23 +287,30 @@ async function handleApi(
   sendJson(res, 404, { error: 'Not found', path: pathname });
 }
 
-/** Vite middleware: /api/v1/* Phase 11 API stub. */
+function attachTalariaApi(middlewares: Connect.Server): void {
+  ensureChunkStore();
+  middlewares.use((req, res, next) => {
+    const pathOnly = req.url?.split('?')[0] ?? '';
+    if (!pathOnly.startsWith('/api/v1')) {
+      next();
+      return;
+    }
+    void handleApi(req, res).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : 'Internal error';
+      sendJson(res, 500, { error: message });
+    });
+  });
+}
+
+/** Vite middleware: /api/v1/* Phase 11 API stub (dev + preview). */
 export function talariaApiPlugin(): Plugin {
   return {
     name: 'talaria-log-api',
     configureServer(server) {
-      ensureChunkStore();
-      server.middlewares.use((req, res, next) => {
-        const pathOnly = req.url?.split('?')[0] ?? '';
-        if (!pathOnly.startsWith('/api/v1')) {
-          next();
-          return;
-        }
-        void handleApi(req, res).catch((err: unknown) => {
-          const message = err instanceof Error ? err.message : 'Internal error';
-          sendJson(res, 500, { error: message });
-        });
-      });
+      attachTalariaApi(server.middlewares);
+    },
+    configurePreviewServer(server) {
+      attachTalariaApi(server.middlewares);
     },
   };
 }

@@ -13,6 +13,7 @@ import type {
   DownloadedDataset,
   DukascopyDownloadResponse,
 } from '@/types/dataset';
+import { newId } from '@/utils/uuid';
 import type { RemoteDatasetMeta } from '@/types/remoteApi';
 import { PAIR_OPTIONS, type PairSymbol } from '@/types/session';
 import type { Timeframe } from '@/types/ui';
@@ -146,7 +147,7 @@ export async function downloadAndStoreDataset(
   }
 
   const dataset: DownloadedDataset = {
-    id: crypto.randomUUID(),
+    id: newId(),
     pair: input.pair,
     timeframe: input.timeframe,
     startDate: input.startDate,

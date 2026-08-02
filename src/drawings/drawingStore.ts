@@ -1,3 +1,4 @@
+import { newId } from '@/utils/uuid';
 import { TOOLS, defaultStyleFor, type DrawingToolId } from './toolRegistry';
 import { cloneStyle, type DrawingStyle } from './drawingStyle';
 import { defaultMetaFor, resolveMeta } from './toolSettings';
@@ -44,7 +45,7 @@ function migrateLegacy(raw: unknown): Drawing[] {
     if (!type) continue;
     const points = Array.isArray(o.points) ? (o.points as DrawingPoint[]) : [];
     out.push({
-      id: typeof o.id === 'string' ? o.id : crypto.randomUUID(),
+      id: typeof o.id === 'string' ? o.id : newId(),
       type,
       points,
       style: defaultStyleFor(type),
@@ -60,7 +61,7 @@ function normalizeDrawing(raw: unknown): Drawing | null {
   const type = o.type as DrawingToolId;
   if (!(type in TOOLS)) return null;
   return {
-    id: typeof o.id === 'string' ? o.id : crypto.randomUUID(),
+    id: typeof o.id === 'string' ? o.id : newId(),
     type,
     points: o.points as DrawingPoint[],
     style: cloneStyle(o.style as Partial<DrawingStyle> | undefined),
@@ -112,7 +113,7 @@ export function createDrawing(
   },
 ): Drawing {
   return {
-    id: crypto.randomUUID(),
+    id: newId(),
     type,
     points,
     style: cloneStyle({ ...defaultStyleFor(type), ...extras?.style }),

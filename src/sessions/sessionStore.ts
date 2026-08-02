@@ -5,6 +5,7 @@ import type {
   SessionLeg,
 } from '@/types/session';
 import type { Timeframe } from '@/types/ui';
+import { newId } from '@/utils/uuid';
 
 const STORAGE_KEY = 'fast-chart.sessions.v1';
 const MAX_SESSIONS = 50;
@@ -92,7 +93,7 @@ export function createSession(input: CreateSessionInput): BacktestSession {
       ? `${primary.pair} ${input.timeframe}`
       : `${input.legs.map((l) => l.pair).join(' + ')} ${input.timeframe}`;
   const session: BacktestSession = {
-    id: crypto.randomUUID(),
+    id: newId(),
     name: input.name.trim() || label,
     pair: primary.pair,
     timeframe: input.timeframe,

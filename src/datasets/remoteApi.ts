@@ -30,11 +30,28 @@ async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
     credentials: 'include', // Level-2 session cookie
     headers,
   });
-  const payload = (await res.json()) as T & { error?: string };
+  const raw = await res.text();
+  let payload: (T & { error?: string }) | null = null;
+  if (raw.trim()) {
+    try {
+      payload = JSON.parse(raw) as T & { error?: string };
+    } catch {
+      throw new Error(
+        res.ok
+          ? `API ${path} returned non-JSON`
+          : `API ${res.status} ${path} (empty or non-JSON — use npm run dev, or saas:dev with API up)`,
+      );
+    }
+  }
   if (!res.ok) {
     throw new Error(
-      typeof payload.error === 'string' ? payload.error : `API ${res.status} ${path}`,
+      typeof payload?.error === 'string'
+        ? payload.error
+        : `API ${res.status} ${path}${res.status === 404 ? ' — stub/API not mounted on this server' : ''}`,
     );
+  }
+  if (payload == null) {
+    throw new Error(`API ${path} returned an empty body`);
   }
   return payload;
 }

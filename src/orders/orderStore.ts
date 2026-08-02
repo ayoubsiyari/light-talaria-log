@@ -1,4 +1,5 @@
 import type { ChartOrder, OrderSide } from '@/types/order';
+import { newId } from '@/utils/uuid';
 
 const STORAGE_KEY = 'talaria.orders.v1';
 
@@ -45,7 +46,7 @@ export function createMockOrder(input: {
   const reward = pip * 40;
   const dir = input.side === 'buy' ? 1 : -1;
   return {
-    id: crypto.randomUUID(),
+    id: newId(),
     sessionId: input.sessionId,
     pair: input.pair,
     side: input.side,

@@ -6,33 +6,31 @@ import { dukascopyApiPlugin } from './server/dukascopyPlugin';
 import { talariaApiPlugin } from './server/apiPlugin';
 
 /**
- * When TALARIA_API_PROXY is set, /api/v1 → Level-2 Fastify API.
- * Otherwise keep the local disk stub plugin (zero-Docker chart work).
+ * Always mount the disk `/api/v1` stub (dev + preview).
+ * When TALARIA_API_PROXY is set, Vite's server.proxy takes precedence in `npm run saas:dev`.
  */
-function saasApiPlugins(proxyTarget: string | undefined): Plugin[] {
-  if (proxyTarget) {
-    return [
-      {
-        name: 'talaria-saas-proxy-log',
-        configureServer() {
-          console.log(`[saas] proxying /api/v1 → ${proxyTarget}`);
-        },
-      },
-    ];
-  }
-  return [talariaApiPlugin()];
+function saasProxyLogPlugin(proxyTarget: string | undefined): Plugin | null {
+  if (!proxyTarget) return null;
+  return {
+    name: 'talaria-saas-proxy-log',
+    configureServer() {
+      console.log(`[saas] proxying /api/v1 → ${proxyTarget}`);
+    },
+  };
 }
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const proxyTarget = process.env.TALARIA_API_PROXY || env.TALARIA_API_PROXY || '';
+  const proxyLog = saasProxyLogPlugin(proxyTarget || undefined);
 
   return {
     plugins: [
       react(),
       tailwindcss(),
       dukascopyApiPlugin(),
-      ...saasApiPlugins(proxyTarget || undefined),
+      talariaApiPlugin(),
+      ...(proxyLog ? [proxyLog] : []),
     ],
     resolve: {
       alias: {

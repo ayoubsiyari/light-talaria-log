@@ -597,7 +597,8 @@ export default function App() {
       cursorTime: rs.cursorTime,
       span: sess?.span,
     });
-    if (updated) {
+    // Never setState while playing — App re-renders reset chrome / fight DOM scrub.
+    if (updated && (force || !rs.playing)) {
       setSession((prev) => (prev && prev.id === id ? { ...prev, ...updated } : prev));
     }
   }, []);
@@ -619,9 +620,13 @@ export default function App() {
         const views = sessionRef.current.getViews();
         if (opts?.playEdge) detachedPanesRef.current.clear();
 
+        let missingPane = false;
         for (const pane of panesRef.current) {
           const chart = getChart(pane.id);
-          if (!chart) continue;
+          if (!chart) {
+            missingPane = true;
+            continue;
+          }
           const v = views[pane.id];
           const paneDetached = detachedPanesRef.current.has(pane.id);
 
@@ -645,10 +650,19 @@ export default function App() {
             // Append/patch revealed bars as cursor advances.
             chart.syncReplayReveal(v.bars, cursorTime);
           } else {
+            missingPane = true;
             // Cache/view not ready for this pane — still advance cursor on
             // whatever bars the engine already has (paint-time mask).
             chart.setReplayCursorTime(cursorTime);
           }
+        }
+        // Secondary panes after layout can miss warm-cache coverage; recover once.
+        if (missingPane && opts?.playEdge) {
+          void sessionRef.current.refreshViews().then(() => {
+            if (!viewportReloadEnabledRef.current) return;
+            if (!replayRef.current.get().playing) return;
+            syncEnginesFromSession();
+          });
         }
         // Chrome scrubber / label — direct DOM, not useState
         const rs = replayRef.current.get();
@@ -670,7 +684,7 @@ export default function App() {
       sessionRef.current.setCursorTime(cursorTime, { follow, react: true });
       commitSessionViews();
     },
-    [catalog, commitSessionViews],
+    [catalog, commitSessionViews, syncEnginesFromSession],
   );
 
   const loadSessionData = useCallback(
@@ -998,7 +1012,14 @@ export default function App() {
     setChartLayout(layout);
     if (!catalog || seriesRef.current.length === 0) return;
     const count = paneCountForLayout(layout);
-    const anchor = syncStoreRef.current?.get().timeRange?.toTime ?? catalog.timeEnd;
+    const sessNow = sessionRef.current.get();
+    // Multi-pane must load around the replay cursor — catalog.timeEnd seeds the
+    // wrong window and leaves secondary pairs empty until a late async fill.
+    const anchor =
+      sessNow?.cursorTime ??
+      replayRef.current.get().cursorTime ??
+      syncStoreRef.current?.get().timeRange?.toTime ??
+      catalog.timeEnd;
     const multiPair = seriesRef.current.length > 1 && !layoutSyncRef.current.symbol;
     const syncInterval = layoutSyncRef.current.interval;
     const activeTf = activePane?.selectedTf ?? activePane?.timeframe ?? catalog.baseTf;
@@ -1040,11 +1061,12 @@ export default function App() {
         );
         if (pane) next.push(pane);
       }
-      panesRef.current = next;
-      setPanes(next);
       const sess = sessionRef.current.get();
       if (sess) {
-        const cfgs: Record<string, { datasetId: string; tf: Timeframe; selectedTf: Timeframe; pair: string }> = {};
+        const cfgs: Record<
+          string,
+          { datasetId: string; tf: Timeframe; selectedTf: Timeframe; pair: string }
+        > = {};
         for (const p of next) {
           cfgs[p.id] = {
             datasetId: p.datasetId,
@@ -1052,15 +1074,34 @@ export default function App() {
             selectedTf: p.selectedTf,
             pair: p.pair,
           };
-          // Seed warm cache so multi-pane replay can extendReveal immediately.
-          if (p.bars.length > 0) {
-            warmCache.put(p.datasetId, p.timeframe, p.bars, sess.cursorTime);
-          }
         }
-        sessionRef.current.replacePanes(cfgs, next[0]?.id ?? 'pane-0');
-        void sessionRef.current.topUpCaches();
+        // Await fill+derive around cursor so all panes have revealed bars before paint.
+        await sessionRef.current.replacePanes(cfgs, next[0]?.id ?? 'pane-0');
+        commitSessionViews();
+        syncEnginesFromSession();
+        const views = sessionRef.current.getViews();
+        const settled = next.map((p) => {
+          const v = views[p.id];
+          if (!v || v.bars.length === 0) return p;
+          return {
+            ...p,
+            bars: v.bars as ChartBar[],
+            range: v.range,
+            timeframe: v.timeframe,
+            selectedTf: v.selectedTf,
+            totalBars: v.bars.length,
+          };
+        });
+        panesRef.current = settled;
+        setPanes(settled);
+        for (const p of settled) {
+          if (p.bars.length > 0) replayBufferRef.current.set(p.id, p.bars);
+        }
+      } else {
+        panesRef.current = next;
+        setPanes(next);
       }
-      syncReplayClockTf(next);
+      syncReplayClockTf(panesRef.current);
       setActivePaneId((cur) => {
         const idx = Number(cur.replace('pane-', ''));
         return Number.isFinite(idx) && idx < count ? cur : 'pane-0';
@@ -1806,7 +1847,11 @@ export default function App() {
               placement={placement}
               selectedDrawingId={selectedDrawingId}
               drawingsHidden={drawingsHidden}
-              replayCursorTime={replayState.cursorTime}
+              // During play App drives cursor via syncReplayReveal — do not pass a
+              // stale React cursor (re-renders would yank cameras / look like pause).
+              replayCursorTime={
+                replayState.playing ? null : replayState.cursorTime
+              }
               // Keep React follow=true while playing so useChart does not clobber
               // engines; per-pane detach is handled imperatively below.
               replayFollow={replayState.playing}

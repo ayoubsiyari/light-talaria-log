@@ -665,6 +665,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-02 | Step 13 wiring: Datasets Import from API, all-TF remote→IDB, catalog `source:'remote'`, rehydrate + delete chunks | Manual import → Create Session; Postgres/CDN later |
 | 2026-08-02 | Fix pass: backtest pane filter + dense markers + cancel abort; empty chart (no fake bars); soft journal nav; Phase 6 polish; play-pan prefetch | Manual: multi-pane backtest, Cancel mid-run, Import API, Journal↔chart |
 | 2026-08-02 | Persist replay `cursorTime`/`span` on session (pause/seek/exit/unload); reopen resumes last candle | Optional “Restart from start” control |
+| 2026-08-02 | Fix play chrome fight (uncontrolled scrub/label) + multi-pane stuck (fill around cursor on layout) | Manual 3-pane play at 4x |
 | 2026-08-02 | Level-2 SaaS full: `docs/SAAS-LEVEL-2.md`, Docker (PG/Redis/MinIO), Fastify API, auth, jobs, Datasets login | `npm run saas:up` → migrate/seed/api → `saas:dev` |
 
 ---

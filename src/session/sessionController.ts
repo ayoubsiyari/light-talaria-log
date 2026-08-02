@@ -254,12 +254,29 @@ export function createSessionController() {
         .then(() => rederiveAsync([paneId]));
     },
 
-    replacePanes(panes: Record<string, PaneConfig>, activePaneId: string): void {
+    /**
+     * Swap pane set (layout change). Fills caches around the cursor first so
+     * multi-pair panes are not empty/stuck until a later async race completes.
+     */
+    async replacePanes(
+      panes: Record<string, PaneConfig>,
+      activePaneId: string,
+    ): Promise<void> {
       if (!state) return;
       state = { ...state, panes: { ...panes }, activePaneId };
+      const s = state;
+      const datasets = new Set(Object.values(s.panes).map((p) => p.datasetId));
+      const tfs = new Set<Timeframe>([s.baseTf]);
+      for (const p of Object.values(s.panes)) tfs.add(p.tf);
+      await Promise.all(
+        [...datasets].flatMap((ds) =>
+          [...tfs].map((tf) => warmCache.fill(ds, tf, s.cursorTime, s.span)),
+        ),
+      );
+      if (!state) return;
       rederiveSync();
+      await rederiveAsync();
       notify();
-      void rederiveAsync();
     },
 
     /**
@@ -282,6 +299,16 @@ export function createSessionController() {
           [...tfs].map((tf) => warmCache.fill(ds, tf, s.cursorTime, s.span)),
         ),
       );
+    },
+
+    /** Fill caches + rederive (layout recovery / stuck multi-pane). */
+    async refreshViews(paneIds?: string[]): Promise<void> {
+      if (!state) return;
+      await this.topUpCaches();
+      if (!state) return;
+      rederiveSync();
+      await rederiveAsync(paneIds);
+      notify();
     },
   };
 }

@@ -319,7 +319,8 @@ export function useChart(
 
   useEffect(() => {
     const instance = instanceRef.current;
-    if (!instance || options.replayCursorTime === undefined) return;
+    // null/undefined = App owns cursor imperatively (playback) — do not clear.
+    if (!instance || typeof options.replayCursorTime !== 'number') return;
     instance.setReplayCursorTime(options.replayCursorTime);
   }, [options.replayCursorTime]);
 

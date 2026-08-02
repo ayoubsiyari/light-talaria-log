@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@heroui/react';
 import {
   IconPause,
@@ -93,6 +93,8 @@ export function BottomBar({
   const [now, setNow] = useState(() => new Date());
   const [jumpOpen, setJumpOpen] = useState(false);
   const [jumpValue, setJumpValue] = useState('');
+  const scrubRef = useRef<HTMLInputElement>(null);
+  const cursorLabelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 1000);
@@ -104,11 +106,23 @@ export function BottomBar({
     1,
     Math.max(0, (replay.cursorTime - replay.startTime) / span),
   );
+  const scrubValue = Math.round(progress * 1000);
 
   const cursorLabel = useMemo(
     () => formatCursorLabel(replay.cursorTime),
     [replay.cursorTime],
   );
+
+  // While paused/seeked, sync scrub + label from React props.
+  // While playing, App owns both via DOM — the 1s clock tick must not reset them
+  // (that looked like play/pause jumping and yanked the scrubber to the start).
+  useEffect(() => {
+    if (replay.playing) return;
+    const scrub = scrubRef.current;
+    if (scrub) scrub.value = String(scrubValue);
+    const label = cursorLabelRef.current;
+    if (label) label.textContent = cursorLabel;
+  }, [replay.playing, scrubValue, cursorLabel]);
 
   const tabs = useMemo(() => buildTabs(tradeCount), [tradeCount]);
 
@@ -129,20 +143,20 @@ export function BottomBar({
       {/* Scrub track — thin TV-style progress under the chart */}
       <div className="flex items-center gap-2 h-7 px-2 border-b border-[color:var(--tv-panel-line)]">
         <button
+          ref={cursorLabelRef}
           type="button"
           id="replay-cursor-label"
           className="shrink-0 h-6 px-1.5 rounded text-[11px] text-muted hover:text-foreground hover:bg-background/70 tabular-nums"
           title="Jump to date"
           onClick={openJump}
-        >
-          {cursorLabel}
-        </button>
+        />
         <input
+          ref={scrubRef}
           id="replay-scrub"
           type="range"
           min={0}
           max={1000}
-          value={Math.round(progress * 1000)}
+          defaultValue={scrubValue}
           onChange={(e) => {
             const t = replay.startTime + (Number(e.target.value) / 1000) * span;
             onSeek(t);

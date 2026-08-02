@@ -651,22 +651,26 @@ export default function App() {
             chart.setReplayFollow(true);
           }
 
-          if (opts?.playEdge && v && v.bars.length > 0 && !paneDetached) {
-            // Restore a real zoom window — start-of-series reveal often has 1 bar
-            // which previously collapsed the camera to a single candle width.
-            const span = Math.max(10, sessionRef.current.get()?.span ?? 120);
-            const anchor = Math.max(0, v.bars.length - 1);
-            const rightPad = Math.floor(span * 0.1);
-            const toIndex = anchor + 1 + rightPad;
-            chart.setVisibleRange(toIndex - span, toIndex, { silent: true });
-          }
-
           if (v && v.bars.length > 0) {
             // Append/patch revealed bars as cursor advances.
+            // Follow uses the same right-anchored camera as pause (no Play jump).
             chart.syncReplayReveal(v.bars, cursorTime);
           } else {
             // Cache/view not ready — advance paint mask on whatever the engine has.
             chart.setReplayCursorTime(cursorTime);
+          }
+
+          if (opts?.playEdge && v && v.bars.length > 0 && !paneDetached) {
+            // Ensure zoom is not a collapsed 1-bar window after a cold start.
+            const span = Math.max(10, sessionRef.current.get()?.span ?? 120);
+            const live = chart.getVisibleRange();
+            const liveSpan = live.toIndex - live.fromIndex;
+            if (liveSpan < 10) {
+              const anchor = Math.max(0, v.bars.length - 1);
+              const rightPad = Math.floor(span * 0.1);
+              const toIndex = anchor + 1 + rightPad;
+              chart.setVisibleRange(toIndex - span, toIndex, { silent: true });
+            }
           }
         }
         // Chrome scrubber / label — direct DOM, not useState
@@ -686,11 +690,21 @@ export default function App() {
         return;
       }
 
+      // Lock session.span to the live engine zoom so pause commit uses the same
+      // right-anchored window Play was following (no scale jump).
+      const focus =
+        panesRef.current.find((p) => p.id === activePaneId) ?? panesRef.current[0];
+      const live = focus ? getChart(focus.id)?.getVisibleRange() : null;
+      if (live) {
+        sessionRef.current.setSpan(
+          Math.max(10, live.toIndex - live.fromIndex),
+        );
+      }
       sessionRef.current.setCursorTime(cursorTime, { follow, react: true });
       stepOrderEngineRef.current(cursorTime);
       commitSessionViews();
     },
-    [catalog, commitSessionViews],
+    [activePaneId, catalog, commitSessionViews],
   );
 
   const syncOrdersFromBridge = useCallback(() => {

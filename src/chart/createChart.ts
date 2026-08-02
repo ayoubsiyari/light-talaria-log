@@ -34,7 +34,7 @@ import {
   DEFAULT_VISIBLE_BARS,
   type InteractionHandle,
 } from './interaction';
-import { rangeCenteredOnIndex } from './rangeAnchor';
+import { rangeCenteredOnIndex, rangeRightAnchored } from './rangeAnchor';
 import {
   contentBottom,
   createLayout,
@@ -609,11 +609,14 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   const currentSpan = () =>
     Math.max(MIN_VISIBLE, Math.min(MAX_VISIBLE, range.toIndex - range.fromIndex));
 
+  /**
+   * Keep the live candle on the right (~90% pad) — same as session derive /
+   * pause commit. Centering here made Play↔Pause jump the whole plot.
+   */
   const centerOnReplayCursor = (emit: boolean) => {
     if (bars.length === 0 || replayCursorTime == null) return;
     const anchor = indexAtOrBeforeBars(bars, replayCursorTime);
-    // Preserve current zoom level while following
-    setVisibleRangeInternal(rangeCenteredOnIndex(anchor, currentSpan()), emit);
+    setVisibleRangeInternal(rangeRightAnchored(anchor, currentSpan()), emit);
   };
 
   const notifyUserGesture = () => {
@@ -645,10 +648,12 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     let nextSpan = span * factor;
     nextSpan = Math.max(MIN_VISIBLE, Math.min(MAX_VISIBLE, nextSpan));
 
-    let anchor = (range.fromIndex + range.toIndex) / 2;
     if (replayFollow && replayCursorTime != null) {
-      anchor = indexAtOrBeforeBars(bars, replayCursorTime);
+      const tip = indexAtOrBeforeBars(bars, replayCursorTime);
+      setVisibleRangeInternal(rangeRightAnchored(tip, nextSpan), true);
+      return;
     }
+    const anchor = (range.fromIndex + range.toIndex) / 2;
     const fromIndex = anchor - nextSpan / 2;
     setVisibleRangeInternal(
       clampNavRange({ fromIndex, toIndex: fromIndex + nextSpan }, bars.length),
@@ -677,7 +682,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       centerOnReplayCursor(false);
     } else if (bars.length > 0) {
       setVisibleRangeInternal(
-        rangeCenteredOnIndex(bars.length - 1, currentSpan()),
+        rangeRightAnchored(bars.length - 1, currentSpan()),
         true,
       );
     }

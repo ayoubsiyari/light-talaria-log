@@ -183,6 +183,14 @@ export function createSessionController() {
       notify();
     },
 
+    /** Update bar-count zoom only (no rederive) — keep Play/Pause from changing scale. */
+    setSpan(span: number): void {
+      if (!state) return;
+      const nextSpan = Math.max(1, Math.min(MAX_BARS_IN_MEMORY, span));
+      if (nextSpan === state.span) return;
+      state = { ...state, span: nextSpan };
+    },
+
     setActivePane(paneId: string): void {
       if (!state || !state.panes[paneId]) return;
       state = { ...state, activePaneId: paneId };

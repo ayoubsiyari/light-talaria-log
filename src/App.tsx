@@ -62,8 +62,10 @@ import {
   createOrderSessionBridge,
   type OrderSessionBridge,
 } from '@/orders/sessionBridge';
+import { isTerminal } from '@/orders/orderTypes';
 import {
   OrderTicket,
+  type OrderLevelPatch,
   type OrderTicketDraft,
 } from '@/components/orders/OrderTicket';
 import { TradeDock, tradeDockCounts } from '@/components/orders/TradeDock';
@@ -193,6 +195,10 @@ export default function App() {
   const [lastOrderReject, setLastOrderReject] = useState<string | null>(null);
   const [ticketOpen, setTicketOpen] = useState(false);
   const [ticketDraft, setTicketDraft] = useState<OrderTicketDraft | null>(null);
+  const [ticketLevelPatch, setTicketLevelPatch] = useState<{
+    kind: 'entry' | 'sl' | 'tp';
+    price: number;
+  } | null>(null);
   const orderBridgeRef = useRef<OrderSessionBridge | null>(null);
   const stepOrderEngineRef = useRef<(cursorTime: number) => void>(() => {});
   void orderEngineTick;
@@ -756,8 +762,16 @@ export default function App() {
       });
       unsubs.push(
         chart.onOrderLevelCommit((hit) => {
-          if (hit.cancelled || hit.kind === 'entry') {
+          if (hit.cancelled) {
             syncOrdersFromBridge();
+            return;
+          }
+          // Draft ticket levels → update order form (mouseup only)
+          if (hit.orderId === '__draft__') {
+            setTicketLevelPatch({
+              kind: hit.kind,
+              price: hit.price,
+            } satisfies OrderLevelPatch);
             return;
           }
           const b = orderBridgeRef.current;
@@ -766,8 +780,30 @@ export default function App() {
           const last = panesRef.current[0]?.bars.slice(-1)[0];
           const bid = last?.close ?? hit.price;
           const ask = bid + b.getSpec().typicalSpread;
-          // Map chart overlay id → working protective order
           const state = b.getState();
+
+          // Working entry order (limit/stop) — drag entry / attached SL/TP
+          const entryOrd = state.orders[hit.orderId];
+          if (entryOrd && !entryOrd.role && !isTerminal(entryOrd.status)) {
+            b.modify({
+              orderId: entryOrd.id,
+              cursorTime,
+              price: hit.kind === 'entry' ? hit.price : entryOrd.price,
+              stopLoss: hit.kind === 'sl' ? hit.price : entryOrd.stopLoss,
+              takeProfit: hit.kind === 'tp' ? hit.price : entryOrd.takeProfit,
+              bid,
+              ask,
+            });
+            syncOrdersFromBridge();
+            return;
+          }
+
+          // Filled position: entry is not draggable — only protective SL/TP
+          if (hit.kind === 'entry') {
+            syncOrdersFromBridge();
+            return;
+          }
+
           const protective = state.workingIds
             .map((id) => state.orders[id])
             .find(
@@ -2003,7 +2039,8 @@ export default function App() {
           onDrawingsHiddenChange={setDrawingsHidden}
         />
 
-        <div className="flex-1 min-w-0 min-h-0 flex flex-col relative bg-background">
+        <div className="flex-1 min-w-0 min-h-0 flex flex-row relative bg-background">
+          <div className="flex-1 min-w-0 min-h-0 flex flex-col relative">
           {loadStatus === 'loading' && (
             <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-background/80 gap-2">
               <p className="text-sm text-muted">
@@ -2145,13 +2182,15 @@ export default function App() {
           {chartSettingsOpen && (
             <ChartSettingsModal onClose={() => setChartSettingsOpen(false)} />
           )}
+          </div>
 
-          {loadStatus === 'ready' && (
+          {loadStatus === 'ready' && ticketOpen && (
             <OrderTicket
               open={ticketOpen}
               onClose={() => {
                 setTicketOpen(false);
                 setTicketDraft(null);
+                setTicketLevelPatch(null);
               }}
               symbol={
                 (panes.find((p) => p.id === activePaneId) ?? panes[0])?.pair ??
@@ -2175,6 +2214,8 @@ export default function App() {
               }
               lastReject={lastOrderReject}
               disabled={replayState.playing}
+              levelPatch={ticketLevelPatch}
+              onLevelPatchConsumed={() => setTicketLevelPatch(null)}
               onSubmit={submitTicket}
               onDraftChange={setTicketDraft}
             />

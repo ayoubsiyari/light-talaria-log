@@ -93,6 +93,8 @@ export function moveLevelDrag(
   const asSpec = spec as InstrumentSpec;
   const snapped = roundToTick(price, asSpec);
   levelDrag.currentPrice = snapped;
+  // When dragging entry, keep protective validation relative to the new entry.
+  if (levelDrag.kind === 'entry') levelDrag.entryPrice = snapped;
   levelDrag.invalidReason = validateDrag(levelDrag, snapped);
 
   const el = ensureDragReadout(opts.parent);

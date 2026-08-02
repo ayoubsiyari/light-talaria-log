@@ -779,7 +779,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     },
     getDrawingCursor: (x, y) => {
       const orderHit = hitTestOrderLevel(y, chartOrders, layout.plot, resolvePriceScale());
-      if (orderHit && orderHit.kind !== 'entry') return 'ns-resize';
+      // Entry / SL / TP are all draggable (draft + live)
+      if (orderHit) return 'ns-resize';
       const hit = hitDrawingAt(x, y);
       if (!hit) return null;
       const d = drawings.find((dr) => dr.id === hit.drawingId);
@@ -793,18 +794,20 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     beginDrawingDrag: (x, y) => {
       // Order levels claim before drawings — drag must not reconcile React (§8.2).
       const orderHit = hitTestOrderLevel(y, chartOrders, layout.plot, resolvePriceScale());
-      if (orderHit && orderHit.kind !== 'entry') {
+      if (orderHit) {
         const order = chartOrders.find((o) => o.id === orderHit.orderId);
         if (order && orderDragCtx) {
-          if (order.entry == null) {
-            // Need entry for protective validation — skip drag if unknown
+          const entryForValidate =
+            order.entry ??
+            (orderHit.kind === 'entry' ? orderHit.price : null);
+          if (entryForValidate == null && orderHit.kind !== 'entry') {
             return false;
           }
           beginLevelDrag({
             orderId: order.id,
             kind: orderHit.kind,
             price: orderHit.price,
-            entryPrice: order.entry,
+            entryPrice: entryForValidate ?? orderHit.price,
             side: order.side,
           });
           ensureDragReadout(orderDragCtx.container);

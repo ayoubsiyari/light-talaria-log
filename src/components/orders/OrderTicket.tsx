@@ -36,6 +36,11 @@ export interface OrderTicketDraft {
   size: number;
 }
 
+export interface OrderLevelPatch {
+  kind: 'entry' | 'sl' | 'tp';
+  price: number;
+}
+
 interface OrderTicketProps {
   open: boolean;
   onClose: () => void;
@@ -51,6 +56,9 @@ interface OrderTicketProps {
   accountCurrency: string;
   lastReject?: string | null;
   disabled?: boolean;
+  /** Chart → ticket sync after dragging a draft level (mouseup). */
+  levelPatch?: OrderLevelPatch | null;
+  onLevelPatchConsumed?: () => void;
   onSubmit: (order: OrderTicketSubmit) => void;
   onDraftChange?: (draft: OrderTicketDraft | null) => void;
 }
@@ -77,11 +85,13 @@ export function OrderTicket({
   accountCurrency,
   lastReject,
   disabled,
+  levelPatch,
+  onLevelPatchConsumed,
   onSubmit,
   onDraftChange,
 }: OrderTicketProps) {
   const [side, setSide] = useState<OrderSide>('BUY');
-  const [type, setType] = useState<OrderType>('LIMIT');
+  const [type, setType] = useState<OrderType>('MARKET');
   const [size, setSize] = useState('0.10');
   const [price, setPrice] = useState('');
   const [tpOn, setTpOn] = useState(true);
@@ -111,23 +121,57 @@ export function OrderTicket({
   const reqMargin = leverage > 0 ? (lots * contractSize * entryPx) / leverage : 0;
   const tickValue = tickSize * contractSize * lots;
 
-  // Seed fields when opening / switching side
+  // Seed fields when opening / switching side — Market at current bid/ask
   useEffect(() => {
     if (!open) return;
     const seed = (side === 'BUY' ? ask : bid).toFixed(digits);
+    setType('MARKET');
     setPrice(seed);
-    setSl(round(Number(seed) + (side === 'BUY' ? -1 : 1) * tickSize * slTicks, digits).toFixed(digits));
-    setTp(round(Number(seed) + (side === 'BUY' ? 1 : -1) * tickSize * tpTicks, digits).toFixed(digits));
+    setSl(
+      round(
+        Number(seed) + (side === 'BUY' ? -1 : 1) * tickSize * slTicks,
+        digits,
+      ).toFixed(digits),
+    );
+    setTp(
+      round(
+        Number(seed) + (side === 'BUY' ? 1 : -1) * tickSize * tpTicks,
+        digits,
+      ).toFixed(digits),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, side]);
 
-  // Recompute SL/TP from tick offsets when toggled on or ticks change
+  // Keep Market entry pinned to live bid/ask while ticket is open
+  useEffect(() => {
+    if (!open || type !== 'MARKET') return;
+    setPrice((side === 'BUY' ? ask : bid).toFixed(digits));
+  }, [open, type, side, bid, ask, digits]);
+
+  // Recompute SL/TP from tick offsets when toggles / tick counts change (not every live tick)
   useEffect(() => {
     if (!open) return;
     if (slOn) setSl(defaultSl.toFixed(digits));
     if (tpOn) setTp(defaultTp.toFixed(digits));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slTicks, tpTicks, entryPx, slOn, tpOn]);
+  }, [slTicks, tpTicks, slOn, tpOn, side, type]);
+
+  // Chart drag → ticket fields (mouseup)
+  useEffect(() => {
+    if (!open || !levelPatch) return;
+    const px = levelPatch.price.toFixed(digits);
+    if (levelPatch.kind === 'entry') {
+      setType((t) => (t === 'MARKET' ? 'LIMIT' : t));
+      setPrice(px);
+    } else if (levelPatch.kind === 'sl') {
+      setSlOn(true);
+      setSl(px);
+    } else if (levelPatch.kind === 'tp') {
+      setTpOn(true);
+      setTp(px);
+    }
+    onLevelPatchConsumed?.();
+  }, [levelPatch, open, digits, onLevelPatchConsumed]);
 
   useEffect(() => {
     if (!open) {
@@ -167,7 +211,7 @@ export function OrderTicket({
 
   return (
     <aside
-      className="pointer-events-auto absolute top-0 right-0 bottom-0 z-40 w-[min(100%,320px)] flex flex-col border-l border-border bg-background shadow-xl"
+      className="pointer-events-auto relative shrink-0 w-[min(46vw,300px)] sm:w-[300px] h-full flex flex-col border-l border-border bg-background z-20"
       role="dialog"
       aria-label="Order ticket"
     >

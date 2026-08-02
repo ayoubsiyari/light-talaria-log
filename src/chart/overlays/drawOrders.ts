@@ -170,7 +170,6 @@ export function hitTestOrderLevel(
   if (orders.length === 0) return null;
   for (let i = orders.length - 1; i >= 0; i--) {
     const o = orders[i]!;
-    if (o.draft) continue; // draft levels are preview-only
     const levels: { kind: OrderLineKind; price: number }[] = [];
     if (o.entry != null) levels.push({ kind: 'entry', price: o.entry });
     if (o.stopLoss != null) levels.push({ kind: 'sl', price: o.stopLoss });

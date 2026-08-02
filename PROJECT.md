@@ -670,6 +670,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-02 | Level-2 SaaS full: `docs/SAAS-LEVEL-2.md`, Docker (PG/Redis/MinIO), Fastify API, auth, jobs, Datasets login | `npm run saas:up` → migrate/seed/api → `saas:dev` |
 | 2026-08-02 | Order system Phases 1–7: pure engine, §4.3 fills, margin/swap, journal determinism, drag overlay, order UI — `docs/ORDER-SYSTEM-REPORT.md` | Measure drag Profiler/p95; journal rebuild on reload |
 | 2026-08-02 | TV-style order UX: floating ticket, bottom TradeDock tabs, draft+live SL/TP chart levels | Place Order → drag SL/TP on chart |
+| 2026-08-02 | Order ticket docks (chart shrinks → price axis visible); default Market @ live bid/ask; drag draft entry/SL/TP → ticket | Place Order → drag levels |
 
 ---
 

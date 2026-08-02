@@ -13,10 +13,18 @@ import type { DrawingToolId } from '@/drawings/toolRegistry';
 import type { ChartBar, VisibleRange } from '@/types/bar';
 import type { IndicatorOverlayResult, IndicatorPaneResult } from '@/types/indicator';
 import type { BacktestResult } from '@/types/backtest';
-import type { ChartOrder } from '@/types/order';
+import type { ChartOrder, OrderLevelHit } from '@/types/order';
+import {
+  beginLevelDrag,
+  cancelLevelDrag,
+  endLevelDrag,
+  ensureDragReadout,
+  levelDrag,
+  moveLevelDrag,
+} from '@/orders/levelDrag';
 import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
 import { markChartPaint } from '@/perf/perfMonitor';
-import { hitTestOrders } from './overlays/drawOrders';
+import { hitTestOrderLevel, hitTestOrders } from './overlays/drawOrders';
 import { MAX_BARS_IN_MEMORY, VISIBLE_BARS_TARGET } from '@/utils/constants';
 import { subscribeAppearance } from './appearanceStore';
 import { getChartColors } from './chartTheme';
@@ -36,7 +44,7 @@ import {
   type RenderLayout,
 } from './renderer';
 import { yToPaneValue } from './series/drawIndicatorPane';
-import { computePriceScale, type PriceScale } from './scales';
+import { computePriceScale, yToPrice, type PriceScale } from './scales';
 import type { SyncCrosshair } from './sync/chartSyncStore';
 import type {
   ChartViewOptions,
@@ -45,6 +53,22 @@ import type {
   CrosshairPoint,
   SeriesType,
 } from './types';
+
+export interface OrderDragContext {
+  tickSize: number;
+  digits: number;
+  pipSize: number;
+  contractSize: number;
+  lotStep: number;
+  minLot: number;
+  maxLot: number;
+  baseCurrency: string;
+  quoteCurrency: string;
+  equity: number;
+  riskPercent: number;
+  riskLocked: boolean;
+  container: HTMLElement;
+}
 
 export interface DrawingPlacement {
   tool: DrawingToolId;
@@ -124,9 +148,12 @@ export interface ChartInstance {
   setIndicatorOverlays: (overlays: readonly IndicatorOverlayResult[]) => void;
   /** Oscillator panes (RSI/MACD) — rebuilds layout stack. */
   setIndicatorPanes: (panes: readonly IndicatorPaneResult[]) => void;
-  /** Mock session orders (entry / SL / TP lines). */
+  /** Session order / position levels (entry / SL / TP lines). */
   setOrders: (orders: readonly ChartOrder[], selectedId?: string | null) => void;
   hitTestOrdersAt: (y: number) => string | null;
+  /** Context for SL/TP drag readout + tick snap (no React during drag). */
+  setOrderDragContext: (ctx: OrderDragContext | null) => void;
+  onOrderLevelCommit: (cb: (hit: OrderLevelHit & { price: number; cancelled?: boolean }) => void) => () => void;
   /** Strategy backtest markers / equity overlay (results only). */
   setBacktestResult: (result: BacktestResult | null) => void;
   setSize: (width: number, height: number) => void;
@@ -239,6 +266,11 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   let drawingDrag: DrawingDragState | null = null;
   let chartOrders: readonly ChartOrder[] = [];
   let selectedOrderId: string | null = null;
+  let orderDragCtx: OrderDragContext | null = null;
+  let orderLevelDragging = false;
+  const orderLevelCommitListeners = new Set<
+    (hit: OrderLevelHit & { price: number; cancelled?: boolean }) => void
+  >();
   let backtestResult: BacktestResult | null = null;
 
   /** Layered paint: series | drawings | overlay (crosshair/draft). */
@@ -746,6 +778,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       }
     },
     getDrawingCursor: (x, y) => {
+      const orderHit = hitTestOrderLevel(y, chartOrders, layout.plot, resolvePriceScale());
+      if (orderHit && orderHit.kind !== 'entry') return 'ns-resize';
       const hit = hitDrawingAt(x, y);
       if (!hit) return null;
       const d = drawings.find((dr) => dr.id === hit.drawingId);
@@ -754,8 +788,28 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         dragging: drawingDrag?.id === d.id,
       });
     },
-    getDrawingDragCursor: () => drawingDrag?.cursor ?? null,
+    getDrawingDragCursor: () =>
+      orderLevelDragging ? 'ns-resize' : (drawingDrag?.cursor ?? null),
     beginDrawingDrag: (x, y) => {
+      // Order levels claim before drawings — drag must not reconcile React (§8.2).
+      const orderHit = hitTestOrderLevel(y, chartOrders, layout.plot, resolvePriceScale());
+      if (orderHit && orderHit.kind !== 'entry') {
+        const order = chartOrders.find((o) => o.id === orderHit.orderId);
+        if (order && orderDragCtx) {
+          beginLevelDrag({
+            orderId: order.id,
+            kind: orderHit.kind,
+            price: orderHit.price,
+            entryPrice: order.entry,
+            side: order.side,
+          });
+          ensureDragReadout(orderDragCtx.container);
+          orderLevelDragging = true;
+          selectedOrderId = order.id;
+          markOverlayDirty();
+          return true;
+        }
+      }
       const hit = hitDrawingAt(x, y);
       if (!hit) return false;
       const d = drawings.find((dr) => dr.id === hit.drawingId);
@@ -787,6 +841,22 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       return true;
     },
     moveDrawingDrag: (x, y) => {
+      if (orderLevelDragging && orderDragCtx && levelDrag.active) {
+        const price = yToPrice(y, resolvePriceScale(), layout.plot);
+        const rect = canvas.getBoundingClientRect();
+        const scaleY = rect.height / layout.height || 1;
+        const scaleX = rect.width / layout.width || 1;
+        moveLevelDrag(price, orderDragCtx, {
+          equity: orderDragCtx.equity,
+          riskPercent: orderDragCtx.riskPercent,
+          riskLocked: orderDragCtx.riskLocked,
+          clientX: rect.left + x * scaleX,
+          clientY: rect.top + y * scaleY,
+          parent: orderDragCtx.container,
+        });
+        markOverlayDirty();
+        return;
+      }
       if (!drawingDrag) return;
       const logical = mediaToLogical(x, y);
       if (!logical) return;
@@ -816,6 +886,22 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       );
     },
     endDrawingDrag: () => {
+      if (orderLevelDragging) {
+        const result = endLevelDrag();
+        orderLevelDragging = false;
+        if (result) {
+          const cancelled = result.invalidReason != null;
+          const payload = {
+            orderId: result.orderId,
+            kind: result.kind,
+            price: cancelled ? result.originPrice : result.price,
+            cancelled,
+          };
+          for (const cb of orderLevelCommitListeners) cb(payload);
+        }
+        markOverlayDirty();
+        return;
+      }
       drawingDrag = null;
     },
   });
@@ -982,6 +1068,15 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
 
     hitTestOrdersAt(y: number) {
       return hitTestOrders(y, chartOrders, layout.plot, resolvePriceScale());
+    },
+
+    setOrderDragContext(ctx: OrderDragContext | null) {
+      orderDragCtx = ctx;
+    },
+
+    onOrderLevelCommit(cb) {
+      orderLevelCommitListeners.add(cb);
+      return () => orderLevelCommitListeners.delete(cb);
     },
 
     setBacktestResult(result: BacktestResult | null) {
@@ -1192,6 +1287,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       }
       interaction?.dispose();
       interaction = null;
+      window.removeEventListener('keydown', onKeyDown);
       rangeListeners.clear();
       crosshairListeners.clear();
       plotClickListeners.clear();
@@ -1199,7 +1295,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       contextMenuListeners.clear();
       drawingsChangeListeners.clear();
       drawingSelectListeners.clear();
+      orderLevelCommitListeners.clear();
       drawingDrag = null;
+      orderLevelDragging = false;
+      cancelLevelDrag();
       bars = [];
       if (staticCanvas) {
         staticCanvas.width = 0;
@@ -1228,6 +1327,15 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       attributeFilter: ['class', 'data-theme', 'style'],
     });
   }
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && orderLevelDragging) {
+      cancelLevelDrag();
+      orderLevelDragging = false;
+      markOverlayDirty();
+    }
+  };
+  window.addEventListener('keydown', onKeyDown);
 
   unsubAppearance = subscribeAppearance((a) => {
     if (options.showLastPrice !== a.showLastPrice) {

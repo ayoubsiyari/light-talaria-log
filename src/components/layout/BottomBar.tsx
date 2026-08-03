@@ -87,10 +87,10 @@ function formatCursorLabel(unixSec: number): string {
 }
 
 const replayBtn =
-  'h-8 w-8 [@media(hover:none)]:h-11 [@media(hover:none)]:w-11 rounded-[4px] flex items-center justify-center text-muted hover:text-foreground hover:bg-background/70';
+  'h-7 w-7 [@media(hover:none)]:h-11 [@media(hover:none)]:w-11 rounded-[3px] flex items-center justify-center text-muted hover:text-foreground hover:bg-background/70';
 
 const EXPAND_BTN =
-  'h-8 w-8 [@media(hover:none)]:h-11 [@media(hover:none)]:w-11 rounded-[4px] flex items-center justify-center text-muted hover:text-foreground hover:bg-background/70 shrink-0';
+  'h-7 w-7 [@media(hover:none)]:h-11 [@media(hover:none)]:w-11 rounded-[3px] flex items-center justify-center text-muted hover:text-foreground hover:bg-background/70 shrink-0';
 
 function ReplayControls({
   replay,
@@ -220,7 +220,7 @@ export function BottomBar({
 
   if (!expanded) {
     return (
-      <footer className="chrome-bottombar tv-panel-t shrink-0 flex items-center justify-between gap-2 h-10 sm:h-9 px-2 pb-[env(safe-area-inset-bottom)] text-xs">
+      <footer className="chrome-bottombar tv-panel-t shrink-0 flex items-center justify-between gap-1.5 h-8 [@media(hover:none)]:h-11 px-1.5 sm:px-2 pb-[env(safe-area-inset-bottom)] text-xs">
         <button
           type="button"
           className={EXPAND_BTN}
@@ -252,7 +252,7 @@ export function BottomBar({
   return (
     <footer className="chrome-bottombar tv-panel-t shrink-0 flex flex-col pb-[env(safe-area-inset-bottom)] text-xs">
       {/* Scrub track — thin TV-style progress under the chart */}
-      <div className="flex items-center gap-2 h-7 px-2 border-b border-[color:var(--tv-panel-line)]">
+      <div className="flex items-center gap-1.5 h-7 [@media(hover:none)]:h-11 px-1.5 sm:px-2 border-b border-[color:var(--tv-panel-line)]">
         <button
           type="button"
           className={EXPAND_BTN}
@@ -305,7 +305,7 @@ export function BottomBar({
         )}
       </div>
 
-      <div className="flex items-center gap-2 h-9 sm:h-[38px] px-2">
+      <div className="flex items-center gap-1.5 h-8 [@media(hover:none)]:h-11 px-1.5 sm:px-2">
         <div className="hidden lg:block text-muted tabular-nums text-[11px] min-w-[10.5rem] shrink-0">
           {formatClock(now)}
         </div>

@@ -40,8 +40,9 @@ interface TopBarProps {
 }
 
 /**
- * TradingView-style top banner:
- * left = symbol / series / indicators · center = TFs · right = layout / theme / order
+ * TradingView-style top banner.
+ * Phone (~390px): 44px hits, safe-area, truncating symbol, scrollable TFs,
+ * right corner keeps layout / theme / order without crowding the left chrome.
  */
 export function TopBar({
   symbol,
@@ -63,18 +64,25 @@ export function TopBar({
   onPlaceOrder,
 }: TopBarProps) {
   return (
-    <header className="chrome-topbar tv-panel-b shrink-0 h-10 sm:h-[38px] flex items-center gap-0 px-1 sm:px-2 pt-[env(safe-area-inset-top)] min-h-10">
+    <header
+      className={[
+        'chrome-topbar tv-panel-b shrink-0 flex items-center gap-0',
+        'px-1 sm:px-1.5 pt-[env(safe-area-inset-top)]',
+        // Desktop ≈ TV ~36px; phone keeps 44px touch row
+        'h-9 min-h-9 [@media(hover:none)]:h-11 [@media(hover:none)]:min-h-11',
+      ].join(' ')}
+    >
       <a
         href="/"
-        className="flex items-center justify-center shrink-0 h-9 w-9 mr-1.5 rounded-md hover:bg-background/60"
+        className="flex items-center justify-center shrink-0 h-7 w-7 [@media(hover:none)]:h-11 [@media(hover:none)]:w-11 mr-0.5 sm:mr-1 rounded-md hover:bg-background/60"
         title="Talaria Log"
         aria-label="Talaria Log home"
       >
-        <BrandLogo size={28} variant="raster" className="w-7 h-7" />
+        <BrandLogo size={22} variant="raster" className="w-[22px] h-[22px]" />
       </a>
 
-      {/* Left: symbol + series + indicators */}
-      <div className="flex items-center min-w-0 shrink-0">
+      {/* Left: symbol + series + indicators — may shrink; never shove right corner */}
+      <div className="flex items-center min-w-0 shrink">
         <SymbolPicker
           symbol={symbol}
           options={symbolOptions}
@@ -83,12 +91,12 @@ export function TopBar({
 
         <span className="tv-divider-y mx-0.5 hidden sm:block h-4 self-center" aria-hidden />
 
-        <label className="hidden sm:flex items-center gap-1 h-8 px-2 rounded text-[13px] text-foreground hover:bg-background/70 cursor-pointer">
+        <label className="hidden sm:flex items-center gap-1 h-7 px-1.5 rounded text-xs text-foreground hover:bg-background/70 cursor-pointer">
           <IconCandles className="w-3.5 h-3.5 text-foreground" />
           <select
             value={seriesType}
             onChange={(e) => onSeriesTypeChange(e.target.value as SeriesType)}
-            className="bg-transparent text-foreground text-[13px] outline-none cursor-pointer appearance-none pr-3"
+            className="bg-transparent text-foreground text-xs outline-none cursor-pointer appearance-none pr-2"
             aria-label="Series type"
           >
             {SERIES.map((s) => (
@@ -134,8 +142,8 @@ export function TopBar({
         />
       </div>
 
-      {/* Pinned timeframes */}
-      <div className="flex items-center min-w-0 flex-1 px-1.5 overflow-visible">
+      {/* Center TFs — scroll horizontally on narrow phones */}
+      <div className="flex items-center min-w-0 flex-1 basis-0 px-0.5 sm:px-1.5 overflow-hidden">
         <TimeframePicker
           timeframe={timeframe}
           onTimeframeChange={onTimeframeChange}
@@ -143,8 +151,8 @@ export function TopBar({
         />
       </div>
 
-      {/* Right corner: layout, theme, place order only */}
-      <div className="flex items-center gap-0.5 shrink-0 ml-auto">
+      {/* Right corner — always visible, 44px hits on touch */}
+      <div className="flex items-center gap-0.5 shrink-0 ml-auto pl-0.5">
         <LayoutPicker
           layout={chartLayout}
           onLayoutChange={onChartLayoutChange}
@@ -155,7 +163,7 @@ export function TopBar({
         <Button
           variant="primary"
           size="sm"
-          className="h-8 min-h-8 [@media(hover:none)]:min-h-11 px-3 text-[13px] font-medium"
+          className="h-7 min-h-7 [@media(hover:none)]:min-h-11 px-2 sm:px-2.5 text-xs font-medium shrink-0"
           isDisabled={!onPlaceOrder}
           onPress={onPlaceOrder}
         >

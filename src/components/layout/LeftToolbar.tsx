@@ -169,9 +169,9 @@ export function LeftToolbar({
     // overflow-visible so flyouts can escape to the right (overflow-y-auto clipped them)
     <aside
       ref={rootRef}
-      className="chrome-toolbar tv-panel-r relative w-[46px] [@media(hover:none)]:w-[52px] shrink-0 z-40 overflow-visible"
+      className="chrome-toolbar tv-panel-r relative w-[38px] [@media(hover:none)]:w-[52px] shrink-0 z-40 overflow-visible"
     >
-      <div className="h-full w-full flex flex-col items-center py-1 gap-0.5 overflow-y-auto overscroll-contain">
+      <div className="h-full w-full flex flex-col items-center py-0.5 gap-0 overflow-y-auto overscroll-contain">
         <button
           type="button"
           title="Cursor"
@@ -201,8 +201,8 @@ export function LeftToolbar({
                 className={toolBtn(active || open)}
               >
                 <g.Icon />
-                <span className="absolute right-0 top-1/2 -translate-y-1/2 text-muted">
-                  <IconChevron className="w-2.5 h-2.5" />
+                <span className="absolute right-px top-1/2 -translate-y-1/2 text-muted opacity-70">
+                  <IconChevron className="w-2 h-2" />
                 </span>
               </button>
             </div>
@@ -264,14 +264,14 @@ export function LeftToolbar({
           type="button"
           title="Clear drawings"
           onClick={onClearDrawings}
-          className="w-9 h-9 [@media(hover:none)]:w-11 [@media(hover:none)]:h-11 rounded-[4px] flex items-center justify-center text-muted hover:text-danger hover:bg-background/70 shrink-0"
+          className={toolBtn(false) + ' hover:text-danger'}
         >
           <IconTrash />
         </button>
       </div>
 
       {openGroup && openCategories.length > 0 && (
-        <div className="absolute left-full top-1 z-50 ml-0 w-[min(16rem,calc(100vw-3.5rem))] max-h-[min(80vh,640px)] overflow-y-auto rounded-lg border border-[color:var(--tv-panel-line)] bg-surface shadow-[0_2px_6px_rgba(0,0,0,0.12)] py-1">
+        <div className="absolute left-full top-0.5 z-50 ml-0 w-[min(16rem,calc(100vw-3.5rem))] max-h-[min(80vh,640px)] overflow-y-auto rounded-lg border border-[color:var(--tv-panel-line)] bg-surface shadow-[0_2px_6px_rgba(0,0,0,0.12)] py-1">
           {openCategories.map((cat, idx) => (
             <div key={cat.id}>
               {cat.sections.map((sec) => (
@@ -302,7 +302,7 @@ export function LeftToolbar({
                             : 'text-foreground hover:bg-background/80',
                         ].join(' ')}
                       >
-                        <Icon className="w-4 h-4 shrink-0 opacity-80" />
+                        <Icon className="w-3.5 h-3.5 shrink-0 opacity-80" />
                         <span className="truncate">{def.label}</span>
                       </button>
                     );
@@ -319,7 +319,8 @@ export function LeftToolbar({
 
 function toolBtn(active: boolean): string {
   return [
-    'relative w-9 h-9 [@media(hover:none)]:w-11 [@media(hover:none)]:h-11 rounded-[4px] flex items-center justify-center transition-colors shrink-0',
+    // Desktop ≈ TV 28px hits in 38px rail; phone keeps 44px.
+    'relative w-7 h-7 [@media(hover:none)]:w-11 [@media(hover:none)]:h-11 rounded-[3px] flex items-center justify-center transition-colors shrink-0',
     active
       ? 'bg-accent/15 text-accent'
       : 'text-muted hover:text-foreground hover:bg-background/70',

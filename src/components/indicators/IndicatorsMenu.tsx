@@ -246,7 +246,7 @@ export function IndicatorsMenu({
       <Button
         variant="ghost"
         size="sm"
-        className="inline-flex gap-1.5 h-8 min-h-8 [@media(hover:none)]:min-h-11 px-2 text-[13px]"
+        className="inline-flex gap-1.5 h-7 min-h-7 [@media(hover:none)]:min-h-11 px-1.5 sm:px-2 text-xs"
         onPress={() => setOpen(true)}
       >
         <IconIndicators className="w-3.5 h-3.5" />

@@ -534,14 +534,14 @@ function drawWatermark(
 
   ctx.save();
 
-  // Always-on brand text — bottom-left (TV-scale). Canvas text only — never
-  // decode/draw the logo PNG here (keeps chart heap light).
-  ctx.globalAlpha = 0.55;
+  // Always-on brand text — bottom-left (TV watermark weight). Canvas text
+  // only — never decode/draw the logo PNG here (keeps chart heap light).
+  ctx.globalAlpha = 0.42;
   ctx.fillStyle = colors.muted;
-  ctx.font = '600 14px ui-sans-serif, system-ui, sans-serif';
+  ctx.font = '700 22px ui-sans-serif, system-ui, sans-serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'bottom';
-  ctx.fillText('Talaria Log', plot.left + 10, plot.top + plot.height - 8);
+  ctx.fillText('Talaria Log', plot.left + 12, plot.top + plot.height - 10);
 
   // Optional custom watermark (settings) — centered when enabled.
   if (colors.watermarkEnabled) {

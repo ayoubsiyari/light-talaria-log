@@ -110,7 +110,7 @@ export function LayoutPicker({
       <Popover.Trigger
         title="Layout"
         aria-label="Chart layout"
-        className="h-8 w-8 min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 rounded-[4px] inline-flex items-center justify-center text-foreground hover:bg-background/70"
+        className="h-7 w-7 min-h-7 min-w-7 [@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11 rounded-[3px] inline-flex items-center justify-center text-foreground hover:bg-background/70"
       >
         <LayoutGlyph cells={cellsForLayout(layout)} selected={false} size={16} />
       </Popover.Trigger>

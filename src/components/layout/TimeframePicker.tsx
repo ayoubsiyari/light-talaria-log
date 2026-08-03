@@ -62,8 +62,8 @@ export function TimeframePicker({
                 if (enabled) onTimeframeChange(tf);
               }}
               className={[
-                'shrink-0 h-7 min-w-7 px-1.5 rounded text-xs font-medium transition-colors',
-                '[@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11',
+                'shrink-0 h-6 min-w-6 px-1 rounded text-[11px] font-medium transition-colors',
+                '[@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11 [@media(hover:none)]:text-xs',
                 active
                   ? 'bg-accent text-accent-foreground'
                   : enabled
@@ -82,7 +82,7 @@ export function TimeframePicker({
         <Popover.Trigger
           title="All intervals"
           aria-label="All intervals"
-          className="shrink-0 h-7 w-6 min-h-11 min-w-11 sm:min-h-7 sm:min-w-6 rounded inline-flex items-center justify-center text-muted hover:text-foreground hover:bg-background/60 text-[10px]"
+          className="shrink-0 h-6 w-5 min-h-6 min-w-5 [@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11 rounded inline-flex items-center justify-center text-muted hover:text-foreground hover:bg-background/60 text-[10px]"
         >
           ▾
         </Popover.Trigger>

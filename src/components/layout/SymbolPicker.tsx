@@ -30,8 +30,8 @@ export function SymbolPicker({
 
   if (!multi) {
     return (
-      <div className="flex items-center gap-1 h-8 min-h-11 sm:min-h-8 px-2.5 rounded-md bg-background/80 text-[13px] font-semibold text-foreground shrink-0">
-        <span className="truncate max-w-[10rem]">{label}</span>
+      <div className="flex items-center gap-1 h-7 min-h-7 [@media(hover:none)]:min-h-11 px-1.5 sm:px-2 rounded-md bg-background/80 text-xs font-semibold text-foreground min-w-0 shrink">
+        <span className="truncate max-w-[5.5rem] sm:max-w-[10rem]">{label}</span>
       </div>
     );
   }
@@ -44,11 +44,11 @@ export function SymbolPicker({
         aria-label="Change symbol"
         aria-disabled={disabled || undefined}
         className={[
-          'flex items-center gap-1 h-8 min-h-11 sm:min-h-8 px-2.5 rounded-md bg-background/80 text-[13px] font-semibold text-foreground hover:bg-background shrink-0',
+          'flex items-center gap-1 h-7 min-h-7 [@media(hover:none)]:min-h-11 px-1.5 sm:px-2 rounded-md bg-background/80 text-xs font-semibold text-foreground hover:bg-background min-w-0 shrink',
           disabled ? 'opacity-50 pointer-events-none' : '',
         ].join(' ')}
       >
-        <span className="truncate max-w-[9rem] sm:max-w-[12rem]">{label}</span>
+        <span className="truncate max-w-[5.5rem] sm:max-w-[12rem]">{label}</span>
         <span className="text-muted text-[10px] leading-none">▾</span>
       </Popover.Trigger>
       <Popover.Content placement="bottom start" className="p-0 z-[100]">

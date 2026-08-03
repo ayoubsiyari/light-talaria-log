@@ -1,10 +1,9 @@
 import type { ChartOrder, OrderLevelHit, OrderLineKind } from '@/types/order';
+import { orderHitPx } from '@/utils/touchTarget';
 import type { ChartColors } from '../chartTheme';
 import { formatPrice } from '../format';
 import { priceToY, type PlotRect, type PriceScale } from '../scales';
 import { levelDrag } from '@/orders/levelDrag';
-
-const HIT_PX = 6;
 
 export function drawOrders(
   ctx: CanvasRenderingContext2D,
@@ -196,6 +195,7 @@ export function hitTestOrderLevel(
   scale: PriceScale,
 ): OrderLevelHit | null {
   if (orders.length === 0) return null;
+  const hitPx = orderHitPx();
   for (let i = orders.length - 1; i >= 0; i--) {
     const o = orders[i]!;
     const levels: { kind: OrderLineKind; price: number }[] = [];
@@ -204,7 +204,7 @@ export function hitTestOrderLevel(
     if (o.takeProfit != null) levels.push({ kind: 'tp', price: o.takeProfit });
     for (const lv of levels) {
       const py = priceToY(lv.price, scale, plot);
-      if (Math.abs(y - py) <= HIT_PX) {
+      if (Math.abs(y - py) <= hitPx) {
         return { orderId: o.id, kind: lv.kind, price: lv.price };
       }
     }

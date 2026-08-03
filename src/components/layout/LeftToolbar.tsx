@@ -169,7 +169,7 @@ export function LeftToolbar({
     // overflow-visible so flyouts can escape to the right (overflow-y-auto clipped them)
     <aside
       ref={rootRef}
-      className="chrome-toolbar tv-panel-r relative w-[46px] shrink-0 z-40 overflow-visible"
+      className="chrome-toolbar tv-panel-r relative w-[46px] [@media(hover:none)]:w-[52px] shrink-0 z-40 overflow-visible"
     >
       <div className="h-full w-full flex flex-col items-center py-1 gap-0.5 overflow-y-auto overscroll-contain">
         <button

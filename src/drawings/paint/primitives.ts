@@ -1,3 +1,4 @@
+import { handlePaintRadius } from '@/utils/touchTarget';
 import { applyFillStyle, applyStrokeStyle, type DrawingStyle } from '../drawingStyle';
 import { extendLine, type PaintCtx } from './coords';
 
@@ -65,7 +66,7 @@ export function drawHandles(
 ): void {
   if (!mode || pts.length === 0) return;
   const { ctx } = pc;
-  const r = mode === 'selected' ? 4.5 : 4;
+  const r = handlePaintRadius(mode === 'selected');
   const { colors } = pc;
   ctx.save();
   ctx.setLineDash([]);

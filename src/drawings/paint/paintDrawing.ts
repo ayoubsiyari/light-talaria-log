@@ -4,11 +4,13 @@ import type { ChartBar } from '@/types/bar';
 import type { Drawing } from '../drawingStore';
 import { applyFillStyle, applyStrokeStyle, extendModeToPaint, type DrawingStyle } from '../drawingStyle';
 import {
-  asBool,
-  asNumber,
-  asNumberArray,
-  DEFAULT_FIB_LEVELS,
-} from '../toolSettings';
+  defaultFibLevelsFor,
+  formatFibCoeff,
+  resolveFibMeta,
+  visibleFibLevels,
+  type FibLevel,
+} from '../fibLevels';
+import { asBool, asNumber } from '../toolSettings';
 import { barIndexAtTime, clipToPlot, pointToXY, pointsToXY, type PaintCtx } from './coords';
 import {
   drawArrowHead,
@@ -18,8 +20,6 @@ import {
   strokeLine,
   strokePoly,
 } from './primitives';
-
-const FIB_TIME = [0, 1, 2, 3, 5, 8, 13, 21];
 
 function yPrice(price: number, pc: PaintCtx): number {
   return priceToY(price, pc.priceScale, pc.plot);
@@ -105,6 +105,17 @@ function paintShapeCenter(
   ctx.restore();
 }
 
+function levelStroke(
+  base: DrawingStyle,
+  lv: FibLevel,
+): DrawingStyle {
+  return {
+    ...base,
+    color: lv.color || base.color,
+    lineStyle: lv.lineStyle || base.lineStyle,
+  };
+}
+
 function paintFibLevels(
   pc: PaintCtx,
   x0: number,
@@ -113,34 +124,62 @@ function paintFibLevels(
   price1: number,
   style: Drawing['style'],
   opts: {
-    levels?: number[];
-    extend?: boolean;
+    levels: FibLevel[];
+    extendLeft?: boolean;
+    extendRight?: boolean;
     reverse?: boolean;
     showLabels?: boolean;
-  } = {},
+    showPrices?: boolean;
+  },
 ): void {
-  const levels = opts.levels?.length ? opts.levels : [...DEFAULT_FIB_LEVELS];
-  const extend = opts.extend ?? false;
+  const levels = visibleFibLevels(opts.levels);
   const reverse = opts.reverse ?? false;
   const showLabels = opts.showLabels !== false;
+  const showPrices = !!opts.showPrices;
   const { ctx, plot } = pc;
   const lo = Math.min(price0, price1);
   const hi = Math.max(price0, price1);
-  const left = extend ? plot.left : Math.min(x0, x1);
-  const right = extend ? plot.left + plot.width : Math.max(x0, x1);
+  const segL = Math.min(x0, x1);
+  const segR = Math.max(x0, x1);
+  const left = opts.extendLeft ? plot.left : segL;
+  const right = opts.extendRight ? plot.left + plot.width : segR;
+
+  // Optional fill between consecutive levels (TV background).
+  if (style.fill && levels.length >= 2) {
+    const sorted = [...levels].sort((a, b) => a.coeff - b.coeff);
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const a = sorted[i]!;
+      const b = sorted[i + 1]!;
+      const ta = reverse ? 1 - a.coeff : a.coeff;
+      const tb = reverse ? 1 - b.coeff : b.coeff;
+      const pa = hi - (hi - lo) * ta;
+      const pb = hi - (hi - lo) * tb;
+      const y0 = yPrice(pa, pc);
+      const y1 = yPrice(pb, pc);
+      ctx.save();
+      ctx.globalAlpha = style.fillOpacity * style.opacity * 0.55;
+      ctx.fillStyle = a.color || style.fillColor || style.color;
+      ctx.fillRect(left, Math.min(y0, y1), Math.max(1, right - left), Math.abs(y1 - y0));
+      ctx.restore();
+    }
+  }
+
   for (const lv of levels) {
-    if (lv > 1 && !extend) continue;
-    const t = reverse ? 1 - lv : lv;
+    const t = reverse ? 1 - lv.coeff : lv.coeff;
     const price = hi - (hi - lo) * t;
     const y = yPrice(price, pc);
-    applyStrokeStyle(ctx, style);
-    ctx.globalAlpha = style.opacity * (lv === 0.5 || lv === 0.618 ? 1 : 0.75);
+    const ls = levelStroke(style, lv);
+    applyStrokeStyle(ctx, ls);
     ctx.beginPath();
-    ctx.setLineDash(lv === 0 || lv === 1 ? [] : [4, 3]);
     ctx.moveTo(left, y + 0.5);
     ctx.lineTo(right, y + 0.5);
     ctx.stroke();
-    if (showLabels) drawTextLabel(pc, left + 4, y, lv.toFixed(3), style, false);
+    if (showLabels || showPrices) {
+      const parts: string[] = [];
+      if (showLabels) parts.push(formatFibCoeff(lv.coeff));
+      if (showPrices) parts.push(price.toFixed(2));
+      drawTextLabel(pc, left + 4, y, parts.join('  '), { ...ls, textColor: ls.color }, false);
+    }
   }
   ctx.setLineDash([]);
   ctx.globalAlpha = 1;
@@ -491,12 +530,14 @@ export function paintDrawing(
         const p2 = d.points[2];
         const priceA = d.points[0].price;
         const priceB = p2 && d.type === 'fibExtension' ? p2.price : d.points[1].price;
-        const meta = d.meta ?? {};
+        const fib = resolveFibMeta(d.type, d.meta);
         paintFibLevels(pc, xy[0]!.x, xy[1]!.x, priceA, priceB, style, {
-          levels: asNumberArray(meta.levels, [...DEFAULT_FIB_LEVELS]),
-          extend: asBool(meta.extendLines, d.type === 'fibExtension'),
-          reverse: asBool(meta.reverse, false),
-          showLabels: asBool(meta.showLabels, true),
+          levels: fib.levels,
+          extendLeft: fib.extendLeft,
+          extendRight: fib.extendRight,
+          reverse: fib.reverse,
+          showLabels: fib.showLabels,
+          showPrices: fib.showPrices,
         });
         strokeLine(pc, xy[0]!.x, xy[0]!.y, xy[1]!.x, xy[1]!.y, {
           ...style,
@@ -506,30 +547,40 @@ export function paintDrawing(
       break;
     case 'fibChannel':
       if (xy.length >= 3) {
-        strokeLine(pc, xy[0]!.x, xy[0]!.y, xy[1]!.x, xy[1]!.y, style, 'extended');
+        const fib = resolveFibMeta(d.type, d.meta);
+        const mode =
+          fib.extendLeft || fib.extendRight
+            ? fib.extendLeft && fib.extendRight
+              ? 'extended'
+              : fib.extendRight
+                ? 'ray'
+                : 'rayLeft'
+            : 'segment';
+        strokeLine(pc, xy[0]!.x, xy[0]!.y, xy[1]!.x, xy[1]!.y, style, mode);
         const dx = xy[1]!.x - xy[0]!.x;
         const dy = xy[1]!.y - xy[0]!.y;
-        const levels = asNumberArray(d.meta?.levels, [0.382, 0.5, 0.618, 1]);
-        const showLabels = asBool(d.meta?.showLabels, true);
-        for (const lv of levels) {
-          const ox = (xy[2]!.x - xy[0]!.x) * lv;
-          const oy = (xy[2]!.y - xy[0]!.y) * lv;
+        for (const lv of visibleFibLevels(fib.levels)) {
+          const ox = (xy[2]!.x - xy[0]!.x) * lv.coeff;
+          const oy = (xy[2]!.y - xy[0]!.y) * lv.coeff;
+          const ls = levelStroke(style, lv);
           strokeLine(
             pc,
             xy[0]!.x + ox,
             xy[0]!.y + oy,
             xy[0]!.x + ox + dx,
             xy[0]!.y + oy + dy,
-            { ...style, opacity: style.opacity * 0.8 },
-            asBool(d.meta?.extendLines, true) ? 'extended' : 'segment',
+            ls,
+            mode,
           );
-          if (showLabels) {
+          if (fib.showLabels || fib.showPrices) {
+            const parts: string[] = [];
+            if (fib.showLabels) parts.push(formatFibCoeff(lv.coeff));
             drawTextLabel(
               pc,
               xy[0]!.x + ox + 4,
               xy[0]!.y + oy,
-              lv.toFixed(3),
-              style,
+              parts.join('  ') || formatFibCoeff(lv.coeff),
+              { ...ls, textColor: ls.color },
               false,
             );
           }
@@ -540,19 +591,24 @@ export function paintDrawing(
     case 'fibTrendTime':
     case 'cyclicLines':
       if (xy.length >= 2) {
+        const fib = resolveFibMeta(d.type, d.meta);
         const x0 = xy[0]!.x;
         const span = Math.abs(xy[1]!.x - xy[0]!.x) || 40;
-        const periods = asNumber(d.meta?.periods, 8);
-        const levels =
-          d.type === 'cyclicLines'
-            ? Array.from({ length: periods + 1 }, (_, i) => i)
-            : FIB_TIME;
-        for (const lv of levels) {
-          const x = x0 + Math.sign(xy[1]!.x - xy[0]!.x || 1) * span * lv;
-          strokeLine(pc, x, pc.plot.top, x, pc.plot.top + pc.plot.height, {
-            ...style,
-            lineStyle: lv === 0 ? 'solid' : 'dashed',
-          });
+        const dir = Math.sign(xy[1]!.x - xy[0]!.x || 1);
+        for (const lv of visibleFibLevels(fib.levels)) {
+          const x = x0 + dir * span * lv.coeff;
+          const ls = levelStroke(style, lv);
+          strokeLine(pc, x, pc.plot.top, x, pc.plot.top + pc.plot.height, ls);
+          if (fib.showLabels) {
+            drawTextLabel(
+              pc,
+              x + 4,
+              pc.plot.top + 14,
+              formatFibCoeff(lv.coeff),
+              { ...ls, textColor: ls.color },
+              false,
+            );
+          }
         }
       }
       break;
@@ -560,22 +616,26 @@ export function paintDrawing(
     case 'fibFan':
     case 'gannFan':
       if (xy.length >= 2) {
-        const showFan = asBool(d.meta?.showFan, true);
-        const subs = Math.max(2, Math.min(16, asNumber(d.meta?.subdivisions, 4)));
-        let ratios: number[];
-        if (d.type === 'gannFan') {
-          ratios = showFan
-            ? [1 / 8, 1 / 4, 1 / 3, 1 / 2, 1, 2, 3, 4, 8].slice(0, subs + 1)
-            : [1];
-        } else {
-          ratios = showFan
-            ? [0.25, 0.382, 0.5, 0.618, 0.75, 1].slice(0, Math.max(2, subs))
-            : [1];
+        const fib = resolveFibMeta(d.type, d.meta);
+        let levels = visibleFibLevels(fib.levels);
+        if (levels.length === 0) {
+          levels = defaultFibLevelsFor(d.type).filter((l) => l.visible);
         }
-        for (const r of ratios) {
+        for (const lv of levels) {
           const x1 = xy[0]!.x + (xy[1]!.x - xy[0]!.x);
-          const y1 = xy[0]!.y + (xy[1]!.y - xy[0]!.y) * r;
-          strokeLine(pc, xy[0]!.x, xy[0]!.y, x1, y1, style, 'ray');
+          const y1 = xy[0]!.y + (xy[1]!.y - xy[0]!.y) * lv.coeff;
+          const ls = levelStroke(style, lv);
+          strokeLine(pc, xy[0]!.x, xy[0]!.y, x1, y1, ls, 'ray');
+          if (fib.showLabels) {
+            drawTextLabel(
+              pc,
+              x1,
+              y1,
+              formatFibCoeff(lv.coeff),
+              { ...ls, textColor: ls.color },
+              false,
+            );
+          }
         }
       }
       break;
@@ -586,36 +646,37 @@ export function paintDrawing(
       if (xy.length >= 2) {
         const { ctx } = pc;
         const r0 = Math.hypot(xy[1]!.x - xy[0]!.x, xy[1]!.y - xy[0]!.y);
-        const levels = asNumberArray(d.meta?.levels, [0.382, 0.5, 0.618, 1, 1.618]);
-        const showLabels = asBool(d.meta?.showLabels, true);
-        applyStrokeStyle(ctx, style);
-        for (const lv of levels) {
-          if (lv <= 0) continue;
+        const fib = resolveFibMeta(d.type, d.meta);
+        for (const lv of visibleFibLevels(fib.levels)) {
+          if (lv.coeff <= 0) continue;
+          const ls = levelStroke(style, lv);
+          applyStrokeStyle(ctx, ls);
           ctx.beginPath();
           if (d.type === 'fibSpeedArcs' || d.type === 'fibWedge') {
-            ctx.arc(xy[0]!.x, xy[0]!.y, r0 * lv, Math.PI, Math.PI * 2);
+            ctx.arc(xy[0]!.x, xy[0]!.y, r0 * lv.coeff, Math.PI, Math.PI * 2);
           } else if (d.type === 'fibSpiral') {
             let px = xy[0]!.x;
             let py = xy[0]!.y;
             ctx.moveTo(px, py);
-            for (let t = 0; t < 8; t += 0.1) {
-              const rad = (r0 * t) / 8;
+            const turns = Math.max(2, lv.coeff * 4);
+            for (let t = 0; t < turns; t += 0.1) {
+              const rad = (r0 * t) / turns;
               const ang = t * 0.7;
-              px = xy[0]!.x + Math.cos(ang) * rad;
-              py = xy[0]!.y + Math.sin(ang) * rad;
+              px = xy[0]!.x + Math.cos(ang) * rad * lv.coeff;
+              py = xy[0]!.y + Math.sin(ang) * rad * lv.coeff;
               ctx.lineTo(px, py);
             }
           } else {
-            ctx.arc(xy[0]!.x, xy[0]!.y, r0 * lv, 0, Math.PI * 2);
+            ctx.arc(xy[0]!.x, xy[0]!.y, r0 * lv.coeff, 0, Math.PI * 2);
           }
           ctx.stroke();
-          if (showLabels && d.type !== 'fibSpiral') {
+          if (fib.showLabels && d.type !== 'fibSpiral') {
             drawTextLabel(
               pc,
-              xy[0]!.x + r0 * lv + 4,
+              xy[0]!.x + r0 * lv.coeff + 4,
               xy[0]!.y,
-              lv.toFixed(3),
-              style,
+              formatFibCoeff(lv.coeff),
+              { ...ls, textColor: ls.color },
               false,
             );
           }

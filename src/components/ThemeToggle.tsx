@@ -17,7 +17,7 @@ export function ThemeToggle({ className = '', compact = false }: ThemeToggleProp
       aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
       className={[
         compact
-          ? 'w-8 h-8 rounded-[4px] flex items-center justify-center text-muted hover:text-foreground hover:bg-background/70'
+          ? 'w-8 h-8 min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 rounded-[4px] flex items-center justify-center text-muted hover:text-foreground hover:bg-background/70'
           : 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-[4px] text-xs font-medium text-muted hover:text-foreground hover:bg-background/70 border border-[color:var(--tv-panel-line)]',
         className,
       ].join(' ')}

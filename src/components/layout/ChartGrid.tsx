@@ -110,60 +110,107 @@ export function ChartGrid({
   syncDateRange = true,
   loadingPaneIds,
 }: ChartGridProps) {
+  /** On phones, 3+ stacked panes become unusable — focus one + switcher strip. */
+  const mobileFocus = panes.length > 2;
+  const smLayoutClasses = LAYOUT_CLASS[layout]
+    .split(/\s+/)
+    .filter((c) => c.startsWith('sm:') || c.includes(':sm:'))
+    .join(' ');
+  const gridClass = mobileFocus
+    ? `grid-cols-1 grid-rows-1 ${smLayoutClasses}`
+    : LAYOUT_CLASS[layout];
+
   return (
-    <div
-      className={`flex-1 min-h-0 min-w-0 grid gap-px bg-[color:var(--tv-panel-line)] ${LAYOUT_CLASS[layout]}`}
-    >
-      {panes.map((pane) => (
-        <ChartPane
-          key={pane.id}
-          chartId={pane.id}
-          syncStore={syncStore}
-          bars={pane.bars}
-          initialRange={pane.range}
-          symbol={pane.pair}
-          timeframe={pane.timeframe}
-          dataLoading={loadingPaneIds?.has(pane.id) ?? false}
-          selected={pane.id === activePaneId}
-          onSelect={() => onSelectPane(pane.id)}
-          crosshairMode={crosshairMode}
-          seriesType={seriesType}
-          showVolume={showVolume}
-          onShowVolumeChange={onShowVolumeChange}
-          volumeOpacity={volumeOpacity}
-          onVolumeOpacityChange={onVolumeOpacityChange}
-          enabledIndicators={enabledIndicators}
-          onEnabledIndicatorsChange={onEnabledIndicatorsChange}
-          drawings={drawings}
-          placement={placement}
-          selectedDrawingId={selectedDrawingId}
-          drawingsHidden={drawingsHidden}
-          replayCursorTime={replayCursorTime}
-          replayFollow={replayFollow}
-          showFollowControl={showFollowControl}
-          onReattachFollow={onReattachFollow}
-          drawingToolActive={drawingToolActive}
-          drawingsLocked={drawingsLocked}
-          onChartPoint={onChartPoint}
-          onCrosshairSample={onCrosshairSample}
-          onUserGesture={
-            onUserGesture ? () => onUserGesture(pane.id) : undefined
-          }
-          onDrawingsChange={onDrawingsChange}
-          onDrawingSelect={onDrawingSelect}
-          orders={orders}
-          selectedOrderId={selectedOrderId}
-          onOrderSelect={onOrderSelect}
-          backtestResult={
-            backtestResult && pane.datasetId === backtestResult.datasetId
-              ? backtestResult
-              : null
-          }
-          syncCrosshair={syncCrosshair}
-          syncDateRange={syncDateRange}
-          showSelectionBorder={panes.length > 1}
-        />
-      ))}
+    <div className="flex-1 min-h-0 min-w-0 flex flex-col">
+      {mobileFocus && (
+        <div
+          className="sm:hidden shrink-0 flex gap-1 overflow-x-auto overscroll-x-contain px-1 py-1 border-b border-[color:var(--tv-panel-line)] bg-surface"
+          role="tablist"
+          aria-label="Chart panes"
+        >
+          {panes.map((pane) => {
+            const active = pane.id === activePaneId;
+            return (
+              <button
+                key={pane.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => onSelectPane(pane.id)}
+                className={[
+                  'shrink-0 min-h-11 px-3 rounded-md text-xs font-medium',
+                  active
+                    ? 'bg-accent text-accent-foreground'
+                    : 'text-muted hover:text-foreground hover:bg-background/70',
+                ].join(' ')}
+              >
+                {pane.pair} · {pane.timeframe}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <div
+        className={`flex-1 min-h-0 min-w-0 grid gap-px bg-[color:var(--tv-panel-line)] ${gridClass}`}
+      >
+        {panes.map((pane) => (
+          <div
+            key={pane.id}
+            className={[
+              'min-h-0 min-w-0 h-full',
+              mobileFocus && pane.id !== activePaneId ? 'max-sm:hidden' : '',
+            ].join(' ')}
+          >
+            <ChartPane
+              chartId={pane.id}
+              syncStore={syncStore}
+              bars={pane.bars}
+              initialRange={pane.range}
+              symbol={pane.pair}
+              timeframe={pane.timeframe}
+              dataLoading={loadingPaneIds?.has(pane.id) ?? false}
+              selected={pane.id === activePaneId}
+              onSelect={() => onSelectPane(pane.id)}
+              crosshairMode={crosshairMode}
+              seriesType={seriesType}
+              showVolume={showVolume}
+              onShowVolumeChange={onShowVolumeChange}
+              volumeOpacity={volumeOpacity}
+              onVolumeOpacityChange={onVolumeOpacityChange}
+              enabledIndicators={enabledIndicators}
+              onEnabledIndicatorsChange={onEnabledIndicatorsChange}
+              drawings={drawings}
+              placement={placement}
+              selectedDrawingId={selectedDrawingId}
+              drawingsHidden={drawingsHidden}
+              replayCursorTime={replayCursorTime}
+              replayFollow={replayFollow}
+              showFollowControl={showFollowControl}
+              onReattachFollow={onReattachFollow}
+              drawingToolActive={drawingToolActive}
+              drawingsLocked={drawingsLocked}
+              onChartPoint={onChartPoint}
+              onCrosshairSample={onCrosshairSample}
+              onUserGesture={
+                onUserGesture ? () => onUserGesture(pane.id) : undefined
+              }
+              onDrawingsChange={onDrawingsChange}
+              onDrawingSelect={onDrawingSelect}
+              orders={orders}
+              selectedOrderId={selectedOrderId}
+              onOrderSelect={onOrderSelect}
+              backtestResult={
+                backtestResult && pane.datasetId === backtestResult.datasetId
+                  ? backtestResult
+                  : null
+              }
+              syncCrosshair={syncCrosshair}
+              syncDateRange={syncDateRange}
+              showSelectionBorder={panes.length > 1}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

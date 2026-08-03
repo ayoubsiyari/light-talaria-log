@@ -34,7 +34,7 @@ export interface InteractionCallbacks {
   endDrawingDrag?: () => void;
   /** Cursor while dragging a drawing (optional override). */
   getDrawingDragCursor?: () => string | null;
-  /** Right-click / context menu on the canvas (media coords). */
+  /** Right-click / long-press on the canvas (media coords). */
   onContextMenu?: (x: number, y: number) => void;
 }
 
@@ -46,11 +46,21 @@ const MIN_VISIBLE = 10;
 const MAX_VISIBLE = VISIBLE_BARS_TARGET;
 const DOUBLE_TAP_MS = 300;
 const DOUBLE_TAP_PX = 12;
+const LONG_PRESS_MS = 500;
+const LONG_PRESS_MOVE_PX = 10;
+const PAN_ARM_PX = 3;
 
-type DragMode = 'pan' | 'timeZoom' | 'priceZoom' | 'drawing' | null;
+type DragMode = 'pan' | 'timeZoom' | 'priceZoom' | 'drawing' | 'pinch' | null;
+
+interface Ptr {
+  id: number;
+  x: number;
+  y: number;
+}
 
 /**
  * TradingView-style zones + hover feed for crosshair.
+ * Single-finger pan/zoom + two-finger pinch; long-press opens settings on touch.
  * Updates state only; never paints inline.
  */
 export function attachInteraction(
@@ -58,20 +68,133 @@ export function attachInteraction(
   callbacks: InteractionCallbacks,
 ): InteractionHandle {
   let dragMode: DragMode = null;
-  /** Last pointer in media (layout) coords — must match plot.width units for pan. */
+  /** Primary pointer for single-finger gestures. */
+  let activePointerId: number | null = null;
+  /** Last media coords for the active single-finger drag. */
   let lastMediaX = 0;
   let lastMediaY = 0;
-  let activePointerId: number | null = null;
   let panArmed = false;
   let drawingMoved = false;
+
+  /** Active pointers (max 2 used for pinch). */
+  const pointers = new Map<number, Ptr>();
+  let pinchPrevDist = 0;
+  let pinchPrevMidX = 0;
+  let pinchPrevMidY = 0;
 
   let lastTapAt = 0;
   let lastTapX = 0;
   let lastTapY = 0;
 
+  let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+  let longPressX = 0;
+  let longPressY = 0;
+  let longPressFired = false;
+
   const pointerPos = (e: PointerEvent) => {
     const layout = callbacks.getLayout();
     return clientToMedia(e.clientX, e.clientY, canvas, layout.width, layout.height);
+  };
+
+  const cancelLongPress = () => {
+    if (longPressTimer != null) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  };
+
+  const startLongPress = (x: number, y: number, pointerType: string) => {
+    cancelLongPress();
+    longPressFired = false;
+    if (pointerType !== 'touch' && pointerType !== 'pen') return;
+    longPressX = x;
+    longPressY = y;
+    longPressTimer = setTimeout(() => {
+      longPressTimer = null;
+      longPressFired = true;
+      // Cancel pending pan — settings owns this gesture
+      dragMode = null;
+      panArmed = false;
+      try {
+        if (activePointerId != null) {
+          canvas.releasePointerCapture(activePointerId);
+        }
+      } catch {
+        // already released
+      }
+      activePointerId = null;
+      callbacks.onContextMenu?.(longPressX, longPressY);
+      try {
+        navigator.vibrate?.(12);
+      } catch {
+        // unsupported
+      }
+    }, LONG_PRESS_MS);
+  };
+
+  const pinchMetrics = (): { dist: number; midX: number; midY: number } | null => {
+    if (pointers.size < 2) return null;
+    const [a, b] = [...pointers.values()];
+    if (!a || !b) return null;
+    const dist = Math.hypot(b.x - a.x, b.y - a.y);
+    return { dist: Math.max(1, dist), midX: (a.x + b.x) / 2, midY: (a.y + b.y) / 2 };
+  };
+
+  const beginPinch = () => {
+    cancelLongPress();
+    if (dragMode === 'drawing') {
+      callbacks.endDrawingDrag?.();
+    }
+    const m = pinchMetrics();
+    if (!m) return;
+    dragMode = 'pinch';
+    panArmed = true;
+    pinchPrevDist = m.dist;
+    pinchPrevMidX = m.midX;
+    pinchPrevMidY = m.midY;
+    canvas.style.cursor = 'grabbing';
+    callbacks.onUserGesture?.();
+  };
+
+  const applyPinch = () => {
+    const m = pinchMetrics();
+    if (!m || pinchPrevDist <= 0) return;
+    const layout = callbacks.getLayout();
+    const plot = layout.plot;
+    const range = callbacks.getRange();
+    const barCount = callbacks.getBarCount();
+    if (plot.width <= 0 || barCount === 0) return;
+
+    // Fingers apart → zoom in (fewer bars); closer → zoom out
+    const zoomFactor = pinchPrevDist / m.dist;
+    const span = range.toIndex - range.fromIndex;
+    let nextSpan = span * zoomFactor;
+    nextSpan = Math.max(MIN_VISIBLE, Math.min(MAX_VISIBLE, nextSpan));
+
+    const anchorIndex = xToIndex(m.midX, range, plot);
+    const leftRatio = span > 0 ? (anchorIndex - range.fromIndex) / span : 0.5;
+    let fromIndex = anchorIndex - leftRatio * nextSpan;
+    let toIndex = fromIndex + nextSpan;
+
+    // Two-finger pan from midpoint drift
+    const dMidX = m.midX - pinchPrevMidX;
+    const dMidY = m.midY - pinchPrevMidY;
+    if (dMidX !== 0 && nextSpan > 0 && plot.width > 0) {
+      const dIndex = -(dMidX / plot.width) * nextSpan;
+      fromIndex += dIndex;
+      toIndex += dIndex;
+    }
+
+    callbacks.setRange(clampRange({ fromIndex, toIndex }, barCount));
+
+    if (dMidY !== 0) {
+      panPriceByDrag(callbacks, dMidY, layout);
+    }
+
+    pinchPrevDist = m.dist;
+    pinchPrevMidX = m.midX;
+    pinchPrevMidY = m.midY;
+    callbacks.onHover(m.midX, m.midY);
   };
 
   const setCursorForZone = (zone: HitZone, x?: number, y?: number) => {
@@ -80,6 +203,10 @@ export function attachInteraction(
         callbacks.getDrawingDragCursor?.() ??
         (x != null && y != null ? callbacks.getDrawingCursor?.(x, y) : null) ??
         'grabbing';
+      return;
+    }
+    if (dragMode === 'pinch') {
+      canvas.style.cursor = 'grabbing';
       return;
     }
     if (dragMode === 'timeZoom') {
@@ -117,8 +244,24 @@ export function attachInteraction(
   const onPointerDown = (e: PointerEvent) => {
     // Only primary button pans / draws — right-click opens settings via contextmenu.
     if (e.button !== 0) return;
-    if (activePointerId !== null) return;
+
     const { x, y } = pointerPos(e);
+    pointers.set(e.pointerId, { id: e.pointerId, x, y });
+
+    // Second finger → pinch (even if first was panning)
+    if (pointers.size >= 2) {
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+      beginPinch();
+      e.preventDefault();
+      return;
+    }
+
+    if (activePointerId !== null) return;
+
     const layout = callbacks.getLayout();
     const zone = hitTestZone(x, y, layout);
 
@@ -128,12 +271,14 @@ export function attachInteraction(
       Math.hypot(x - lastTapX, y - lastTapY) < DOUBLE_TAP_PX;
 
     if (isDoubleTap) {
+      cancelLongPress();
       if (zone === 'timeAxis' || zone === 'plot') {
-        callbacks.resetTimeScale(); // centers live candle + resets price
+        callbacks.resetTimeScale();
       } else if (zone === 'priceAxis') {
         callbacks.resetPriceScale();
       }
       lastTapAt = 0;
+      pointers.delete(e.pointerId);
       e.preventDefault();
       return;
     }
@@ -142,13 +287,17 @@ export function attachInteraction(
     lastTapX = x;
     lastTapY = y;
 
-    if (zone === 'none') return;
+    if (zone === 'none') {
+      pointers.delete(e.pointerId);
+      return;
+    }
 
     activePointerId = e.pointerId;
     lastMediaX = x;
     lastMediaY = y;
     panArmed = false;
     drawingMoved = false;
+    longPressFired = false;
     canvas.setPointerCapture(e.pointerId);
 
     if (zone === 'priceAxis') {
@@ -159,6 +308,8 @@ export function attachInteraction(
       dragMode = 'drawing';
     } else {
       dragMode = 'pan';
+      // Long-press settings only on plot (not axes / drawing handles)
+      if (zone === 'plot') startLongPress(x, y, e.pointerType);
     }
 
     setCursorForZone(zone, x, y);
@@ -167,13 +318,23 @@ export function attachInteraction(
 
   const onPointerMove = (e: PointerEvent) => {
     const { x, y } = pointerPos(e);
+    if (pointers.has(e.pointerId)) {
+      pointers.set(e.pointerId, { id: e.pointerId, x, y });
+    }
+
+    if (dragMode === 'pinch') {
+      applyPinch();
+      e.preventDefault();
+      return;
+    }
+
     const layout = callbacks.getLayout();
     const zone = hitTestZone(x, y, layout);
 
     if (dragMode === null || e.pointerId !== activePointerId) {
       setCursorForZone(zone, x, y);
       if (zone === 'plot') callbacks.onHover(x, y);
-      else callbacks.onHover(null, null);
+      else if (e.pointerType !== 'touch') callbacks.onHover(null, null);
       return;
     }
 
@@ -181,6 +342,14 @@ export function attachInteraction(
     const dy = y - lastMediaY;
     lastMediaX = x;
     lastMediaY = y;
+
+    // Cancel long-press once the finger moves
+    if (longPressTimer != null) {
+      if (Math.hypot(x - longPressX, y - longPressY) >= LONG_PRESS_MOVE_PX) {
+        cancelLongPress();
+      }
+    }
+    if (longPressFired) return;
 
     if (dragMode === 'drawing') {
       callbacks.onHover(x, y);
@@ -190,13 +359,12 @@ export function attachInteraction(
       return;
     }
 
-    // Plot drag: horizontal = time pan, vertical = price pan (TradingView)
     if (dragMode === 'pan') {
       callbacks.onHover(x, y);
-      // Require a few px before pan so click doesn't jitter the chart
       if (!panArmed) {
-        if (Math.hypot(dx, dy) < 3) return;
+        if (Math.hypot(dx, dy) < PAN_ARM_PX) return;
         panArmed = true;
+        cancelLongPress();
         canvas.style.cursor = 'grabbing';
         callbacks.onUserGesture?.();
       }
@@ -235,20 +403,55 @@ export function attachInteraction(
     if (dragMode === 'priceZoom') {
       if (dy === 0) return;
       callbacks.onUserGesture?.();
-      // Price axis: zoom (pinch scale), not pan
       zoomPriceByDrag(callbacks, dy, layout);
     }
   };
 
   const onPointerUp = (e: PointerEvent) => {
+    pointers.delete(e.pointerId);
+
+    // Still pinching with one finger left → drop to idle (don't resume pan mid-gesture)
+    if (dragMode === 'pinch') {
+      try {
+        canvas.releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+      if (pointers.size >= 2) {
+        beginPinch();
+        return;
+      }
+      dragMode = null;
+      activePointerId = null;
+      panArmed = false;
+      const rem = pointers.values().next().value as Ptr | undefined;
+      if (rem) {
+        // Leave second finger tracking but idle until lift
+        activePointerId = rem.id;
+        lastMediaX = rem.x;
+        lastMediaY = rem.y;
+        dragMode = null;
+      }
+      const layout = callbacks.getLayout();
+      const pos = rem ?? pointerPos(e);
+      const zone = hitTestZone(pos.x, pos.y, layout);
+      setCursorForZone(zone, pos.x, pos.y);
+      if (zone === 'plot') callbacks.onHover(pos.x, pos.y);
+      return;
+    }
+
     if (e.pointerId !== activePointerId) return;
+
     const wasPan = panArmed;
     const wasMode = dragMode;
     const wasDrawingMoved = drawingMoved;
+    const wasLongPress = longPressFired;
+    cancelLongPress();
     dragMode = null;
     activePointerId = null;
     panArmed = false;
     drawingMoved = false;
+    longPressFired = false;
     try {
       canvas.releasePointerCapture(e.pointerId);
     } catch {
@@ -257,9 +460,14 @@ export function attachInteraction(
     const { x, y } = pointerPos(e);
     const zone = hitTestZone(x, y, callbacks.getLayout());
 
+    if (wasLongPress) {
+      // Settings already opened — don't place/select
+      if (zone === 'plot') callbacks.onHover(x, y);
+      return;
+    }
+
     if (wasMode === 'drawing') {
       callbacks.endDrawingDrag?.();
-      // Click without drag still counts as plot click (select / place)
       if (!wasDrawingMoved) {
         callbacks.onPlotClick?.(x, y);
       }
@@ -277,8 +485,10 @@ export function attachInteraction(
     }
   };
 
-  const onPointerLeave = () => {
+  const onPointerLeave = (e: PointerEvent) => {
     if (dragMode !== null) return;
+    // Touch leave is often synthetic after finger-up — keep crosshair sticky
+    if (e.pointerType === 'touch' || e.pointerType === 'pen') return;
     callbacks.onHover(null, null);
   };
 
@@ -286,7 +496,6 @@ export function attachInteraction(
     const layout = callbacks.getLayout();
     const { x, y } = clientToMedia(e.clientX, e.clientY, canvas, layout.width, layout.height);
     const zone = hitTestZone(x, y, layout);
-    // Plot / time axis: recenter on live candle. Price axis: price scale only.
     if (zone === 'timeAxis' || zone === 'plot') callbacks.resetTimeScale();
     else if (zone === 'priceAxis') callbacks.resetPriceScale();
     e.preventDefault();
@@ -331,6 +540,8 @@ export function attachInteraction(
 
   const onContextMenu = (e: MouseEvent) => {
     e.preventDefault();
+    // Avoid double-open when long-press already fired settings
+    if (longPressFired) return;
     const layout = callbacks.getLayout();
     const { x, y } = clientToMedia(
       e.clientX,
@@ -354,6 +565,8 @@ export function attachInteraction(
 
   return {
     dispose: () => {
+      cancelLongPress();
+      pointers.clear();
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
@@ -418,7 +631,6 @@ function clampRange(range: VisibleRange, barCount: number): VisibleRange {
   let fromIndex = range.fromIndex;
   let toIndex = fromIndex + span;
 
-  // Allow left empty space (replay right-align) and light right overscroll for pan
   const minFrom = -(span - MIN_VISIBLE);
   const maxTo = barCount + (span - MIN_VISIBLE);
 

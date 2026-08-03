@@ -210,11 +210,26 @@ export function OrderTicket({
   ].join(' ');
 
   return (
-    <aside
-      className="pointer-events-auto relative shrink-0 w-[min(46vw,300px)] sm:w-[300px] h-full flex flex-col border-l border-border bg-background z-20"
-      role="dialog"
-      aria-label="Order ticket"
-    >
+    <>
+      {/* Phone dimmer — dismiss sheet */}
+      <button
+        type="button"
+        className="fixed inset-0 z-30 bg-background/55 sm:hidden"
+        aria-label="Close order ticket"
+        onClick={onClose}
+      />
+      <aside
+        className={[
+          'pointer-events-auto flex flex-col bg-background border-border',
+          // Phone: bottom sheet so the chart keeps full width
+          'fixed inset-x-0 bottom-0 z-40 w-full max-h-[min(90dvh,640px)] rounded-t-xl border-t shadow-xl',
+          'pb-[env(safe-area-inset-bottom)]',
+          // Desktop / tablet+: side dock
+          'sm:relative sm:inset-auto sm:z-20 sm:shrink-0 sm:w-[300px] sm:h-full sm:max-h-none sm:rounded-none sm:border-t-0 sm:border-l sm:shadow-none sm:pb-0',
+        ].join(' ')}
+        role="dialog"
+        aria-label="Order ticket"
+      >
       {/* Header: symbol + Order tab */}
       <header className="shrink-0 flex items-center gap-2 px-3 h-11 border-b border-border">
         <span className="text-[13px] font-semibold text-foreground tracking-wide">
@@ -444,6 +459,7 @@ export function OrderTicket({
         </button>
       </div>
     </aside>
+    </>
   );
 }
 

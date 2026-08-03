@@ -252,7 +252,7 @@ export function IndicatorsMenu({
       <Button
         variant="ghost"
         size="sm"
-        className="inline-flex gap-1.5 h-8 min-h-8 px-2 text-[13px]"
+        className="inline-flex gap-1.5 h-8 min-h-8 [@media(hover:none)]:min-h-11 px-2 text-[13px]"
         onPress={() => setOpen(true)}
       >
         <IconIndicators className="w-3.5 h-3.5" />
@@ -266,13 +266,13 @@ export function IndicatorsMenu({
         <div
           className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4"
           style={{ backgroundColor: 'var(--backdrop, rgba(0,0,0,0.55))' }}
-          onMouseDown={(e) => {
+          onPointerDown={(e) => {
             if (e.target === e.currentTarget) setOpen(false);
           }}
         >
           <div
             className="w-full sm:max-w-[720px] h-[min(88dvh,640px)] sm:h-[min(80vh,560px)] rounded-t-xl sm:rounded-xl border border-border bg-surface text-foreground shadow-2xl overflow-hidden flex flex-col"
-            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-label="Indicators"

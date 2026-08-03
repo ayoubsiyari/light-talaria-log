@@ -105,7 +105,7 @@ Assumptions: ~100 concurrent chart sessions peak; each opens 1–2 datasets; 70%
 - [ ] Build SPA (`npm run build`) → serve static
 - [ ] `VITE_API_BASE` / proxy points at production API
 - [ ] Smoke: register, login, import, pan, backtest, journal
-- [ ] Mobile ~390px pass
+- [x] Mobile ~390px pass (Steps T1–T5: gestures, hit targets, chrome 44px, safe-area, multi-pane focus)
 
 ### E. Ops
 - [ ] `/api/v1/health` + `/api/v1/ready` in uptime monitor

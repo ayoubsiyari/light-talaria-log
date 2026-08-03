@@ -34,7 +34,7 @@ export function VolumeIndicator({
 
         <button
           type="button"
-          className="ml-1 w-5 h-5 rounded flex items-center justify-center text-muted hover:text-foreground hover:bg-background/70"
+          className="ml-1 w-5 h-5 min-h-11 min-w-11 sm:min-h-5 sm:min-w-5 rounded flex items-center justify-center text-muted hover:text-foreground hover:bg-background/70"
           title="Hide Volume"
           aria-label="Hide Volume"
           onClick={() => onVisibleChange(false)}
@@ -47,7 +47,7 @@ export function VolumeIndicator({
           <Popover.Trigger
             title="Volume settings"
             aria-label="Volume settings"
-            className="w-5 h-5 rounded inline-flex items-center justify-center text-muted hover:text-foreground hover:bg-background/70"
+            className="w-5 h-5 min-h-11 min-w-11 sm:min-h-5 sm:min-w-5 rounded inline-flex items-center justify-center text-muted hover:text-foreground hover:bg-background/70"
           >
             <GearIcon />
           </Popover.Trigger>

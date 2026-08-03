@@ -1,11 +1,10 @@
 import {
   asBool,
   asNumber,
-  asNumberArray,
-  DEFAULT_FIB_LEVELS,
   type ToolPanelId,
 } from '@/drawings/toolSettings';
 import { getTool, type DrawingToolId } from '@/drawings/toolRegistry';
+import { FibLevelsEditor } from './FibLevelsEditor';
 import { fieldClass, Row, SectionTitle, ToggleRow } from './SettingsForm';
 
 interface ToolInputsPanelProps {
@@ -28,55 +27,10 @@ export function ToolInputsPanel({
   const set = (partial: Record<string, unknown>) => onMetaChange(partial);
 
   switch (panel) {
-    case 'fibLevels': {
-      const levels = asNumberArray(meta.levels, [...DEFAULT_FIB_LEVELS]);
-      const toggleLevel = (lv: number) => {
-        const has = levels.some((x) => Math.abs(x - lv) < 1e-9);
-        const next = has
-          ? levels.filter((x) => Math.abs(x - lv) >= 1e-9)
-          : [...levels, lv].sort((a, b) => a - b);
-        set({ levels: next });
-      };
+    case 'fibLevels':
       return (
-        <div className="space-y-3">
-          <SectionTitle>Fibonacci levels</SectionTitle>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-            {DEFAULT_FIB_LEVELS.map((lv) => {
-              const on = levels.some((x) => Math.abs(x - lv) < 1e-9);
-              return (
-                <label
-                  key={lv}
-                  className="flex items-center gap-2 text-sm text-foreground cursor-pointer min-h-9"
-                >
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    onChange={() => toggleLevel(lv)}
-                    className="accent-[var(--accent)]"
-                  />
-                  <span className="tabular-nums">{lv.toFixed(3)}</span>
-                </label>
-              );
-            })}
-          </div>
-          <ToggleRow
-            label="Show labels"
-            checked={asBool(meta.showLabels, true)}
-            onChange={(v) => set({ showLabels: v })}
-          />
-          <ToggleRow
-            label="Reverse"
-            checked={asBool(meta.reverse, false)}
-            onChange={(v) => set({ reverse: v })}
-          />
-          <ToggleRow
-            label="Extend lines"
-            checked={asBool(meta.extendLines, type === 'fibExtension')}
-            onChange={(v) => set({ extendLines: v })}
-          />
-        </div>
+        <FibLevelsEditor type={type} meta={meta} onMetaChange={onMetaChange} />
       );
-    }
 
     case 'line':
       return (

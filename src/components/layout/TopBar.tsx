@@ -222,7 +222,7 @@ export function TopBar({
           </span>
         )}
         {onExitSession && (
-          <Button variant="ghost" size="sm" className="h-8 min-h-8 px-2 text-[13px]" onPress={onExitSession}>
+          <Button variant="ghost" size="sm" className="h-8 min-h-8 [@media(hover:none)]:min-h-11 px-2 text-[13px]" onPress={onExitSession}>
             Sessions
           </Button>
         )}

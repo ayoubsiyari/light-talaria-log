@@ -1,11 +1,8 @@
 import { logicalIndexAtTime } from '@/data/timeframeAgg';
 import { indexToX, priceToY, type PlotRect, type PriceScale } from '@/chart/scales';
 import type { ChartBar, VisibleRange } from '@/types/bar';
+import { drawingHandleHitPx, drawingHitPx } from '@/utils/touchTarget';
 import type { Drawing, DrawingPoint } from './drawingStore';
-
-/** Proximity for hover / select — TV-like generous hit area. */
-const HIT_PX = 12;
-const HANDLE_PX = 12;
 
 function toXY(
   p: DrawingPoint,
@@ -123,6 +120,8 @@ export function hitTestDrawings(
   plot: PlotRect,
   priceScale: PriceScale,
 ): HitResult | null {
+  const HIT_PX = drawingHitPx();
+  const HANDLE_PX = drawingHandleHitPx();
   // Reverse so last-drawn is on top
   for (let i = drawings.length - 1; i >= 0; i--) {
     const d = drawings[i]!;

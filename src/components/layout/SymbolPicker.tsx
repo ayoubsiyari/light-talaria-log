@@ -30,7 +30,7 @@ export function SymbolPicker({
 
   if (!multi) {
     return (
-      <div className="flex items-center gap-1 h-8 px-2.5 rounded-md bg-background/80 text-[13px] font-semibold text-foreground shrink-0">
+      <div className="flex items-center gap-1 h-8 min-h-11 sm:min-h-8 px-2.5 rounded-md bg-background/80 text-[13px] font-semibold text-foreground shrink-0">
         <span className="truncate max-w-[10rem]">{label}</span>
       </div>
     );
@@ -44,7 +44,7 @@ export function SymbolPicker({
         aria-label="Change symbol"
         aria-disabled={disabled || undefined}
         className={[
-          'flex items-center gap-1 h-8 px-2.5 rounded-md bg-background/80 text-[13px] font-semibold text-foreground hover:bg-background shrink-0',
+          'flex items-center gap-1 h-8 min-h-11 sm:min-h-8 px-2.5 rounded-md bg-background/80 text-[13px] font-semibold text-foreground hover:bg-background shrink-0',
           disabled ? 'opacity-50 pointer-events-none' : '',
         ].join(' ')}
       >
@@ -65,7 +65,7 @@ export function SymbolPicker({
                     type="button"
                     onClick={() => onSymbolChange(opt.pair)}
                     className={[
-                      'w-full flex items-center gap-2 h-8 px-2.5 text-left text-[13px]',
+                      'w-full flex items-center gap-2 h-8 min-h-11 sm:min-h-8 px-2.5 text-left text-[13px]',
                       active
                         ? 'bg-accent/15 text-accent font-semibold'
                         : 'text-foreground hover:bg-background/70',

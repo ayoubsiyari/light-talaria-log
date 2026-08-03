@@ -12,7 +12,6 @@ import {
   ColorSwatches,
   fieldClass,
   Row,
-  SectionTitle,
   ToggleRow,
 } from '@/components/drawings/settings/SettingsForm';
 import { ToolInputsPanel } from '@/components/drawings/settings/ToolInputsPanel';
@@ -24,7 +23,7 @@ import {
   styleToPickerValue,
 } from '@/components/drawings/settings/LineStylePickerFlyout';
 
-type SettingsTab = 'style' | 'text' | 'coordinates' | 'visibility';
+type SettingsTab = 'style' | 'inputs' | 'text' | 'coordinates' | 'visibility';
 
 interface DrawingSettingsModalProps {
   drawing: Drawing;
@@ -76,7 +75,9 @@ export function DrawingSettingsModal({
 }: DrawingSettingsModalProps) {
   const tool = getTool(drawing.type);
   const settings = useMemo(() => getToolSettings(drawing.type), [drawing.type]);
-  const [tab, setTab] = useState<SettingsTab>('style');
+  const [tab, setTab] = useState<SettingsTab>(() =>
+    getToolSettings(drawing.type).toolPanel === 'fibLevels' ? 'inputs' : 'style',
+  );
   const snapshotRef = useRef<Drawing>(cloneDrawing(drawing));
   const drawingIdRef = useRef(drawing.id);
   const skipLiveRef = useRef(false);
@@ -104,7 +105,8 @@ export function DrawingSettingsModal({
     snapshotRef.current = cloneDrawing(next);
     skipLiveRef.current = true;
     setDraft(next);
-    setTab('style');
+    // Level tools open on Inputs (editable coeffs); others on Style.
+    setTab(getToolSettings(drawing.type).toolPanel === 'fibLevels' ? 'inputs' : 'style');
     setRenaming(false);
     setPickerOpen(false);
     setFillPickerOpen(false);
@@ -135,16 +137,20 @@ export function DrawingSettingsModal({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const tabs = useMemo(
-    () =>
-      [
-        { id: 'style' as const, label: 'Style' },
-        { id: 'text' as const, label: 'Text' },
-        { id: 'coordinates' as const, label: 'Coordinates' },
-        { id: 'visibility' as const, label: 'Visibility' },
-      ] as const,
-    [],
-  );
+  const showInputs = settings.showInputsTab && settings.toolPanel !== 'generic';
+
+  const tabs = useMemo(() => {
+    const list: { id: SettingsTab; label: string }[] = [
+      { id: 'style', label: 'Style' },
+    ];
+    if (showInputs) list.push({ id: 'inputs', label: 'Inputs' });
+    list.push(
+      { id: 'text', label: 'Text' },
+      { id: 'coordinates', label: 'Coordinates' },
+      { id: 'visibility', label: 'Visibility' },
+    );
+    return list;
+  }, [showInputs]);
 
   const displayTitle = draft.name?.trim() || tool.label;
 
@@ -196,7 +202,6 @@ export function DrawingSettingsModal({
 
   const showFill = settings.styleSections.includes('fill');
   const showLineExtras = settings.styleSections.includes('lineExtras');
-  const showInputs = settings.toolPanel !== 'generic';
 
   const commitRename = () => {
     const trimmed = renameValue.trim();
@@ -380,18 +385,16 @@ export function DrawingSettingsModal({
               />
             )}
 
-            {showInputs && (
-              <>
-                <SectionTitle>Inputs</SectionTitle>
-                <ToolInputsPanel
-                  type={draft.type}
-                  panel={settings.toolPanel}
-                  meta={draft.meta ?? {}}
-                  onMetaChange={patchMeta}
-                />
-              </>
-            )}
           </>
+        )}
+
+        {tab === 'inputs' && showInputs && (
+          <ToolInputsPanel
+            type={draft.type}
+            panel={settings.toolPanel}
+            meta={draft.meta ?? {}}
+            onMetaChange={patchMeta}
+          />
         )}
 
         {tab === 'text' && (

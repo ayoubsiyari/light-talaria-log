@@ -1,5 +1,16 @@
 import type { DrawingToolId, ToolCategoryId } from './toolRegistry';
 import { TOOLS } from './toolRegistry';
+import { defaultFibMetaFor, resolveFibMeta, type FibMeta } from './fibLevels';
+
+export type { FibLevel, FibMeta } from './fibLevels';
+export {
+  DEFAULT_FIB_LEVELS,
+  DEFAULT_FIB_LEVEL_DEFS,
+  formatFibCoeff,
+  normalizeFibLevels,
+  resolveFibMeta,
+  visibleFibLevels,
+} from './fibLevels';
 
 /** Shared Style-tab building blocks (same chrome for every tool). */
 export type StyleSection = 'stroke' | 'fill' | 'lineExtras';
@@ -32,18 +43,8 @@ export interface ToolSettingsDef {
   toolPanel: ToolPanelId;
   /** Show Text tab (label / note). */
   showTextTab: boolean;
-}
-
-/** Default fib levels (TradingView-like). */
-export const DEFAULT_FIB_LEVELS = [
-  0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.272, 1.618,
-] as const;
-
-export interface FibMeta {
-  levels: number[];
-  showLabels: boolean;
-  reverse: boolean;
-  extendLines: boolean;
+  /** Dedicated Inputs tab (level editors, tool-specific fields). */
+  showInputsTab: boolean;
 }
 
 export interface BrushMeta {
@@ -156,6 +157,8 @@ const FILL_TOOLS = new Set<DrawingToolId>([
   'gannSquareFixed',
   'datePriceRange',
   'priceRange',
+  'fibRetracement',
+  'fibExtension',
   'fibChannel',
   'fibCircles',
   'fibWedge',
@@ -173,6 +176,9 @@ const TOOL_PANEL_OVERRIDE: Partial<Record<DrawingToolId, ToolPanelId>> = {
   anchoredVolumeProfile: 'volumeProfile',
   highlighter: 'brush',
   regressionTrend: 'channel',
+  /** Level-based tools share the Fib Inputs editor. */
+  gannFan: 'fibLevels',
+  cyclicLines: 'fibLevels',
 };
 
 export function getToolSettings(type: DrawingToolId): ToolSettingsDef {
@@ -188,6 +194,7 @@ export function getToolSettings(type: DrawingToolId): ToolSettingsDef {
     styleSections,
     toolPanel,
     showTextTab: true, // optional note on every tool; text tools emphasize it
+    showInputsTab: toolPanel !== 'generic',
   };
 }
 
@@ -195,12 +202,7 @@ export function defaultMetaFor(type: DrawingToolId): Record<string, unknown> {
   const panel = getToolSettings(type).toolPanel;
   switch (panel) {
     case 'fibLevels':
-      return {
-        levels: [...DEFAULT_FIB_LEVELS],
-        showLabels: true,
-        reverse: false,
-        extendLines: type === 'fibExtension',
-      } satisfies FibMeta;
+      return { ...defaultFibMetaFor(type) } satisfies FibMeta;
     case 'brush':
       return { softEdge: type === 'highlighter' } satisfies BrushMeta;
     case 'position':
@@ -238,6 +240,10 @@ export function defaultMetaFor(type: DrawingToolId): Record<string, unknown> {
 
 /** Merge stored meta with defaults for the tool. */
 export function resolveMeta(type: DrawingToolId, meta?: Record<string, unknown>): Record<string, unknown> {
+  const panel = getToolSettings(type).toolPanel;
+  if (panel === 'fibLevels') {
+    return { ...defaultMetaFor(type), ...meta, ...resolveFibMeta(type, meta) };
+  }
   return { ...defaultMetaFor(type), ...meta };
 }
 

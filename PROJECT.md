@@ -688,6 +688,84 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-03 | TV-scale brand: 28px vector logo in TopBar; 14px chart text; PNG never drawn on canvas | — |
 | 2026-08-03 | Remote import syncs missing TFs (5m…1D) when only 1m was in IDB; FirstRate pairs packed with all TFs on VPS | Hard-refresh → Sync timeframes / reopen session |
 | 2026-08-03 | Drawing settings: draggable modal; wire Inputs/Style toggles into painters (angle, midline, fib, VP, VWAP, RR, etc.) | Spot-check remaining tools in UI |
+| 2026-08-03 | TV Fib Inputs tab: editable level coeffs/colors/styles, add/remove, show prices, extend L/R; all level tools wired | Manual fib/fan/timezone check |
+| 2026-08-03 | Touch/responsive plan Steps T1–T5: pinch+long-press, fat hits, 44px chrome, order sheet, safe-area, multi-pane focus | Device QA checklist in PROJECT T5 |
+
+---
+
+## Next Work Plan — Touch / Responsive (Steps T1–T5)
+
+**Started:** 2026-08-03  
+**How we work:** one phase at a time; typecheck + verify notes after each; do not weaken viewport/IDB contracts.  
+**North star:** Full chart function on phones, tablets (portrait/landscape), and desktop — finger-first gestures + ≥44px chrome.
+
+**Context:** Step 4 covered chrome at ~390px. Chart gestures remain single-finger / desktop-oriented (no pinch, unreliable settings entry on iOS).
+
+### Step T1 — Chart multi-touch & settings entry (P0)
+**Goal:** Plot usable with fingers.  
+**Status:** Implemented (2026-08-03).  
+**Deliverables:**
+- [x] Multi-pointer model (1–2 fingers) in `interaction.ts`
+- [x] Pinch zoom around midpoint (same span rules as wheel)
+- [x] Two-finger pan
+- [x] Long-press (~500ms) → chart settings (`talaria:open-chart-settings`); keep desktop right-click
+- [x] Crosshair not cleared on synthetic `pointerleave` after touch-up
+- [x] ChartNav remains backup zoom/pan  
+**Done when:** iPhone/iPad Safari — pinch, pan, long-press Settings; desktop mouse unchanged.  
+**Files:** `src/chart/interaction.ts`, `createChart.ts` if needed.
+
+### Step T2 — Finger hit testing (P0)
+**Goal:** Select drawings/orders with a thumb.  
+**Status:** Implemented (2026-08-03).  
+**Deliverables:**
+- [x] Coarse-pointer hit slop (~24px handles, ~16–20px lines) in `hitTest.ts`
+- [x] Larger order line hit zone in `drawOrders.ts`
+- [x] Slightly larger painted handles on touch (`touchTarget.ts`)  
+**Done when:** Place/select/move/resize trend + fib with thumb without missing.
+
+### Step T3 — Chrome 44px + mobile sheets (P1)
+**Goal:** Every primary control tappable on phone.  
+**Status:** Implemented (2026-08-03).  
+**Deliverables:**
+- [x] TopBar triggers ≥44px on touch (Layout/Theme/Symbol/TF/Indicators/Sessions)
+- [x] Volume + OverlayIndicators buttons ≥44px on touch
+- [x] Backdrop dismiss via `pointerdown` (not mouse-only)
+- [x] Order ticket → bottom sheet + dimmer on `<sm`
+- [x] Drawing floating toolbar scrolls horizontally if overflow  
+**Done when:** At 390×844 every primary control works; order form usable.
+
+### Step T4 — Layout density & safe areas (P1/P2)
+**Goal:** All sizes without cramped plots or edge clipping.  
+**Status:** Implemented (2026-08-03).  
+**Deliverables:**
+- [x] Root `overflow-x: clip`
+- [x] `safe-area-inset-left/right` on chrome bars + toolbar
+- [x] Multi-pane phone strategy: 3+ panes → focus active + tab strip
+- [x] Left toolbar 52px on `hover:none`
+- [x] Settings modal already sheet-friendly (landscape OK)  
+**Done when:** iPhone SE / 390 / iPad P+L — no horizontal scroll; plot usable.
+
+### Step T5 — QA matrix & docs (P2)
+**Goal:** Confidence + checklist sync.  
+**Status:** Implemented (2026-08-03) — operator verifies on device.  
+**Deliverables:**
+- [x] Manual matrix documented below
+- [x] Full-function checklist below
+- [x] Sync `docs/SAAS-LEVEL-2.md` mobile gate; session log  
+**Done when:** Checklist signed off in PROJECT.md.
+
+#### T5 verify checklist (operator)
+- [ ] Phone ~390px: pan, pinch zoom, long-press Settings, double-tap reset
+- [ ] Crosshair + OHLC stick after finger lift
+- [ ] Drawings: place / select / move / resize with thumb
+- [ ] Order ticket opens as bottom sheet; Place Order works
+- [ ] TopBar / TF / Indicators all ≥44px taps
+- [ ] 3–4 pane layout: pane tabs switch; plot full height
+- [ ] iPad portrait + landscape: no horizontal page scroll
+- [ ] Desktop mouse: pan / wheel zoom / right-click Settings unchanged
+
+### Suggested order
+`T1 → T2 → T3 → T4 → T5` — work one step at a time.
 
 ---
 

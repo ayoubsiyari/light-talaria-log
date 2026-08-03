@@ -56,7 +56,7 @@ export function DrawingFloatingToolbar({
 
   return (
     <div
-      className="pointer-events-auto flex items-center gap-0.5 rounded-lg border border-border bg-surface text-foreground shadow-xl px-1.5 py-1 max-w-full"
+      className="pointer-events-auto flex items-center gap-0.5 rounded-lg border border-border bg-surface text-foreground shadow-xl px-1.5 py-1 max-w-full overflow-x-auto overscroll-x-contain"
       onPointerDown={(e) => e.stopPropagation()}
     >
       <span className="px-1 text-muted/50 select-none text-xs tracking-widest" title={tool.label}>

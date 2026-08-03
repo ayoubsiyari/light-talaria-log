@@ -143,7 +143,7 @@ function IconButton({
   return (
     <button
       type="button"
-      className="min-h-8 min-w-8 sm:min-h-7 sm:min-w-7 rounded flex items-center justify-center text-muted hover:text-foreground hover:bg-background/70"
+      className="min-h-11 min-w-11 sm:min-h-7 sm:min-w-7 rounded flex items-center justify-center text-muted hover:text-foreground hover:bg-background/70"
       title={title}
       aria-label={ariaLabel}
       onClick={(e) => {

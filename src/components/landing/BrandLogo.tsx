@@ -3,21 +3,21 @@ interface BrandLogoProps {
   size?: number;
   className?: string;
   /**
-   * `vector` (default) — tiny inline SVG, safe for chrome / repeated use.
-   * `raster` — full PNG mark for marketing pages only (heavier decode).
+   * `raster` (default) — official PNG mark (`/logo-07.png`).
+   * `vector` — tiny SVG approx for places that must avoid decoding the PNG.
+   * Never draw either onto the chart canvas — use text “Talaria Log” there.
    */
   variant?: 'vector' | 'raster';
 }
 
 /**
- * TALARIA-LOG mark (three-bar wing).
- * Prefer `vector` everywhere except large marketing heroes — never draw the
- * PNG onto the chart canvas (keeps chart memory low).
+ * Official TALARIA-LOG mark (three-bar wing).
+ * Top bar uses the real PNG at a small display size; chart uses text only.
  */
 export function BrandLogo({
   size = 28,
   className = '',
-  variant = 'vector',
+  variant = 'raster',
 }: BrandLogoProps) {
   if (variant === 'raster') {
     return (
@@ -34,6 +34,7 @@ export function BrandLogo({
     );
   }
 
+  // Lightweight SVG matching logo-07: three diagonals with vertical hooks on the right.
   return (
     <svg
       width={size}
@@ -46,24 +47,20 @@ export function BrandLogo({
       role="img"
     >
       <defs>
-        <linearGradient id="talariaMarkGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#3b82f6" />
-          <stop offset="100%" stopColor="#4338ca" />
+        <linearGradient id="talariaMarkGrad" x1="8%" y1="20%" x2="92%" y2="80%">
+          <stop offset="0%" stopColor="#38bdf8" />
+          <stop offset="55%" stopColor="#3b82f6" />
+          <stop offset="100%" stopColor="#3730a3" />
         </linearGradient>
       </defs>
-      {/* Three-bar wing — approximate of logo-07 mark */}
-      <path
-        fill="url(#talariaMarkGrad)"
-        d="M8 18 L40 6 L48 14 L16 26 Z"
-      />
-      <path
-        fill="url(#talariaMarkGrad)"
-        d="M8 32 L36 20 L44 28 L44 40 L36 40 L16 40 Z"
-      />
-      <path
-        fill="url(#talariaMarkGrad)"
-        d="M8 46 L36 34 L44 42 L44 56 L36 56 L16 54 Z"
-      />
+      <g fill="url(#talariaMarkGrad)">
+        {/* Top bar */}
+        <path d="M6 22 L42 4 L50 12 L38 18 L50 18 L50 28 L14 28 Z" />
+        {/* Middle bar */}
+        <path d="M6 36 L38 20 L46 28 L46 44 L14 44 Z" />
+        {/* Bottom bar */}
+        <path d="M6 50 L38 34 L46 42 L46 58 L14 58 Z" />
+      </g>
     </svg>
   );
 }

@@ -92,14 +92,14 @@ export function TopBar({
 }: TopBarProps) {
   return (
     <header className="chrome-topbar tv-panel-b shrink-0 h-10 sm:h-[38px] flex items-center gap-0 px-1 sm:px-2 pt-[env(safe-area-inset-top)] min-h-10">
-      {/* Brand mark — top-left (TV-scale ~28px; vector SVG, not heavy PNG) */}
+      {/* Brand mark — real logo, displayed small (PNG decoded once for chrome only) */}
       <a
         href="/"
         className="flex items-center justify-center shrink-0 h-9 w-9 mr-1.5 rounded-md hover:bg-background/60"
         title="Talaria Log"
         aria-label="Talaria Log home"
       >
-        <BrandLogo size={28} variant="vector" />
+        <BrandLogo size={28} variant="raster" className="w-7 h-7" />
       </a>
 
       {/* Left: symbol + chart chrome */}

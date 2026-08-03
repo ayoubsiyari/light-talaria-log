@@ -41,7 +41,7 @@ interface TopBarProps {
 
 /**
  * TradingView-style top banner:
- * left = symbol / series / indicators · center = TFs · right = order / layout / theme
+ * left = symbol / series / indicators · center = TFs · right = layout / theme / order
  */
 export function TopBar({
   symbol,
@@ -73,32 +73,7 @@ export function TopBar({
         <BrandLogo size={28} variant="raster" className="w-7 h-7" />
       </a>
 
-      {/* Primary actions — Place Order, layout, theme */}
-      <div className="flex items-center gap-0.5 shrink-0">
-        <Button
-          variant="primary"
-          size="sm"
-          className="h-8 min-h-8 [@media(hover:none)]:min-h-11 px-3 text-[13px] font-medium"
-          isDisabled={!onPlaceOrder}
-          onPress={onPlaceOrder}
-        >
-          <span className="sm:hidden">+ Order</span>
-          <span className="hidden sm:inline">+ Place Order</span>
-        </Button>
-
-        <LayoutPicker
-          layout={chartLayout}
-          onLayoutChange={onChartLayoutChange}
-          sync={layoutSync}
-          onSyncChange={onLayoutSyncChange}
-        />
-
-        <ThemeToggle compact />
-      </div>
-
-      <span className="tv-divider-y mx-1 hidden sm:block h-4 self-center" aria-hidden />
-
-      {/* Symbol + series + indicators */}
+      {/* Left: symbol + series + indicators */}
       <div className="flex items-center min-w-0 shrink-0">
         <SymbolPicker
           symbol={symbol}
@@ -166,6 +141,27 @@ export function TopBar({
           onTimeframeChange={onTimeframeChange}
           availableTimeframes={availableTimeframes}
         />
+      </div>
+
+      {/* Right corner: layout, theme, place order only */}
+      <div className="flex items-center gap-0.5 shrink-0 ml-auto">
+        <LayoutPicker
+          layout={chartLayout}
+          onLayoutChange={onChartLayoutChange}
+          sync={layoutSync}
+          onSyncChange={onLayoutSyncChange}
+        />
+        <ThemeToggle compact />
+        <Button
+          variant="primary"
+          size="sm"
+          className="h-8 min-h-8 [@media(hover:none)]:min-h-11 px-3 text-[13px] font-medium"
+          isDisabled={!onPlaceOrder}
+          onPress={onPlaceOrder}
+        >
+          <span className="sm:hidden">+ Order</span>
+          <span className="hidden sm:inline">+ Place Order</span>
+        </Button>
       </div>
     </header>
   );

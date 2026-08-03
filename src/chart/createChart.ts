@@ -1166,9 +1166,16 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
 
     setReplayCursorTime(time) {
       if (replayCursorTime === time) return;
+      const prevTip =
+        replayFollow && replayCursorTime != null && bars.length > 0
+          ? indexAtOrBeforeBars(bars, replayCursorTime)
+          : -1;
       replayCursorTime = time;
+      // Only shift the camera when the tip bar index changes — same-bucket
+      // patches must not re-snap the range (grid labels jumped on Play/Pause).
       if (replayFollow && time != null) {
-        centerOnReplayCursor(false);
+        const tip = indexAtOrBeforeBars(bars, time);
+        if (tip !== prevTip) centerOnReplayCursor(false);
       }
       markDirty();
     },
@@ -1202,6 +1209,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       if (destroyed) return;
       const nextLen = nextBars.length;
       const prevLen = bars.length;
+      const prevTip =
+        replayCursorTime != null && prevLen > 0
+          ? indexAtOrBeforeBars(bars, replayCursorTime)
+          : -1;
 
       // Grow/patch when the visible prefix is unchanged; otherwise full replace.
       const canAppend =
@@ -1238,7 +1249,14 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
 
       replayCursorTime = cursorTime;
       if (replayFollow) {
-        centerOnReplayCursor(false);
+        const tip =
+          cursorTime != null && bars.length > 0
+            ? indexAtOrBeforeBars(bars, cursorTime)
+            : -1;
+        // New tip candle → scroll one bar; same tip → leave camera (stable grid).
+        if (tip !== prevTip || prevLen === 0) {
+          centerOnReplayCursor(false);
+        }
       }
       invalidateScaleCache();
       invalidateHitCache();
@@ -1248,8 +1266,18 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     setReplayFollow(follow) {
       if (replayFollow === follow) return;
       replayFollow = follow;
-      if (follow && replayCursorTime != null) {
-        centerOnReplayCursor(false);
+      // Enabling follow must not hard-snap if we are already right-anchored —
+      // that was shifting vertical grid / time labels on every Play press.
+      if (follow && replayCursorTime != null && bars.length > 0) {
+        const tip = indexAtOrBeforeBars(bars, replayCursorTime);
+        const target = rangeRightAnchored(tip, currentSpan());
+        const drift = Math.max(
+          Math.abs(range.fromIndex - target.fromIndex),
+          Math.abs(range.toIndex - target.toIndex),
+        );
+        if (drift > 0.51) {
+          centerOnReplayCursor(false);
+        }
       }
       markDirty();
     },

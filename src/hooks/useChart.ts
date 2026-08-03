@@ -15,6 +15,10 @@ import {
   type DrawingPlacement,
   type SeriesType,
 } from '@/chart';
+import {
+  timeRangeFromVisible,
+  visibleRangeFromTimeWindow,
+} from '@/data/timeframeAgg';
 import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
 import type { Drawing } from '@/drawings/drawingStore';
 import type { HitResult } from '@/drawings/hitTest';
@@ -91,6 +95,8 @@ export function useChart(
   optionsRef.current = options;
   const barsRef = useRef(options.bars ?? EMPTY_BARS);
   barsRef.current = options.bars ?? EMPTY_BARS;
+  /** Track follow edge so Pause can keep the same wall-clock window. */
+  const prevReplayFollowRef = useRef<boolean | undefined>(undefined);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -348,6 +354,8 @@ export function useChart(
   useLayoutEffect(() => {
     const instance = instanceRef.current;
     if (!instance || !options.bars) return;
+    const wasFollowing = prevReplayFollowRef.current === true;
+    prevReplayFollowRef.current = options.replayFollow;
     barsRef.current = options.bars;
 
     // While replay follow is active, App drives bars/camera via syncReplayReveal.
@@ -356,7 +364,31 @@ export function useChart(
       return;
     }
 
+    // Pause edge: keep the same wall-clock window across bar-array rebuilds.
+    // Re-applying derive's index range after a different bars[0] made time-grid
+    // labels jump even when the tip candle looked roughly in place.
+    const liveRange = instance.getVisibleRange();
+    const liveBars = instance.getBars();
+    const keepTime =
+      wasFollowing && liveBars.length > 0
+        ? timeRangeFromVisible(liveBars, liveRange)
+        : null;
+
     setViewportData(instance, options.bars);
+
+    if (keepTime && options.bars.length > 0) {
+      const mapped = visibleRangeFromTimeWindow(
+        options.bars,
+        keepTime.fromTime,
+        keepTime.toTime,
+      );
+      if (mapped.toIndex > mapped.fromIndex) {
+        instance.setVisibleRange(mapped.fromIndex, mapped.toIndex, {
+          silent: true,
+        });
+        return;
+      }
+    }
 
     // Explicit React range wins over setViewportBars side-effects (e.g. replay follow).
     if (rangeFrom == null || rangeTo == null || rangeTo <= rangeFrom) return;

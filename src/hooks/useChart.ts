@@ -26,6 +26,8 @@ import { getIndicatorDef } from '@/indicators/registry';
 import { computeIndicators } from '@/indicators/runIndicatorWorker';
 import { colorsForIndicator } from '@/indicators/themeColors';
 import {
+  INDICATOR_TIP_EVERY_BARS,
+  INDICATOR_TIP_MIN_MS,
   needsFullIndicatorRecompute,
   stitchTipOverlays,
   stitchTipPanes,
@@ -287,18 +289,24 @@ export function useChart(
     let tipTimer: ReturnType<typeof setTimeout> | null = null;
     let tipInFlight = false;
     let tipPending: readonly ChartBar[] | null = null;
+    /** Last bar count when tip Worker actually ran — gates replay isolation. */
+    let lastTipAtLen = 0;
+    let lastTipAtMs = 0;
 
     const runFull = (bars: readonly ChartBar[]) => {
       if (bars.length === 0) {
         instance.setIndicatorOverlays([]);
         instance.setIndicatorPanes([]);
         lastFullBars = bars;
+        lastTipAtLen = bars.length;
         return;
       }
       void computeIndicators(bars, instances)
         .then(({ overlays, panes }) => {
           if (cancelled) return;
           lastFullBars = bars;
+          lastTipAtLen = bars.length;
+          lastTipAtMs = performance.now();
           instance.setIndicatorOverlays(withWidth(overlays));
           instance.setIndicatorPanes(withWidth(panes));
         })
@@ -311,19 +319,42 @@ export function useChart(
     const drainTip = () => {
       if (cancelled || tipInFlight) return;
       const pending = tipPending;
-      tipPending = null;
       if (!pending || pending.length === 0) return;
 
       if (needsFullIndicatorRecompute(lastFullBars, pending)) {
+        tipPending = null;
         runFull(pending);
         return;
       }
 
+      // Replay isolation: skip Worker until enough new bars OR min interval.
+      // Buffers already length-aligned (hold tip) so candles never wait.
+      const now = performance.now();
+      const barsSince = pending.length - lastTipAtLen;
+      const msSince = now - lastTipAtMs;
+      if (
+        optionsRef.current.replayFollow &&
+        barsSince < INDICATOR_TIP_EVERY_BARS &&
+        msSince < INDICATOR_TIP_MIN_MS
+      ) {
+        const wait = Math.max(0, INDICATOR_TIP_MIN_MS - msSince);
+        if (tipTimer == null) {
+          tipTimer = setTimeout(() => {
+            tipTimer = null;
+            drainTip();
+          }, wait || INDICATOR_TIP_MIN_MS);
+        }
+        return;
+      }
+
+      tipPending = null;
       tipInFlight = true;
       const slice = tipWindowBars(pending);
       void computeIndicators(slice, instances)
         .then(({ overlays, panes }) => {
           if (cancelled) return;
+          lastTipAtLen = pending.length;
+          lastTipAtMs = performance.now();
           const nextOverlays = stitchTipOverlays(
             instance.getIndicatorOverlays(),
             withWidth(overlays),
@@ -354,19 +385,20 @@ export function useChart(
     const scheduleTip = (bars: readonly ChartBar[]) => {
       tipPending = bars;
       if (tipTimer != null || tipInFlight) return;
-      // Coalesce rapid replay ticks (~30 Hz max tip Worker work).
+      // Coalesce; actual Worker gated by INDICATOR_TIP_EVERY_BARS / MIN_MS.
       tipTimer = setTimeout(() => {
         tipTimer = null;
         drainTip();
-      }, 32);
+      }, INDICATOR_TIP_MIN_MS);
     };
 
     instance.onIndicatorReveal((bars) => {
       if (cancelled) return;
+      // Always keep latest bars for a catch-up tip; never block replay path.
       scheduleTip(bars);
     });
 
-    // Pause / seek / load: full window. Play path uses tip sync via syncReplayReveal.
+    // Pause / seek / load: full window. Play: hold-extend + sparse tip Worker.
     if (!options.replayFollow) {
       runFull(options.bars ?? EMPTY_BARS);
     } else if (instance.getIndicatorOverlays().length === 0) {

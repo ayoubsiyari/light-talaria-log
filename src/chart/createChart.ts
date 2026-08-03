@@ -786,11 +786,13 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       for (const cb of plotClickListeners) cb(point);
     },
     onUserGesture: notifyUserGesture,
-    onContextMenu: (x, y) => {
-      for (const cb of contextMenuListeners) cb(x, y);
+    onContextMenu: (clientX, clientY) => {
+      for (const cb of contextMenuListeners) cb(clientX, clientY);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
-          new CustomEvent('talaria:open-chart-settings', { detail: { x, y } }),
+          new CustomEvent('talaria:open-chart-settings', {
+            detail: { x: clientX, y: clientY },
+          }),
         );
       }
     },

@@ -8,6 +8,14 @@ import type {
 /** Trailing bars for tip recompute — enough for long MAs, far cheaper than full 2500. */
 export const INDICATOR_TIP_WINDOW = 320;
 
+/**
+ * Replay isolation budget:
+ * - syncReplayReveal only grows buffers (O(series), no Worker) so candles never wait.
+ * - Tip Worker runs at most every N new bars AND min interval — keeps replay FPS free.
+ */
+export const INDICATOR_TIP_EVERY_BARS = 8;
+export const INDICATOR_TIP_MIN_MS = 150;
+
 function growValues(prev: Float32Array, len: number): Float32Array {
   if (prev.length === len) return prev;
   if (prev.length > len) return prev.subarray(0, len).slice();

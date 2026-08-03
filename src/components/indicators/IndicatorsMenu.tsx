@@ -16,10 +16,7 @@ import {
 } from '@/indicators/defs';
 import { colorsForIndicator } from '@/indicators/themeColors';
 import type { EnabledIndicator, IndicatorId } from '@/types/indicator';
-import {
-  MAX_OVERLAY_INDICATORS,
-  MAX_PANE_INDICATORS,
-} from '@/types/indicator';
+import { MAX_INDICATORS, MAX_PANE_INDICATORS } from '@/types/indicator';
 
 interface IndicatorsMenuProps {
   showVolume: boolean;
@@ -97,9 +94,6 @@ export function IndicatorsMenu({
     return m;
   }, [enabled]);
 
-  const overlayCount = enabled.filter(
-    (e) => INDICATOR_DEFS[e.id].placement === 'overlay',
-  ).length;
   const paneCount = enabled.filter(
     (e) => INDICATOR_DEFS[e.id].placement === 'pane',
   ).length;
@@ -158,7 +152,7 @@ export function IndicatorsMenu({
       onChange(enabled.filter((e) => e.id !== id));
       return;
     }
-    if (def.placement === 'overlay' && overlayCount >= MAX_OVERLAY_INDICATORS) return;
+    if (enabled.length >= MAX_INDICATORS) return;
     if (def.placement === 'pane' && paneCount >= MAX_PANE_INDICATORS) return;
     onChange([
       ...enabled,
@@ -177,7 +171,7 @@ export function IndicatorsMenu({
     const def = INDICATOR_DEFS[id];
     const atCap =
       !on &&
-      ((def.placement === 'overlay' && overlayCount >= MAX_OVERLAY_INDICATORS) ||
+      (enabled.length >= MAX_INDICATORS ||
         (def.placement === 'pane' && paneCount >= MAX_PANE_INDICATORS));
     if (!on) {
       if (atCap) return;
@@ -353,8 +347,8 @@ export function IndicatorsMenu({
                     {filterPill('overlays', 'Overlays')}
                     {filterPill('panes', 'Panes')}
                     <span className="ml-auto text-[10px] text-muted tabular-nums hidden sm:inline">
-                      {overlayCount}/{MAX_OVERLAY_INDICATORS} ov · {paneCount}/
-                      {MAX_PANE_INDICATORS} panes
+                      {enabled.length}/{MAX_INDICATORS}
+                      {paneCount > 0 ? ` · ${paneCount}/${MAX_PANE_INDICATORS} panes` : ''}
                     </span>
                   </div>
                 </div>
@@ -400,8 +394,7 @@ export function IndicatorsMenu({
                     const fav = favorites.has(id);
                     const atCap =
                       !on &&
-                      ((d.placement === 'overlay' &&
-                        overlayCount >= MAX_OVERLAY_INDICATORS) ||
+                      (enabled.length >= MAX_INDICATORS ||
                         (d.placement === 'pane' && paneCount >= MAX_PANE_INDICATORS));
                     return (
                       <div

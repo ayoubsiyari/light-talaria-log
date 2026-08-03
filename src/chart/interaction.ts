@@ -35,7 +35,8 @@ export interface InteractionCallbacks {
   /** Cursor while dragging a drawing (optional override). */
   getDrawingDragCursor?: () => string | null;
   /** Right-click / long-press on the canvas (media coords). */
-  onContextMenu?: (x: number, y: number) => void;
+  /** Screen (client) coords for context menus. */
+  onContextMenu?: (clientX: number, clientY: number) => void;
 }
 
 export interface InteractionHandle {
@@ -103,12 +104,23 @@ export function attachInteraction(
     }
   };
 
-  const startLongPress = (x: number, y: number, pointerType: string) => {
+  let longPressClientX = 0;
+  let longPressClientY = 0;
+
+  const startLongPress = (
+    x: number,
+    y: number,
+    pointerType: string,
+    clientX: number,
+    clientY: number,
+  ) => {
     cancelLongPress();
     longPressFired = false;
     if (pointerType !== 'touch' && pointerType !== 'pen') return;
     longPressX = x;
     longPressY = y;
+    longPressClientX = clientX;
+    longPressClientY = clientY;
     longPressTimer = setTimeout(() => {
       longPressTimer = null;
       longPressFired = true;
@@ -123,7 +135,7 @@ export function attachInteraction(
         // already released
       }
       activePointerId = null;
-      callbacks.onContextMenu?.(longPressX, longPressY);
+      callbacks.onContextMenu?.(longPressClientX, longPressClientY);
       try {
         navigator.vibrate?.(12);
       } catch {
@@ -309,7 +321,7 @@ export function attachInteraction(
     } else {
       dragMode = 'pan';
       // Long-press settings only on plot (not axes / drawing handles)
-      if (zone === 'plot') startLongPress(x, y, e.pointerType);
+      if (zone === 'plot') startLongPress(x, y, e.pointerType, e.clientX, e.clientY);
     }
 
     setCursorForZone(zone, x, y);
@@ -542,15 +554,7 @@ export function attachInteraction(
     e.preventDefault();
     // Avoid double-open when long-press already fired settings
     if (longPressFired) return;
-    const layout = callbacks.getLayout();
-    const { x, y } = clientToMedia(
-      e.clientX,
-      e.clientY,
-      canvas,
-      layout.width,
-      layout.height,
-    );
-    callbacks.onContextMenu?.(x, y);
+    callbacks.onContextMenu?.(e.clientX, e.clientY);
   };
 
   canvas.style.cursor = 'default';

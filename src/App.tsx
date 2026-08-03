@@ -14,6 +14,7 @@ import {
 import { DatasetsPage } from '@/components/dataset/DatasetsPage';
 import { DrawingFloatingToolbar } from '@/components/drawings/DrawingFloatingToolbar';
 import { DrawingSettingsModal } from '@/components/drawings/DrawingSettingsModal';
+import { ChartContextMenu, type ChartContextMenuState } from '@/components/chart/ChartContextMenu';
 import { ChartSettingsModal } from '@/components/chart/ChartSettingsModal';
 import { JournalPage } from '@/components/journal/JournalPage';
 import { BottomBar } from '@/components/layout/BottomBar';
@@ -22,7 +23,6 @@ import { LeftToolbar } from '@/components/layout/LeftToolbar';
 import { TopBar } from '@/components/layout/TopBar';
 import { MarketingHome } from '@/components/landing/MarketingHome';
 import { CreateSessionPage } from '@/components/session/CreateSessionPage';
-import { saveJournalResult } from '@/journal/journalStore';
 import { getSession, updateSessionProgress } from '@/sessions/sessionStore';
 import { LoadingProgress } from '@/components/LoadingProgress';
 import { PerfOverlay } from '@/components/perf/PerfOverlay';
@@ -51,13 +51,9 @@ import { resolveBaseDatasetsForSession } from '@/datasets/resolveBaseDataset';
 import {
   clearBacktestResult,
   getBacktestState,
-  setBacktestCancelled,
-  setBacktestError,
-  setBacktestResult,
-  setBacktestRunning,
   subscribeBacktest,
 } from '@/backtest/backtestStore';
-import { cancelBacktest, runBacktest } from '@/backtest/runBacktestWorker';
+import { cancelBacktest } from '@/backtest/runBacktestWorker';
 import {
   createOrderSessionBridge,
   type OrderSessionBridge,
@@ -70,9 +66,7 @@ import {
 } from '@/components/orders/OrderTicket';
 import { TradeDock, tradeDockCounts } from '@/components/orders/TradeDock';
 import type { EnabledIndicator } from '@/types/indicator';
-import { DEFAULT_BACKTEST_PARAMS } from '@/types/backtest';
 import type { ChartOrder } from '@/types/order';
-import { MAX_BACKTEST_BARS } from '@/utils/constants';
 import {
   loadViewportAroundTime,
   loadViewportForTimeRange,
@@ -157,7 +151,7 @@ function replayBounds(
 }
 
 export default function App() {
-  const { state, importCsv } = useCsvImport();
+  const { state } = useCsvImport();
   const importing = state.status === 'importing';
 
   const boot = useMemo(() => bootRoute(), []);
@@ -221,6 +215,7 @@ export default function App() {
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [chartSettingsOpen, setChartSettingsOpen] = useState(false);
+  const [chartContextMenu, setChartContextMenu] = useState<ChartContextMenuState | null>(null);
   const [magnet, setMagnet] = useState(false);
   const [stayInDrawingMode, setStayInDrawingMode] = useState(false);
   const [drawingsLocked, setDrawingsLocked] = useState(false);
@@ -1119,9 +1114,14 @@ export default function App() {
     [],
   );
 
-  // Right-click chart → TradingView-style appearance settings
+  // Right-click / long-press chart → context menu (crosshair + settings)
   useEffect(() => {
-    const open = () => setChartSettingsOpen(true);
+    const open = (e: Event) => {
+      const detail = (e as CustomEvent<{ x?: number; y?: number }>).detail;
+      const x = typeof detail?.x === 'number' ? detail.x : window.innerWidth / 2;
+      const y = typeof detail?.y === 'number' ? detail.y : window.innerHeight / 2;
+      setChartContextMenu({ x, y });
+    };
     window.addEventListener('talaria:open-chart-settings', open);
     return () => window.removeEventListener('talaria:open-chart-settings', open);
   }, []);
@@ -1920,45 +1920,7 @@ export default function App() {
 
   useEffect(() => subscribeBacktest(() => setBacktestTick((n) => n + 1)), []);
 
-  const handleRunBacktest = useCallback(() => {
-    if (!session) return;
-    const pane = panesRef.current.find((p) => p.id === activePaneId) ?? panesRef.current[0];
-    if (!pane) return;
-    const series = seriesForPane(pane);
-    if (!series) return;
-
-    const { timeStart, timeEnd } = replayBounds(session, seriesRef.current);
-    setBacktestRunning();
-
-    void runBacktest({
-      sessionId: session.id,
-      datasetId: series.datasetId,
-      timeframe: pane.timeframe,
-      timeStart,
-      timeEnd,
-      params: DEFAULT_BACKTEST_PARAMS,
-    })
-      .then((result) => {
-        const note = result.truncated
-          ? `Capped at ${MAX_BACKTEST_BARS.toLocaleString()} bars (newest)`
-          : null;
-        setBacktestResult(result, note);
-        saveJournalResult(session.id, session.name, result);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === 'AbortError') {
-          setBacktestCancelled();
-          return;
-        }
-        setBacktestError(err instanceof Error ? err.message : 'Backtest failed');
-      });
-  }, [session, activePaneId, seriesForPane]);
-
-  const handleCancelBacktest = useCallback(() => {
-    cancelBacktest();
-    setBacktestCancelled();
-  }, []);
-
+  // Backtest TopBar entry removed for now — engine/store kept for a future UI.
   useEffect(() => {
     return () => {
       cancelBacktest();
@@ -2131,14 +2093,6 @@ export default function App() {
   void backtestTick;
   const bt = getBacktestState();
   const btResult = bt.result;
-  const btRunning = bt.status === 'running';
-  const btLabel = btRunning
-    ? 'Running…'
-    : bt.status === 'error'
-      ? bt.error ?? 'Error'
-      : btResult
-        ? `${btResult.trades.length} trades${bt.note ? ' · capped' : ''}`
-        : undefined;
   const equityLabel = btResult ? btResult.finalEquity.toFixed(4) : undefined;
   const pnlPct = btResult ? (btResult.finalEquity - 1) * 100 : null;
   const pnlLabel =
@@ -2156,8 +2110,6 @@ export default function App() {
         availableTimeframes={availableTimeframes}
         seriesType={seriesType}
         onSeriesTypeChange={handleSeriesTypeChange}
-        crosshairMode={crosshairMode}
-        onCrosshairModeChange={handleCrosshairModeChange}
         chartLayout={chartLayout}
         onChartLayoutChange={handleLayoutChange}
         layoutSync={layoutSync}
@@ -2166,15 +2118,7 @@ export default function App() {
         onShowVolumeChange={handleShowVolumeChange}
         enabledIndicators={enabledIndicators}
         onEnabledIndicatorsChange={setEnabledIndicators}
-        onImportCsv={(f) => void importCsv(f)}
-        importing={importing}
-        onExitSession={handleExitSession}
-        sessionLabel={`${session.name} · ${session.startDate} → ${session.endDate}`}
         onPlaceOrder={handlePlaceOrder}
-        backtestRunning={btRunning}
-        backtestLabel={btLabel}
-        onRunBacktest={loadStatus === 'ready' ? handleRunBacktest : undefined}
-        onCancelBacktest={handleCancelBacktest}
       />
 
       <div className="flex-1 min-h-0 flex">
@@ -2337,6 +2281,16 @@ export default function App() {
                 replaceSelectedDrawing(next);
                 setSettingsOpen(false);
               }}
+            />
+          )}
+
+          {chartContextMenu && (
+            <ChartContextMenu
+              state={chartContextMenu}
+              crosshairMode={crosshairMode}
+              onCrosshairModeChange={handleCrosshairModeChange}
+              onOpenChartSettings={() => setChartSettingsOpen(true)}
+              onClose={() => setChartContextMenu(null)}
             />
           )}
 

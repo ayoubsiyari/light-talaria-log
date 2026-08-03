@@ -203,5 +203,7 @@ export type IndicatorOverlay = IndicatorOverlayResult;
 export type IndicatorPane = IndicatorPaneResult;
 
 /** Soft caps so layout/FPS stay sane. */
-export const MAX_OVERLAY_INDICATORS = 12;
+/** Max total indicators on screen (overlays + panes). */
+export const MAX_INDICATORS = 10;
+/** Pane sub-cap within the total (layout height). */
 export const MAX_PANE_INDICATORS = 4;

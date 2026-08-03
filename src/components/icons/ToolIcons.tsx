@@ -221,6 +221,18 @@ export function IconChevron({ className = base }: IconProps) {
   );
 }
 
+export function IconPencil({ className = base }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path
+        d="M14.5 4.5l5 5L8 21H3v-5L14.5 4.5z"
+        strokeLinejoin="round"
+      />
+      <path d="M12.5 6.5l5 5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function IconSettings({ className = base }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">

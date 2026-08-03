@@ -59,10 +59,8 @@ export function placeDrawingPoint(
   }
 
   const pts = next.slice(0, mode.count);
-  let text: string | undefined;
-  if (def.needsText) {
-    text = window.prompt(`Label for ${def.label}`, def.label) ?? def.label;
-  }
+  // Text tools get a placeholder — edit in the Text settings tab (no window.prompt).
+  const text = def.needsText ? def.label : undefined;
 
   return {
     status: 'complete',

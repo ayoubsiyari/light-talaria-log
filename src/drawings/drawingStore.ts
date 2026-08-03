@@ -1,6 +1,7 @@
 import { newId } from '@/utils/uuid';
 import { TOOLS, defaultStyleFor, type DrawingToolId } from './toolRegistry';
 import { cloneStyle, type DrawingStyle } from './drawingStyle';
+import { getDrawingTemplate } from './drawingTemplates';
 import { defaultMetaFor, resolveMeta } from './toolSettings';
 
 export type { DrawingToolId } from './toolRegistry';
@@ -18,6 +19,8 @@ export interface Drawing {
   points: DrawingPoint[];
   style: DrawingStyle;
   text?: string;
+  /** Custom display name in settings header (defaults to tool label). */
+  name?: string;
   /** Per-object lock (TV padlock on floating toolbar). */
   locked?: boolean;
   /** When false, object is hidden but kept in store. */
@@ -66,6 +69,7 @@ function normalizeDrawing(raw: unknown): Drawing | null {
     points: o.points as DrawingPoint[],
     style: cloneStyle(o.style as Partial<DrawingStyle> | undefined),
     text: typeof o.text === 'string' ? o.text : undefined,
+    name: typeof o.name === 'string' && o.name.trim() ? o.name.trim() : undefined,
     locked: o.locked === true,
     visible: o.visible === false ? false : true,
     meta: resolveMeta(
@@ -106,21 +110,31 @@ export function createDrawing(
   points: DrawingPoint[],
   extras?: {
     text?: string;
+    name?: string;
     style?: Partial<DrawingStyle>;
     meta?: Record<string, unknown>;
     locked?: boolean;
     visible?: boolean;
   },
 ): Drawing {
+  const tmpl = getDrawingTemplate(type);
   return {
     id: newId(),
     type,
     points,
-    style: cloneStyle({ ...defaultStyleFor(type), ...extras?.style }),
+    style: cloneStyle({
+      ...defaultStyleFor(type),
+      ...tmpl?.style,
+      ...extras?.style,
+    }),
     text: extras?.text,
+    name: extras?.name,
     locked: extras?.locked ?? false,
     visible: extras?.visible ?? true,
-    meta: resolveMeta(type, extras?.meta ?? defaultMetaFor(type)),
+    meta: resolveMeta(
+      type,
+      extras?.meta ?? tmpl?.meta ?? defaultMetaFor(type),
+    ),
   };
 }
 

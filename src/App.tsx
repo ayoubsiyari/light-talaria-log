@@ -1230,6 +1230,14 @@ export default function App() {
     });
   }, [catalog, syncStore, applyTimeWindowToPanes]);
 
+  /** After placing a drawing: select it; open Text settings for text tools. */
+  const finishPlacedDrawing = useCallback((drawing: Drawing) => {
+    setDraftPoints([]);
+    setSelectedDrawingId(drawing.id);
+    setSettingsOpen(!!getTool(drawing.type).needsText);
+    if (!stayInDrawingMode) setActiveTool('cursor');
+  }, [stayInDrawingMode]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -1247,10 +1255,7 @@ export default function App() {
           });
           if (result.status === 'complete') {
             persistDrawings([...drawings, result.drawing]);
-            setDraftPoints([]);
-            setSelectedDrawingId(result.drawing.id);
-            setSettingsOpen(false);
-            if (!stayInDrawingMode) setActiveTool('cursor');
+            finishPlacedDrawing(result.drawing);
           }
         }
       }
@@ -1269,9 +1274,9 @@ export default function App() {
     draftPoints,
     drawings,
     drawingsLocked,
+    finishPlacedDrawing,
     persistDrawings,
     selectedDrawingId,
-    stayInDrawingMode,
   ]);
 
   const handleLayoutChange = (layout: ChartLayout) => {
@@ -1563,10 +1568,7 @@ export default function App() {
         freehandActiveRef.current = false;
         if (result.status === 'complete') {
           persistDrawings([...drawings, result.drawing]);
-          setDraftPoints([]);
-          setSelectedDrawingId(result.drawing.id);
-          setSettingsOpen(false);
-          if (!stayInDrawingMode) setActiveTool('cursor');
+          finishPlacedDrawing(result.drawing);
         }
         return;
       }
@@ -1585,10 +1587,7 @@ export default function App() {
           });
           if (result.status === 'complete') {
             persistDrawings([...drawings, result.drawing]);
-            setDraftPoints([]);
-            setSelectedDrawingId(result.drawing.id);
-            setSettingsOpen(false);
-            if (!stayInDrawingMode) setActiveTool('cursor');
+            finishPlacedDrawing(result.drawing);
           }
           return;
         }
@@ -1601,10 +1600,7 @@ export default function App() {
       }
       if (result.status === 'complete') {
         persistDrawings([...drawings, result.drawing]);
-        setDraftPoints([]);
-        setSelectedDrawingId(result.drawing.id);
-        setSettingsOpen(false);
-        if (!stayInDrawingMode) setActiveTool('cursor');
+        finishPlacedDrawing(result.drawing);
       }
     },
     [
@@ -1613,6 +1609,7 @@ export default function App() {
       catalog,
       draftPoints,
       drawings,
+      finishPlacedDrawing,
       drawingsLocked,
       magnet,
       persistDrawings,
@@ -1690,16 +1687,34 @@ export default function App() {
     setSettingsOpen(false);
   };
 
-  const patchSelectedDrawing = (patch: Partial<Drawing>) => {
-    if (!selectedDrawingId) return;
-    persistDrawings(
-      drawings.map((d) => (d.id === selectedDrawingId ? { ...d, ...patch } : d)),
-    );
-  };
+  const patchSelectedDrawing = useCallback(
+    (patch: Partial<Drawing>) => {
+      if (!selectedDrawingId) return;
+      setDrawings((prev) => {
+        const next = prev.map((d) =>
+          d.id === selectedDrawingId ? { ...d, ...patch } : d,
+        );
+        if (session && catalog) {
+          saveDrawings(`${session.id}:${catalog.datasetId}`, next);
+        }
+        return next;
+      });
+    },
+    [selectedDrawingId, session, catalog],
+  );
 
-  const replaceSelectedDrawing = (next: Drawing) => {
-    persistDrawings(drawings.map((d) => (d.id === next.id ? next : d)));
-  };
+  const replaceSelectedDrawing = useCallback(
+    (next: Drawing) => {
+      setDrawings((prev) => {
+        const mapped = prev.map((d) => (d.id === next.id ? next : d));
+        if (session && catalog) {
+          saveDrawings(`${session.id}:${catalog.datasetId}`, mapped);
+        }
+        return mapped;
+      });
+    },
+    [session, catalog],
+  );
 
   const deleteSelectedDrawing = () => {
     if (!selectedDrawingId) return;
@@ -2243,7 +2258,7 @@ export default function App() {
             </>
           )}
 
-          {selectedDrawing && selectedDrawing.visible !== false && (
+          {selectedDrawing && selectedDrawing.visible !== false && !settingsOpen && (
             <div className="pointer-events-none absolute top-2 left-2 right-2 z-40 sm:left-1/2 sm:right-auto sm:top-3 sm:-translate-x-1/2 flex justify-center sm:block">
               <DrawingFloatingToolbar
                 drawing={selectedDrawing}
@@ -2258,8 +2273,15 @@ export default function App() {
           {settingsOpen && selectedDrawing && (
             <DrawingSettingsModal
               drawing={selectedDrawing}
-              onChange={replaceSelectedDrawing}
-              onClose={() => setSettingsOpen(false)}
+              onLiveChange={replaceSelectedDrawing}
+              onCancel={(snapshot) => {
+                replaceSelectedDrawing(snapshot);
+                setSettingsOpen(false);
+              }}
+              onOk={(next) => {
+                replaceSelectedDrawing(next);
+                setSettingsOpen(false);
+              }}
             />
           )}
 

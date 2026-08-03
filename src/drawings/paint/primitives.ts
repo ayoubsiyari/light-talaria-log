@@ -122,16 +122,33 @@ export function drawTextLabel(
   const { ctx } = pc;
   ctx.save();
   ctx.globalAlpha = 1;
-  ctx.font = `${style.fontSize}px sans-serif`;
-  ctx.textBaseline = 'middle';
+  const weight = style.textBold ? 'bold ' : '';
+  const italic = style.textItalic ? 'italic ' : '';
+  ctx.font = `${italic}${weight}${style.fontSize}px sans-serif`;
+  ctx.textAlign =
+    style.textAlignH === 'center'
+      ? 'center'
+      : style.textAlignH === 'right'
+        ? 'right'
+        : 'left';
+  ctx.textBaseline =
+    style.textAlignV === 'top'
+      ? 'top'
+      : style.textAlignV === 'bottom'
+        ? 'bottom'
+        : 'middle';
   const pad = 4;
   const w = ctx.measureText(text).width;
   if (bg) {
     ctx.fillStyle = pc.colors.labelBg;
     ctx.strokeStyle = pc.colors.border;
     ctx.lineWidth = 1;
-    const lx = x - pad;
-    const ly = y - style.fontSize / 2 - pad;
+    let lx = x - pad;
+    if (style.textAlignH === 'center') lx = x - w / 2 - pad;
+    else if (style.textAlignH === 'right') lx = x - w - pad;
+    let ly = y - style.fontSize / 2 - pad;
+    if (style.textAlignV === 'top') ly = y - pad;
+    else if (style.textAlignV === 'bottom') ly = y - style.fontSize - pad;
     const lw = w + pad * 2;
     const lh = style.fontSize + pad * 2;
     if (typeof ctx.roundRect === 'function') {

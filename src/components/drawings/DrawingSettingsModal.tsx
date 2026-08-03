@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Drawing, DrawingPoint } from '@/drawings/drawingStore';
 import {
-  LINE_WIDTHS,
   type DrawingStyle,
   type ExtendMode,
-  type LineStyleKind,
+  type TextAlignH,
+  type TextAlignV,
 } from '@/drawings/drawingStyle';
 import { getTool } from '@/drawings/toolRegistry';
 import { getToolSettings, resolveMeta } from '@/drawings/toolSettings';
@@ -12,16 +12,28 @@ import {
   ColorSwatches,
   fieldClass,
   Row,
+  SectionTitle,
   ToggleRow,
 } from '@/components/drawings/settings/SettingsForm';
 import { ToolInputsPanel } from '@/components/drawings/settings/ToolInputsPanel';
+import { DrawingSettingsShell } from '@/components/drawings/settings/DrawingSettingsShell';
+import { TemplateMenu } from '@/components/drawings/settings/TemplateMenu';
+import { StyleTriggerButton } from '@/components/drawings/settings/StyleTriggerButton';
+import {
+  LineStylePickerFlyout,
+  styleToPickerValue,
+} from '@/components/drawings/settings/LineStylePickerFlyout';
 
-type SettingsTab = 'style' | 'inputs' | 'text' | 'coordinates' | 'visibility';
+type SettingsTab = 'style' | 'text' | 'coordinates' | 'visibility';
 
 interface DrawingSettingsModalProps {
   drawing: Drawing;
-  onChange: (next: Drawing) => void;
-  onClose: () => void;
+  /** Live preview — called on every draft change. */
+  onLiveChange: (next: Drawing) => void;
+  /** Cancel — restore snapshot then close. */
+  onCancel: (snapshot: Drawing) => void;
+  /** OK — keep current draft and close. */
+  onOk: (next: Drawing) => void;
 }
 
 const EXTEND_OPTIONS: { id: ExtendMode; label: string }[] = [
@@ -31,57 +43,110 @@ const EXTEND_OPTIONS: { id: ExtendMode; label: string }[] = [
   { id: 'both', label: 'Extend both' },
 ];
 
-const LINE_STYLES: { id: LineStyleKind; label: string }[] = [
-  { id: 'solid', label: 'Solid' },
-  { id: 'dashed', label: 'Dashed' },
-  { id: 'dotted', label: 'Dotted' },
+const ALIGN_V: { id: TextAlignV; label: string }[] = [
+  { id: 'top', label: 'Top' },
+  { id: 'middle', label: 'Middle' },
+  { id: 'bottom', label: 'Bottom' },
 ];
 
+const ALIGN_H: { id: TextAlignH; label: string }[] = [
+  { id: 'left', label: 'Left' },
+  { id: 'center', label: 'Center' },
+  { id: 'right', label: 'Right' },
+];
+
+function cloneDrawing(d: Drawing): Drawing {
+  return {
+    ...d,
+    points: d.points.map((p) => ({ ...p })),
+    style: { ...d.style },
+    meta: d.meta ? { ...d.meta } : undefined,
+  };
+}
+
 /**
- * Shared settings shell for every drawing tool.
- * Same chrome (header / tabs / footer); Style + Inputs content driven by tool settings.
+ * Shared TV-style settings modal for every drawing tool.
+ * Live-previews on the chart; Cancel restores the open-time snapshot.
  */
 export function DrawingSettingsModal({
   drawing,
-  onChange,
-  onClose,
+  onLiveChange,
+  onCancel,
+  onOk,
 }: DrawingSettingsModalProps) {
   const tool = getTool(drawing.type);
   const settings = useMemo(() => getToolSettings(drawing.type), [drawing.type]);
   const [tab, setTab] = useState<SettingsTab>('style');
+  const snapshotRef = useRef<Drawing>(cloneDrawing(drawing));
+  const drawingIdRef = useRef(drawing.id);
+  const skipLiveRef = useRef(false);
+
   const [draft, setDraft] = useState<Drawing>(() => ({
-    ...drawing,
+    ...cloneDrawing(drawing),
     meta: resolveMeta(drawing.type, drawing.meta),
   }));
 
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [fillPickerOpen, setFillPickerOpen] = useState(false);
+  const strokeBtnRef = useRef<HTMLButtonElement>(null);
+  const fillBtnRef = useRef<HTMLButtonElement>(null);
+
+  // New selection → reset snapshot + draft + tab.
   useEffect(() => {
-    setDraft({
-      ...drawing,
+    if (drawing.id === drawingIdRef.current) return;
+    drawingIdRef.current = drawing.id;
+    const next = {
+      ...cloneDrawing(drawing),
       meta: resolveMeta(drawing.type, drawing.meta),
-    });
+    };
+    snapshotRef.current = cloneDrawing(next);
+    skipLiveRef.current = true;
+    setDraft(next);
     setTab('style');
+    setRenaming(false);
+    setPickerOpen(false);
+    setFillPickerOpen(false);
   }, [drawing]);
+
+  // Stable callbacks — parent may recreate closures each render.
+  const liveRef = useRef(onLiveChange);
+  liveRef.current = onLiveChange;
+  const cancelRef = useRef(onCancel);
+  cancelRef.current = onCancel;
+
+  // Live preview — skip the frame after id-switch reset.
+  useEffect(() => {
+    if (skipLiveRef.current) {
+      skipLiveRef.current = false;
+      return;
+    }
+    liveRef.current(draft);
+  }, [draft]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        cancelRef.current(snapshotRef.current);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, []);
 
-  const tabs = useMemo(() => {
-    const list: { id: SettingsTab; label: string }[] = [
-      { id: 'style', label: 'Style' },
-      { id: 'inputs', label: 'Inputs' },
-    ];
-    if (settings.showTextTab) list.push({ id: 'text', label: 'Text' });
-    list.push(
-      { id: 'coordinates', label: 'Coordinates' },
-      { id: 'visibility', label: 'Visibility' },
-    );
-    return list;
-  }, [settings.showTextTab]);
+  const tabs = useMemo(
+    () =>
+      [
+        { id: 'style' as const, label: 'Style' },
+        { id: 'text' as const, label: 'Text' },
+        { id: 'coordinates' as const, label: 'Coordinates' },
+        { id: 'visibility' as const, label: 'Visibility' },
+      ] as const,
+    [],
+  );
+
+  const displayTitle = draft.name?.trim() || tool.label;
 
   const patchStyle = (partial: Partial<DrawingStyle>) => {
     setDraft((d) => ({ ...d, style: { ...d.style, ...partial } }));
@@ -98,305 +163,385 @@ export function DrawingSettingsModal({
     });
   };
 
-  const apply = () => {
-    onChange(draft);
-    onClose();
-  };
-
   const showFill = settings.styleSections.includes('fill');
   const showLineExtras = settings.styleSections.includes('lineExtras');
+  const showInputs = settings.toolPanel !== 'generic';
+
+  const commitRename = () => {
+    const trimmed = renameValue.trim();
+    setDraft((d) => ({
+      ...d,
+      name: trimmed && trimmed !== tool.label ? trimmed : undefined,
+    }));
+    setRenaming(false);
+  };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-      style={{ backgroundColor: 'var(--backdrop, rgba(0,0,0,0.5))' }}
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        className="w-full sm:max-w-md rounded-t-xl sm:rounded-xl border border-border bg-surface text-foreground shadow-2xl overflow-hidden flex flex-col max-h-[min(92vh,640px)]"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <div className="flex items-center gap-2 min-w-0">
-            <h2 className="text-base font-semibold text-foreground truncate">{tool.label}</h2>
-            <span className="text-muted text-xs shrink-0">Settings</span>
-          </div>
-          <button
-            type="button"
-            className="text-muted hover:text-foreground w-10 h-10 sm:w-8 sm:h-8 rounded-md hover:bg-background/70"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
-
-        <div className="flex border-b border-border px-1 overflow-x-auto">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={[
-                'px-3 py-2.5 text-sm border-b-2 -mb-px transition-colors whitespace-nowrap min-h-11',
-                tab === t.id
-                  ? 'border-foreground text-foreground'
-                  : 'border-transparent text-muted hover:text-foreground',
-              ].join(' ')}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm">
-          {tab === 'style' && (
-            <>
-              <Row label="Line">
-                <ColorSwatches
-                  value={draft.style.color}
-                  onChange={(c) => patchStyle({ color: c })}
-                  limit={8}
-                />
-                <select
-                  value={draft.style.width}
-                  onChange={(e) => patchStyle({ width: Number(e.target.value) })}
-                  className={fieldClass}
-                >
-                  {LINE_WIDTHS.map((w) => (
-                    <option key={w} value={w}>
-                      {w}px
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={draft.style.lineStyle}
-                  onChange={(e) =>
-                    patchStyle({ lineStyle: e.target.value as LineStyleKind })
-                  }
-                  className={fieldClass}
-                >
-                  {LINE_STYLES.map((ls) => (
-                    <option key={ls.id} value={ls.id}>
-                      {ls.label}
-                    </option>
-                  ))}
-                </select>
-              </Row>
-
-              <Row label="Opacity">
-                <input
-                  type="range"
-                  min={0.1}
-                  max={1}
-                  step={0.05}
-                  value={draft.style.opacity}
-                  onChange={(e) => patchStyle({ opacity: Number(e.target.value) })}
-                  className="w-40 accent-[var(--accent)]"
-                />
-              </Row>
-
-              {showLineExtras && (
-                <>
-                  <Row label="Extend">
-                    <select
-                      value={draft.style.extend}
-                      onChange={(e) =>
-                        patchStyle({ extend: e.target.value as ExtendMode })
-                      }
-                      className={`${fieldClass} min-w-[160px]`}
-                    >
-                      {EXTEND_OPTIONS.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </Row>
-                  <ToggleRow
-                    label="Midpoint"
-                    checked={draft.style.showMidpoint}
-                    onChange={(v) => patchStyle({ showMidpoint: v })}
-                  />
-                  <ToggleRow
-                    label="Price labels"
-                    checked={draft.style.showPriceLabels}
-                    onChange={(v) => patchStyle({ showPriceLabels: v })}
-                  />
-                  <div className="flex items-center justify-between gap-3 min-h-10">
-                    <span className="text-foreground">Ends</span>
-                    <div className="flex gap-3">
-                      <label className="flex items-center gap-1.5 text-muted text-sm cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={draft.style.leftEnd}
-                          onChange={(e) => patchStyle({ leftEnd: e.target.checked })}
-                          className="accent-[var(--accent)]"
-                        />
-                        Left
-                      </label>
-                      <label className="flex items-center gap-1.5 text-muted text-sm cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={draft.style.rightEnd}
-                          onChange={(e) => patchStyle({ rightEnd: e.target.checked })}
-                          className="accent-[var(--accent)]"
-                        />
-                        Right
-                      </label>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {showFill && (
-                <>
-                  <ToggleRow
-                    label="Fill"
-                    checked={draft.style.fill}
-                    onChange={(v) => patchStyle({ fill: v })}
-                  />
-                  {draft.style.fill && (
-                    <Row label="Fill opacity">
-                      <input
-                        type="range"
-                        min={0.05}
-                        max={0.8}
-                        step={0.05}
-                        value={draft.style.fillOpacity}
-                        onChange={(e) =>
-                          patchStyle({ fillOpacity: Number(e.target.value) })
-                        }
-                        className="w-40 accent-[var(--accent)]"
-                      />
-                    </Row>
-                  )}
-                </>
-              )}
-            </>
-          )}
-
-          {tab === 'inputs' && (
-            <ToolInputsPanel
+    <>
+      <DrawingSettingsShell
+        title={displayTitle}
+        renaming={renaming}
+        renameValue={renameValue}
+        onRenameValueChange={setRenameValue}
+        onStartRename={() => {
+          setRenameValue(displayTitle);
+          setRenaming(true);
+        }}
+        onCommitRename={commitRename}
+        onCancelRename={() => setRenaming(false)}
+        tabs={tabs}
+        tab={tab}
+        onTabChange={setTab}
+        onClose={() => onCancel(snapshotRef.current)}
+        onBackdrop={() => onCancel(snapshotRef.current)}
+        footer={
+          <>
+            <TemplateMenu
               type={draft.type}
-              panel={settings.toolPanel}
+              style={draft.style}
               meta={draft.meta ?? {}}
-              onMetaChange={patchMeta}
+              onApply={(t) =>
+                setDraft((d) => ({
+                  ...d,
+                  style: { ...t.style },
+                  meta: { ...t.meta },
+                }))
+              }
             />
-          )}
-
-          {tab === 'text' && (
-            <>
-              <label className="block space-y-1">
-                <span className="text-muted text-xs uppercase tracking-wide">Label</span>
-                <textarea
-                  value={draft.text ?? ''}
-                  onChange={(e) => setDraft((d) => ({ ...d, text: e.target.value }))}
-                  rows={3}
-                  placeholder={tool.needsText ? 'Enter text…' : 'Optional note…'}
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-foreground resize-y min-h-[5rem]"
-                />
-              </label>
-              <Row label="Font size">
-                <input
-                  type="number"
-                  min={10}
-                  max={28}
-                  value={draft.style.fontSize}
-                  onChange={(e) => patchStyle({ fontSize: Number(e.target.value) || 12 })}
-                  className={`${fieldClass} w-20`}
-                />
-              </Row>
-              <Row label="Text color">
-                <ColorSwatches
-                  value={draft.style.textColor}
-                  onChange={(c) => patchStyle({ textColor: c })}
-                />
-              </Row>
-            </>
-          )}
-
-          {tab === 'coordinates' && (
-            <div className="space-y-3">
-              {draft.points.length === 0 && (
-                <p className="text-muted text-sm">No points on this drawing.</p>
-              )}
-              {draft.points.map((p, i) => (
-                <div
-                  key={i}
-                  className="rounded-lg border border-border p-3 space-y-2 bg-background/40"
-                >
-                  <div className="text-xs uppercase tracking-wide text-muted">
-                    Point {i + 1}
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <label className="block space-y-1">
-                      <span className="text-muted text-xs">Time (unix)</span>
-                      <input
-                        type="number"
-                        value={Math.round(p.time)}
-                        onChange={(e) =>
-                          patchPoint(i, { time: Number(e.target.value) || p.time })
-                        }
-                        className={`w-full ${fieldClass} tabular-nums`}
-                      />
-                    </label>
-                    <label className="block space-y-1">
-                      <span className="text-muted text-xs">Price</span>
-                      <input
-                        type="number"
-                        step="any"
-                        value={p.price}
-                        onChange={(e) =>
-                          patchPoint(i, { price: Number(e.target.value) || p.price })
-                        }
-                        className={`w-full ${fieldClass} tabular-nums`}
-                      />
-                    </label>
-                  </div>
-                </div>
-              ))}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onCancel(snapshotRef.current)}
+                className="min-h-11 px-4 py-2 rounded-md border border-border text-foreground hover:bg-background/80 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => onOk(draft)}
+                className="min-h-11 px-4 py-2 rounded-md bg-foreground text-background text-sm font-medium hover:opacity-90"
+              >
+                OK
+              </button>
             </div>
-          )}
+          </>
+        }
+      >
+        {tab === 'style' && (
+          <>
+            <Row label={showFill ? 'Border' : 'Line'}>
+              <div className="flex items-center gap-1.5">
+                <StyleTriggerButton
+                  ref={strokeBtnRef}
+                  style={draft.style}
+                  active={pickerOpen}
+                  onClick={() => {
+                    setFillPickerOpen(false);
+                    setPickerOpen((v) => !v);
+                  }}
+                />
+                {showLineExtras && (
+                  <div className="flex gap-1">
+                    <label
+                      className="min-h-9 min-w-9 rounded-md border border-border flex items-center justify-center text-[10px] text-muted cursor-pointer hover:text-foreground"
+                      title="Left end"
+                    >
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={draft.style.leftEnd}
+                        onChange={(e) => patchStyle({ leftEnd: e.target.checked })}
+                      />
+                      <span
+                        className={
+                          draft.style.leftEnd ? 'text-foreground font-bold' : ''
+                        }
+                      >
+                        ◀
+                      </span>
+                    </label>
+                    <label
+                      className="min-h-9 min-w-9 rounded-md border border-border flex items-center justify-center text-[10px] text-muted cursor-pointer hover:text-foreground"
+                      title="Right end"
+                    >
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={draft.style.rightEnd}
+                        onChange={(e) => patchStyle({ rightEnd: e.target.checked })}
+                      />
+                      <span
+                        className={
+                          draft.style.rightEnd ? 'text-foreground font-bold' : ''
+                        }
+                      >
+                        ▶
+                      </span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            </Row>
 
-          {tab === 'visibility' && (
-            <>
-              <ToggleRow
-                label="Visible on chart"
-                checked={draft.visible !== false}
-                onChange={(v) => setDraft((d) => ({ ...d, visible: v }))}
-              />
-              <ToggleRow
-                label="Lock drawing"
-                checked={!!draft.locked}
-                onChange={(v) => setDraft((d) => ({ ...d, locked: v }))}
-              />
-              <p className="text-xs text-muted">
-                Hidden drawings stay saved and can be shown again from this dialog.
-              </p>
-            </>
-          )}
-        </div>
+            {showLineExtras && (
+              <>
+                <Row label="Extend">
+                  <select
+                    value={draft.style.extend}
+                    onChange={(e) =>
+                      patchStyle({ extend: e.target.value as ExtendMode })
+                    }
+                    className={`${fieldClass} min-w-[160px]`}
+                  >
+                    {EXTEND_OPTIONS.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </Row>
+                <ToggleRow
+                  label="Midpoint"
+                  checked={draft.style.showMidpoint}
+                  onChange={(v) => patchStyle({ showMidpoint: v })}
+                />
+                <ToggleRow
+                  label="Price labels"
+                  checked={draft.style.showPriceLabels}
+                  onChange={(v) => patchStyle({ showPriceLabels: v })}
+                />
+              </>
+            )}
 
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border bg-background/30">
-          <button
-            type="button"
-            onClick={onClose}
-            className="min-h-11 px-4 py-2 rounded-md border border-border text-foreground hover:bg-background/80 text-sm"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={apply}
-            className="min-h-11 px-4 py-2 rounded-md bg-foreground text-background text-sm font-medium hover:opacity-90"
-          >
-            OK
-          </button>
-        </div>
-      </div>
-    </div>
+            {showFill && (
+              <ToggleRow
+                label="Background"
+                checked={draft.style.fill}
+                onChange={(v) => patchStyle({ fill: v })}
+                trailing={
+                  <button
+                    ref={fillBtnRef}
+                    type="button"
+                    disabled={!draft.style.fill}
+                    title="Fill color"
+                    onClick={() => {
+                      if (!draft.style.fill) return;
+                      setPickerOpen(false);
+                      setFillPickerOpen((v) => !v);
+                    }}
+                    className={[
+                      'min-h-9 min-w-9 rounded-md border flex items-center justify-center',
+                      draft.style.fill
+                        ? 'border-border hover:border-accent/60'
+                        : 'border-border opacity-40 cursor-not-allowed',
+                      fillPickerOpen ? 'border-accent' : '',
+                    ].join(' ')}
+                  >
+                    <span
+                      className="w-4 h-4 rounded-[3px] border border-border"
+                      style={{
+                        backgroundColor: draft.style.fillColor || draft.style.color,
+                        opacity: draft.style.fillOpacity,
+                      }}
+                    />
+                  </button>
+                }
+              />
+            )}
+
+            {showInputs && (
+              <>
+                <SectionTitle>Inputs</SectionTitle>
+                <ToolInputsPanel
+                  type={draft.type}
+                  panel={settings.toolPanel}
+                  meta={draft.meta ?? {}}
+                  onMetaChange={patchMeta}
+                />
+              </>
+            )}
+          </>
+        )}
+
+        {tab === 'text' && (
+          <>
+            <div className="flex items-center gap-2 flex-wrap">
+              <ColorSwatches
+                value={draft.style.textColor}
+                onChange={(c) => patchStyle({ textColor: c })}
+                limit={8}
+              />
+              <select
+                value={draft.style.fontSize}
+                onChange={(e) =>
+                  patchStyle({ fontSize: Number(e.target.value) || 14 })
+                }
+                className={`${fieldClass} w-16`}
+                aria-label="Font size"
+              >
+                {[10, 12, 14, 16, 18, 20, 24, 28].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                title="Bold"
+                onClick={() => patchStyle({ textBold: !draft.style.textBold })}
+                className={[
+                  'min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 rounded-md border text-sm font-bold',
+                  draft.style.textBold
+                    ? 'border-foreground bg-foreground text-background'
+                    : 'border-border text-foreground hover:bg-background/70',
+                ].join(' ')}
+              >
+                B
+              </button>
+              <button
+                type="button"
+                title="Italic"
+                onClick={() => patchStyle({ textItalic: !draft.style.textItalic })}
+                className={[
+                  'min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 rounded-md border text-sm italic',
+                  draft.style.textItalic
+                    ? 'border-foreground bg-foreground text-background'
+                    : 'border-border text-foreground hover:bg-background/70',
+                ].join(' ')}
+              >
+                I
+              </button>
+            </div>
+
+            <textarea
+              value={draft.text ?? ''}
+              onChange={(e) => setDraft((d) => ({ ...d, text: e.target.value }))}
+              rows={4}
+              placeholder={tool.needsText ? 'Add text' : 'Optional note…'}
+              className="w-full bg-background border border-border rounded-md px-3 py-2 text-foreground resize-y min-h-[6rem] outline-none focus:border-accent"
+            />
+
+            <Row label="Text alignment">
+              <select
+                value={draft.style.textAlignV}
+                onChange={(e) =>
+                  patchStyle({ textAlignV: e.target.value as TextAlignV })
+                }
+                className={fieldClass}
+              >
+                {ALIGN_V.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={draft.style.textAlignH}
+                onChange={(e) =>
+                  patchStyle({ textAlignH: e.target.value as TextAlignH })
+                }
+                className={fieldClass}
+              >
+                {ALIGN_H.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </Row>
+          </>
+        )}
+
+        {tab === 'coordinates' && (
+          <div className="space-y-3">
+            {draft.points.length === 0 && (
+              <p className="text-muted text-sm">No points on this drawing.</p>
+            )}
+            {draft.points.map((p, i) => (
+              <div key={i} className="space-y-1.5">
+                <div className="text-xs text-muted">
+                  #{i + 1} (price, bar)
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    step="any"
+                    value={p.price}
+                    onChange={(e) =>
+                      patchPoint(i, { price: Number(e.target.value) || p.price })
+                    }
+                    className={`w-full ${fieldClass} tabular-nums`}
+                    aria-label={`Point ${i + 1} price`}
+                  />
+                  <input
+                    type="number"
+                    value={Math.round(p.time)}
+                    onChange={(e) =>
+                      patchPoint(i, { time: Number(e.target.value) || p.time })
+                    }
+                    className={`w-full ${fieldClass} tabular-nums`}
+                    aria-label={`Point ${i + 1} time`}
+                    title="Unix time (seconds)"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab === 'visibility' && (
+          <>
+            <ToggleRow
+              label="Visible on chart"
+              checked={draft.visible !== false}
+              onChange={(v) => setDraft((d) => ({ ...d, visible: v }))}
+            />
+            <ToggleRow
+              label="Lock drawing"
+              checked={!!draft.locked}
+              onChange={(v) => setDraft((d) => ({ ...d, locked: v }))}
+            />
+            <p className="text-xs text-muted">
+              Hidden drawings stay saved. Expand settings again from a selected
+              object to show them.
+            </p>
+          </>
+        )}
+      </DrawingSettingsShell>
+
+      <LineStylePickerFlyout
+        open={pickerOpen}
+        anchorEl={strokeBtnRef.current}
+        value={styleToPickerValue(draft.style)}
+        onChange={(partial) => {
+          const next: Partial<DrawingStyle> = { ...partial };
+          // Keep fill linked until user picks a separate fill color.
+          if (partial.color && draft.style.fillColor === draft.style.color) {
+            next.fillColor = partial.color;
+          }
+          patchStyle(next);
+        }}
+        onClose={() => setPickerOpen(false)}
+      />
+
+      <LineStylePickerFlyout
+        open={fillPickerOpen}
+        anchorEl={fillBtnRef.current}
+        value={{
+          color: draft.style.fillColor || draft.style.color,
+          opacity: draft.style.fillOpacity,
+          width: draft.style.width,
+          lineStyle: draft.style.lineStyle,
+        }}
+        showLineControls={false}
+        onChange={(partial) => {
+          const patch: Partial<DrawingStyle> = {};
+          if (partial.color != null) patch.fillColor = partial.color;
+          if (partial.opacity != null) patch.fillOpacity = partial.opacity;
+          patchStyle(patch);
+        }}
+        onClose={() => setFillPickerOpen(false)}
+      />
+    </>
   );
 }

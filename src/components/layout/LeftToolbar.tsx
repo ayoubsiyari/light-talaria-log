@@ -169,9 +169,9 @@ export function LeftToolbar({
     // overflow-visible so flyouts can escape to the right (overflow-y-auto clipped them)
     <aside
       ref={rootRef}
-      className="chrome-toolbar tv-panel-r relative w-[38px] [@media(hover:none)]:w-[52px] shrink-0 z-40 overflow-visible"
+      className="chrome-toolbar tv-panel-r relative w-[52px] [@media(hover:none)]:w-[56px] shrink-0 z-40 overflow-visible"
     >
-      <div className="h-full w-full flex flex-col items-center py-0.5 gap-0 overflow-y-auto overscroll-contain">
+      <div className="h-full w-full flex flex-col items-center py-1 gap-0.5 overflow-y-auto overscroll-contain">
         <button
           type="button"
           title="Cursor"
@@ -201,8 +201,8 @@ export function LeftToolbar({
                 className={toolBtn(active || open)}
               >
                 <g.Icon />
-                <span className="absolute right-px top-1/2 -translate-y-1/2 text-muted opacity-70">
-                  <IconChevron className="w-2 h-2" />
+                <span className="absolute right-0.5 top-1/2 -translate-y-1/2 text-muted opacity-80">
+                  <IconChevron className="w-2.5 h-2.5" />
                 </span>
               </button>
             </div>
@@ -302,7 +302,7 @@ export function LeftToolbar({
                             : 'text-foreground hover:bg-background/80',
                         ].join(' ')}
                       >
-                        <Icon className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                        <Icon className="w-5 h-5 shrink-0 opacity-80" />
                         <span className="truncate">{def.label}</span>
                       </button>
                     );
@@ -319,8 +319,8 @@ export function LeftToolbar({
 
 function toolBtn(active: boolean): string {
   return [
-    // Desktop ≈ TV 28px hits in 38px rail; phone keeps 44px.
-    'relative w-7 h-7 [@media(hover:none)]:w-11 [@media(hover:none)]:h-11 rounded-[3px] flex items-center justify-center transition-colors shrink-0',
+    // TradingView-scale: ~40px hits in 52px rail; phone slightly larger.
+    'relative w-10 h-10 [@media(hover:none)]:w-11 [@media(hover:none)]:h-11 rounded-[4px] flex items-center justify-center transition-colors shrink-0 [&_svg]:w-5 [&_svg]:h-5',
     active
       ? 'bg-accent/15 text-accent'
       : 'text-muted hover:text-foreground hover:bg-background/70',

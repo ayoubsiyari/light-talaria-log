@@ -118,7 +118,8 @@ export function attachChartSync(
 
   const unsubRange = chart.onVisibleRangeChange((range) => {
     if (applyingRemote) return;
-    if (!(options.getSyncDateRange?.() ?? true)) return;
+    // Always publish so App can edge-prefetch the originating pane.
+    // Remote apply (other panes) stays gated on getSyncDateRange below.
     const bars = options.getBars();
     const timeRange = timeRangeFromVisible(bars, range);
     if (!timeRange) return;

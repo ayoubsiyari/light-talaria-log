@@ -529,16 +529,31 @@ function drawWatermark(
   layout: RenderLayout,
   colors: ChartColors,
 ): void {
-  if (!colors.watermarkEnabled) return;
-  const text = colors.watermarkText.trim();
-  if (!text) return;
   const { plot } = layout;
+  if (plot.width < 40 || plot.height < 24) return;
+
   ctx.save();
-  ctx.globalAlpha = colors.watermarkOpacity;
-  ctx.fillStyle = colors.watermarkColor;
-  ctx.font = `600 ${colors.watermarkFontSize}px ui-sans-serif, system-ui, sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, plot.left + plot.width / 2, plot.top + plot.height / 2);
+
+  // Always-on brand mark — bottom-left of the plot (TradingView-style attribution).
+  ctx.globalAlpha = 0.4;
+  ctx.fillStyle = colors.muted;
+  ctx.font = '500 11px ui-sans-serif, system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('Talaria Log', plot.left + 8, plot.top + plot.height - 6);
+
+  // Optional custom watermark (settings) — centered when enabled.
+  if (colors.watermarkEnabled) {
+    const text = colors.watermarkText.trim();
+    if (text) {
+      ctx.globalAlpha = colors.watermarkOpacity;
+      ctx.fillStyle = colors.watermarkColor;
+      ctx.font = `600 ${colors.watermarkFontSize}px ui-sans-serif, system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, plot.left + plot.width / 2, plot.top + plot.height / 2);
+    }
+  }
+
   ctx.restore();
 }

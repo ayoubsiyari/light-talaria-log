@@ -267,11 +267,19 @@ export default function App() {
   const sessionIdRef = useRef<string | null>(null);
   const lastProgressSaveRef = useRef(0);
 
-  /** Push session PaneViews into React pane state (preserves pane order). */
-  const commitSessionViews = useCallback(() => {
+  /**
+   * Push session PaneViews into React pane state (preserves pane order).
+   * `adoptRangePaneIds`: only those panes take session-derived ranges; others keep
+   * their prior camera so independent pan/zoom survives TF/pair switches.
+   */
+  const commitSessionViews = useCallback((opts?: { adoptRangePaneIds?: string[] }) => {
     const views = sessionRef.current.getViews();
     const s = sessionRef.current.get();
     if (!s) return;
+    const adopt =
+      opts?.adoptRangePaneIds != null
+        ? new Set(opts.adoptRangePaneIds)
+        : null;
     setPanes((prev) => {
       const ids = prev.length > 0 ? prev.map((p) => p.id) : Object.keys(s.panes);
       const next: ChartPaneState[] = [];
@@ -299,12 +307,14 @@ export default function App() {
           });
           continue;
         }
+        // Keep each pane's camera unless it was an explicit TF/pair target.
+        const takeSessionRange = !old || (adopt != null && adopt.has(id));
         next.push({
           id,
           timeframe: v.timeframe,
           selectedTf: v.selectedTf,
           bars: v.bars,
-          range: v.range,
+          range: takeSessionRange ? v.range : old.range,
           windowFrom: old?.windowFrom ?? 0,
           totalBars: old?.totalBars ?? v.bars.length,
           pair: v.pair as PairSymbol,
@@ -317,42 +327,52 @@ export default function App() {
   }, []);
 
   /**
-   * Imperative engine sync after TF/pair switch.
+   * Imperative engine sync after TF/pair switch / warm-cache fills.
    * Required during replay: useChart skips React bar props while replayFollow is on.
-   * Restores captured tipRatio + span so the last candle and zoom stay put.
+   * By default only updates bars — never yanks sibling cameras (multi-pane independence).
    */
-  const syncEnginesFromSession = useCallback(() => {
-    const s = sessionRef.current.get();
-    const views = sessionRef.current.getViews();
-    if (!s) return;
-    const replay = replayRef.current.get();
-    const cursor = replay.cursorTime;
-    const preserved = cameraPreserveRef.current;
-    const span = Math.max(10, preserved?.span ?? s.span);
-    // Default ≈ rangeRightAnchored tip placement when no capture exists.
-    const tipRatio = preserved?.tipRatio ?? 0.9;
+  const syncEnginesFromSession = useCallback(
+    (opts?: { paneIds?: readonly string[]; applyCamera?: boolean }) => {
+      const s = sessionRef.current.get();
+      const views = sessionRef.current.getViews();
+      if (!s) return;
+      const replay = replayRef.current.get();
+      const cursor = replay.cursorTime;
+      const preserved = cameraPreserveRef.current;
+      const applyCamera = opts?.applyCamera === true;
+      const span = Math.max(10, preserved?.span ?? s.span);
+      const tipRatio = preserved?.tipRatio ?? 0.9;
+      const only =
+        opts?.paneIds != null ? new Set(opts.paneIds) : null;
 
-    for (const pane of panesRef.current) {
-      const chart = getChart(pane.id);
-      const v = views[pane.id];
-      if (!chart) continue;
-      // Empty view during TF/ticker warm-up — leave engine candles alone.
-      if (!v || v.bars.length === 0) continue;
+      for (const pane of panesRef.current) {
+        if (only && !only.has(pane.id)) continue;
+        const chart = getChart(pane.id);
+        const v = views[pane.id];
+        if (!chart) continue;
+        // Empty view during TF/ticker warm-up — leave engine candles alone.
+        if (!v || v.bars.length === 0) continue;
 
-      const tipTime = Number.isFinite(cursor)
-        ? cursor
-        : v.bars[v.bars.length - 1]!.time;
-      chart.syncReplayReveal(v.bars, tipTime);
+        const tipTime = Number.isFinite(cursor)
+          ? cursor
+          : v.bars[v.bars.length - 1]!.time;
+        chart.syncReplayReveal(v.bars, tipTime);
 
-      const tipIndex = v.bars.length - 1;
-      const fromIndex = tipIndex - tipRatio * span;
-      chart.setVisibleRange(fromIndex, fromIndex + span, { silent: true });
+        if (applyCamera) {
+          const tipIndex = v.bars.length - 1;
+          const fromIndex = tipIndex - tipRatio * span;
+          chart.setVisibleRange(fromIndex, fromIndex + span, { silent: true });
+        }
 
-      if (replay.playing && !detachedPanesRef.current.has(pane.id)) {
-        chart.setReplayFollow(true);
+        if (replay.playing && !detachedPanesRef.current.has(pane.id)) {
+          chart.setReplayFollow(true);
+        }
       }
-    }
-  }, []);
+
+      if (applyCamera) cameraPreserveRef.current = null;
+    },
+    [],
+  );
 
   /** Capture live zoom + tip position from the engine (not stale React pane.bars). */
   const captureLiveCamera = useCallback(
@@ -545,8 +565,12 @@ export default function App() {
    * - Zoom density → switch to coarser/finer pre-agg TF (≥ selectedTf floor).
    * Generation-token guarded; wall-clock window preserved across TF switches.
    */
+  /**
+   * Edge-prefetch / LOD reload for a wall-clock window.
+   * When `onlyPaneId` is set (sync off), only that pane is touched.
+   */
   const applyTimeWindowToPanes = useCallback(
-    async (fromTime: number, toTime: number) => {
+    async (fromTime: number, toTime: number, onlyPaneId?: string) => {
       if (!catalog || !viewportReloadEnabledRef.current) return;
       const current = panesRef.current;
       if (current.length === 0) return;
@@ -565,6 +589,7 @@ export default function App() {
       });
 
       const needsFetch = current.map((p, i) => {
+        if (onlyPaneId && p.id !== onlyPaneId) return false;
         if (lodTfs[i] !== p.timeframe) return true;
         return paneNeedsViewportPrefetch(p, fromTime, toTime);
       });
@@ -928,8 +953,9 @@ export default function App() {
     try {
       if (!configsMatch || !allHaveBars || list.length !== Object.keys(s.panes).length) {
         await sessionRef.current.replacePanes(cfgs, s.activePaneId);
-        commitSessionViews();
-        syncEnginesFromSession();
+        const ids = list.map((p) => p.id);
+        commitSessionViews({ adoptRangePaneIds: ids });
+        syncEnginesFromSession({ paneIds: ids, applyCamera: true });
       } else {
         await sessionRef.current.topUpCaches();
       }
@@ -1139,13 +1165,12 @@ export default function App() {
   }, [persistReplayProgress]);
 
   // Session async fills (warm-cache miss) → push views when epoch commits.
+  // Bars only — never re-apply a shared camera to every pane (sync-off independence).
   useEffect(() => {
     return sessionRef.current.subscribe(() => {
       if (!viewportReloadEnabledRef.current) return;
       commitSessionViews();
-      // Async warm-cache fills (TF/pair) must reach engines even while replayFollow
-      // blocks the React → setViewportData path.
-      syncEnginesFromSession();
+      syncEnginesFromSession({ applyCamera: false });
     });
   }, [commitSessionViews, syncEnginesFromSession, catalog?.datasetId, session?.id]);
 
@@ -1190,19 +1215,35 @@ export default function App() {
     });
   }, [catalog, applyReplayReveal, persistReplayProgress]);
 
-  // Pan/zoom sync → edge-prefetch IDB windows when near buffer (not replay/session)
+  // Pan/zoom → edge-prefetch. With date-range sync OFF, only the origin pane reloads.
   useEffect(() => {
     if (!catalog || !syncStore) return;
     let lastFrom = Number.NaN;
     let lastTo = Number.NaN;
-    const reload = debounce((fromTime: number, toTime: number) => {
-      if (!viewportReloadEnabledRef.current) return;
-      if (Math.abs(fromTime - lastFrom) < 0.5 && Math.abs(toTime - lastTo) < 0.5) return;
-      lastFrom = fromTime;
-      lastTo = toTime;
-      // Async — never blocks rAF paint; mid-buffer pans return immediately.
-      void applyTimeWindowToPanes(fromTime, toTime);
-    }, LOD_DEBOUNCE_MS);
+    let lastOrigin: string | null = null;
+    const reload = debounce(
+      (fromTime: number, toTime: number, origin: string | null) => {
+        if (!viewportReloadEnabledRef.current) return;
+        if (
+          Math.abs(fromTime - lastFrom) < 0.5 &&
+          Math.abs(toTime - lastTo) < 0.5 &&
+          origin === lastOrigin
+        ) {
+          return;
+        }
+        lastFrom = fromTime;
+        lastTo = toTime;
+        lastOrigin = origin;
+        const syncAll =
+          layoutSyncRef.current.dateRange || layoutSyncRef.current.time;
+        const onlyPane =
+          !syncAll && origin != null && origin.startsWith('pane')
+            ? origin
+            : undefined;
+        void applyTimeWindowToPanes(fromTime, toTime, onlyPane);
+      },
+      LOD_DEBOUNCE_MS,
+    );
 
     return syncStore.subscribe((state) => {
       if (!state.timeRange) return;
@@ -1214,7 +1255,6 @@ export default function App() {
         return;
       }
       // User dragged during play → detach camera so pan stays smooth.
-      // Still allow edge prefetch while detached (empty pad fix).
       if (
         replayRef.current.get().playing &&
         state.origin != null &&
@@ -1222,11 +1262,19 @@ export default function App() {
       ) {
         cameraDetachedRef.current = true;
         setCameraDetached(true);
-        reload(state.timeRange.fromTime, state.timeRange.toTime);
+        reload(
+          state.timeRange.fromTime,
+          state.timeRange.toTime,
+          state.origin,
+        );
         return;
       }
       if (replayRef.current.get().playing && !cameraDetachedRef.current) return;
-      reload(state.timeRange.fromTime, state.timeRange.toTime);
+      reload(
+        state.timeRange.fromTime,
+        state.timeRange.toTime,
+        state.origin,
+      );
     });
   }, [catalog, syncStore, applyTimeWindowToPanes]);
 
@@ -1348,8 +1396,9 @@ export default function App() {
         }
         // Await fill+derive around cursor so all panes have revealed bars before paint.
         await sessionRef.current.replacePanes(cfgs, next[0]?.id ?? 'pane-0');
-        commitSessionViews();
-        syncEnginesFromSession();
+        const layoutIds = next.map((p) => p.id);
+        commitSessionViews({ adoptRangePaneIds: layoutIds });
+        syncEnginesFromSession({ paneIds: layoutIds, applyCamera: true });
         const views = sessionRef.current.getViews();
         const settled = next.map((p) => {
           const v = views[p.id];
@@ -1413,6 +1462,7 @@ export default function App() {
 
       const camera = captureLiveCamera(paneId);
       cameraPreserveRef.current = camera;
+      // Span/anchor for fill size only — sibling cameras are preserved in commit/sync.
       sessionRef.current.setCamera(camera.anchorTime, camera.span);
       setActivePaneId(paneId);
       sessionRef.current.setActivePane(paneId);
@@ -1424,14 +1474,17 @@ export default function App() {
             await sessionRef.current.setPaneTimeframe(id, tf);
           }
           if (!viewportReloadEnabledRef.current) return;
-          commitSessionViews();
-          syncEnginesFromSession();
+          commitSessionViews({ adoptRangePaneIds: targets });
+          syncEnginesFromSession({ paneIds: targets, applyCamera: true });
           syncReplayClockTf(panesRef.current);
 
           const focus = panesRef.current.find((p) => p.id === paneId);
           if (focus && focus.bars.length > 0) {
             const newTr = timeRangeFromVisible(focus.bars, focus.range);
-            if (newTr) syncStoreRef.current?.setTimeRange(newTr, 'tf-switch');
+            // Only broadcast wall-clock when date-range sync is enabled.
+            if (newTr && layoutSyncRef.current.dateRange) {
+              syncStoreRef.current?.setTimeRange(newTr, 'tf-switch');
+            }
             replayBufferRef.current.set(paneId, focus.bars);
           }
         } finally {
@@ -1495,14 +1548,16 @@ export default function App() {
             replayBufferRef.current.delete(id);
           }
           if (!viewportReloadEnabledRef.current) return;
-          commitSessionViews();
-          syncEnginesFromSession();
+          commitSessionViews({ adoptRangePaneIds: targets });
+          syncEnginesFromSession({ paneIds: targets, applyCamera: true });
           syncReplayClockTf(panesRef.current);
 
           const focus = panesRef.current.find((p) => p.id === paneId);
           if (focus && focus.bars.length > 0) {
             const newTr = timeRangeFromVisible(focus.bars, focus.range);
-            if (newTr) syncStoreRef.current?.setTimeRange(newTr, 'symbol-switch');
+            if (newTr && layoutSyncRef.current.dateRange) {
+              syncStoreRef.current?.setTimeRange(newTr, 'symbol-switch');
+            }
             replayBufferRef.current.set(paneId, focus.bars);
           }
         } finally {
@@ -2213,8 +2268,8 @@ export default function App() {
               selectedOrderId={selectedOrderId}
               onOrderSelect={setSelectedOrderId}
               backtestResult={btResult}
-              syncCrosshair={layoutSync.crosshair || layoutSync.time}
-              syncDateRange={layoutSync.dateRange}
+              syncCrosshair={layoutSync.crosshair}
+              syncDateRange={layoutSync.dateRange || layoutSync.time}
               loadingPaneIds={loadingPaneIds}
               drawings={drawings}
               placement={placement}

@@ -233,6 +233,32 @@ export function IconPencil({ className = base }: IconProps) {
   );
 }
 
+export function IconSearch({ className = base }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-3.5-3.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function IconStar({ className = base, filled = false }: IconProps & { filled?: boolean }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill={filled ? 'currentColor' : 'none'}
+      stroke="currentColor"
+      strokeWidth="1.75"
+    >
+      <path
+        d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 16.8 6.7 19.6l1-5.8L3.5 9.7l5.9-.9L12 3.5z"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function IconSettings({ className = base }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">

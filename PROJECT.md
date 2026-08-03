@@ -682,6 +682,9 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-03 | Memory-safe replay runway: compact ~900-bar forward fills, MAX_ENTRIES=16 + ~3.6MB byte cap, pin active panes | Heap check on 4-pane 21× |
 | 2026-08-03 | Collapse bottom trade chrome by default — compact replay strip + arrow to expand TradeDock | — |
 | 2026-08-03 | TV-style drawing settings for all tools: shell/tabs/flyout/templates, live preview, rename, fillColor/text align | Manual: trend/rect/fib/text settings |
+| 2026-08-03 | Multi-pane independence: scoped camera sync, preserve sibling ranges, dateRange-gated pan; sync defaults off | Verify 4-pane pan/TF with sync off |
+| 2026-08-03 | TV-style Indicators modal: sidebar, search, All/Overlays/Panes pills, favorites, table rows | — |
+| 2026-08-03 | Small Talaria logo top-left in TopBar; “Talaria Log” brand text bottom-left on chart | — |
 | 2026-08-03 | Remote import syncs missing TFs (5m…1D) when only 1m was in IDB; FirstRate pairs packed with all TFs on VPS | Hard-refresh → Sync timeframes / reopen session |
 
 ---

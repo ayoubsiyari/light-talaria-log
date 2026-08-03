@@ -9,12 +9,13 @@ export interface LayoutSyncOptions {
   dateRange: boolean;
 }
 
+/** Independent panes by default — opt in to couple pan / time / crosshair. */
 export const DEFAULT_LAYOUT_SYNC: LayoutSyncOptions = {
   symbol: false,
   interval: false,
-  crosshair: true,
-  time: true,
-  dateRange: true,
+  crosshair: false,
+  time: false,
+  dateRange: false,
 };
 
 /** Cell rects in a 0–1 unit square for drawing the layout icon. */

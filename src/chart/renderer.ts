@@ -534,13 +534,14 @@ function drawWatermark(
 
   ctx.save();
 
-  // Always-on brand mark — bottom-left of the plot (TradingView-style attribution).
-  ctx.globalAlpha = 0.4;
+  // Always-on brand text — bottom-left (TV-scale). Canvas text only — never
+  // decode/draw the logo PNG here (keeps chart heap light).
+  ctx.globalAlpha = 0.55;
   ctx.fillStyle = colors.muted;
-  ctx.font = '500 11px ui-sans-serif, system-ui, sans-serif';
+  ctx.font = '600 14px ui-sans-serif, system-ui, sans-serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'bottom';
-  ctx.fillText('Talaria Log', plot.left + 8, plot.top + plot.height - 6);
+  ctx.fillText('Talaria Log', plot.left + 10, plot.top + plot.height - 8);
 
   // Optional custom watermark (settings) — centered when enabled.
   if (colors.watermarkEnabled) {

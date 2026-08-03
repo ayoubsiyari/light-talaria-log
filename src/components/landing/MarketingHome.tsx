@@ -153,7 +153,11 @@ export function MarketingHome({ onStartFree, onSignIn }: MarketingHomeProps) {
                 animate={{ opacity: 0.12, scale: 1 }}
                 transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
               >
-                <BrandLogo size={220} className="h-[180px] w-[180px] sm:h-[220px] sm:w-[220px]" />
+                <BrandLogo
+                  variant="raster"
+                  size={220}
+                  className="h-[180px] w-[180px] sm:h-[220px] sm:w-[220px]"
+                />
               </motion.div>
               <svg
                 viewBox="0 0 560 360"
@@ -281,10 +285,10 @@ export function MarketingHome({ onStartFree, onSignIn }: MarketingHomeProps) {
             aria-hidden
             className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-[0.06]"
           >
-            <BrandLogo size={320} className="h-[280px] w-[280px]" />
+            <BrandLogo variant="raster" size={320} className="h-[280px] w-[280px]" />
           </div>
           <div className="relative z-[1] mx-auto max-w-2xl text-center">
-            <BrandLogo size={56} className="mx-auto mb-6" />
+            <BrandLogo variant="raster" size={56} className="mx-auto mb-6" />
             <h2 className="font-[family-name:var(--font-m-display)] text-[clamp(1.75rem,4vw,2.875rem)] font-semibold tracking-[-0.03em]">
               {finalCtaCopy.h2}
             </h2>

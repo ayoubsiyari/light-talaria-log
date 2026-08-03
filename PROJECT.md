@@ -685,6 +685,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-03 | Multi-pane independence: scoped camera sync, preserve sibling ranges, dateRange-gated pan; sync defaults off | Verify 4-pane pan/TF with sync off |
 | 2026-08-03 | TV-style Indicators modal: sidebar, search, All/Overlays/Panes pills, favorites, table rows | — |
 | 2026-08-03 | Small Talaria logo top-left in TopBar; “Talaria Log” brand text bottom-left on chart | — |
+| 2026-08-03 | TV-scale brand: 28px vector logo in TopBar; 14px chart text; PNG never drawn on canvas | — |
 | 2026-08-03 | Remote import syncs missing TFs (5m…1D) when only 1m was in IDB; FirstRate pairs packed with all TFs on VPS | Hard-refresh → Sync timeframes / reopen session |
 
 ---

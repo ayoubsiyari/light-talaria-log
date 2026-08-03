@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   IconBrush,
   IconChannel,
@@ -118,10 +118,12 @@ export function LeftToolbar({
   onDrawingsHiddenChange,
 }: LeftToolbarProps) {
   const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [menuTop, setMenuTop] = useState(0);
   const [lastByCategory, setLastByCategory] = useState<Record<string, DrawingToolId>>(() => ({
     ...CATEGORY_DEFAULT_TOOL,
   }));
   const rootRef = useRef<HTMLElement>(null);
+  const groupRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // pointerdown + capture: chart canvas preventDefault() suppresses mousedown
   useEffect(() => {
@@ -131,6 +133,16 @@ export function LeftToolbar({
     };
     document.addEventListener('pointerdown', onDoc, true);
     return () => document.removeEventListener('pointerdown', onDoc, true);
+  }, [openGroup]);
+
+  // Align flyout with the open group button (outside scroll clip).
+  useLayoutEffect(() => {
+    if (!openGroup || !rootRef.current) return;
+    const el = groupRefs.current[openGroup];
+    if (!el) return;
+    const rootRect = rootRef.current.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    setMenuTop(elRect.top - rootRect.top);
   }, [openGroup]);
 
   const activeDrawing =
@@ -146,27 +158,23 @@ export function LeftToolbar({
     const def = TOOLS[id];
     setLastByCategory((prev) => ({ ...prev, [def.category]: id }));
     onToolChange(id);
-    setOpenGroup(null); // close after picking a tool (ready to draw)
+    setOpenGroup(null);
   };
 
-  const toggleGroup = (groupId: string, categories: ToolCategoryId[]) => {
-    if (openGroup === groupId) {
-      setOpenGroup(null);
-      return;
-    }
-    // Quick re-select last tool when clicking the icon again while closed
+  /** Icon click — activate last tool in the group (no menu). */
+  const activateGroup = (categories: ToolCategoryId[]) => {
     const firstCat = categories[0]!;
     const last = lastByCategory[firstCat] ?? CATEGORY_DEFAULT_TOOL[firstCat];
-    if (activeDrawing && categories.some((c) => TOOLS[activeDrawing].category === c)) {
-      setOpenGroup(groupId);
-      return;
-    }
     onToolChange(last);
-    setOpenGroup(groupId);
+    setOpenGroup(null);
+  };
+
+  /** Arrow click — open/close the TV-style flyout. */
+  const toggleGroupMenu = (groupId: string) => {
+    setOpenGroup((cur) => (cur === groupId ? null : groupId));
   };
 
   return (
-    // overflow-visible so flyouts can escape to the right (overflow-y-auto clipped them)
     <aside
       ref={rootRef}
       className="chrome-toolbar tv-panel-r relative w-[52px] [@media(hover:none)]:w-[56px] shrink-0 z-40 overflow-visible"
@@ -191,19 +199,57 @@ export function LeftToolbar({
             g.categories.some((c) => TOOLS[activeDrawing].category === c);
           const open = openGroup === g.id;
           return (
-            <div key={g.id} className="relative shrink-0">
+            <div
+              key={g.id}
+              ref={(node) => {
+                groupRefs.current[g.id] = node;
+              }}
+              className="group/tool relative shrink-0"
+              data-open={open ? 'true' : undefined}
+            >
               <button
                 type="button"
                 title={g.label}
                 aria-pressed={active}
-                aria-expanded={open}
-                onClick={() => toggleGroup(g.id, g.categories)}
+                onClick={() => activateGroup(g.categories)}
                 className={toolBtn(active || open)}
               >
                 <g.Icon />
-                <span className="absolute right-0.5 top-1/2 -translate-y-1/2 text-muted opacity-80">
-                  <IconChevron className="w-2.5 h-2.5" />
-                </span>
+              </button>
+
+              {/*
+                TV-style arrow: hidden until hover (desktop), always on touch,
+                stays visible while menu open. Anchored on the button’s right edge
+                (inside the hit box) so the scroll container never clips it.
+              */}
+              <button
+                type="button"
+                title={`${g.label} menu`}
+                aria-label={`${g.label} menu`}
+                aria-expanded={open}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleGroupMenu(g.id);
+                }}
+                className={[
+                  'absolute top-1 bottom-1 right-0 z-10 w-3.5',
+                  'rounded-r-[3px] border-l border-[color:var(--tv-panel-line)]/70',
+                  'bg-surface/95 text-muted',
+                  'flex items-center justify-center',
+                  'transition-opacity duration-100',
+                  open
+                    ? 'opacity-100 text-foreground bg-background'
+                    : [
+                        'opacity-0 pointer-events-none',
+                        'group-hover/tool:opacity-100 group-hover/tool:pointer-events-auto',
+                        // Touch: always show a tappable arrow strip
+                        '[@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto',
+                        '[@media(hover:none)]:w-4',
+                        'hover:text-foreground hover:bg-background',
+                      ].join(' '),
+                ].join(' ')}
+              >
+                <IconChevron className="w-2.5 h-2.5 rotate-180" />
               </button>
             </div>
           );
@@ -270,8 +316,12 @@ export function LeftToolbar({
         </button>
       </div>
 
+      {/* Flyout outside the scroll pane so it is never clipped */}
       {openGroup && openCategories.length > 0 && (
-        <div className="absolute left-full top-0.5 z-50 ml-0 w-[min(16rem,calc(100vw-3.5rem))] max-h-[min(80vh,640px)] overflow-y-auto rounded-lg border border-[color:var(--tv-panel-line)] bg-surface shadow-[0_2px_6px_rgba(0,0,0,0.12)] py-1">
+        <div
+          className="absolute left-full z-50 ml-1 w-[min(16rem,calc(100vw-4rem))] max-h-[min(80vh,640px)] overflow-y-auto rounded-lg border border-[color:var(--tv-panel-line)] bg-surface shadow-[0_2px_8px_rgba(0,0,0,0.14)] py-1"
+          style={{ top: menuTop }}
+        >
           {openCategories.map((cat, idx) => (
             <div key={cat.id}>
               {cat.sections.map((sec) => (
@@ -319,7 +369,6 @@ export function LeftToolbar({
 
 function toolBtn(active: boolean): string {
   return [
-    // TradingView-scale: ~40px hits in 52px rail; phone slightly larger.
     'relative w-10 h-10 [@media(hover:none)]:w-11 [@media(hover:none)]:h-11 rounded-[4px] flex items-center justify-center transition-colors shrink-0 [&_svg]:w-5 [&_svg]:h-5',
     active
       ? 'bg-accent/15 text-accent'

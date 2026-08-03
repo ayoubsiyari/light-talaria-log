@@ -691,6 +691,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-03 | TV Fib Inputs tab: editable level coeffs/colors/styles, add/remove, show prices, extend L/R; all level tools wired | Manual fib/fan/timezone check |
 | 2026-08-03 | Touch/responsive plan Steps T1–T5: pinch+long-press, fat hits, 44px chrome, order sheet, safe-area, multi-pane focus | Device QA checklist in PROJECT T5 |
 | 2026-08-03 | Indicator replay: no flicker (length-tolerant paint + buffer align); tip sync via trailing 320-bar Worker window | Verify SMA/RSI during play |
+| 2026-08-04 | Left tools: TV hover arrow on groups; arrow opens categorized flyout; icon click uses last tool | Hard-refresh → hover tool groups |
 
 ---
 

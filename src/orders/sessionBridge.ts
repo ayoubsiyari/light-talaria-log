@@ -22,6 +22,7 @@ import type {
   MarketContext,
   OrderEngineState,
 } from './orderTypes';
+import { unrealizedPnL } from './pnl';
 import type { ChartBar } from '@/types/bar';
 import type { ChartOrder } from '@/types/order';
 
@@ -70,6 +71,9 @@ export function createOrderSessionBridge(input: {
     mode: state.mode,
   });
   let lastSteppedTime: number | null = null;
+  /** Last mark used for equity / chart P&L (bid = bar.close). */
+  let lastBid = 0;
+  let lastAsk = 0;
   let lastReject: string | null = null;
   const listeners = new Set<() => void>();
 
@@ -132,6 +136,8 @@ export function createOrderSessionBridge(input: {
         state = stepped.state;
         events.push(...stepped.events);
         lastSteppedTime = bar.time;
+        lastBid = copy.close;
+        lastAsk = copy.close + ctx.spread;
       }
       commit(events);
       return events;
@@ -139,6 +145,10 @@ export function createOrderSessionBridge(input: {
 
     submit(cmd) {
       lastReject = null;
+      if (cmd.bid > 0) {
+        lastBid = cmd.bid;
+        lastAsk = cmd.ask > 0 ? cmd.ask : cmd.bid + spec.typicalSpread;
+      }
       const result = reduceCommand(state, { type: 'SUBMIT', ...cmd }, spec);
       state = result.state;
       commit(result.events);
@@ -154,6 +164,10 @@ export function createOrderSessionBridge(input: {
 
     modify(cmd) {
       lastReject = null;
+      if (cmd.bid > 0) {
+        lastBid = cmd.bid;
+        lastAsk = cmd.ask > 0 ? cmd.ask : cmd.bid + spec.typicalSpread;
+      }
       const result = reduceCommand(state, { type: 'MODIFY', ...cmd }, spec);
       state = result.state;
       commit(result.events);
@@ -171,6 +185,8 @@ export function createOrderSessionBridge(input: {
         mode: journal.bootstrap.mode,
       });
       lastSteppedTime = null;
+      lastBid = 0;
+      lastAsk = 0;
       journal = createJournal(input.sessionId, journal.bootstrap);
       persistJournal(journal);
       lastReject = null;
@@ -180,6 +196,10 @@ export function createOrderSessionBridge(input: {
 
     toChartOrders(sessionId) {
       const out: ChartOrder[] = [];
+      const bid = lastBid;
+      const ask = lastAsk > 0 ? lastAsk : lastBid + spec.typicalSpread;
+
+      // Open positions keep entry + protective levels until SL/TP (or close) fills.
       for (const pos of Object.values(state.positions)) {
         let sl: number | null = null;
         let tp: number | null = null;
@@ -188,6 +208,21 @@ export function createOrderSessionBridge(input: {
           if (!o || o.positionId !== pos.id) continue;
           if (o.role === 'stopLoss' && o.price != null) sl = o.price;
           if (o.role === 'takeProfit' && o.price != null) tp = o.price;
+        }
+        let uPnL: number | null = null;
+        if (bid > 0) {
+          uPnL = unrealizedPnL(
+            pos.side,
+            pos.entryPrice,
+            bid,
+            ask,
+            pos.size,
+            spec,
+            {
+              accountCurrency: state.account.currency,
+              instrumentPrice: bid,
+            },
+          ).amount;
         }
         out.push({
           id: pos.id,
@@ -200,6 +235,8 @@ export function createOrderSessionBridge(input: {
           createdAt: pos.openedAt,
           enginePositionId: pos.id,
           ambiguousFill: pos.ambiguousFill,
+          size: pos.size,
+          unrealizedPnL: uPnL,
         });
       }
       // Working entry orders (limits/stops/markets awaiting next-bar fill)
@@ -225,6 +262,8 @@ export function createOrderSessionBridge(input: {
           createdAt: o.createdAt,
           engineOrderId: o.id,
           working: true,
+          size: o.size,
+          unrealizedPnL: null,
         });
       }
       return out;

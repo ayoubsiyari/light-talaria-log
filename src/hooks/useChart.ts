@@ -302,8 +302,11 @@ export function useChart(
   useEffect(() => {
     const instance = instanceRef.current;
     if (!instance) return;
+    // While playing, App pushes orders+P&L imperatively each bar — do not clobber
+    // with a stale React snapshot (would drop open levels mid-replay).
+    if (options.replayFollow) return;
     instance.setOrders(options.orders ?? [], options.selectedOrderId ?? null);
-  }, [orderIds, options.orders, options.selectedOrderId]);
+  }, [orderIds, options.orders, options.selectedOrderId, options.replayFollow]);
 
   useEffect(() => {
     const instance = instanceRef.current;

@@ -717,6 +717,7 @@ export default function App() {
     setOrderEngineTick((n) => n + 1);
   }, []);
 
+  const lastOrderChromeAtRef = useRef(0);
   stepOrderEngineRef.current = (cursorTime: number) => {
     const bridge = orderBridgeRef.current;
     const sess = sessionRef.current.get();
@@ -725,7 +726,7 @@ export default function App() {
       panesRef.current.find((p) => p.id === activePaneId)?.datasetId ??
       panesRef.current[0]?.datasetId;
     if (!ds) return;
-    const events = bridge.advanceTo(cursorTime, (fromExclusive, toInclusive) => {
+    bridge.advanceTo(cursorTime, (fromExclusive, toInclusive) => {
       const raw = warmCache.peek(ds, sess.baseTf) ?? [];
       const out: ChartBar[] = [];
       for (const b of raw) {
@@ -736,14 +737,22 @@ export default function App() {
       }
       return out;
     });
-    if (events.length === 0) return;
+    // Always refresh chart projection — levels stay until SL/TP close, P&L marks each bar.
+    // Draft ticket is React-driven while paused; play disables the ticket.
+    const chartOrders = bridge.toChartOrders(sessionIdRef.current ?? '');
+    for (const pane of panesRef.current) {
+      getChart(pane.id)?.setOrders(chartOrders, selectedOrderId);
+    }
     if (!replayRef.current.get().playing) {
       syncOrdersFromBridge();
-    } else {
-      const chartOrders = bridge.toChartOrders(sessionIdRef.current ?? '');
-      for (const pane of panesRef.current) {
-        getChart(pane.id)?.setOrders(chartOrders, selectedOrderId);
-      }
+      return;
+    }
+    // Throttle BottomBar / TradeDock equity+P&L while playing (avoid chrome fight).
+    const now = performance.now();
+    if (now - lastOrderChromeAtRef.current >= 200) {
+      lastOrderChromeAtRef.current = now;
+      setOrders(chartOrders);
+      setOrderEngineTick((n) => n + 1);
     }
   };
 

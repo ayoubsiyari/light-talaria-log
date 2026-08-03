@@ -18,6 +18,10 @@ export interface ChartOrder {
   /** Preview from open order ticket (not yet submitted). */
   draft?: boolean;
   ambiguousFill?: boolean;
+  /** Open position size (lots) — used for chart P&L label. */
+  size?: number;
+  /** Unrealized P&L in account currency; null/undefined = pending/draft (no P&L). */
+  unrealizedPnL?: number | null;
 }
 
 export type OrderLineKind = 'entry' | 'sl' | 'tp';

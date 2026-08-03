@@ -42,8 +42,17 @@ export function drawOrders(
     const entryColor = order.side === 'buy' ? colors.upColor : colors.downColor;
     const dashed = Boolean(order.working || order.draft);
     const prefix = order.draft ? 'Draft ' : '';
+    const openPos = !order.working && !order.draft && order.entry != null;
 
     if (entry != null) {
+      const pnlText =
+        openPos && order.unrealizedPnL != null
+          ? `  ${formatPnL(order.unrealizedPnL)}`
+          : '';
+      const sizeText =
+        openPos && order.size != null && Number.isFinite(order.size)
+          ? ` ${order.size.toFixed(2)}`
+          : '';
       drawPriceLine(
         ctx,
         plot,
@@ -53,8 +62,9 @@ export function drawOrders(
         entryColor,
         selected,
         dashed,
-        `${prefix}${order.side.toUpperCase()} ${formatPrice(entry)}`,
+        `${prefix}${order.side.toUpperCase()}${sizeText} ${formatPrice(entry)}${pnlText}`,
         false,
+        openPos ? order.unrealizedPnL ?? undefined : undefined,
       );
     }
 
@@ -97,6 +107,12 @@ export function drawOrders(
   ctx.restore();
 }
 
+function formatPnL(n: number): string {
+  const abs = Math.abs(n);
+  const body = abs >= 100 ? abs.toFixed(0) : abs.toFixed(2);
+  return `${n >= 0 ? '+' : '−'}${body}`;
+}
+
 function dragPrice(order: ChartOrder, kind: OrderLineKind, fallback: number): number {
   if (levelDrag.active && levelDrag.orderId === order.id && levelDrag.kind === kind) {
     return levelDrag.currentPrice;
@@ -133,12 +149,16 @@ function drawPriceLine(
   dashed: boolean,
   label: string,
   invalid: boolean,
+  pnl?: number,
 ): void {
   const y = priceToY(price, scale, plot);
   if (y < plot.top - 2 || y > plot.top + plot.height + 2) return;
 
-  ctx.strokeStyle = invalid ? colors.downColor : color;
-  ctx.lineWidth = selected || invalid ? 2 : 1.25;
+  const lineColor =
+    pnl != null ? (pnl >= 0 ? colors.upColor : colors.downColor) : color;
+
+  ctx.strokeStyle = invalid ? colors.downColor : lineColor;
+  ctx.lineWidth = selected || invalid || pnl != null ? 2 : 1.25;
   if (invalid) ctx.setLineDash([3, 3]);
   else if (dashed) ctx.setLineDash([6, 4]);
   else ctx.setLineDash([]);
@@ -155,9 +175,17 @@ function drawPriceLine(
   const tw = ctx.measureText(text).width;
   const bx = plot.left + plot.width - tw - pad * 2 - 4;
   const by = y - 12;
-  ctx.fillStyle = colors.labelBg;
+  const chipFill =
+    pnl != null
+      ? pnl >= 0
+        ? colors.upColor
+        : colors.downColor
+      : colors.labelBg;
+  const chipText =
+    pnl != null ? colors.onSolid : invalid ? colors.downColor : color;
+  ctx.fillStyle = chipFill;
   ctx.fillRect(bx - 2, by - 10, tw + pad * 2, 14);
-  ctx.fillStyle = invalid ? colors.downColor : color;
+  ctx.fillStyle = chipText;
   ctx.fillText(text, bx + 2, by);
 }
 

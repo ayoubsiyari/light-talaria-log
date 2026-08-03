@@ -4,6 +4,7 @@ import {
   IconChannel,
   IconChevron,
   IconCursor,
+  IconEmoji,
   IconEye,
   IconEyeOff,
   IconFib,
@@ -79,7 +80,7 @@ const TOOLBAR_GROUPS: {
   {
     id: 'patterns',
     label: 'Patterns & Elliott',
-    Icon: IconPattern,
+    Icon: IconEmoji,
     categories: ['patterns', 'elliott', 'cycles'],
   },
   {

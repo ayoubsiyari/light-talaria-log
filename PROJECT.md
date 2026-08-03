@@ -669,11 +669,15 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-02 | Multi-chart replay: armPlay warms all pane caches; extendReveal fill-ahead + keep tip on gap | Verify 3-pair Play advances all panes |
 | 2026-08-02 | Play/Pause camera jump: follow uses right-anchored (same as pause), preserve engine span | Toggle Play/Pause — tip stays put |
 | 2026-08-03 | Play/Pause time-grid jump: keep wall-clock window on pause; follow recenters only on new tip | Toggle Play/Pause — labels stable |
+| 2026-08-03 | Fix 1D play sawtooth: no finer-TF cache fallback; rebuild reveal from matching TF each tick | Play 1D — candles match pause |
+| 2026-08-03 | TF/ticker switch: await fill before paint; never blank last candles on cache miss | Switch 1m↔1D and pairs mid-replay |
+| 2026-08-03 | Legend 3-dot loader beside symbol while TF/ticker warms | — |
 | 2026-08-02 | Level-2 SaaS full: `docs/SAAS-LEVEL-2.md`, Docker (PG/Redis/MinIO), Fastify API, auth, jobs, Datasets login | `npm run saas:up` → migrate/seed/api → `saas:dev` |
 | 2026-08-02 | Order system Phases 1–7: pure engine, §4.3 fills, margin/swap, journal determinism, drag overlay, order UI — `docs/ORDER-SYSTEM-REPORT.md` | Measure drag Profiler/p95; journal rebuild on reload |
 | 2026-08-02 | TV-style order UX: floating ticket, bottom TradeDock tabs, draft+live SL/TP chart levels | Place Order → drag SL/TP on chart |
 | 2026-08-02 | Order ticket docks (chart shrinks → price axis visible); default Market @ live bid/ask; drag draft entry/SL/TP → ticket | Place Order → drag levels |
 | 2026-08-03 | Open levels persist until SL/TP; live unrealized P&L on entry chip + BottomBar during replay | Place → Play → watch P&L / levels to hit |
+| 2026-08-03 | Chart style templates in settings (Sapphire, Obsidian, Zenith, Pearl, Olive, Willow, Marine, Blue Ash) | Optional FVG/IFVG zone colors later |
 
 ---
 

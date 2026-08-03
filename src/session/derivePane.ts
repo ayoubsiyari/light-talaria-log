@@ -2,6 +2,7 @@ import {
   assertNoLookahead,
   revealedViewport,
 } from '@/session/revealedViewport';
+import { barsMatchTimeframe } from '@/session/barTfGuard';
 import type { PaneView, SessionState } from '@/session/sessionState';
 import { warmCache } from '@/session/warmCache';
 import { bucketStart, timeframeSeconds } from '@/data/timeframeAgg';
@@ -19,10 +20,15 @@ export function derivePaneSync(s: SessionState, paneId: string): PaneView | null
   const cfg = s.panes[paneId];
   if (!cfg) return null;
 
-  const raw = warmCache.get(cfg.datasetId, cfg.tf, s.anchorTime, s.span);
+  const rawCandidate = warmCache.get(cfg.datasetId, cfg.tf, s.anchorTime, s.span);
+  // Never treat a finer TF placeholder as this pane's series (1m-on-1D sawtooth).
+  const raw = barsMatchTimeframe(rawCandidate, cfg.tf) ? rawCandidate : [];
+  const basePeek = warmCache.peek(cfg.datasetId, s.baseTf);
   const baseBars =
-    warmCache.peek(cfg.datasetId, s.baseTf) ??
-    (cfg.tf === s.baseTf ? raw : []);
+    basePeek ??
+    (cfg.tf === s.baseTf && barsMatchTimeframe(rawCandidate, s.baseTf)
+      ? rawCandidate
+      : []);
 
   const bars = truncateAtCursor(
     raw,
@@ -106,7 +112,8 @@ export async function derivePaneAsync(
   return derivePaneSync(s, paneId);
 }
 
-function truncateAtCursor(
+/** Load-time / tick reveal: closed buckets + forming tip. Exported for play path. */
+export function truncateAtCursor(
   raw: readonly ChartBar[],
   cursorTime: number,
   tf: Timeframe,

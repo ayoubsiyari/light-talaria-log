@@ -19,6 +19,12 @@ export type { ViewportLoader, LoadBarsFn, BufferEdgeCheck } from './viewportLoad
 export { getChartColors } from './chartTheme';
 export type { ChartColors } from './chartTheme';
 export {
+  CHART_STYLE_TEMPLATES,
+  getChartStyleTemplate,
+  withOpacity,
+} from './chartStyleTemplates';
+export type { ChartStyleTemplate } from './chartStyleTemplates';
+export {
   getAppearance,
   setAppearance,
   patchAppearance,

@@ -8,8 +8,8 @@
  *    we still store ChartBar[]; packed SoA migration is deferred — see report §14).
  * 3. Eviction: LRU by `touchedAt` when entry count exceeds MAX_ENTRIES; clearDataset
  *    when a pane drops a symbol (caller must clear before prefetching the new one).
- * 4. Miss: never blocks, never returns undefined — returns [] or nearest coarser/finer
- *    cached TF as placeholder and kicks async fill (epoch-guarded).
+ * 4. Miss: never blocks — returns [] or nearest *coarser* cached TF as placeholder
+ *    and kicks async fill (epoch-guarded). Never returns a finer TF.
  */
 import { loadViewportAroundTime } from '@/datasets/seriesViewport';
 import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
@@ -92,18 +92,12 @@ export class WarmCache {
 
     void this.fill(datasetId, tf, anchorTime, span);
 
+    // Coarser placeholder only — never return a finer TF (e.g. 1m for 1D).
+    // Finer placeholders corrupt replay reveal into a sawtooth of intraday bars.
     const idx = TF_FALLBACK_ORDER.indexOf(tf);
     for (let i = idx + 1; i < TF_FALLBACK_ORDER.length; i++) {
       const coarser = TF_FALLBACK_ORDER[i]!;
       const alt = this.store.get(key(datasetId, coarser));
-      if (alt && alt.bars.length > 0) {
-        alt.touchedAt = Date.now();
-        return alt.bars;
-      }
-    }
-    for (let i = idx - 1; i >= 0; i--) {
-      const finer = TF_FALLBACK_ORDER[i]!;
-      const alt = this.store.get(key(datasetId, finer));
       if (alt && alt.bars.length > 0) {
         alt.touchedAt = Date.now();
         return alt.bars;

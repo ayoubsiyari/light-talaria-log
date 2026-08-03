@@ -12,6 +12,7 @@ import {
   subscribeAppearance,
 } from '@/chart';
 import { ChartContainer } from '@/components/ChartContainer';
+import { LoadingDots } from '@/components/layout/LoadingDots';
 import { OverlayIndicators } from '@/components/layout/OverlayIndicators';
 import { VolumeIndicator } from '@/components/layout/VolumeIndicator';
 import type { Drawing } from '@/drawings/drawingStore';
@@ -29,6 +30,8 @@ export interface ChartPaneProps {
   initialRange?: VisibleRange | null;
   symbol: string;
   timeframe: Timeframe;
+  /** True while TF / ticker data is warming for this pane. */
+  dataLoading?: boolean;
   selected: boolean;
   onSelect: () => void;
   crosshairMode: CrosshairMode;
@@ -79,6 +82,7 @@ export function ChartPane({
   initialRange = null,
   symbol,
   timeframe,
+  dataLoading = false,
   selected,
   onSelect,
   crosshairMode,
@@ -163,16 +167,22 @@ export function ChartPane({
         appearance.statusShowChange) && (
         <div className="pointer-events-none absolute top-2 left-3 z-10 text-xs font-medium tracking-wide flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           {appearance.statusShowSymbol && (
-            <span className={selected ? 'text-accent' : 'text-foreground'}>
+            <span
+              className={`inline-flex items-center ${selected ? 'text-accent' : 'text-foreground'}`}
+            >
               {symbol}
+              {dataLoading && <LoadingDots />}
             </span>
           )}
           {appearance.statusShowSymbol && appearance.statusShowInterval && (
             <span className="text-muted">·</span>
           )}
           {appearance.statusShowInterval && (
-            <span className={selected ? 'text-accent' : 'text-muted'}>
+            <span
+              className={`inline-flex items-center ${selected ? 'text-accent' : 'text-muted'}`}
+            >
               {timeframe}
+              {!appearance.statusShowSymbol && dataLoading && <LoadingDots />}
             </span>
           )}
           {appearance.statusShowOhlc && (

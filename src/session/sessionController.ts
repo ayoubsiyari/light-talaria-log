@@ -1,6 +1,10 @@
 import { bucketStart, timeframeSeconds } from '@/data/timeframeAgg';
-import { formBucketFromClock } from '@/replay/formingBars';
-import { derivePaneAsync, derivePaneSync } from '@/session/derivePane';
+import { barsMatchTimeframe } from '@/session/barTfGuard';
+import {
+  derivePaneAsync,
+  derivePaneSync,
+  truncateAtCursor,
+} from '@/session/derivePane';
 import type {
   PaneConfig,
   PaneView,
@@ -12,6 +16,7 @@ import { warmCache } from '@/session/warmCache';
 import type { ChartBar } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
 import { MAX_BARS_IN_MEMORY, REPLAY_VISIBLE_BARS } from '@/utils/constants';
+import { rangeRightAnchored } from '@/chart/rangeAnchor';
 
 export type SessionListener = (state: SessionState, views: Record<string, PaneView>) => void;
 
@@ -198,10 +203,10 @@ export function createSessionController() {
     },
 
     /**
-     * TF switch — single field change + sync derive from warm cache.
-     * Async fill refreshes if cache was a placeholder.
+     * TF switch — fill the target series first, then derive/notify.
+     * Avoids a blank frame that wiped candles when the new TF was not cached.
      */
-    setPaneTimeframe(paneId: string, tf: Timeframe): void {
+    async setPaneTimeframe(paneId: string, tf: Timeframe): Promise<void> {
       if (!state) return;
       const pane = state.panes[paneId];
       if (!pane) return;
@@ -221,21 +226,37 @@ export function createSessionController() {
           anchorTime: Math.min(state.anchorTime, state.cursorTime),
         };
       }
+      const s = state;
+      await warmCache.fill(s.panes[paneId]!.datasetId, tf, s.anchorTime, s.span);
+      if (!state) return;
+      if (tf !== state.baseTf) {
+        await warmCache.fill(
+          state.panes[paneId]!.datasetId,
+          state.baseTf,
+          state.cursorTime,
+          state.span,
+        );
+      }
+      if (!state) return;
       rederiveSync();
       notify();
       void rederiveAsync([paneId]);
     },
 
-    setPaneSymbol(
+    /**
+     * Symbol switch — prefetch new dataset before notify so panes do not go empty.
+     */
+    async setPaneSymbol(
       paneId: string,
       meta: { datasetId: string; pair: string },
       availableTfs: readonly Timeframe[],
-    ): void {
+    ): Promise<void> {
       if (!state) return;
       const pane = state.panes[paneId];
       if (!pane) return;
       if (pane.datasetId === meta.datasetId && pane.pair === meta.pair) return;
       const prevDs = pane.datasetId;
+      const keepTf = pane.tf;
       state = {
         ...state,
         panes: {
@@ -255,6 +276,14 @@ export function createSessionController() {
         const stillUsed = Object.values(state.panes).some((p) => p.datasetId === prevDs);
         if (!stillUsed) warmCache.clearDataset(prevDs);
       }
+      const s = state;
+      // Warm the active TF (+ base) before painting — full prefetch can finish after.
+      await warmCache.fill(meta.datasetId, keepTf, s.anchorTime, s.span);
+      if (!state) return;
+      if (keepTf !== state.baseTf) {
+        await warmCache.fill(meta.datasetId, state.baseTf, state.cursorTime, state.span);
+      }
+      if (!state) return;
       rederiveSync();
       notify();
       void warmCache
@@ -341,9 +370,9 @@ function scheduleFillAhead(
 }
 
 /**
- * Mutate each pane's bars array in place as cursor advances:
- * append newly closed buckets from warmCache + refresh forming tip.
- * Does not allocate a replacement array (addendum §3/§6).
+ * Advance revealed bars with the cursor.
+ * Rebuilds from the correct TF cache each tick so a finer-TF placeholder can
+ * never leave 1m residue on a 1D pane (play sawtooth / pause looks fine).
  */
 function extendRevealInPlace(
   s: SessionState,
@@ -356,75 +385,53 @@ function extendRevealInPlace(
     if (!cfg || !view) continue;
 
     const tfPeriod = timeframeSeconds(cfg.tf);
-    const openBucket = bucketStart(s.cursorTime, tfPeriod);
-    const bars = view.bars as ChartBar[];
-    const raw = warmCache.peek(cfg.datasetId, cfg.tf);
-    const baseBars = warmCache.peek(cfg.datasetId, s.baseTf);
+    const rawPeek = warmCache.peek(cfg.datasetId, cfg.tf);
+    const raw =
+      rawPeek && barsMatchTimeframe(rawPeek, cfg.tf) ? rawPeek : null;
+    const baseBars = warmCache.peek(cfg.datasetId, s.baseTf) ?? [];
 
-    // Keep requesting data when the warm window does not cover the open bucket.
+    const openBucket = bucketStart(s.cursorTime, tfPeriod);
     const rawEnd = raw && raw.length > 0 ? raw[raw.length - 1]!.time : null;
     if (!raw || raw.length === 0 || (rawEnd != null && rawEnd < openBucket)) {
       scheduleFillAhead(cfg.datasetId, cfg.tf, s.cursorTime, s.span);
       if (cfg.tf !== s.baseTf) {
         scheduleFillAhead(cfg.datasetId, s.baseTf, s.cursorTime, s.span);
       }
-      if (!raw || raw.length === 0) {
-        // Nothing to append yet — leave existing tip so the pane does not go blank.
-        continue;
-      }
     }
 
-    // Snapshot tip before rebuild — restore if forming cannot be rebuilt (cache gap).
-    const prevTip =
-      bars.length > 0 ? ({ ...bars[bars.length - 1]! } as ChartBar) : null;
-
-    while (bars.length > 0 && bars[bars.length - 1]!.time >= openBucket) {
-      bars.pop();
+    if (!raw || raw.length === 0) {
+      // Keep last candles while the correct TF/ticker fills — never blank the pane.
+      continue;
     }
 
-    const lastTime = bars.length > 0 ? bars[bars.length - 1]!.time : Number.NEGATIVE_INFINITY;
-    for (let i = 0; i < raw.length; i++) {
-      const b = raw[i]!;
-      if (b.time <= lastTime) continue;
-      if (b.time >= openBucket) break;
-      bars.push(b);
-    }
+    const rebuilt = truncateAtCursor(
+      raw,
+      s.cursorTime,
+      cfg.tf,
+      'replay',
+      s.baseTf,
+      baseBars,
+    );
 
-    let forming: ChartBar | null = null;
-    if (tfPeriod > timeframeSeconds(s.baseTf) && baseBars && baseBars.length > 0) {
-      forming = formBucketFromClock(baseBars, openBucket, tfPeriod, s.cursorTime);
-    } else {
-      for (let i = 0; i < raw.length; i++) {
-        const b = raw[i]!;
-        if (b.time === openBucket && b.time <= s.cursorTime) {
-          forming = b;
-          break;
-        }
-        if (b.time > openBucket) break;
-      }
-    }
-
-    if (forming) {
+    const bars = view.bars as ChartBar[];
+    bars.length = 0;
+    for (let i = 0; i < rebuilt.length; i++) {
+      const b = rebuilt[i]!;
       bars.push({
-        time: forming.time,
-        open: forming.open,
-        high: forming.high,
-        low: forming.low,
-        close: forming.close,
-        volume: forming.volume,
+        time: b.time,
+        open: b.open,
+        high: b.high,
+        low: b.low,
+        close: b.close,
+        volume: b.volume,
       });
-    } else if (prevTip && prevTip.time <= s.cursorTime) {
-      // Cache gap: keep last tip so multi-pane charts do not freeze empty.
-      bars.push(prevTip);
     }
 
-    if (bars.length === 0) continue;
+    if (bars.length === 0) {
+      view.range = { fromIndex: 0, toIndex: 1 };
+      continue;
+    }
 
-    const toIndex = Math.max(0, bars.length - 1);
-    // Keep span in index-space (exclusive toIndex style via +1 pad on right).
-    const span = Math.max(1, s.span);
-    const rightPad = Math.floor(span * 0.1);
-    const rangeTo = toIndex + 1 + rightPad;
-    view.range = { fromIndex: rangeTo - span, toIndex: rangeTo };
+    view.range = rangeRightAnchored(bars.length - 1, Math.max(1, s.span));
   }
 }

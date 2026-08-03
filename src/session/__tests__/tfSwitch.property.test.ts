@@ -148,7 +148,7 @@ describe('TF switch properties', () => {
                 });
 
                 const anchorBefore = ctrl.get()!.anchorTime;
-                ctrl.setPaneTimeframe('pane-0', tfTo);
+                await ctrl.setPaneTimeframe('pane-0', tfTo);
                 const s = ctrl.get()!;
                 const view = ctrl.getViews()['pane-0'];
                 const tag = `${tfFrom}→${tfTo} mode=${revealMode} cursor=${cursor} span=${span}`;

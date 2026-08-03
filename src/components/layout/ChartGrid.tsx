@@ -50,6 +50,8 @@ interface ChartGridProps {
   backtestResult?: BacktestResult | null;
   syncCrosshair?: boolean;
   syncDateRange?: boolean;
+  /** Pane ids currently warming TF / ticker data. */
+  loadingPaneIds?: ReadonlySet<string>;
 }
 
 /**
@@ -106,6 +108,7 @@ export function ChartGrid({
   backtestResult = null,
   syncCrosshair = true,
   syncDateRange = true,
+  loadingPaneIds,
 }: ChartGridProps) {
   return (
     <div
@@ -120,6 +123,7 @@ export function ChartGrid({
           initialRange={pane.range}
           symbol={pane.pair}
           timeframe={pane.timeframe}
+          dataLoading={loadingPaneIds?.has(pane.id) ?? false}
           selected={pane.id === activePaneId}
           onSelect={() => onSelectPane(pane.id)}
           crosshairMode={crosshairMode}

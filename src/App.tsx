@@ -244,6 +244,10 @@ export default function App() {
   const [cameraDetached, setCameraDetached] = useState(false);
   const cameraDetachedRef = useRef(false);
   cameraDetachedRef.current = cameraDetached;
+  /** Pane ids showing legend … while TF / ticker fills. */
+  const [loadingPaneIds, setLoadingPaneIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   /** Per-pane follow detach — panning one chart must not freeze the others. */
   const detachedPanesRef = useRef(new Set<string>());
   /**
@@ -269,6 +273,22 @@ export default function App() {
         const old = prev.find((p) => p.id === id);
         if (!v || !cfg) {
           if (old) next.push(old);
+          continue;
+        }
+        // TF/ticker fill in flight — keep last candles instead of wiping the pane.
+        if (
+          v.bars.length === 0 &&
+          old &&
+          old.bars.length > 0 &&
+          old.datasetId === cfg.datasetId
+        ) {
+          next.push({
+            ...old,
+            timeframe: cfg.tf,
+            selectedTf: cfg.selectedTf,
+            pair: cfg.pair as PairSymbol,
+            datasetId: cfg.datasetId,
+          });
           continue;
         }
         next.push({
@@ -307,7 +327,9 @@ export default function App() {
     for (const pane of panesRef.current) {
       const chart = getChart(pane.id);
       const v = views[pane.id];
-      if (!chart || !v || v.bars.length === 0) continue;
+      if (!chart) continue;
+      // Empty view during TF/ticker warm-up — leave engine candles alone.
+      if (!v || v.bars.length === 0) continue;
 
       const tipTime = Number.isFinite(cursor)
         ? cursor
@@ -1345,9 +1367,20 @@ export default function App() {
     })();
   };
 
+  const markPanesLoading = useCallback((ids: readonly string[], on: boolean) => {
+    setLoadingPaneIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (on) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }, []);
+
   /**
-   * TF switch = capture camera (span + right edge), one field change, push engines.
-   * During replay the right edge stays on the cursor candle; bar count is preserved.
+   * TF switch = capture camera, await target TF fill, then push engines.
+   * Never blanks the chart when the new interval is not yet in warm cache.
    */
   const applyPaneTimeframe = useCallback(
     (paneId: string, tf: Timeframe) => {
@@ -1368,34 +1401,43 @@ export default function App() {
       const camera = captureLiveCamera(paneId);
       cameraPreserveRef.current = camera;
       sessionRef.current.setCamera(camera.anchorTime, camera.span);
-
-      for (const id of targets) {
-        sessionRef.current.setPaneTimeframe(id, tf);
-      }
       setActivePaneId(paneId);
       sessionRef.current.setActivePane(paneId);
-      commitSessionViews();
-      syncEnginesFromSession();
-      syncReplayClockTf(panesRef.current);
+      markPanesLoading(targets, true);
 
-      const focus = panesRef.current.find((p) => p.id === paneId);
-      if (focus && focus.bars.length > 0) {
-        const newTr = timeRangeFromVisible(focus.bars, focus.range);
-        if (newTr) syncStoreRef.current?.setTimeRange(newTr, 'tf-switch');
-        replayBufferRef.current.set(paneId, focus.bars);
-      }
+      void (async () => {
+        try {
+          for (const id of targets) {
+            await sessionRef.current.setPaneTimeframe(id, tf);
+          }
+          if (!viewportReloadEnabledRef.current) return;
+          commitSessionViews();
+          syncEnginesFromSession();
+          syncReplayClockTf(panesRef.current);
+
+          const focus = panesRef.current.find((p) => p.id === paneId);
+          if (focus && focus.bars.length > 0) {
+            const newTr = timeRangeFromVisible(focus.bars, focus.range);
+            if (newTr) syncStoreRef.current?.setTimeRange(newTr, 'tf-switch');
+            replayBufferRef.current.set(paneId, focus.bars);
+          }
+        } finally {
+          markPanesLoading(targets, false);
+        }
+      })();
     },
     [
       catalog,
       captureLiveCamera,
       commitSessionViews,
+      markPanesLoading,
       syncEnginesFromSession,
       syncReplayClockTf,
     ],
   );
 
   /**
-   * Symbol switch via session controller — same camera preserve as TF switch.
+   * Symbol switch — await new dataset fill before swapping engines.
    * Truncates at cursor in replay; never loads future bars into the engine.
    */
   const applyPaneSymbol = useCallback(
@@ -1425,31 +1467,41 @@ export default function App() {
           ? intersectTimeframes(seriesRef.current)
           : (catalog.timeframes ?? [existing.selectedTf]);
 
-      for (const id of targets) {
-        sessionRef.current.setPaneSymbol(
-          id,
-          { datasetId: series.datasetId, pair: series.pair },
-          tfs,
-        );
-        replayBufferRef.current.delete(id);
-      }
       setActivePaneId(paneId);
       sessionRef.current.setActivePane(paneId);
-      commitSessionViews();
-      syncEnginesFromSession();
-      syncReplayClockTf(panesRef.current);
+      markPanesLoading(targets, true);
 
-      const focus = panesRef.current.find((p) => p.id === paneId);
-      if (focus && focus.bars.length > 0) {
-        const newTr = timeRangeFromVisible(focus.bars, focus.range);
-        if (newTr) syncStoreRef.current?.setTimeRange(newTr, 'symbol-switch');
-        replayBufferRef.current.set(paneId, focus.bars);
-      }
+      void (async () => {
+        try {
+          for (const id of targets) {
+            await sessionRef.current.setPaneSymbol(
+              id,
+              { datasetId: series.datasetId, pair: series.pair },
+              tfs,
+            );
+            replayBufferRef.current.delete(id);
+          }
+          if (!viewportReloadEnabledRef.current) return;
+          commitSessionViews();
+          syncEnginesFromSession();
+          syncReplayClockTf(panesRef.current);
+
+          const focus = panesRef.current.find((p) => p.id === paneId);
+          if (focus && focus.bars.length > 0) {
+            const newTr = timeRangeFromVisible(focus.bars, focus.range);
+            if (newTr) syncStoreRef.current?.setTimeRange(newTr, 'symbol-switch');
+            replayBufferRef.current.set(paneId, focus.bars);
+          }
+        } finally {
+          markPanesLoading(targets, false);
+        }
+      })();
     },
     [
       catalog,
       captureLiveCamera,
       commitSessionViews,
+      markPanesLoading,
       syncEnginesFromSession,
       syncReplayClockTf,
     ],
@@ -2140,6 +2192,7 @@ export default function App() {
               backtestResult={btResult}
               syncCrosshair={layoutSync.crosshair || layoutSync.time}
               syncDateRange={layoutSync.dateRange}
+              loadingPaneIds={loadingPaneIds}
               drawings={drawings}
               placement={placement}
               selectedDrawingId={selectedDrawingId}

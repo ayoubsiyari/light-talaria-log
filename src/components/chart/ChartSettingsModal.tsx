@@ -5,6 +5,7 @@ import {
   resetAppearance,
   setAppearance,
 } from '@/chart/appearanceStore';
+import { CHART_STYLE_TEMPLATES } from '@/chart/chartStyleTemplates';
 import { getTheme, setTheme, type ThemeMode } from '@/theme/theme';
 import {
   ColorSwatches,
@@ -142,7 +143,14 @@ export function ChartSettingsModal({ onClose }: ChartSettingsModalProps) {
 
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
             {tab === 'symbol' && (
-              <SymbolTab draft={draft} applyLive={applyLive} />
+              <SymbolTab
+                draft={draft}
+                applyLive={applyLive}
+                onThemeChange={(m) => {
+                  setThemeLocal(m);
+                  setTheme(m);
+                }}
+              />
             )}
             {tab === 'status' && (
               <StatusTab draft={draft} applyLive={applyLive} />
@@ -198,12 +206,54 @@ export function ChartSettingsModal({ onClose }: ChartSettingsModalProps) {
 function SymbolTab({
   draft,
   applyLive,
+  onThemeChange,
 }: {
   draft: ChartAppearance;
   applyLive: (p: Partial<ChartAppearance>) => void;
+  onThemeChange: (m: ThemeMode) => void;
 }) {
   return (
     <>
+      <SectionTitle>Style templates</SectionTitle>
+      <p className="text-[11px] text-muted -mt-1 mb-1">
+        Apply a candle + background look. You can still tweak colors below.
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {CHART_STYLE_TEMPLATES.map((t) => {
+          const [bg, bull, bear] = t.preview;
+          const active =
+            draft.background?.toLowerCase() === bg.toLowerCase() &&
+            draft.upBody.toLowerCase().startsWith(bull.toLowerCase()) &&
+            draft.downBody.toLowerCase().startsWith(bear.toLowerCase());
+          return (
+            <button
+              key={t.id}
+              type="button"
+              title={`Apply ${t.name}`}
+              onClick={() => {
+                applyLive(t.patch);
+                onThemeChange(t.theme);
+              }}
+              className={[
+                'rounded-lg border px-2 py-2 text-left transition-colors min-h-11',
+                active
+                  ? 'border-accent bg-accent/10'
+                  : 'border-border hover:border-accent/50 hover:bg-background/60',
+              ].join(' ')}
+            >
+              <div className="flex h-5 overflow-hidden rounded-sm mb-1.5">
+                <span className="flex-1" style={{ background: bg }} />
+                <span className="w-1/3" style={{ background: bull }} />
+                <span className="w-1/3" style={{ background: bear }} />
+              </div>
+              <span className="text-[11px] font-medium text-foreground">
+                {t.name}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       <SectionTitle>Chart type</SectionTitle>
       <Row label="Series">
         <select
@@ -773,6 +823,7 @@ function ColorPicker({
 }
 
 function toHex6(c: string): string {
+  if (/^#[0-9a-fA-F]{8}$/.test(c)) return `#${c.slice(1, 7)}`;
   if (/^#[0-9a-fA-F]{6}$/.test(c)) return c;
   if (/^#[0-9a-fA-F]{3}$/.test(c)) {
     const r = c[1]!;

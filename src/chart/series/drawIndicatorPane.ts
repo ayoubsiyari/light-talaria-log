@@ -25,8 +25,10 @@ function paneScale(
   let min = Infinity;
   let max = -Infinity;
   for (const s of pane.series) {
-    if (s.values.length !== barsLen) continue;
-    for (let i = from; i <= to; i++) {
+    const lim = Math.min(s.values.length, barsLen);
+    if (lim === 0) continue;
+    const end = Math.min(to, lim - 1);
+    for (let i = from; i <= end; i++) {
       const v = s.values[i];
       if (v == null || !Number.isFinite(v)) continue;
       if (v < min) min = v;
@@ -50,12 +52,15 @@ function drawPaneLine(
   from: number,
   to: number,
 ): void {
-  if (series.values.length !== barsLen) return;
+  const lim = Math.min(series.values.length, barsLen);
+  if (lim === 0) return;
+  const drawTo = Math.min(to, lim - 1);
+  if (drawTo < from) return;
   ctx.strokeStyle = series.color;
   ctx.lineWidth = series.lineWidth ?? 1.25;
   ctx.beginPath();
   let drawing = false;
-  for (let i = from; i <= to; i++) {
+  for (let i = from; i <= drawTo; i++) {
     const v = series.values[i];
     if (v == null || !Number.isFinite(v)) {
       drawing = false;
@@ -84,12 +89,15 @@ function drawPaneHistogram(
   to: number,
   colors: ChartColors,
 ): void {
-  if (series.values.length !== barsLen) return;
+  const lim = Math.min(series.values.length, barsLen);
+  if (lim === 0) return;
+  const drawTo = Math.min(to, lim - 1);
+  if (drawTo < from) return;
   const slot = barWidthPx(range, plot);
   const bodyW = Math.max(1, slot * 0.7);
   const zeroY = priceToY(0, scale, plot);
 
-  for (let i = from; i <= to; i++) {
+  for (let i = from; i <= drawTo; i++) {
     const v = series.values[i];
     if (v == null || !Number.isFinite(v)) continue;
     const x = indexToX(i, range, plot);

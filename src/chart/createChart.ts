@@ -15,6 +15,10 @@ import type { IndicatorOverlayResult, IndicatorPaneResult } from '@/types/indica
 import type { BacktestResult } from '@/types/backtest';
 import type { ChartOrder, OrderLevelHit } from '@/types/order';
 import {
+  alignIndicatorOverlays,
+  alignIndicatorPanes,
+} from '@/indicators/tipSync';
+import {
   beginLevelDrag,
   cancelLevelDrag,
   endLevelDrag,
@@ -182,6 +186,13 @@ export interface ChartInstance {
    * append new bars + patch overlap tip, then set cursor / follow.
    */
   syncReplayReveal: (nextBars: readonly ChartBar[], cursorTime: number) => void;
+  /**
+   * Called after syncReplayReveal aligns indicator buffers.
+   * Hook for trailing-window tip recompute (no React at frame rate).
+   */
+  onIndicatorReveal: (cb: ((bars: readonly ChartBar[]) => void) | null) => void;
+  getIndicatorOverlays: () => readonly IndicatorOverlayResult[];
+  getIndicatorPanes: () => readonly IndicatorPaneResult[];
   /** When true, each cursor update recenters the live candle (until user pans). */
   setReplayFollow: (follow: boolean) => void;
   /** Hit-test drawings at media coords (plot space). */
@@ -227,6 +238,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   let options: ChartViewOptions = { ...DEFAULT_OPTIONS };
   let indicatorOverlays: readonly IndicatorOverlayResult[] = [];
   let indicatorPanes: readonly IndicatorPaneResult[] = [];
+  let indicatorRevealCb: ((bars: readonly ChartBar[]) => void) | null = null;
 
   const rebuildLayout = () => {
     const colors = getChartColors();
@@ -1248,6 +1260,15 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       }
 
       replayCursorTime = cursorTime;
+
+      // Keep indicator buffers length-aligned so paint never blanks the series.
+      if (indicatorOverlays.length > 0) {
+        indicatorOverlays = alignIndicatorOverlays(indicatorOverlays, bars.length);
+      }
+      if (indicatorPanes.length > 0) {
+        indicatorPanes = alignIndicatorPanes(indicatorPanes, bars.length);
+      }
+
       if (replayFollow) {
         const tip =
           cursorTime != null && bars.length > 0
@@ -1263,6 +1284,26 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       invalidateScaleCache();
       invalidateHitCache();
       markSceneDirty();
+
+      // Trailing tip recompute (Worker) — coalesced by the hook.
+      if (
+        (indicatorOverlays.length > 0 || indicatorPanes.length > 0) &&
+        indicatorRevealCb
+      ) {
+        indicatorRevealCb(bars);
+      }
+    },
+
+    onIndicatorReveal(cb) {
+      indicatorRevealCb = cb;
+    },
+
+    getIndicatorOverlays() {
+      return indicatorOverlays;
+    },
+
+    getIndicatorPanes() {
+      return indicatorPanes;
     },
 
     setReplayFollow(follow) {

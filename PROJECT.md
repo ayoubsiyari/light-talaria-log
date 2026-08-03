@@ -690,6 +690,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-03 | Drawing settings: draggable modal; wire Inputs/Style toggles into painters (angle, midline, fib, VP, VWAP, RR, etc.) | Spot-check remaining tools in UI |
 | 2026-08-03 | TV Fib Inputs tab: editable level coeffs/colors/styles, add/remove, show prices, extend L/R; all level tools wired | Manual fib/fan/timezone check |
 | 2026-08-03 | Touch/responsive plan Steps T1–T5: pinch+long-press, fat hits, 44px chrome, order sheet, safe-area, multi-pane focus | Device QA checklist in PROJECT T5 |
+| 2026-08-03 | Indicator replay: no flicker (length-tolerant paint + buffer align); tip sync via trailing 320-bar Worker window | Verify SMA/RSI during play |
 
 ---
 

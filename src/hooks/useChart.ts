@@ -25,6 +25,12 @@ import type { HitResult } from '@/drawings/hitTest';
 import { getIndicatorDef } from '@/indicators/registry';
 import { computeIndicators } from '@/indicators/runIndicatorWorker';
 import { colorsForIndicator } from '@/indicators/themeColors';
+import {
+  needsFullIndicatorRecompute,
+  stitchTipOverlays,
+  stitchTipPanes,
+  tipWindowBars,
+} from '@/indicators/tipSync';
 import type { ChartBar, VisibleRange } from '@/types/bar';
 import type { EnabledIndicator, IndicatorInstance } from '@/types/indicator';
 import type { BacktestResult } from '@/types/backtest';
@@ -238,7 +244,6 @@ export function useChart(
     const instance = instanceRef.current;
     if (!instance) return;
 
-    const bars = options.bars ?? EMPTY_BARS;
     const theme = getChartColors();
     const enabled = (options.enabledIndicators ?? []).filter((e) => e.visible !== false);
     const instances: IndicatorInstance[] = enabled.map((e) => {
@@ -253,47 +258,131 @@ export function useChart(
         params: { ...def.defaultParams, ...e.params },
         visible: true,
         colors,
-        // stash lineWidth on params for worker-agnostic paint via instance key map
       };
     });
-    // lineWidth applied after compute on main thread
     const lineWidthByKey = new Map(
       (options.enabledIndicators ?? []).map((e) => [e.id, e.lineWidth ?? 1.5] as const),
     );
 
+    const withWidth = <T extends { instanceKey: string; series: { lineWidth?: number }[] }>(
+      items: T[],
+    ): T[] =>
+      items.map((item) => {
+        const w = lineWidthByKey.get(item.instanceKey as IndicatorInstance['id']) ?? 1.5;
+        return {
+          ...item,
+          series: item.series.map((s) => ({ ...s, lineWidth: w })),
+        };
+      });
+
     if (instances.length === 0) {
+      instance.onIndicatorReveal(null);
       instance.setIndicatorOverlays([]);
       instance.setIndicatorPanes([]);
       return;
     }
 
     let cancelled = false;
-    void computeIndicators(bars, instances)
-      .then(({ overlays, panes }) => {
-        if (cancelled) return;
-        const withWidth = <T extends { instanceKey: string; series: { lineWidth?: number }[] }>(
-          items: T[],
-        ): T[] =>
-          items.map((item) => {
-            const w = lineWidthByKey.get(item.instanceKey as IndicatorInstance['id']) ?? 1.5;
-            return {
-              ...item,
-              series: item.series.map((s) => ({ ...s, lineWidth: w })),
-            };
-          });
-        instance.setIndicatorOverlays(withWidth(overlays));
-        instance.setIndicatorPanes(withWidth(panes));
-      })
-      .catch(() => {
-        if (cancelled) return;
+    let lastFullBars: readonly ChartBar[] | null = null;
+    let tipTimer: ReturnType<typeof setTimeout> | null = null;
+    let tipInFlight = false;
+    let tipPending: readonly ChartBar[] | null = null;
+
+    const runFull = (bars: readonly ChartBar[]) => {
+      if (bars.length === 0) {
         instance.setIndicatorOverlays([]);
         instance.setIndicatorPanes([]);
-      });
+        lastFullBars = bars;
+        return;
+      }
+      void computeIndicators(bars, instances)
+        .then(({ overlays, panes }) => {
+          if (cancelled) return;
+          lastFullBars = bars;
+          instance.setIndicatorOverlays(withWidth(overlays));
+          instance.setIndicatorPanes(withWidth(panes));
+        })
+        .catch(() => {
+          if (cancelled) return;
+          // Keep previous series — don't blank on transient Worker errors.
+        });
+    };
+
+    const drainTip = () => {
+      if (cancelled || tipInFlight) return;
+      const pending = tipPending;
+      tipPending = null;
+      if (!pending || pending.length === 0) return;
+
+      if (needsFullIndicatorRecompute(lastFullBars, pending)) {
+        runFull(pending);
+        return;
+      }
+
+      tipInFlight = true;
+      const slice = tipWindowBars(pending);
+      void computeIndicators(slice, instances)
+        .then(({ overlays, panes }) => {
+          if (cancelled) return;
+          const nextOverlays = stitchTipOverlays(
+            instance.getIndicatorOverlays(),
+            withWidth(overlays),
+            pending.length,
+          );
+          const nextPanes = stitchTipPanes(
+            instance.getIndicatorPanes(),
+            withWidth(panes),
+            pending.length,
+          );
+          instance.setIndicatorOverlays(nextOverlays);
+          instance.setIndicatorPanes(nextPanes);
+        })
+        .catch(() => {
+          /* keep aligned hold-values */
+        })
+        .finally(() => {
+          tipInFlight = false;
+          if (tipPending) {
+            tipTimer = setTimeout(() => {
+              tipTimer = null;
+              drainTip();
+            }, 0);
+          }
+        });
+    };
+
+    const scheduleTip = (bars: readonly ChartBar[]) => {
+      tipPending = bars;
+      if (tipTimer != null || tipInFlight) return;
+      // Coalesce rapid replay ticks (~30 Hz max tip Worker work).
+      tipTimer = setTimeout(() => {
+        tipTimer = null;
+        drainTip();
+      }, 32);
+    };
+
+    instance.onIndicatorReveal((bars) => {
+      if (cancelled) return;
+      scheduleTip(bars);
+    });
+
+    // Pause / seek / load: full window. Play path uses tip sync via syncReplayReveal.
+    if (!options.replayFollow) {
+      runFull(options.bars ?? EMPTY_BARS);
+    } else if (instance.getIndicatorOverlays().length === 0) {
+      runFull(options.bars ?? EMPTY_BARS);
+    }
 
     return () => {
       cancelled = true;
+      instance.onIndicatorReveal(null);
+      if (tipTimer != null) clearTimeout(tipTimer);
     };
-  }, [options.bars, JSON.stringify(options.enabledIndicators ?? [])]);
+  }, [
+    options.bars,
+    options.replayFollow,
+    JSON.stringify(options.enabledIndicators ?? []),
+  ]);
 
   useEffect(() => {
     const instance = instanceRef.current;

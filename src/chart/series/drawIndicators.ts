@@ -27,12 +27,16 @@ function drawLineSeries(
   to: number,
   lineWidth = series.lineWidth ?? 1.5,
 ): void {
-  if (series.values.length !== barsLen) return;
+  // Allow short series during replay tip-sync (never blank the whole overlay).
+  const lim = Math.min(series.values.length, barsLen);
+  if (lim === 0) return;
+  const drawTo = Math.min(to, lim - 1);
+  if (drawTo < from) return;
   ctx.strokeStyle = series.color;
   ctx.lineWidth = lineWidth;
   ctx.beginPath();
   let drawing = false;
-  for (let i = from; i <= to; i++) {
+  for (let i = from; i <= drawTo; i++) {
     const v = series.values[i];
     if (v == null || !Number.isFinite(v)) {
       drawing = false;
@@ -61,7 +65,10 @@ function drawBandFill(
   from: number,
   to: number,
 ): void {
-  if (upper.values.length !== barsLen || lower.values.length !== barsLen) return;
+  const lim = Math.min(upper.values.length, lower.values.length, barsLen);
+  if (lim === 0) return;
+  const drawTo = Math.min(to, lim - 1);
+  if (drawTo < from) return;
 
   ctx.save();
   // Theme color with alpha — color is already CSS (may be hex or oklch)
@@ -69,7 +76,7 @@ function drawBandFill(
   ctx.globalAlpha = 0.12;
   ctx.beginPath();
   let started = false;
-  for (let i = from; i <= to; i++) {
+  for (let i = from; i <= drawTo; i++) {
     const u = upper.values[i];
     if (u == null || !Number.isFinite(u)) {
       if (started) break;
@@ -88,7 +95,7 @@ function drawBandFill(
     ctx.restore();
     return;
   }
-  for (let i = to; i >= from; i--) {
+  for (let i = drawTo; i >= from; i--) {
     const l = lower.values[i];
     if (l == null || !Number.isFinite(l)) continue;
     const x = indexToX(i, range, plot);

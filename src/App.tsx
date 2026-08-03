@@ -178,6 +178,14 @@ export default function App() {
 
   const [activeTool, setActiveTool] = useState<ChartToolId>('cursor');
   const [activeTab, setActiveTab] = useState<BottomTabId>('all');
+  /** Collapsed = compact replay strip only; expanded = TradeDock + full bottom chrome. */
+  const [tradeChromeExpanded, setTradeChromeExpanded] = useState(() => {
+    try {
+      return localStorage.getItem('talaria.tradeChrome.expanded') === '1';
+    } catch {
+      return false;
+    }
+  });
   const [seriesType, setSeriesType] = useState<SeriesType>(
     () => getAppearance().seriesType,
   );
@@ -2299,7 +2307,7 @@ export default function App() {
         </div>
       </div>
 
-      {loadStatus === 'ready' && (
+      {loadStatus === 'ready' && tradeChromeExpanded && (
         <TradeDock
           key={orderEngineTick}
           activeTab={activeTab}
@@ -2352,6 +2360,15 @@ export default function App() {
             return;
           }
           setActiveTab(tab);
+        }}
+        expanded={tradeChromeExpanded}
+        onExpandedChange={(next) => {
+          setTradeChromeExpanded(next);
+          try {
+            localStorage.setItem('talaria.tradeChrome.expanded', next ? '1' : '0');
+          } catch {
+            /* ignore quota */
+          }
         }}
         replay={replayState}
         onPlay={() => {

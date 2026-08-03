@@ -354,6 +354,8 @@ export type SessionController = ReturnType<typeof createSessionController>;
 
 /** Throttle IDB top-ups while the clock is advancing (one fill per dataset×tf). */
 const fillAheadInflight = new Set<string>();
+/** Latest cursor requested while a fill is in flight — chain another fill if set. */
+const fillAheadPendingCursor = new Map<string, number>();
 
 function scheduleFillAhead(
   datasetId: string,
@@ -362,11 +364,33 @@ function scheduleFillAhead(
   span: number,
 ): void {
   const k = `${datasetId}|${tf}`;
+  fillAheadPendingCursor.set(k, cursorTime);
   if (fillAheadInflight.has(k)) return;
   fillAheadInflight.add(k);
-  void warmCache
-    .fill(datasetId, tf, cursorTime, span)
-    .finally(() => fillAheadInflight.delete(k));
+  void (async () => {
+    try {
+      // Drain pending targets so a slow fill at an old cursor cannot strand
+      // the tip while the clock races ahead at 20×+.
+      for (;;) {
+        const target = fillAheadPendingCursor.get(k);
+        if (target == null) break;
+        fillAheadPendingCursor.delete(k);
+        // Compact forward window: ~900 bars × 70% ahead ≈ 630-bar runway
+        // (~30s at 21×) without holding a full 2500-bar entry per pair.
+        await warmCache.fill(datasetId, tf, target, span, {
+          aheadRatio: 0.7,
+          windowBars: Math.min(900, Math.max(500, span * 6 + 200)),
+        });
+      }
+    } finally {
+      fillAheadInflight.delete(k);
+      // A request may have landed between the last fill and delete.
+      const late = fillAheadPendingCursor.get(k);
+      if (late != null) {
+        scheduleFillAhead(datasetId, tf, late, span);
+      }
+    }
+  })();
 }
 
 /**
@@ -379,6 +403,17 @@ function extendRevealInPlace(
   views: Record<string, PaneView>,
 ): void {
   if (s.revealMode !== 'replay') return;
+
+  // Pin active series so LRU cannot evict a live pane mid-play.
+  const pinKeys: { datasetId: string; tf: Timeframe }[] = [];
+  for (const cfg of Object.values(s.panes)) {
+    pinKeys.push({ datasetId: cfg.datasetId, tf: cfg.tf });
+    if (cfg.tf !== s.baseTf) {
+      pinKeys.push({ datasetId: cfg.datasetId, tf: s.baseTf });
+    }
+  }
+  warmCache.setPinned(pinKeys);
+
   for (const id of Object.keys(views)) {
     const cfg = s.panes[id];
     const view = views[id];
@@ -392,7 +427,12 @@ function extendRevealInPlace(
 
     const openBucket = bucketStart(s.cursorTime, tfPeriod);
     const rawEnd = raw && raw.length > 0 ? raw[raw.length - 1]!.time : null;
-    if (!raw || raw.length === 0 || (rawEnd != null && rawEnd < openBucket)) {
+    const aheadBars =
+      rawEnd != null && tfPeriod > 0
+        ? Math.floor((rawEnd - openBucket) / tfPeriod)
+        : -1;
+    // Top up before the tip freezes — high speed burns ~speed bars/sec.
+    if (!raw || raw.length === 0 || aheadBars < Math.max(120, s.span)) {
       scheduleFillAhead(cfg.datasetId, cfg.tf, s.cursorTime, s.span);
       if (cfg.tf !== s.baseTf) {
         scheduleFillAhead(cfg.datasetId, s.baseTf, s.cursorTime, s.span);

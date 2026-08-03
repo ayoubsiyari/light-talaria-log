@@ -678,6 +678,10 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-02 | Order ticket docks (chart shrinks → price axis visible); default Market @ live bid/ask; drag draft entry/SL/TP → ticket | Place Order → drag levels |
 | 2026-08-03 | Open levels persist until SL/TP; live unrealized P&L on entry chip + BottomBar during replay | Place → Play → watch P&L / levels to hit |
 | 2026-08-03 | Chart style templates in settings (Sapphire, Obsidian, Zenith, Pearl, Olive, Willow, Marine, Blue Ash) | Optional FVG/IFVG zone colors later |
+| 2026-08-03 | Fix multi-pane 1m replay stall: forward warm-cache bias, fill-ahead chain, rAF harden, tip re-anchor | Verify 4-pane 21× long run |
+| 2026-08-03 | Memory-safe replay runway: compact ~900-bar forward fills, MAX_ENTRIES=16 + ~3.6MB byte cap, pin active panes | Heap check on 4-pane 21× |
+| 2026-08-03 | Collapse bottom trade chrome by default — compact replay strip + arrow to expand TradeDock | — |
+| 2026-08-03 | Remote import syncs missing TFs (5m…1D) when only 1m was in IDB; FirstRate pairs packed with all TFs on VPS | Hard-refresh → Sync timeframes / reopen session |
 
 ---
 

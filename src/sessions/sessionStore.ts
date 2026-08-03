@@ -72,7 +72,11 @@ function readAll(): BacktestSession[] {
 }
 
 function writeAll(sessions: BacktestSession[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions.slice(0, MAX_SESSIONS)));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions.slice(0, MAX_SESSIONS)));
+  } catch (err) {
+    console.warn('[sessions] persist failed', err);
+  }
 }
 
 export function listSessions(): BacktestSession[] {

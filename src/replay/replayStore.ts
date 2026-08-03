@@ -63,7 +63,13 @@ export function createReplayController(): ReplayController {
   let barCarryMs = 0;
 
   const notify = () => {
-    for (const cb of listeners) cb(state);
+    for (const cb of listeners) {
+      try {
+        cb(state);
+      } catch (err) {
+        console.error('[replay] subscriber failed', err);
+      }
+    }
   };
 
   const clockPeriod = () => timeframeSeconds(baseTf);
@@ -135,19 +141,26 @@ export function createReplayController(): ReplayController {
     }
     const frameStart =
       typeof performance !== 'undefined' ? performance.now() : 0;
-    if (rateBars > 0) {
-      if (!advanceClockBars(clockStepsPerRateBar() * rateBars)) return;
-    }
-    if (import.meta.env?.DEV && typeof performance !== 'undefined') {
-      const frameMs = performance.now() - frameStart + dtMs;
-      if (frameMs > 16) {
-        console.warn('[replay] frame budget exceeded', {
-          frameMs: Math.round(frameMs * 10) / 10,
-          rateBars,
-          speed: state.speed,
-        });
+    let keepGoing = true;
+    try {
+      if (rateBars > 0) {
+        keepGoing = advanceClockBars(clockStepsPerRateBar() * rateBars);
       }
+      if (import.meta.env?.DEV && typeof performance !== 'undefined') {
+        const frameMs = performance.now() - frameStart + dtMs;
+        if (frameMs > 16) {
+          console.warn('[replay] frame budget exceeded', {
+            frameMs: Math.round(frameMs * 10) / 10,
+            rateBars,
+            speed: state.speed,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('[replay] tick failed', err);
     }
+    // Always reschedule while playing — a subscriber throw must not freeze the clock.
+    if (!keepGoing || !state.playing) return;
     ledgerAcquire('rafLoops');
     raf = requestAnimationFrame(tick);
   };

@@ -546,8 +546,17 @@ export function DatasetsPage({ onGoSessions }: DatasetsPageProps) {
                         className="min-h-11"
                         onPress={() => void handleImportRemote(r)}
                         isDisabled={importingId != null}
+                        aria-label={
+                          imported
+                            ? `Sync missing timeframes for ${r.name}`
+                            : `Import ${r.name}`
+                        }
                       >
-                        {busy ? 'Importing…' : imported ? 'Re-import' : 'Import'}
+                        {busy
+                          ? 'Importing…'
+                          : imported
+                            ? 'Sync timeframes'
+                            : 'Import'}
                       </Button>
                     </li>
                   );

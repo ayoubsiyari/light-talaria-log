@@ -35,8 +35,9 @@ async function seriesChunksHealthy(
 
 /**
  * Ensure dataset is ingested into IDB chunks (base TF + aggregated TFs).
- * No-op if base series meta + chunks already exist.
- * Remote catalog entries rehydrate via API (no CSV required).
+ * Local CSV: no-op if base series meta + chunks already exist.
+ * Remote: always sync any missing TFs from the API (so 5m…1D appear after a
+ * 1m-only import), then return the full IDB catalog.
  */
 export async function ensureDatasetIngested(
   datasetId: string,
@@ -44,11 +45,8 @@ export async function ensureDatasetIngested(
   onProgress?: (p: IngestProgress) => void,
 ): Promise<SeriesCatalog> {
   const db = await openDb();
-  if (await seriesChunksHealthy(db, datasetId, baseTf)) {
-    return buildCatalog(db, datasetId, baseTf);
-  }
-
   const catalogEntry = getDataset(datasetId);
+
   if (catalogEntry?.source === 'remote') {
     const catalog = await ingestRemoteDatasetAllTfs(datasetId, (p) => {
       const percent =
@@ -61,6 +59,10 @@ export async function ensureDatasetIngested(
       );
     }
     return catalog;
+  }
+
+  if (await seriesChunksHealthy(db, datasetId, baseTf)) {
+    return buildCatalog(db, datasetId, baseTf);
   }
 
   const csv = await getDatasetCsv(db, datasetId);

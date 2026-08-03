@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@heroui/react';
 import {
+  IconChevron,
   IconPause,
   IconPlay,
   IconStepBack,
@@ -48,6 +49,9 @@ interface BottomBarProps {
   openCount?: number;
   historyCount?: number;
   balanceLabel?: string;
+  /** When false, only the compact replay strip is shown. */
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
 }
 
 function formatClock(d: Date): string {
@@ -85,6 +89,55 @@ function formatCursorLabel(unixSec: number): string {
 const replayBtn =
   'h-8 w-8 [@media(hover:none)]:h-11 [@media(hover:none)]:w-11 rounded-[4px] flex items-center justify-center text-muted hover:text-foreground hover:bg-background/70';
 
+const EXPAND_BTN =
+  'h-8 w-8 [@media(hover:none)]:h-11 [@media(hover:none)]:w-11 rounded-[4px] flex items-center justify-center text-muted hover:text-foreground hover:bg-background/70 shrink-0';
+
+function ReplayControls({
+  replay,
+  onToggle,
+  onStep,
+  onSpeed,
+}: {
+  replay: ReplayState;
+  onToggle: () => void;
+  onStep: (deltaBars: number) => void;
+  onSpeed: (speed: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 text-muted shrink-0">
+      <span className="tabular-nums w-7 text-right text-[11px]">{replay.speed}x</span>
+      <input
+        type="range"
+        min={1}
+        max={100}
+        value={replay.speed}
+        onChange={(e) => onSpeed(Number(e.target.value))}
+        className="w-16 sm:w-20 h-1 accent-[var(--accent)]"
+        title="Replay speed (bars/sec)"
+        aria-label="Replay speed"
+      />
+      <button type="button" className={replayBtn} onClick={() => onStep(-1)} title="Step back">
+        <IconStepBack className="w-3.5 h-3.5" />
+      </button>
+      <button
+        type="button"
+        className={replayBtn}
+        onClick={onToggle}
+        title={replay.playing ? 'Pause replay' : 'Play replay'}
+      >
+        {replay.playing ? (
+          <IconPause className="w-3.5 h-3.5" />
+        ) : (
+          <IconPlay className="w-3.5 h-3.5" />
+        )}
+      </button>
+      <button type="button" className={replayBtn} onClick={() => onStep(1)} title="Step forward">
+        <IconStepForward className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
 /** TradingView-style bottom strip: tabs · scrub · replay · account. */
 export function BottomBar({
   activeTab,
@@ -102,12 +155,15 @@ export function BottomBar({
   openCount,
   historyCount,
   balanceLabel,
+  expanded,
+  onExpandedChange,
 }: BottomBarProps) {
   const [now, setNow] = useState(() => new Date());
   const [jumpOpen, setJumpOpen] = useState(false);
   const [jumpValue, setJumpValue] = useState('');
   const scrubRef = useRef<HTMLInputElement>(null);
   const cursorLabelRef = useRef<HTMLButtonElement>(null);
+  const compactLabelRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 1000);
@@ -135,7 +191,9 @@ export function BottomBar({
     if (scrub) scrub.value = String(scrubValue);
     const label = cursorLabelRef.current;
     if (label) label.textContent = cursorLabel;
-  }, [replay.playing, scrubValue, cursorLabel]);
+    const compact = compactLabelRef.current;
+    if (compact) compact.textContent = cursorLabel;
+  }, [replay.playing, scrubValue, cursorLabel, expanded]);
 
   const tabs = useMemo(
     () =>
@@ -160,10 +218,51 @@ export function BottomBar({
     setJumpOpen(false);
   };
 
+  if (!expanded) {
+    return (
+      <footer className="chrome-bottombar tv-panel-t shrink-0 flex items-center justify-between gap-2 h-10 sm:h-9 px-2 pb-[env(safe-area-inset-bottom)] text-xs">
+        <button
+          type="button"
+          className={EXPAND_BTN}
+          onClick={() => onExpandedChange(true)}
+          title="Expand trade panel"
+          aria-label="Expand trade panel"
+          aria-expanded={false}
+        >
+          <IconChevron className="w-4 h-4 -rotate-90" />
+        </button>
+        <span
+          ref={compactLabelRef}
+          id="replay-cursor-label"
+          className="text-[11px] text-muted tabular-nums truncate min-w-0"
+        >
+          {cursorLabel}
+        </span>
+        <div className="flex-1" />
+        <ReplayControls
+          replay={replay}
+          onToggle={onToggle}
+          onStep={onStep}
+          onSpeed={onSpeed}
+        />
+      </footer>
+    );
+  }
+
   return (
     <footer className="chrome-bottombar tv-panel-t shrink-0 flex flex-col pb-[env(safe-area-inset-bottom)] text-xs">
       {/* Scrub track — thin TV-style progress under the chart */}
       <div className="flex items-center gap-2 h-7 px-2 border-b border-[color:var(--tv-panel-line)]">
+        <button
+          type="button"
+          className={EXPAND_BTN}
+          onClick={() => onExpandedChange(false)}
+          title="Collapse trade panel"
+          aria-label="Collapse trade panel"
+          aria-expanded={true}
+        >
+          <IconChevron className="w-4 h-4 rotate-90" />
+        </button>
         <button
           ref={cursorLabelRef}
           type="button"
@@ -237,36 +336,12 @@ export function BottomBar({
 
         <span className="tv-divider-y h-4 hidden md:block" aria-hidden />
 
-        <div className="flex items-center gap-1 text-muted shrink-0">
-          <span className="tabular-nums w-7 text-right text-[11px]">{replay.speed}x</span>
-          <input
-            type="range"
-            min={1}
-            max={100}
-            value={replay.speed}
-            onChange={(e) => onSpeed(Number(e.target.value))}
-            className="w-16 sm:w-20 h-1 accent-[var(--accent)]"
-            title="Replay speed (bars/sec)"
-          />
-          <button type="button" className={replayBtn} onClick={() => onStep(-1)} title="Step back">
-            <IconStepBack className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            className={replayBtn}
-            onClick={onToggle}
-            title={replay.playing ? 'Pause replay' : 'Play replay'}
-          >
-            {replay.playing ? (
-              <IconPause className="w-3.5 h-3.5" />
-            ) : (
-              <IconPlay className="w-3.5 h-3.5" />
-            )}
-          </button>
-          <button type="button" className={replayBtn} onClick={() => onStep(1)} title="Step forward">
-            <IconStepForward className="w-3.5 h-3.5" />
-          </button>
-        </div>
+        <ReplayControls
+          replay={replay}
+          onToggle={onToggle}
+          onStep={onStep}
+          onSpeed={onSpeed}
+        />
 
         <span className="tv-divider-y h-4 hidden md:block" aria-hidden />
 

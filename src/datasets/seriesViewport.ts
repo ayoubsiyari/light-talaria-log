@@ -77,6 +77,18 @@ export async function timeToLogicalIndex(
   return chunkStart + Math.max(0, hi);
 }
 
+export interface ViewportLoadOpts {
+  /**
+   * Fraction of the IDB window placed *ahead* of the anchor (0–0.9).
+   * Default 0.05 matches interactive pan (small right pad).
+   * Replay fill-ahead should use a higher ratio with a *smaller* windowBars
+   * so we gain runway without growing resident memory.
+   */
+  aheadRatio?: number;
+  /** Cap on bars loaded from IDB (≤ MAX_BARS_IN_MEMORY). */
+  windowBars?: number;
+}
+
 /**
  * Load a chart viewport ending at anchorTime (or series end), ≤ MAX_BARS_IN_MEMORY.
  */
@@ -85,6 +97,7 @@ export async function loadViewportAroundTime(
   timeframe: Timeframe,
   anchorTime: number | null,
   visibleBars = VISIBLE_BARS_TARGET,
+  opts?: ViewportLoadOpts,
 ): Promise<ViewportLoadResult> {
   const db = await openDb();
   const meta = await getSeriesMeta(db, datasetId, timeframe);
@@ -104,8 +117,16 @@ export async function loadViewportAroundTime(
       ? await timeToLogicalIndex(datasetId, timeframe, anchorTime)
       : meta.rowCount - 1;
 
-  const windowLen = Math.min(MAX_BARS_IN_MEMORY, meta.rowCount);
-  let toAbs = Math.min(meta.rowCount, anchorIdx + 1 + Math.floor(windowLen * 0.05));
+  const aheadRatio = Math.max(0.02, Math.min(0.9, opts?.aheadRatio ?? 0.05));
+  const windowLen = Math.min(
+    MAX_BARS_IN_MEMORY,
+    Math.max(64, opts?.windowBars ?? MAX_BARS_IN_MEMORY),
+    meta.rowCount,
+  );
+  let toAbs = Math.min(
+    meta.rowCount,
+    anchorIdx + 1 + Math.floor(windowLen * aheadRatio),
+  );
   let fromAbs = Math.max(0, toAbs - windowLen);
   if (toAbs - fromAbs < windowLen && fromAbs === 0) {
     toAbs = Math.min(meta.rowCount, fromAbs + windowLen);

@@ -1,15 +1,12 @@
 /**
  * Warm cache — decoded viewport bars per dataset×TF.
  *
- * 1. Key shape: `${datasetId}|${tf}` — one viewport window per series; sufficient
- *    because loads are always around a single anchor/cursor.
- * 2. Maximum: MAX_ENTRIES = 12 (6 TFs × 2 datasets); MAX_BYTES ≈ 12 × 2500 × ~120 B
- *    ≈ 3.6 MB as ChartBar objects (budget: < 3 MB packed / ~1.8 MB objects for 6 TFs —
- *    we still store ChartBar[]; packed SoA migration is deferred — see report §14).
- * 3. Eviction: LRU by `touchedAt` when entry count exceeds MAX_ENTRIES; clearDataset
- *    when a pane drops a symbol (caller must clear before prefetching the new one).
+ * 1. Key shape: `${datasetId}|${tf}` — one viewport window per series.
+ * 2. Caps: MAX_ENTRIES + MAX_CACHE_BYTES (first-rule: low browser memory).
+ * 3. Eviction: LRU by `touchedAt`, never evict pinned (active pane) keys first.
  * 4. Miss: never blocks — returns [] or nearest *coarser* cached TF as placeholder
  *    and kicks async fill (epoch-guarded). Never returns a finer TF.
+ * 5. Replay fill-ahead uses a compact forward-biased window (not a larger budget).
  */
 import { loadViewportAroundTime } from '@/datasets/seriesViewport';
 import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
@@ -26,14 +23,27 @@ interface CacheEntry {
   touchedAt: number;
 }
 
+export interface WarmCacheFillOpts {
+  /** Default 0.05 (interactive). Replay fill-ahead uses ~0.7. */
+  aheadRatio?: number;
+  /** Cap bars loaded (≤ MAX_BARS_IN_MEMORY). */
+  windowBars?: number;
+}
+
 function key(datasetId: string, tf: Timeframe): CacheKey {
   return `${datasetId}|${tf}`;
 }
 
 const TF_FALLBACK_ORDER: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D'];
 
-/** 6 TFs × 2 datasets — hard cap (addendum §5). */
-const MAX_ENTRIES = 12;
+/**
+ * Entry cap — enough for 4 panes × (pane TF + base TF) + spare.
+ * Do not raise without a memory check; prefer smaller windows over more entries.
+ */
+const MAX_ENTRIES = 16;
+
+/** ~3.6 MB at ~120 B/bar — same order as the original 12×2500 budget. */
+const MAX_CACHE_BYTES = 3_600_000;
 
 /** Rough resident bytes assuming ~120 B per ChartBar object. */
 function estimateBytes(bars: readonly ChartBar[]): number {
@@ -44,11 +54,14 @@ export class WarmCache {
   private readonly store = new Map<CacheKey, CacheEntry>();
   private readonly inflight = new Map<CacheKey, number>();
   private readonly epochs = new Map<CacheKey, number>();
+  /** Keys that must not be LRU-evicted (active pane series during play). */
+  private readonly pinned = new Set<CacheKey>();
 
   clearDataset(datasetId: string): void {
     for (const k of [...this.store.keys()]) {
       if (k.startsWith(`${datasetId}|`)) {
         this.store.delete(k);
+        this.pinned.delete(k);
         ledgerRelease('cacheEntries');
       }
     }
@@ -58,13 +71,22 @@ export class WarmCache {
     const n = this.store.size;
     this.store.clear();
     this.inflight.clear();
+    this.pinned.clear();
     if (n > 0) ledgerRelease('cacheEntries', n);
   }
 
-  stats(): { entries: number; bytes: number } {
+  /** Pin active dataset×TF keys so LRU cannot starve multi-pane play. */
+  setPinned(keys: ReadonlyArray<{ datasetId: string; tf: Timeframe }>): void {
+    this.pinned.clear();
+    for (const { datasetId, tf } of keys) {
+      this.pinned.add(key(datasetId, tf));
+    }
+  }
+
+  stats(): { entries: number; bytes: number; pinned: number } {
     let bytes = 0;
     for (const e of this.store.values()) bytes += estimateBytes(e.bars);
-    return { entries: this.store.size, bytes };
+    return { entries: this.store.size, bytes, pinned: this.pinned.size };
   }
 
   /**
@@ -93,7 +115,6 @@ export class WarmCache {
     void this.fill(datasetId, tf, anchorTime, span);
 
     // Coarser placeholder only — never return a finer TF (e.g. 1m for 1D).
-    // Finer placeholders corrupt replay reveal into a sawtooth of intraday bars.
     const idx = TF_FALLBACK_ORDER.indexOf(tf);
     for (let i = idx + 1; i < TF_FALLBACK_ORDER.length; i++) {
       const coarser = TF_FALLBACK_ORDER[i]!;
@@ -120,6 +141,7 @@ export class WarmCache {
     tf: Timeframe,
     anchorTime: number,
     span: number,
+    opts?: WarmCacheFillOpts,
   ): Promise<ChartBar[]> {
     const k = key(datasetId, tf);
     const epoch = (this.epochs.get(k) ?? 0) + 1;
@@ -127,11 +149,21 @@ export class WarmCache {
     this.inflight.set(k, epoch);
 
     try {
+      // Default = full viewport budget (interactive pan). Replay fill-ahead
+      // passes a smaller windowBars + higher aheadRatio (runway without RAM growth).
+      const windowBars = Math.min(
+        MAX_BARS_IN_MEMORY,
+        Math.max(64, opts?.windowBars ?? MAX_BARS_IN_MEMORY),
+      );
       const vp = await loadViewportAroundTime(
         datasetId,
         tf,
         anchorTime,
         Math.min(MAX_BARS_IN_MEMORY, Math.max(span * 3, span + 64)),
+        {
+          aheadRatio: opts?.aheadRatio ?? 0.05,
+          windowBars,
+        },
       );
       if (this.epochs.get(k) !== epoch) return this.store.get(k)?.bars ?? [];
       const bars = vp.bars as ChartBar[];
@@ -167,23 +199,41 @@ export class WarmCache {
     const isNew = !this.store.has(k);
     this.store.set(k, entry);
     if (isNew) ledgerAcquire('cacheEntries');
-    this.evictLru();
+    this.evict();
   }
 
-  private evictLru(): void {
-    while (this.store.size > MAX_ENTRIES) {
-      let oldestKey: CacheKey | null = null;
-      let oldestTouch = Infinity;
-      for (const [k, e] of this.store) {
-        if (e.touchedAt < oldestTouch) {
-          oldestTouch = e.touchedAt;
-          oldestKey = k;
-        }
-      }
-      if (!oldestKey) break;
-      this.store.delete(oldestKey);
+  private totalBytes(): number {
+    let bytes = 0;
+    for (const e of this.store.values()) bytes += estimateBytes(e.bars);
+    return bytes;
+  }
+
+  private evict(): void {
+    while (this.store.size > MAX_ENTRIES || this.totalBytes() > MAX_CACHE_BYTES) {
+      const victim = this.pickVictim();
+      if (!victim) break;
+      this.store.delete(victim);
       ledgerRelease('cacheEntries');
     }
+  }
+
+  /** Prefer unpinned LRU; only evict pinned if nothing else remains. */
+  private pickVictim(): CacheKey | null {
+    let oldestUnpinned: CacheKey | null = null;
+    let oldestUnpinnedTouch = Infinity;
+    let oldestAny: CacheKey | null = null;
+    let oldestAnyTouch = Infinity;
+    for (const [k, e] of this.store) {
+      if (e.touchedAt < oldestAnyTouch) {
+        oldestAnyTouch = e.touchedAt;
+        oldestAny = k;
+      }
+      if (!this.pinned.has(k) && e.touchedAt < oldestUnpinnedTouch) {
+        oldestUnpinnedTouch = e.touchedAt;
+        oldestUnpinned = k;
+      }
+    }
+    return oldestUnpinned ?? oldestAny;
   }
 }
 

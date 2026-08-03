@@ -1253,8 +1253,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
           cursorTime != null && bars.length > 0
             ? indexAtOrBeforeBars(bars, cursorTime)
             : -1;
-        // New tip candle → scroll one bar; same tip → leave camera (stable grid).
-        if (tip !== prevTip || prevLen === 0) {
+        // New tip → scroll; full buffer replace (warm-cache slide) must also
+        // re-anchor or panes drift to different tip X positions.
+        const didReplace = prevLen === 0 || nextLen < prevLen || !canAppend;
+        if (tip !== prevTip || didReplace) {
           centerOnReplayCursor(false);
         }
       }

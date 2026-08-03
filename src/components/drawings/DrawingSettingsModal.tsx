@@ -149,11 +149,42 @@ export function DrawingSettingsModal({
   const displayTitle = draft.name?.trim() || tool.label;
 
   const patchStyle = (partial: Partial<DrawingStyle>) => {
-    setDraft((d) => ({ ...d, style: { ...d.style, ...partial } }));
+    setDraft((d) => {
+      const style = { ...d.style, ...partial };
+      const meta =
+        typeof partial.textBold === 'boolean'
+          ? { ...d.meta, bold: partial.textBold }
+          : d.meta;
+      return { ...d, style, meta };
+    });
   };
 
   const patchMeta = (partial: Record<string, unknown>) => {
-    setDraft((d) => ({ ...d, meta: { ...d.meta, ...partial } }));
+    setDraft((d) => {
+      let points = d.points;
+      // Risk/reward: move target (point 2) from entry/stop distance × RR.
+      if (
+        typeof partial.riskReward === 'number' &&
+        (d.type === 'longPosition' || d.type === 'shortPosition') &&
+        d.points[0] &&
+        d.points[1] &&
+        d.points[2]
+      ) {
+        const entry = d.points[0].price;
+        const stop = d.points[1].price;
+        const risk = stop - entry;
+        const targetPrice = entry - risk * partial.riskReward;
+        points = d.points.map((p, i) =>
+          i === 2 ? { ...p, price: targetPrice } : p,
+        );
+      }
+      // Text-tool Bold input mirrors Style textBold.
+      let style = d.style;
+      if (typeof partial.bold === 'boolean') {
+        style = { ...d.style, textBold: partial.bold };
+      }
+      return { ...d, points, style, meta: { ...d.meta, ...partial } };
+    });
   };
 
   const patchPoint = (index: number, partial: Partial<DrawingPoint>) => {

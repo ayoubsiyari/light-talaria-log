@@ -2,7 +2,7 @@ import { getChartColors, type ChartColors } from '@/chart/chartTheme';
 import { priceToY } from '@/chart/scales';
 import type { ChartBar } from '@/types/bar';
 import type { Drawing } from '../drawingStore';
-import { applyStrokeStyle, extendModeToPaint } from '../drawingStyle';
+import { applyFillStyle, applyStrokeStyle, extendModeToPaint, type DrawingStyle } from '../drawingStyle';
 import {
   asBool,
   asNumber,
@@ -23,6 +23,86 @@ const FIB_TIME = [0, 1, 2, 3, 5, 8, 13, 21];
 
 function yPrice(price: number, pc: PaintCtx): number {
   return priceToY(price, pc.priceScale, pc.plot);
+}
+
+/** Midpoint / price labels / end caps / optional angle — shared by line family. */
+function paintLineDecorations(
+  pc: PaintCtx,
+  d: Drawing,
+  xy: Array<{ x: number; y: number }>,
+  style: DrawingStyle,
+  opts: { showAngle?: boolean } = {},
+): void {
+  if (xy.length < 2 || !xy[0] || !xy[1]) return;
+  const a = xy[0];
+  const b = xy[1];
+  if (style.showMidpoint) {
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    const { ctx } = pc;
+    ctx.save();
+    ctx.fillStyle = pc.colors.handleFill;
+    ctx.strokeStyle = style.color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(mx, my, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+  if (style.showPriceLabels && d.points[0] && d.points[1]) {
+    drawTextLabel(pc, a.x + 6, a.y - 10, d.points[0].price.toFixed(2), style);
+    drawTextLabel(pc, b.x + 6, b.y - 10, d.points[1].price.toFixed(2), style);
+  }
+  if (style.leftEnd) {
+    const { ctx } = pc;
+    ctx.save();
+    ctx.fillStyle = style.color;
+    ctx.beginPath();
+    ctx.arc(a.x, a.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  if (style.rightEnd) {
+    const { ctx } = pc;
+    ctx.save();
+    ctx.fillStyle = style.color;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  if (opts.showAngle && d.points[0] && d.points[1]) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const ang = ((Math.atan2(-dy, dx) * 180) / Math.PI).toFixed(1);
+    drawTextLabel(pc, (a.x + b.x) / 2, (a.y + b.y) / 2 - 12, `${ang}°`, style);
+  }
+}
+
+function paintShapeCenter(
+  pc: PaintCtx,
+  cx: number,
+  cy: number,
+  style: DrawingStyle,
+): void {
+  const { ctx } = pc;
+  ctx.save();
+  ctx.strokeStyle = style.color;
+  ctx.fillStyle = pc.colors.handleFill;
+  ctx.lineWidth = 1.25;
+  ctx.globalAlpha = style.opacity;
+  ctx.beginPath();
+  ctx.moveTo(cx - 5, cy);
+  ctx.lineTo(cx + 5, cy);
+  ctx.moveTo(cx, cy - 5);
+  ctx.lineTo(cx, cy + 5);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
 }
 
 function paintFibLevels(
@@ -71,6 +151,7 @@ function paintPitchfork(
   pts: Array<{ x: number; y: number }>,
   style: Drawing['style'],
   kind: 'standard' | 'schiff' | 'modified' | 'inside',
+  showMedian = true,
 ): void {
   if (pts.length < 3) return;
   let [a, b, c] = pts as [
@@ -86,9 +167,9 @@ function paintPitchfork(
     a = { x: (a.x + b.x) / 2, y: (a.y + c.y) / 2 };
   }
   const mid = { x: (b.x + c.x) / 2, y: (b.y + c.y) / 2 };
-  strokeLine(pc, a.x, a.y, mid.x, mid.y, style, 'ray');
   const dx = mid.x - a.x;
   const dy = mid.y - a.y;
+  if (showMedian) strokeLine(pc, a.x, a.y, mid.x, mid.y, style, 'ray');
   strokeLine(pc, b.x, b.y, b.x + dx, b.y + dy, style, 'ray');
   strokeLine(pc, c.x, c.y, c.x + dx, c.y + dy, style, 'ray');
 }
@@ -99,16 +180,19 @@ function paintVolumeProfile(
   toIdx: number,
   style: Drawing['style'],
   anchorLeft: number,
-  rows = 24,
+  opts: { rows?: number; valueAreaPct?: number; developRight?: boolean } = {},
 ): void {
   const { bars, ctx, plot } = pc;
   const lo = Math.max(0, Math.min(fromIdx, toIdx));
   const hi = Math.min(bars.length - 1, Math.max(fromIdx, toIdx));
   if (hi <= lo) return;
-  const bins = Math.max(8, Math.min(64, Math.round(rows)));
+  const bins = Math.max(8, Math.min(64, Math.round(opts.rows ?? 24)));
+  const valueAreaPct = Math.max(50, Math.min(100, opts.valueAreaPct ?? 70));
+  const developRight = opts.developRight !== false;
   let pMin = Infinity;
   let pMax = -Infinity;
   let maxVol = 0;
+  let totalVol = 0;
   const vols = new Array<number>(bins).fill(0);
   for (let i = lo; i <= hi; i++) {
     const b = bars[i]!;
@@ -122,9 +206,28 @@ function paintVolumeProfile(
     const bin = Math.min(bins - 1, Math.floor(((mid - pMin) / (pMax - pMin)) * bins));
     vols[bin]! += b.volume || 1;
     maxVol = Math.max(maxVol, vols[bin]!);
+    totalVol += b.volume || 1;
+  }
+  // Value area: expand from POC until covering valueAreaPct of volume.
+  let poc = 0;
+  for (let i = 1; i < bins; i++) if (vols[i]! > vols[poc]!) poc = i;
+  const target = totalVol * (valueAreaPct / 100);
+  let covered = vols[poc]!;
+  let vaLo = poc;
+  let vaHi = poc;
+  while (covered < target && (vaLo > 0 || vaHi < bins - 1)) {
+    const up = vaHi < bins - 1 ? vols[vaHi + 1]! : -1;
+    const down = vaLo > 0 ? vols[vaLo - 1]! : -1;
+    if (up >= down) {
+      vaHi++;
+      covered += vols[vaHi]!;
+    } else {
+      vaLo--;
+      covered += vols[vaLo]!;
+    }
   }
   const maxW = plot.width * 0.25;
-  applyStrokeStyle(ctx, style);
+  const rightEdge = plot.left + plot.width;
   for (let i = 0; i < bins; i++) {
     const v = vols[i]! / maxVol;
     const price0 = pMin + ((pMax - pMin) * i) / bins;
@@ -132,35 +235,72 @@ function paintVolumeProfile(
     const y0 = yPrice(price1, pc);
     const y1 = yPrice(price0, pc);
     const w = maxW * v;
-    ctx.globalAlpha = 0.35 * style.opacity;
+    const inVA = i >= vaLo && i <= vaHi;
+    ctx.globalAlpha = (inVA ? 0.55 : 0.28) * style.opacity;
     ctx.fillStyle = style.color;
-    ctx.fillRect(anchorLeft, y0, w, Math.max(1, y1 - y0));
+    if (developRight) {
+      ctx.fillRect(rightEdge - w, y0, w, Math.max(1, y1 - y0));
+    } else {
+      ctx.fillRect(anchorLeft, y0, w, Math.max(1, y1 - y0));
+    }
   }
   ctx.globalAlpha = 1;
 }
 
-function paintAnchoredVwap(pc: PaintCtx, fromIdx: number, style: Drawing['style']): void {
+function paintAnchoredVwap(
+  pc: PaintCtx,
+  fromIdx: number,
+  style: Drawing['style'],
+  opts: { showBands?: boolean; bandMult?: number } = {},
+): void {
   const { bars, ctx } = pc;
   if (fromIdx >= bars.length - 1) return;
   let cumPV = 0;
   let cumV = 0;
-  applyStrokeStyle(ctx, style);
-  ctx.beginPath();
-  let started = false;
+  let cumPV2 = 0;
+  const path: Array<{ x: number; y: number; vwap: number; std: number }> = [];
   for (let i = fromIdx; i < bars.length; i++) {
     const b = bars[i]!;
     const typical = (b.high + b.low + b.close) / 3;
     const vol = b.volume || 1;
     cumPV += typical * vol;
+    cumPV2 += typical * typical * vol;
     cumV += vol;
     const vwap = cumPV / cumV;
+    const variance = Math.max(0, cumPV2 / cumV - vwap * vwap);
+    const std = Math.sqrt(variance);
     const xy = pointToXY({ time: b.time, price: vwap }, pc);
     if (!xy) continue;
-    if (!started) {
-      ctx.moveTo(xy.x, xy.y);
-      started = true;
-    } else ctx.lineTo(xy.x, xy.y);
+    path.push({ x: xy.x, y: xy.y, vwap, std });
   }
+  if (path.length < 2) return;
+
+  if (opts.showBands) {
+    const mult = asNumber(opts.bandMult, 1);
+    const strokeBand = (sign: 1 | -1) => {
+      applyStrokeStyle(ctx, { ...style, opacity: style.opacity * 0.55, lineStyle: 'dashed' });
+      ctx.beginPath();
+      let started = false;
+      for (const p of path) {
+        const price = p.vwap + sign * mult * p.std;
+        const y = yPrice(price, pc);
+        if (!started) {
+          ctx.moveTo(p.x, y);
+          started = true;
+        } else ctx.lineTo(p.x, y);
+      }
+      ctx.stroke();
+    };
+    strokeBand(1);
+    strokeBand(-1);
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
+
+  applyStrokeStyle(ctx, style);
+  ctx.beginPath();
+  ctx.moveTo(path[0]!.x, path[0]!.y);
+  for (let i = 1; i < path.length; i++) ctx.lineTo(path[i]!.x, path[i]!.y);
   ctx.stroke();
   ctx.setLineDash([]);
   ctx.globalAlpha = 1;
@@ -186,6 +326,15 @@ export function paintDrawing(
           ...style,
           lineStyle: style.lineStyle === 'solid' ? 'dashed' : style.lineStyle,
         });
+        if (style.showPriceLabels && d.points[0]) {
+          drawTextLabel(
+            pc,
+            pc.plot.left + 6,
+            xy[0].y - 10,
+            d.points[0].price.toFixed(2),
+            style,
+          );
+        }
       }
       break;
     case 'vline':
@@ -211,52 +360,17 @@ export function paintDrawing(
       if (xy.length >= 2) {
         const ext = extendModeToPaint(style.extend ?? 'none');
         strokeLine(pc, xy[0]!.x, xy[0]!.y, xy[1]!.x, xy[1]!.y, style, ext);
-        if (style.showMidpoint) {
-          const mx = (xy[0]!.x + xy[1]!.x) / 2;
-          const my = (xy[0]!.y + xy[1]!.y) / 2;
-          const { ctx } = pc;
-          ctx.save();
-          ctx.fillStyle = pc.colors.handleFill;
-          ctx.strokeStyle = style.color;
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.arc(mx, my, 3.5, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-          ctx.restore();
-        }
-        if (style.showPriceLabels && d.points[0] && d.points[1]) {
-          drawTextLabel(pc, xy[0]!.x + 6, xy[0]!.y - 10, d.points[0].price.toFixed(2), style);
-          drawTextLabel(pc, xy[1]!.x + 6, xy[1]!.y - 10, d.points[1].price.toFixed(2), style);
-        }
-        if (style.leftEnd) {
-          const { ctx } = pc;
-          ctx.save();
-          ctx.fillStyle = style.color;
-          ctx.beginPath();
-          ctx.arc(xy[0]!.x, xy[0]!.y, 3, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-        }
-        if (style.rightEnd) {
-          const { ctx } = pc;
-          ctx.save();
-          ctx.fillStyle = style.color;
-          ctx.beginPath();
-          ctx.arc(xy[1]!.x, xy[1]!.y, 3, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-        }
-        if (d.type === 'infoLine' || d.type === 'trendAngle') {
-          const dx = xy[1]!.x - xy[0]!.x;
-          const dy = xy[1]!.y - xy[0]!.y;
-          const ang = ((Math.atan2(-dy, dx) * 180) / Math.PI).toFixed(1);
-          const dp = d.points[1]!.price - d.points[0]!.price;
+        const showAngle =
+          asBool(d.meta?.showAngle, d.type === 'trendAngle' || d.type === 'infoLine') ||
+          d.type === 'trendAngle';
+        paintLineDecorations(pc, d, xy, style, { showAngle });
+        if (d.type === 'infoLine' && d.points[0] && d.points[1] && !showAngle) {
+          const dp = d.points[1].price - d.points[0].price;
           drawTextLabel(
             pc,
             (xy[0]!.x + xy[1]!.x) / 2,
             (xy[0]!.y + xy[1]!.y) / 2 - 12,
-            d.type === 'trendAngle' ? `${ang}°` : `${dp >= 0 ? '+' : ''}${dp.toFixed(2)}`,
+            `${dp >= 0 ? '+' : ''}${dp.toFixed(2)}`,
             style,
           );
         }
@@ -265,16 +379,33 @@ export function paintDrawing(
     case 'ray':
     case 'horizontalRay':
       if (xy.length >= 2) {
+        const ext = extendModeToPaint(style.extend ?? 'right');
+        const mode = d.type === 'horizontalRay' ? 'ray' : ext === 'segment' ? 'ray' : ext;
         if (d.type === 'horizontalRay') {
           strokeLine(pc, xy[0]!.x, xy[0]!.y, xy[1]!.x, xy[0]!.y, style, 'ray');
         } else {
-          strokeLine(pc, xy[0]!.x, xy[0]!.y, xy[1]!.x, xy[1]!.y, style, 'ray');
+          strokeLine(pc, xy[0]!.x, xy[0]!.y, xy[1]!.x, xy[1]!.y, style, mode);
         }
+        paintLineDecorations(pc, d, xy, style, {
+          showAngle: asBool(d.meta?.showAngle, false),
+        });
       }
       break;
     case 'extendedLine':
       if (xy.length >= 2) {
-        strokeLine(pc, xy[0]!.x, xy[0]!.y, xy[1]!.x, xy[1]!.y, style, 'extended');
+        const ext = extendModeToPaint(style.extend ?? 'both');
+        strokeLine(
+          pc,
+          xy[0]!.x,
+          xy[0]!.y,
+          xy[1]!.x,
+          xy[1]!.y,
+          style,
+          ext === 'segment' ? 'extended' : ext,
+        );
+        paintLineDecorations(pc, d, xy, style, {
+          showAngle: asBool(d.meta?.showAngle, false),
+        });
       }
       break;
 
@@ -287,17 +418,47 @@ export function paintDrawing(
         const dy = d.type === 'flatTopBottom' ? 0 : b!.y - a!.y;
         strokeLine(pc, c!.x, c!.y, c!.x + dx, c!.y + dy, style, 'extended');
         fillPoly(pc, [a!, b!, { x: c!.x + dx, y: c!.y + dy }, c!], style);
+        if (asBool(d.meta?.showMidline, true)) {
+          const mx0 = (a!.x + c!.x) / 2;
+          const my0 = (a!.y + c!.y) / 2;
+          strokeLine(
+            pc,
+            mx0,
+            my0,
+            mx0 + dx,
+            my0 + dy,
+            { ...style, lineStyle: 'dashed', opacity: style.opacity * 0.85 },
+            'extended',
+          );
+        }
       }
       break;
     case 'disjointChannel':
       if (xy.length >= 4) {
         strokeLine(pc, xy[0]!.x, xy[0]!.y, xy[1]!.x, xy[1]!.y, style, 'extended');
         strokeLine(pc, xy[2]!.x, xy[2]!.y, xy[3]!.x, xy[3]!.y, style, 'extended');
+        if (asBool(d.meta?.showMidline, true)) {
+          const m0 = {
+            x: (xy[0]!.x + xy[2]!.x) / 2,
+            y: (xy[0]!.y + xy[2]!.y) / 2,
+          };
+          const m1 = {
+            x: (xy[1]!.x + xy[3]!.x) / 2,
+            y: (xy[1]!.y + xy[3]!.y) / 2,
+          };
+          strokeLine(pc, m0.x, m0.y, m1.x, m1.y, {
+            ...style,
+            lineStyle: 'dashed',
+            opacity: style.opacity * 0.85,
+          }, 'extended');
+        }
       }
       break;
     case 'regressionTrend':
       if (xy.length >= 2) {
-        strokeLine(pc, xy[0]!.x, xy[0]!.y, xy[1]!.x, xy[1]!.y, style, 'extended');
+        if (asBool(d.meta?.showMidline, true)) {
+          strokeLine(pc, xy[0]!.x, xy[0]!.y, xy[1]!.x, xy[1]!.y, style, 'extended');
+        }
         const midY = (xy[0]!.y + xy[1]!.y) / 2;
         const offset = Math.abs(xy[1]!.y - xy[0]!.y) * 0.25 + 20;
         strokeLine(pc, xy[0]!.x, midY - offset, xy[1]!.x, midY - offset, {
@@ -312,16 +473,16 @@ export function paintDrawing(
       break;
 
     case 'pitchfork':
-      paintPitchfork(pc, xy, style, 'standard');
+      paintPitchfork(pc, xy, style, 'standard', asBool(d.meta?.showMedian, true));
       break;
     case 'schiffPitchfork':
-      paintPitchfork(pc, xy, style, 'schiff');
+      paintPitchfork(pc, xy, style, 'schiff', asBool(d.meta?.showMedian, true));
       break;
     case 'modifiedSchiffPitchfork':
-      paintPitchfork(pc, xy, style, 'modified');
+      paintPitchfork(pc, xy, style, 'modified', asBool(d.meta?.showMedian, true));
       break;
     case 'insidePitchfork':
-      paintPitchfork(pc, xy, style, 'inside');
+      paintPitchfork(pc, xy, style, 'inside', asBool(d.meta?.showMedian, true));
       break;
 
     case 'fibRetracement':
@@ -333,9 +494,7 @@ export function paintDrawing(
         const meta = d.meta ?? {};
         paintFibLevels(pc, xy[0]!.x, xy[1]!.x, priceA, priceB, style, {
           levels: asNumberArray(meta.levels, [...DEFAULT_FIB_LEVELS]),
-          extend:
-            asBool(meta.extendLines, d.type === 'fibExtension') ||
-            d.type === 'fibExtension',
+          extend: asBool(meta.extendLines, d.type === 'fibExtension'),
           reverse: asBool(meta.reverse, false),
           showLabels: asBool(meta.showLabels, true),
         });
@@ -350,7 +509,9 @@ export function paintDrawing(
         strokeLine(pc, xy[0]!.x, xy[0]!.y, xy[1]!.x, xy[1]!.y, style, 'extended');
         const dx = xy[1]!.x - xy[0]!.x;
         const dy = xy[1]!.y - xy[0]!.y;
-        for (const lv of [0.382, 0.5, 0.618, 1]) {
+        const levels = asNumberArray(d.meta?.levels, [0.382, 0.5, 0.618, 1]);
+        const showLabels = asBool(d.meta?.showLabels, true);
+        for (const lv of levels) {
           const ox = (xy[2]!.x - xy[0]!.x) * lv;
           const oy = (xy[2]!.y - xy[0]!.y) * lv;
           strokeLine(
@@ -360,8 +521,18 @@ export function paintDrawing(
             xy[0]!.x + ox + dx,
             xy[0]!.y + oy + dy,
             { ...style, opacity: style.opacity * 0.8 },
-            'extended',
+            asBool(d.meta?.extendLines, true) ? 'extended' : 'segment',
           );
+          if (showLabels) {
+            drawTextLabel(
+              pc,
+              xy[0]!.x + ox + 4,
+              xy[0]!.y + oy,
+              lv.toFixed(3),
+              style,
+              false,
+            );
+          }
         }
       }
       break;
@@ -371,7 +542,11 @@ export function paintDrawing(
       if (xy.length >= 2) {
         const x0 = xy[0]!.x;
         const span = Math.abs(xy[1]!.x - xy[0]!.x) || 40;
-        const levels = d.type === 'cyclicLines' ? [0, 1, 2, 3, 4, 5, 6, 7, 8] : FIB_TIME;
+        const periods = asNumber(d.meta?.periods, 8);
+        const levels =
+          d.type === 'cyclicLines'
+            ? Array.from({ length: periods + 1 }, (_, i) => i)
+            : FIB_TIME;
         for (const lv of levels) {
           const x = x0 + Math.sign(xy[1]!.x - xy[0]!.x || 1) * span * lv;
           strokeLine(pc, x, pc.plot.top, x, pc.plot.top + pc.plot.height, {
@@ -385,10 +560,18 @@ export function paintDrawing(
     case 'fibFan':
     case 'gannFan':
       if (xy.length >= 2) {
-        const ratios =
-          d.type === 'gannFan'
-            ? [1 / 8, 1 / 4, 1 / 3, 1 / 2, 1, 2, 3, 4, 8]
-            : [0.25, 0.382, 0.5, 0.618, 0.75, 1];
+        const showFan = asBool(d.meta?.showFan, true);
+        const subs = Math.max(2, Math.min(16, asNumber(d.meta?.subdivisions, 4)));
+        let ratios: number[];
+        if (d.type === 'gannFan') {
+          ratios = showFan
+            ? [1 / 8, 1 / 4, 1 / 3, 1 / 2, 1, 2, 3, 4, 8].slice(0, subs + 1)
+            : [1];
+        } else {
+          ratios = showFan
+            ? [0.25, 0.382, 0.5, 0.618, 0.75, 1].slice(0, Math.max(2, subs))
+            : [1];
+        }
         for (const r of ratios) {
           const x1 = xy[0]!.x + (xy[1]!.x - xy[0]!.x);
           const y1 = xy[0]!.y + (xy[1]!.y - xy[0]!.y) * r;
@@ -403,8 +586,11 @@ export function paintDrawing(
       if (xy.length >= 2) {
         const { ctx } = pc;
         const r0 = Math.hypot(xy[1]!.x - xy[0]!.x, xy[1]!.y - xy[0]!.y);
+        const levels = asNumberArray(d.meta?.levels, [0.382, 0.5, 0.618, 1, 1.618]);
+        const showLabels = asBool(d.meta?.showLabels, true);
         applyStrokeStyle(ctx, style);
-        for (const lv of [0.382, 0.5, 0.618, 1, 1.618]) {
+        for (const lv of levels) {
+          if (lv <= 0) continue;
           ctx.beginPath();
           if (d.type === 'fibSpeedArcs' || d.type === 'fibWedge') {
             ctx.arc(xy[0]!.x, xy[0]!.y, r0 * lv, Math.PI, Math.PI * 2);
@@ -423,6 +609,16 @@ export function paintDrawing(
             ctx.arc(xy[0]!.x, xy[0]!.y, r0 * lv, 0, Math.PI * 2);
           }
           ctx.stroke();
+          if (showLabels && d.type !== 'fibSpiral') {
+            drawTextLabel(
+              pc,
+              xy[0]!.x + r0 * lv + 4,
+              xy[0]!.y,
+              lv.toFixed(3),
+              style,
+              false,
+            );
+          }
         }
         ctx.setLineDash([]);
         ctx.globalAlpha = 1;
@@ -460,15 +656,16 @@ export function paintDrawing(
           style,
           true,
         );
-        if (d.type.startsWith('gann')) {
+        if (d.type.startsWith('gann') && asBool(d.meta?.showFan, true)) {
           const { ctx } = pc;
+          const subs = Math.max(2, Math.min(16, asNumber(d.meta?.subdivisions, 4)));
           applyStrokeStyle(ctx, { ...style, opacity: style.opacity * 0.5 });
-          for (let i = 1; i < 4; i++) {
+          for (let i = 1; i < subs; i++) {
             ctx.beginPath();
-            ctx.moveTo(x + (w * i) / 4, y);
-            ctx.lineTo(x + (w * i) / 4, y + h);
-            ctx.moveTo(x, y + (h * i) / 4);
-            ctx.lineTo(x + w, y + (h * i) / 4);
+            ctx.moveTo(x + (w * i) / subs, y);
+            ctx.lineTo(x + (w * i) / subs, y + h);
+            ctx.moveTo(x, y + (h * i) / subs);
+            ctx.lineTo(x + w, y + (h * i) / subs);
             ctx.stroke();
           }
           ctx.beginPath();
@@ -477,6 +674,19 @@ export function paintDrawing(
           ctx.stroke();
           ctx.setLineDash([]);
           ctx.globalAlpha = 1;
+        }
+        if (d.type === 'datePriceRange' && asBool(d.meta?.showStats, true) && d.points[0] && d.points[1]) {
+          const dp = Math.abs(d.points[1].price - d.points[0].price);
+          const dt = Math.abs(d.points[1].time - d.points[0].time);
+          drawTextLabel(
+            pc,
+            x + w / 2,
+            y + h / 2,
+            `${dp.toFixed(2)} · ${Math.round(dt / 60)}m`,
+            style,
+          );
+        } else if (asBool(d.meta?.showCenter, false)) {
+          paintShapeCenter(pc, x + w / 2, y + h / 2, style);
         }
       }
       break;
@@ -488,6 +698,14 @@ export function paintDrawing(
         const d4 = { x: c!.x - dx, y: c!.y - dy };
         fillPoly(pc, [a!, b!, c!, d4], style);
         strokePoly(pc, [a!, b!, c!, d4], style, true);
+        if (asBool(d.meta?.showCenter, false)) {
+          paintShapeCenter(
+            pc,
+            (a!.x + b!.x + c!.x + d4.x) / 4,
+            (a!.y + b!.y + c!.y + d4.y) / 4,
+            style,
+          );
+        }
       }
       break;
     case 'circle':
@@ -504,8 +722,7 @@ export function paintDrawing(
         if (style.fill) {
           ctx.beginPath();
           ctx.ellipse(cx, cy, Math.max(rx, 1), Math.max(ry, 1), 0, 0, Math.PI * 2);
-          ctx.globalAlpha = style.fillOpacity * style.opacity;
-          ctx.fillStyle = style.color;
+          applyFillStyle(ctx, style);
           ctx.fill();
         }
         applyStrokeStyle(ctx, style);
@@ -514,20 +731,47 @@ export function paintDrawing(
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.globalAlpha = 1;
+        if (asBool(d.meta?.showCenter, false)) paintShapeCenter(pc, cx, cy, style);
       }
       break;
     case 'triangle':
       if (xy.length >= 3) {
         fillPoly(pc, xy.slice(0, 3), style);
         strokePoly(pc, xy.slice(0, 3), style, true);
+        if (asBool(d.meta?.showCenter, false)) {
+          paintShapeCenter(
+            pc,
+            (xy[0]!.x + xy[1]!.x + xy[2]!.x) / 3,
+            (xy[0]!.y + xy[1]!.y + xy[2]!.y) / 3,
+            style,
+          );
+        }
       }
       break;
     case 'path':
     case 'polyline':
     case 'brush':
-    case 'highlighter':
+    case 'highlighter': {
+      const soft = asBool(d.meta?.softEdge, d.type === 'highlighter');
+      if (soft && xy.length >= 2) {
+        const { ctx } = pc;
+        ctx.save();
+        applyStrokeStyle(ctx, {
+          ...style,
+          width: style.width + 4,
+          opacity: style.opacity * 0.35,
+        });
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(xy[0]!.x, xy[0]!.y);
+        for (let i = 1; i < xy.length; i++) ctx.lineTo(xy[i]!.x, xy[i]!.y);
+        ctx.stroke();
+        ctx.restore();
+      }
       strokePoly(pc, xy, style, false);
       break;
+    }
     case 'arc':
     case 'curve':
       if (xy.length >= 3) {
@@ -559,6 +803,16 @@ export function paintDrawing(
       if (xy.length >= 2) {
         strokeLine(pc, xy[0]!.x, xy[0]!.y, xy[1]!.x, xy[1]!.y, style);
         drawArrowHead(pc, xy[0]!.x, xy[0]!.y, xy[1]!.x, xy[1]!.y, style);
+        if (asBool(d.meta?.showLabel, false) && d.points[0] && d.points[1]) {
+          const dp = d.points[1].price - d.points[0].price;
+          drawTextLabel(
+            pc,
+            (xy[0]!.x + xy[1]!.x) / 2 + 8,
+            (xy[0]!.y + xy[1]!.y) / 2,
+            `${dp >= 0 ? '+' : ''}${dp.toFixed(2)}`,
+            style,
+          );
+        }
       }
       break;
     case 'arrowUp':
@@ -568,6 +822,15 @@ export function paintDrawing(
         const y2 = xy[0].y + dir * 28;
         strokeLine(pc, xy[0].x, xy[0].y, xy[0].x, y2, style);
         drawArrowHead(pc, xy[0].x, xy[0].y, xy[0].x, y2, style, 12);
+        if (asBool(d.meta?.showLabel, false) && d.points[0]) {
+          drawTextLabel(
+            pc,
+            xy[0].x + 10,
+            (xy[0].y + y2) / 2,
+            d.points[0].price.toFixed(2),
+            style,
+          );
+        }
       }
       break;
 
@@ -580,6 +843,10 @@ export function paintDrawing(
     case 'priceLabel':
     case 'flagMark':
       if (xy[0]) {
+        const textStyle = {
+          ...style,
+          textBold: style.textBold || asBool(d.meta?.bold, false),
+        };
         const label =
           d.text ||
           (d.type === 'priceLabel' || d.type === 'priceNote'
@@ -587,7 +854,7 @@ export function paintDrawing(
             : d.type);
         if (d.type === 'callout' && xy[1]) {
           strokeLine(pc, xy[0].x, xy[0].y, xy[1].x, xy[1].y, style);
-          drawTextLabel(pc, xy[1].x + 6, xy[1].y, label, style);
+          drawTextLabel(pc, xy[1].x + 6, xy[1].y, label, textStyle);
         } else if (d.type === 'flagMark') {
           const { ctx } = pc;
           applyStrokeStyle(ctx, style);
@@ -608,7 +875,7 @@ export function paintDrawing(
           ctx.stroke();
           ctx.setLineDash([]);
         } else {
-          drawTextLabel(pc, xy[0].x + 6, xy[0].y, label, style);
+          drawTextLabel(pc, xy[0].x + 6, xy[0].y, label, textStyle);
         }
       }
       break;
@@ -623,14 +890,40 @@ export function paintDrawing(
     case 'elliottCorrection':
     case 'elliottTriangle':
     case 'elliottDoubleCombo':
-    case 'elliottTripleCombo':
+    case 'elliottTripleCombo': {
       strokePoly(pc, xy, style, false);
-      if (xy.length >= 3) {
+      const isElliott = d.type.startsWith('elliott');
+      const showLabels = isElliott
+        ? asBool(d.meta?.showLabels, true)
+        : asBool(d.meta?.showRatios, true);
+      if (xy.length >= 3 && showLabels) {
         for (let i = 0; i < xy.length; i++) {
-          drawTextLabel(pc, xy[i]!.x + 4, xy[i]!.y - 10, String.fromCharCode(65 + i), style, false);
+          drawTextLabel(
+            pc,
+            xy[i]!.x + 4,
+            xy[i]!.y - 10,
+            String.fromCharCode(65 + i),
+            style,
+            false,
+          );
+        }
+        if (!isElliott && asBool(d.meta?.showRatios, true) && xy.length >= 4 && d.points.length >= 4) {
+          const len = (i: number, j: number) =>
+            Math.hypot(xy[j]!.x - xy[i]!.x, xy[j]!.y - xy[i]!.y) || 1;
+          const ab = len(0, 1);
+          const bc = len(1, 2);
+          const ratio = (bc / ab).toFixed(2);
+          drawTextLabel(
+            pc,
+            (xy[1]!.x + xy[2]!.x) / 2,
+            (xy[1]!.y + xy[2]!.y) / 2 - 12,
+            ratio,
+            style,
+          );
         }
       }
       break;
+    }
 
     case 'timeCycles':
     case 'sineLine':
@@ -638,16 +931,19 @@ export function paintDrawing(
         const { ctx } = pc;
         const amp = Math.abs(xy[1]!.y - xy[0]!.y) || 40;
         const period = Math.abs(xy[1]!.x - xy[0]!.x) || 80;
+        const periods = asNumber(d.meta?.periods, 8);
         applyStrokeStyle(ctx, style);
         ctx.beginPath();
-        const steps = 64;
+        const steps = Math.max(32, periods * 16);
         for (let i = 0; i <= steps; i++) {
           const t = i / steps;
-          const x = xy[0]!.x + t * period * 4 * Math.sign(xy[1]!.x - xy[0]!.x || 1);
+          const x =
+            xy[0]!.x +
+            t * period * periods * Math.sign(xy[1]!.x - xy[0]!.x || 1);
           const y =
             d.type === 'timeCycles'
-              ? xy[0]!.y + Math.abs(Math.sin(t * Math.PI * 4)) * -amp
-              : xy[0]!.y + Math.sin(t * Math.PI * 4) * amp;
+              ? xy[0]!.y + Math.abs(Math.sin(t * Math.PI * periods)) * -amp
+              : xy[0]!.y + Math.sin(t * Math.PI * periods) * amp;
           if (i === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         }
@@ -665,8 +961,8 @@ export function paintDrawing(
         const target = xy[2]!;
         const left = Math.min(entry.x, stop.x, target.x);
         const right = Math.max(entry.x, stop.x, target.x) + 40;
-        const riskStyle = { ...style, color: '#F44336', fillOpacity: 0.2 };
-        const rewardStyle = { ...style, color: '#4CAF50', fillOpacity: 0.2 };
+        const riskStyle = { ...style, color: '#F44336', fillOpacity: 0.2, fill: true };
+        const rewardStyle = { ...style, color: '#4CAF50', fillOpacity: 0.2, fill: true };
         fillPoly(
           pc,
           [
@@ -688,6 +984,16 @@ export function paintDrawing(
           rewardStyle,
         );
         strokeLine(pc, left, entry.y, right, entry.y, style);
+        const rr = asNumber(d.meta?.riskReward, 2);
+        drawTextLabel(pc, right + 4, entry.y, `1:${rr.toFixed(1)}`, style, false);
+        if (asBool(d.meta?.showPrices, true)) {
+          drawTextLabel(pc, left + 4, entry.y - 12, d.points[0].price.toFixed(2), style, false);
+          drawTextLabel(pc, left + 4, stop.y, d.points[1].price.toFixed(2), style, false);
+          drawTextLabel(pc, left + 4, target.y, d.points[2].price.toFixed(2), style, false);
+        }
+        if (asBool(d.meta?.showQty, false)) {
+          drawTextLabel(pc, right + 4, (entry.y + target.y) / 2, 'Qty 1', style, false);
+        }
       }
       break;
     case 'forecast':
@@ -705,29 +1011,57 @@ export function paintDrawing(
       if (xy.length >= 2 && d.points[0] && d.points[1]) {
         const x = (xy[0]!.x + xy[1]!.x) / 2;
         strokeLine(pc, x, xy[0]!.y, x, xy[1]!.y, style);
-        const dp = Math.abs(d.points[1].price - d.points[0].price);
-        drawTextLabel(pc, x + 8, (xy[0]!.y + xy[1]!.y) / 2, dp.toFixed(2), style);
+        if (asBool(d.meta?.showStats, true)) {
+          const dp = Math.abs(d.points[1].price - d.points[0].price);
+          drawTextLabel(pc, x + 8, (xy[0]!.y + xy[1]!.y) / 2, dp.toFixed(2), style);
+        }
+        if (asBool(d.meta?.showAngle, false)) {
+          const dx = xy[1]!.x - xy[0]!.x;
+          const dy = xy[1]!.y - xy[0]!.y;
+          const ang = ((Math.atan2(-dy, dx) * 180) / Math.PI).toFixed(1);
+          drawTextLabel(
+            pc,
+            x + 8,
+            (xy[0]!.y + xy[1]!.y) / 2 + (asBool(d.meta?.showStats, true) ? 16 : 0),
+            `${ang}°`,
+            style,
+          );
+        }
       }
       break;
     case 'dateRange':
       if (xy.length >= 2 && d.points[0] && d.points[1]) {
         const y = (xy[0]!.y + xy[1]!.y) / 2;
         strokeLine(pc, xy[0]!.x, y, xy[1]!.x, y, style);
-        const dt = Math.abs(d.points[1].time - d.points[0].time);
-        drawTextLabel(
-          pc,
-          (xy[0]!.x + xy[1]!.x) / 2,
-          y - 14,
-          `${Math.round(dt / 60)}m`,
-          style,
-        );
+        if (asBool(d.meta?.showStats, true)) {
+          const dt = Math.abs(d.points[1].time - d.points[0].time);
+          drawTextLabel(
+            pc,
+            (xy[0]!.x + xy[1]!.x) / 2,
+            y - 14,
+            `${Math.round(dt / 60)}m`,
+            style,
+          );
+        }
+        if (asBool(d.meta?.showAngle, false)) {
+          drawTextLabel(
+            pc,
+            (xy[0]!.x + xy[1]!.x) / 2,
+            y + 14,
+            '0.0°',
+            style,
+          );
+        }
       }
       break;
 
     case 'anchoredVwap':
       if (d.points[0]) {
         const idx = barIndexAtTime(pc.bars, d.points[0].time);
-        paintAnchoredVwap(pc, idx, style);
+        paintAnchoredVwap(pc, idx, style, {
+          showBands: asBool(d.meta?.showBands, false),
+          bandMult: asNumber(d.meta?.bandMult, 1),
+        });
       }
       break;
     case 'fixedRangeVolumeProfile':
@@ -735,27 +1069,21 @@ export function paintDrawing(
         const a = barIndexAtTime(pc.bars, d.points[0].time);
         const b = barIndexAtTime(pc.bars, d.points[1].time);
         const left = Math.min(xy[0]?.x ?? pc.plot.left, xy[1]?.x ?? pc.plot.left);
-        paintVolumeProfile(
-          pc,
-          a,
-          b,
-          style,
-          left,
-          asNumber(d.meta?.rows, 24),
-        );
+        paintVolumeProfile(pc, a, b, style, left, {
+          rows: asNumber(d.meta?.rows, 24),
+          valueAreaPct: asNumber(d.meta?.valueAreaPct, 70),
+          developRight: asBool(d.meta?.developRight, true),
+        });
       }
       break;
     case 'anchoredVolumeProfile':
       if (d.points[0]) {
         const a = barIndexAtTime(pc.bars, d.points[0].time);
-        paintVolumeProfile(
-          pc,
-          a,
-          pc.bars.length - 1,
-          style,
-          xy[0]?.x ?? pc.plot.left,
-          asNumber(d.meta?.rows, 24),
-        );
+        paintVolumeProfile(pc, a, pc.bars.length - 1, style, xy[0]?.x ?? pc.plot.left, {
+          rows: asNumber(d.meta?.rows, 24),
+          valueAreaPct: asNumber(d.meta?.valueAreaPct, 70),
+          developRight: asBool(d.meta?.developRight, true),
+        });
       }
       break;
 

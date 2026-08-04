@@ -3,8 +3,13 @@ import { TOOLS, defaultStyleFor, type DrawingToolId } from './toolRegistry';
 import { cloneStyle, type DrawingStyle } from './drawingStyle';
 import { getDrawingTemplate } from './drawingTemplates';
 import { defaultMetaFor, resolveMeta } from './toolSettings';
+import {
+  normalizeVisibleOnTfs,
+  type DrawingVisibleOnTfs,
+} from './visibility';
 
 export type { DrawingToolId } from './toolRegistry';
+export type { DrawingVisibleOnTfs } from './visibility';
 /** @deprecated use DrawingToolId — kept for migration */
 export type DrawingType = DrawingToolId;
 
@@ -25,6 +30,11 @@ export interface Drawing {
   locked?: boolean;
   /** When false, object is hidden but kept in store. */
   visible?: boolean;
+  /**
+   * Per-timeframe visibility (TV Visibility tab).
+   * `'all'` / undefined = every TF; otherwise only listed TFs.
+   */
+  visibleOnTfs?: DrawingVisibleOnTfs;
   meta?: Record<string, unknown>;
 }
 
@@ -72,6 +82,7 @@ function normalizeDrawing(raw: unknown): Drawing | null {
     name: typeof o.name === 'string' && o.name.trim() ? o.name.trim() : undefined,
     locked: o.locked === true,
     visible: o.visible === false ? false : true,
+    visibleOnTfs: normalizeVisibleOnTfs(o.visibleOnTfs),
     meta: resolveMeta(
       type,
       o.meta && typeof o.meta === 'object'
@@ -115,6 +126,7 @@ export function createDrawing(
     meta?: Record<string, unknown>;
     locked?: boolean;
     visible?: boolean;
+    visibleOnTfs?: DrawingVisibleOnTfs;
   },
 ): Drawing {
   const tmpl = getDrawingTemplate(type);
@@ -131,6 +143,7 @@ export function createDrawing(
     name: extras?.name,
     locked: extras?.locked ?? false,
     visible: extras?.visible ?? true,
+    visibleOnTfs: extras?.visibleOnTfs ?? 'all',
     meta: resolveMeta(
       type,
       extras?.meta ?? tmpl?.meta ?? defaultMetaFor(type),

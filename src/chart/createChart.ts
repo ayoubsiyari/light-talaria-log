@@ -1,4 +1,5 @@
 import { indexAtOrBeforeBars } from '@/data/timeframeAgg';
+import { applyShiftConstrainIfNeeded } from '@/drawings/constrain';
 import {
   createDraftDrawing,
   type Drawing,
@@ -9,8 +10,13 @@ import {
   hitTestDrawings,
   type HitResult,
 } from '@/drawings/hitTest';
+import {
+  magnetSnap,
+  type MagnetMode,
+} from '@/drawings/magnet';
 import type { DrawingToolId } from '@/drawings/toolRegistry';
 import type { ChartBar, VisibleRange } from '@/types/bar';
+import type { Timeframe } from '@/types/ui';
 import type { IndicatorOverlayResult, IndicatorPaneResult } from '@/types/indicator';
 import type { BacktestResult } from '@/types/backtest';
 import type { ChartOrder, OrderLevelHit } from '@/types/order';
@@ -178,8 +184,16 @@ export interface ChartInstance {
   setDrawings: (
     drawings: readonly Drawing[],
     draft?: Drawing | null,
-    opts?: { selectedId?: string | null; hidden?: boolean },
+    opts?: {
+      selectedId?: string | null;
+      hidden?: boolean;
+      paneTimeframe?: Timeframe | null;
+    },
   ) => void;
+  /** Drawing magnet for place preview + handle drag. */
+  setDrawingMagnetMode: (mode: MagnetMode) => void;
+  /** Shift held — constrain rubber-band to H / V / 45°. */
+  setDrawingShiftHeld: (held: boolean) => void;
   /** In-progress tool placement — engine owns rubber-band draft (no React per-move). */
   setPlacement: (placement: DrawingPlacement | null) => void;
   setReplayCursorTime: (time: number | null) => void;
@@ -275,6 +289,9 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   let selectedDrawingId: string | null = null;
   let hoveredDrawingId: string | null = null;
   let drawingsHidden = false;
+  let paneTimeframe: Timeframe | null = null;
+  let drawingMagnetMode: MagnetMode = 'off';
+  let drawingShiftHeld = false;
   let replayCursorTime: number | null = null;
   /** Engine-owned camera follow — avoids React re-applying a stale range after pan. */
   let replayFollow = false;
@@ -406,6 +423,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       range,
       layout.plot,
       resolvePriceScale(),
+      paneTimeframe,
     );
     hitCacheX = x;
     hitCacheY = y;
@@ -420,11 +438,22 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       }
       return;
     }
+    let tip = hover;
+    if (tip && !placement.freehandActive) {
+      tip = magnetSnap(tip, bars, drawingMagnetMode);
+      tip = applyShiftConstrainIfNeeded(
+        placement.tool,
+        placement.points,
+        tip,
+        bars,
+        drawingShiftHeld,
+      );
+    }
     // Freehand: points already include the stroke (App/rAF). Else rubber-band to hover.
     const pts =
-      placement.freehandActive || !hover
+      placement.freehandActive || !tip
         ? placement.points
-        : [...placement.points, hover];
+        : [...placement.points, tip];
     if (pts.length === 0) {
       if (draftDrawing !== null) {
         draftDrawing = null;
@@ -558,6 +587,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     selectedDrawingId,
     hoveredDrawingId,
     drawingsHidden,
+    paneTimeframe,
     replayCursorTime,
     indicators: indicatorOverlays,
     indicatorPanes,
@@ -893,13 +923,24 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         return;
       }
       if (!drawingDrag) return;
-      const logical = mediaToLogical(x, y);
+      let logical = mediaToLogical(x, y);
       if (!logical) return;
       const current = drawings.find((dr) => dr.id === drawingDrag!.id);
       if (!current || current.locked) return;
 
       let nextPoints: DrawingPoint[];
       if (drawingDrag.mode === 'handle' && drawingDrag.handleIndex != null) {
+        // Magnet on handles only (body move keeps shape rigid).
+        logical = magnetSnap(logical, bars, drawingMagnetMode);
+        if (drawingShiftHeld && drawingDrag.originPoints[0]) {
+          logical = applyShiftConstrainIfNeeded(
+            current.type,
+            [drawingDrag.originPoints[0]!],
+            logical,
+            bars,
+            true,
+          );
+        }
         nextPoints = current.points.slice();
         nextPoints[drawingDrag.handleIndex] = {
           time: logical.time,
@@ -1174,11 +1215,34 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         drawingsHidden = opts.hidden;
         if (drawingsHidden) hoveredDrawingId = null;
       }
+      if (opts?.paneTimeframe !== undefined) {
+        paneTimeframe = opts.paneTimeframe;
+      }
       if (hoveredDrawingId && !next.some((d) => d.id === hoveredDrawingId)) {
         hoveredDrawingId = null;
       }
       invalidateHitCache();
       markDrawingsDirty();
+    },
+
+    setDrawingMagnetMode(mode) {
+      if (drawingMagnetMode === mode) return;
+      drawingMagnetMode = mode;
+      if (placement) {
+        updatePlacementDraft(
+          crosshair ? { time: crosshair.time, price: crosshair.price } : null,
+        );
+      }
+    },
+
+    setDrawingShiftHeld(held) {
+      if (drawingShiftHeld === held) return;
+      drawingShiftHeld = held;
+      if (placement) {
+        updatePlacementDraft(
+          crosshair ? { time: crosshair.time, price: crosshair.price } : null,
+        );
+      }
     },
 
     setPlacement(next) {
@@ -1351,6 +1415,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         range,
         layout.plot,
         resolvePriceScale(),
+        paneTimeframe,
       );
     },
 

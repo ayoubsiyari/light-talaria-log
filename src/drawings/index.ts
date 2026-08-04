@@ -4,4 +4,6 @@ export * from './toolRegistry';
 export * from './drawingInteraction';
 export * from './hitTest';
 export * from './magnet';
+export * from './constrain';
+export * from './visibility';
 export { paintAllDrawings, paintDrawing } from './paint/paintDrawing';

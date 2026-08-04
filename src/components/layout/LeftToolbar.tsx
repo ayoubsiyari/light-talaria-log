@@ -22,6 +22,11 @@ import {
   IconZoom,
 } from '@/components/icons/ToolIcons';
 import {
+  magnetModeLabel,
+  nextMagnetMode,
+  type MagnetMode,
+} from '@/drawings/magnet';
+import {
   CATEGORY_DEFAULT_TOOL,
   TOOL_CATEGORIES,
   TOOLS,
@@ -95,8 +100,8 @@ interface LeftToolbarProps {
   activeTool: ChartToolId;
   onToolChange: (tool: ChartToolId) => void;
   onClearDrawings?: () => void;
-  magnet: boolean;
-  onMagnetChange: (v: boolean) => void;
+  magnetMode: MagnetMode;
+  onMagnetModeChange: (v: MagnetMode) => void;
   stayInDrawingMode: boolean;
   onStayInDrawingModeChange: (v: boolean) => void;
   drawingsLocked: boolean;
@@ -109,8 +114,8 @@ export function LeftToolbar({
   activeTool,
   onToolChange,
   onClearDrawings,
-  magnet,
-  onMagnetChange,
+  magnetMode,
+  onMagnetModeChange,
   stayInDrawingMode,
   onStayInDrawingModeChange,
   drawingsLocked,
@@ -277,12 +282,23 @@ export function LeftToolbar({
 
         <button
           type="button"
-          title="Magnet"
-          aria-pressed={magnet}
-          onClick={() => onMagnetChange(!magnet)}
-          className={toolBtn(magnet)}
+          title={`${magnetModeLabel(magnetMode)} (click to cycle)`}
+          aria-pressed={magnetMode !== 'off'}
+          aria-label={magnetModeLabel(magnetMode)}
+          onClick={() => onMagnetModeChange(nextMagnetMode(magnetMode))}
+          className={toolBtn(magnetMode !== 'off')}
         >
           <IconMagnet />
+          {magnetMode === 'weak' && (
+            <span className="absolute bottom-0.5 right-0.5 text-[8px] font-semibold leading-none text-accent">
+              W
+            </span>
+          )}
+          {magnetMode === 'strong' && (
+            <span className="absolute bottom-0.5 right-0.5 text-[8px] font-semibold leading-none text-accent">
+              S
+            </span>
+          )}
         </button>
         <button
           type="button"

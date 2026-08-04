@@ -45,9 +45,13 @@ import {
   type Drawing,
   type DrawingPoint,
 } from '@/drawings/drawingStore';
+import { applyShiftConstrainIfNeeded } from '@/drawings/constrain';
 import { placeDrawingPoint } from '@/drawings/drawingInteraction';
 import type { HitResult } from '@/drawings/hitTest';
-import { magnetSnap } from '@/drawings/magnet';
+import {
+  magnetSnap,
+  type MagnetMode,
+} from '@/drawings/magnet';
 import { getTool, TOOLS, type DrawingToolId } from '@/drawings/toolRegistry';
 import { ensureDatasetIngested } from '@/datasets/ingestDataset';
 import {
@@ -246,7 +250,8 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [chartSettingsOpen, setChartSettingsOpen] = useState(false);
   const [chartContextMenu, setChartContextMenu] = useState<ChartContextMenuState | null>(null);
-  const [magnet, setMagnet] = useState(false);
+  const [magnetMode, setMagnetMode] = useState<MagnetMode>('off');
+  const [drawingShiftHeld, setDrawingShiftHeld] = useState(false);
   const [stayInDrawingMode, setStayInDrawingMode] = useState(false);
   const [drawingsLocked, setDrawingsLocked] = useState(false);
   const [drawingsHidden, setDrawingsHidden] = useState(false);
@@ -1985,10 +1990,17 @@ export default function App() {
         return;
       }
 
-      const snapped = magnetSnap(
+      let snapped = magnetSnap(
         { time: point.time, price: point.price },
         bars,
-        magnet,
+        magnetMode,
+      );
+      snapped = applyShiftConstrainIfNeeded(
+        activeTool,
+        draftPoints,
+        snapped,
+        bars,
+        drawingShiftHeld,
       );
 
       const toolDef = getTool(activeTool);
@@ -2048,12 +2060,30 @@ export default function App() {
       drawings,
       finishPlacedDrawing,
       drawingsLocked,
-      magnet,
+      magnetMode,
+      drawingShiftHeld,
       persistDrawings,
       session,
       stayInDrawingMode,
     ],
   );
+
+  // Shift → H/V/45° constrain while placing / resizing drawings.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Shift') return;
+      setDrawingShiftHeld(e.type === 'keydown');
+    };
+    const onBlur = () => setDrawingShiftHeld(false);
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('keyup', onKey, true);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('keyup', onKey, true);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, []);
 
   // Freehand only — rubber-band preview is engine-owned (setPlacement + overlay paint).
   const handleCrosshairForDrawings = useCallback(
@@ -2067,7 +2097,13 @@ export default function App() {
         return;
       }
 
-      const freePt: DrawingPoint = { time: point.time, price: point.price };
+      const pane = panesRef.current.find((p) => p.id === activePaneId);
+      const bars = pane?.bars ?? [];
+      const freePt = magnetSnap(
+        { time: point.time, price: point.price },
+        bars,
+        magnetMode,
+      );
       pendingFreehandRef.current = freePt;
       if (freehandRafRef.current !== 0) return;
       freehandRafRef.current = requestAnimationFrame(() => {
@@ -2087,7 +2123,7 @@ export default function App() {
         });
       });
     },
-    [activeTool],
+    [activeTool, activePaneId, magnetMode],
   );
 
   const handleToolChange = (tool: ChartToolId) => {
@@ -2661,8 +2697,8 @@ export default function App() {
           activeTool={activeTool}
           onToolChange={handleToolChange}
           onClearDrawings={clearDrawings}
-          magnet={magnet}
-          onMagnetChange={setMagnet}
+          magnetMode={magnetMode}
+          onMagnetModeChange={setMagnetMode}
           stayInDrawingMode={stayInDrawingMode}
           onStayInDrawingModeChange={setStayInDrawingMode}
           drawingsLocked={drawingsLocked}
@@ -2755,6 +2791,8 @@ export default function App() {
               placement={placement}
               selectedDrawingId={selectedDrawingId}
               drawingsHidden={drawingsHidden}
+              drawingMagnetMode={magnetMode}
+              drawingShiftHeld={drawingShiftHeld}
               // During play App drives cursor via syncReplayReveal — do not pass a
               // stale React cursor (re-renders would yank cameras / look like pause).
               replayCursorTime={

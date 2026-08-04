@@ -9,6 +9,10 @@ import {
 import { getTool } from '@/drawings/toolRegistry';
 import { getToolSettings, resolveMeta } from '@/drawings/toolSettings';
 import {
+  DRAWING_VISIBILITY_TFS,
+  toggleVisibleOnTf,
+} from '@/drawings/visibility';
+import {
   ColorSwatches,
   fieldClass,
   Row,
@@ -535,9 +539,50 @@ export function DrawingSettingsModal({
               checked={!!draft.locked}
               onChange={(v) => setDraft((d) => ({ ...d, locked: v }))}
             />
+            <div className="space-y-1.5 pt-1">
+              <p className="text-xs font-medium text-foreground">
+                Show on intervals
+              </p>
+              <p className="text-[11px] text-muted leading-snug">
+                Uncheck a timeframe to hide this drawing when that interval is
+                active (TradingView-style).
+              </p>
+              <div className="grid grid-cols-3 gap-1.5 pt-1">
+                {DRAWING_VISIBILITY_TFS.map((tf) => {
+                  const onTfs = draft.visibleOnTfs;
+                  const checked =
+                    onTfs == null ||
+                    onTfs === 'all' ||
+                    (Array.isArray(onTfs) && onTfs.includes(tf));
+                  return (
+                    <label
+                      key={tf}
+                      className="flex items-center gap-1.5 min-h-9 px-2 rounded-[4px] bg-background/60 text-xs text-foreground cursor-pointer select-none"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            visibleOnTfs: toggleVisibleOnTf(
+                              d.visibleOnTfs,
+                              tf,
+                              e.target.checked,
+                            ),
+                          }))
+                        }
+                        className="accent-[var(--accent)]"
+                      />
+                      {tf}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
             <p className="text-xs text-muted">
-              Hidden drawings stay saved. Expand settings again from a selected
-              object to show them.
+              Globally hidden drawings stay saved. Re-select via Object tree
+              (coming) or show again here.
             </p>
           </>
         )}

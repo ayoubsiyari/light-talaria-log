@@ -8,6 +8,7 @@ import type {
 import { ChartPane } from '@/components/layout/ChartPane';
 import type { Drawing } from '@/drawings/drawingStore';
 import type { HitResult } from '@/drawings/hitTest';
+import type { MagnetMode } from '@/drawings/magnet';
 import type { EnabledIndicator } from '@/types/indicator';
 import type { BacktestResult } from '@/types/backtest';
 import type { ChartOrder } from '@/types/order';
@@ -32,6 +33,8 @@ interface ChartGridProps {
   placement?: DrawingPlacement | null;
   selectedDrawingId?: string | null;
   drawingsHidden?: boolean;
+  drawingMagnetMode?: MagnetMode;
+  drawingShiftHeld?: boolean;
   replayCursorTime: number | null;
   /** Engine centers the live candle while replay is playing. */
   replayFollow?: boolean;
@@ -91,6 +94,8 @@ export function ChartGrid({
   placement = null,
   selectedDrawingId = null,
   drawingsHidden = false,
+  drawingMagnetMode = 'off',
+  drawingShiftHeld = false,
   replayCursorTime,
   replayFollow = false,
   showFollowControl = false,
@@ -183,6 +188,8 @@ export function ChartGrid({
               placement={placement}
               selectedDrawingId={selectedDrawingId}
               drawingsHidden={drawingsHidden}
+              drawingMagnetMode={drawingMagnetMode}
+              drawingShiftHeld={drawingShiftHeld}
               replayCursorTime={replayCursorTime}
               replayFollow={replayFollow}
               showFollowControl={showFollowControl}

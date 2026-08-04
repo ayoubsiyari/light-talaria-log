@@ -1,7 +1,9 @@
 import { getChartColors, type ChartColors } from '@/chart/chartTheme';
 import { priceToY } from '@/chart/scales';
 import type { ChartBar } from '@/types/bar';
+import type { Timeframe } from '@/types/ui';
 import type { Drawing } from '../drawingStore';
+import { isDrawingVisibleOnTf } from '../visibility';
 import { applyFillStyle, applyStrokeStyle, extendModeToPaint, type DrawingStyle } from '../drawingStyle';
 import {
   defaultFibLevelsFor,
@@ -1168,6 +1170,7 @@ export function paintAllDrawings(
   hidden: boolean,
   hoveredId: string | null = null,
   colors?: ChartColors,
+  paneTf?: Timeframe | null,
 ): void {
   if (hidden || bars.length === 0) return;
   const pc: PaintCtx = {
@@ -1179,7 +1182,7 @@ export function paintAllDrawings(
     colors: colors ?? getChartColors(),
   };
   for (const d of drawings) {
-    if (d.visible === false) continue;
+    if (!isDrawingVisibleOnTf(d, paneTf)) continue;
     const isSelected = d.id === selectedId;
     const isHovered = d.id === hoveredId;
     paintDrawing(pc, d, { selected: isSelected });

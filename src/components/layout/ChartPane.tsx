@@ -17,6 +17,7 @@ import { OverlayIndicators } from '@/components/layout/OverlayIndicators';
 import { VolumeIndicator } from '@/components/layout/VolumeIndicator';
 import type { Drawing } from '@/drawings/drawingStore';
 import type { HitResult } from '@/drawings/hitTest';
+import type { MagnetMode } from '@/drawings/magnet';
 import type { ChartBar, VisibleRange } from '@/types/bar';
 import type { EnabledIndicator } from '@/types/indicator';
 import type { BacktestResult } from '@/types/backtest';
@@ -46,6 +47,8 @@ export interface ChartPaneProps {
   placement?: DrawingPlacement | null;
   selectedDrawingId?: string | null;
   drawingsHidden?: boolean;
+  drawingMagnetMode?: MagnetMode;
+  drawingShiftHeld?: boolean;
   replayCursorTime: number | null;
   replayFollow?: boolean;
   /** Show » follow when user panned away during replay. */
@@ -99,6 +102,8 @@ export function ChartPane({
   placement = null,
   selectedDrawingId = null,
   drawingsHidden = false,
+  drawingMagnetMode = 'off',
+  drawingShiftHeld = false,
   replayCursorTime,
   replayFollow = false,
   showFollowControl = false,
@@ -229,6 +234,9 @@ export function ChartPane({
         placement={placement}
         selectedDrawingId={selectedDrawingId}
         drawingsHidden={drawingsHidden}
+        paneTimeframe={timeframe}
+        drawingMagnetMode={drawingMagnetMode}
+        drawingShiftHeld={drawingShiftHeld}
         replayCursorTime={replayCursorTime}
         drawingToolActive={drawingToolActive}
         drawingsLocked={drawingsLocked}

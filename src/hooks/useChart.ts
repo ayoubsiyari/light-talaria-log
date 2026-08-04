@@ -22,6 +22,8 @@ import {
 import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
 import type { Drawing } from '@/drawings/drawingStore';
 import type { HitResult } from '@/drawings/hitTest';
+import type { MagnetMode } from '@/drawings/magnet';
+import type { Timeframe } from '@/types/ui';
 import { getIndicatorDef } from '@/indicators/registry';
 import { computeIndicators } from '@/indicators/runIndicatorWorker';
 import { colorsForIndicator } from '@/indicators/themeColors';
@@ -64,6 +66,12 @@ export interface UseChartOptions {
   placement?: DrawingPlacement | null;
   selectedDrawingId?: string | null;
   drawingsHidden?: boolean;
+  /** Pane TF for per-interval drawing visibility. */
+  paneTimeframe?: Timeframe;
+  /** Drawing magnet (place + handle drag). */
+  drawingMagnetMode?: MagnetMode;
+  /** Shift held for H/V/45° constrain. */
+  drawingShiftHeld?: boolean;
   replayCursorTime?: number | null;
   /** When true, engine recenters on the live candle each cursor tick. */
   replayFollow?: boolean;
@@ -147,7 +155,14 @@ export function useChart(
       instance.setDrawings(optionsRef.current.drawings, null, {
         selectedId: optionsRef.current.selectedDrawingId ?? null,
         hidden: optionsRef.current.drawingsHidden ?? false,
+        paneTimeframe: optionsRef.current.paneTimeframe ?? null,
       });
+    }
+    if (optionsRef.current.drawingMagnetMode) {
+      instance.setDrawingMagnetMode(optionsRef.current.drawingMagnetMode);
+    }
+    if (optionsRef.current.drawingShiftHeld !== undefined) {
+      instance.setDrawingShiftHeld(optionsRef.current.drawingShiftHeld);
     }
     if (optionsRef.current.placement) {
       instance.setPlacement(optionsRef.current.placement);
@@ -433,8 +448,26 @@ export function useChart(
     instance.setDrawings(options.drawings ?? [], null, {
       selectedId: options.selectedDrawingId ?? null,
       hidden: options.drawingsHidden ?? false,
+      paneTimeframe: options.paneTimeframe ?? null,
     });
-  }, [options.drawings, options.selectedDrawingId, options.drawingsHidden]);
+  }, [
+    options.drawings,
+    options.selectedDrawingId,
+    options.drawingsHidden,
+    options.paneTimeframe,
+  ]);
+
+  useEffect(() => {
+    const instance = instanceRef.current;
+    if (!instance) return;
+    instance.setDrawingMagnetMode(options.drawingMagnetMode ?? 'off');
+  }, [options.drawingMagnetMode]);
+
+  useEffect(() => {
+    const instance = instanceRef.current;
+    if (!instance) return;
+    instance.setDrawingShiftHeld(options.drawingShiftHeld ?? false);
+  }, [options.drawingShiftHeld]);
 
   const orderIds = ordersKey(options.orders);
   useEffect(() => {

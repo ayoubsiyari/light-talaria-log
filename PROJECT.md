@@ -767,6 +767,8 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | TV-style remote load: viewport (~2 chunks) on Start; contiguous IDB meta; server top-up on pan/replay; fix empty replay after clear-cache | Short session → Play; pan left loads more from server |
 | 2026-08-04 | Replay: expand remote top-up across weekend gaps; skip dead air when next bars cached; Hero toast at session end | Play through weekend → should jump; toast at endDate |
 | 2026-08-04 | Multi-TF play: keep base-TF clock lookback covering coarsest open bucket so 1h/4h/1D tip updates tick-by-tick | Play 1m+1h+1D — higher TF forms live |
+| 2026-08-04 | Drawings audit + plan D1–D6 in PROJECT.md (Tier 1 full function first; no niche TV catalog) | Approve **go D1** |
+| 2026-08-04 | **D1 done:** magnet off/weak/strong, Shift H/V/45°, per-TF Visibility tab + paint/hit filter | **go D2** (specialty hit-test) |
 | 2026-08-04 | Fix multi-chart replay stall: non-blocking server top-up + ≤1 chunk per fetch (was awaiting hours of 1m mid-play) | Multi layout → Play through cache edge |
 | 2026-08-04 | IDB sliding-window GC for remote chunks (max 8/series) + Datasets “Clear chart cache”; local CSV untouched | Long Play → IDB stays small; Clear cache frees disk |
 | 2026-08-04 | Power Jump plan P1–P3 in PROJECT.md; **P1 Done:** journal View on chart → `#/chart/:id?t=&trade=` seek + highlight | Verify trade → chart; then **go Step P2** |
@@ -850,6 +852,130 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 
 ### Suggested order
 `T1 → T2 → T3 → T4 → T5` — work one step at a time.
+
+---
+
+## Next Work Plan — Drawings Full Function (D1–D6) (2026-08-04)
+
+**Source:** TradingView drawing catalogue (Help Center, 2026-08-04) + local audit of `src/drawings/`.  
+**Honesty:** Registry lists ~80 tools with UI + paint paths; many are approximations. We do **not** aim for all ~97 TV tools. We make **Tier 1 solid**, then Tier 2, then stop unless users ask.
+
+### Audit snapshot (current)
+
+| Area | Status |
+|---|---|
+| Anchor model | **Correct** — `{ time, price }` (not bar index) |
+| Overlay canvas | **Correct** — drawings layer cached; series not repainted on drag |
+| Catalog / LeftToolbar | 80 tools registered + flyouts |
+| Line family, rectangle, fib retracement | Solid |
+| Magnet | On/off OHLC only — **no weak/strong** |
+| Keep drawing / lock / hide / templates | Work |
+| Per-TF Visibility tab | **Missing** (only visible + lock) |
+| Object tree | **Missing** |
+| Zoom marquee | Button is a no-op |
+| Hit-test | Generic segments; fib/channel/VP hard to select |
+| Patterns / Elliott / Gann / regression | Stub or simplified |
+| Multi-pane | One shared drawing list → all panes (no per-symbol scope) |
+
+**Architectural rules (non-negotiable):**
+1. Anchors stay `{ time, price }` forever.
+2. Drag/mousemove → overlay dirty only; commit store on mouseup.
+3. Prefer polish of Tier 1 over new niche tools (Gann spiral, Elliott, emoji, etc.).
+
+### Tier 1 — must work (product)
+
+**Tools (12):** `hline`, `horizontalRay`, `trendLine`, `ray`, `vline`, `rectangle`, `longPosition`, `shortPosition`, measure (`datePriceRange` / one-shot measure), `text`, `arrow`, `brush`.
+
+**Behaviours (matter more than more tools):**
+- Magnet weak + strong
+- Visibility per timeframe (settings Visibility tab)
+- Keep drawing (done)
+- Object tree (list / hide / delete / reorder)
+- Style templates (done — verify Tier 1 tools)
+- Alt-drag clone, Shift-constrain, Esc-cancel
+- Specialty hit-test so painted geometry is selectable
+
+### Tier 2 — after Tier 1 (6)
+
+`fibRetracement` (deepen), `parallelChannel`, `extendedLine`, `datePriceRange` polish, `callout`, `priceLabel`.
+
+### Tier 3 — only on request
+
+Fib extension, path, note, flag, anchored VWAP.  
+**Do not build:** Gann family, fib spiral/circles/arcs/wedge, pitchforks, harmonics, Elliott sets, cycles, ghost feed, stickers/emoji — unless a real user asks.
+
+### Execution steps
+
+#### D1 — Behaviours foundation
+**Goal:** Magnet + constrain + visibility model.  
+**Status:** Done (2026-08-04).  
+**Deliverables:**
+- [x] Magnet modes: `off | weak | strong` in LeftToolbar; weak = snap within ~35% of bar range; strong = always OHLC
+- [x] Wire toolbar magnet to placement + handle drag (not only place)
+- [x] Shift-constrain: H / V / 45° while placing 2-point lines (+ handle drag)
+- [x] Esc cancels in-progress (existing); Shift tracked globally for rubber-band
+- [x] Drawing meta: `visibleOnTfs?: Timeframe[] | 'all'` + Visibility tab checkboxes
+- [x] Paint/hit skip when current pane TF not in visibility set
+**Done when:** Place trend/hline with weak+strong magnet; hide a line on 1D while visible on 1m.
+
+#### D2 — Specialty hit-test + edit feel
+**Goal:** What you paint is what you grab.  
+**Status:** Pending.  
+**Deliverables:**
+- [ ] Hit paths for: hline/vline/cross (done-ish) + **extended rays**, fib level lines, parallel channel sides, rectangle edges, position RR boxes
+- [ ] Cursor feedback matches grab target
+- [ ] Brush: press-drag stroke (TV-like), not click-move-click
+**Done when:** Fib retracement and channel selectable by clicking a level/side, not only anchors.
+
+#### D3 — Tier 1 tools to “full function”
+**Goal:** Each Tier 1 tool places, paints, selects, moves, resizes, settings, persist.  
+**Status:** Pending.  
+**Deliverables (per tool checklist):**
+- [ ] trendLine / ray / extendedLine / hline / horizontalRay / vline — Style + Coordinates + Visibility; Shift constrain
+- [ ] rectangle — fill + stroke; edge/corner resize
+- [ ] longPosition / shortPosition — entry/SL/TP zones, R:R + P&L labels, Inputs (account/risk/lots) wired to paint
+- [ ] measure — one-shot or `datePriceRange`: Δprice, %, bars, elapsed time; clears or stays per TV measure vs tool
+- [ ] text — place opens Text tab; font size/color/align; drag label
+- [ ] arrow / brush — solid place + style
+**Done when:** Manual matrix on desktop + ~390px: place/select/move/style/delete for all 12; reload session restores them.
+
+#### D4 — Object tree + chrome
+**Goal:** Manage drawings without hunting on chart.  
+**Status:** Pending.  
+**Deliverables:**
+- [ ] Object tree panel (Hero UI): list, visibility toggle, lock, delete, select → focus drawing
+- [ ] Bulk delete drawings (toolbar remove menu — drawings only first)
+- [ ] Zoom marquee tool (real region zoom) or hide the dead button until ready
+- [ ] Alt/Option+drag clone
+**Done when:** Hidden drawing can be unhidden only via tree; marquee zoom works or is removed from UI.
+
+#### D5 — Tier 2 polish
+**Goal:** Six Tier 2 tools feel intentional.  
+**Status:** Pending (start only after D3 done).  
+**Deliverables:**
+- [ ] fibRetracement — level table already exists; verify extend L/R, reverse, labels, hit levels
+- [ ] parallelChannel — 3-click place, width handle, fill
+- [ ] extendedLine — already painted; hit extended infinite sides
+- [ ] datePriceRange — full measure stats box
+- [ ] callout — leader + text bubble
+- [ ] priceLabel — axis-style price tag
+**Done when:** Tier 2 matrix passes same place/select/settings bar as Tier 1.
+
+#### D6 — Scope hygiene (optional)
+**Goal:** Stop lying that 80 tools are “done”.  
+**Status:** Pending.  
+**Deliverables:**
+- [ ] Mark registry / flyout: Tier 1–2 as primary; niche tools behind “More” or badge `beta` / hide from default flyout
+- [ ] Or leave catalog but PROJECT.md checklist reflects honesty (approx vs full)
+- [ ] Multi-pane: document “shared drawings” OR add per-pane/per-dataset scope (decide before changing storage key)
+**Done when:** Docs + UI don’t claim full TV parity for stubs.
+
+### Suggested order
+`D1 → D2 → D3 → D4 → D5` — then D6.  
+Work one step at a time; say **go D1** to start implementation.
+
+### Out of scope this wave
+Gann, Elliott, harmonics, fib spiral/arcs/circles/wedge, pitchforks, emoji/stickers, ghost feed, sync-drawings toggle across layouts, cloud drawing sync.
 
 ---
 

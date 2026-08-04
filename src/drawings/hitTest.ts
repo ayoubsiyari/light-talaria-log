@@ -1,8 +1,10 @@
 import { logicalIndexAtTime } from '@/data/timeframeAgg';
 import { indexToX, priceToY, type PlotRect, type PriceScale } from '@/chart/scales';
 import type { ChartBar, VisibleRange } from '@/types/bar';
+import type { Timeframe } from '@/types/ui';
 import { drawingHandleHitPx, drawingHitPx } from '@/utils/touchTarget';
 import type { Drawing, DrawingPoint } from './drawingStore';
+import { isDrawingVisibleOnTf } from './visibility';
 
 function toXY(
   p: DrawingPoint,
@@ -119,13 +121,14 @@ export function hitTestDrawings(
   range: VisibleRange,
   plot: PlotRect,
   priceScale: PriceScale,
+  paneTf?: Timeframe | null,
 ): HitResult | null {
   const HIT_PX = drawingHitPx();
   const HANDLE_PX = drawingHandleHitPx();
   // Reverse so last-drawn is on top
   for (let i = drawings.length - 1; i >= 0; i--) {
     const d = drawings[i]!;
-    if (d.visible === false) continue;
+    if (!isDrawingVisibleOnTf(d, paneTf)) continue;
     const pts: Array<{ x: number; y: number }> = [];
     for (const p of d.points) {
       const xy = toXY(p, bars, range, plot, priceScale);

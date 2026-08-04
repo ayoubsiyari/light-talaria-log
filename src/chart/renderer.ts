@@ -169,6 +169,8 @@ export interface PaintState {
   selectedDrawingId?: string | null;
   hoveredDrawingId?: string | null;
   drawingsHidden?: boolean;
+  /** Pane TF — filters drawings with per-interval visibility. */
+  paneTimeframe?: import('@/types/ui').Timeframe | null;
   replayCursorTime?: number | null;
   indicators?: readonly IndicatorOverlayResult[];
   indicatorPanes?: readonly IndicatorPaneResult[];
@@ -296,6 +298,7 @@ export function paintDrawingsFrame(
     selectedDrawingId,
     hoveredDrawingId,
     drawingsHidden,
+    paneTimeframe,
     replayCursorTime,
   } = state;
 
@@ -334,6 +337,7 @@ export function paintDrawingsFrame(
     selectedDrawingId ?? null,
     false,
     hoveredDrawingId ?? null,
+    paneTimeframe ?? null,
   );
 }
 

@@ -1,6 +1,7 @@
 import type { ChartBar, VisibleRange } from '@/types/bar';
 import type { Drawing } from '@/drawings/drawingStore';
 import { paintAllDrawings } from '@/drawings/paint/paintDrawing';
+import type { Timeframe } from '@/types/ui';
 import type { ChartColors } from '../chartTheme';
 import type { PlotRect, PriceScale } from '../scales';
 
@@ -17,6 +18,7 @@ export function drawDrawings(
   selectedId: string | null = null,
   hidden = false,
   hoveredId: string | null = null,
+  paneTf: Timeframe | null = null,
 ): void {
   paintAllDrawings(
     ctx,
@@ -30,5 +32,6 @@ export function drawDrawings(
     hidden,
     hoveredId,
     _colors,
+    paneTf,
   );
 }

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Button } from '@heroui/react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
@@ -40,7 +41,7 @@ export function AppPageNav({
           className={LINK}
           onPress={onGoSessions}
         >
-          Sessions
+          Backtest
         </Button>
       )}
       {current !== 'datasets' && (
@@ -70,6 +71,12 @@ interface AppPageHeaderProps {
   onGoSessions: () => void;
   onGoDatasets: () => void;
   onGoJournal?: () => void;
+  /**
+   * Inside AppShell: hide brand + top nav (shell owns chrome).
+   * Optional `actions` for page-specific links (e.g. Datasets).
+   */
+  embedded?: boolean;
+  actions?: ReactNode;
 }
 
 /** Brand wordmark + title + shared nav for app pages outside the chart. */
@@ -81,32 +88,39 @@ export function AppPageHeader({
   onGoSessions,
   onGoDatasets,
   onGoJournal,
+  embedded = false,
+  actions,
 }: AppPageHeaderProps) {
   return (
     <header className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
       <div className="space-y-1.5 min-w-0">
-        {onGoHome ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="min-h-11 sm:min-h-8 -ml-2 px-2 text-xs uppercase tracking-[0.2em] text-muted"
-            onPress={onGoHome}
-          >
-            Talaria-Log
-          </Button>
-        ) : (
-          <p className="text-xs uppercase tracking-[0.2em] text-muted">Talaria-Log</p>
-        )}
+        {!embedded &&
+          (onGoHome ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="min-h-11 sm:min-h-8 -ml-2 px-2 text-xs uppercase tracking-[0.2em] text-muted"
+              onPress={onGoHome}
+            >
+              Talaria-Log
+            </Button>
+          ) : (
+            <p className="text-xs uppercase tracking-[0.2em] text-muted">Talaria-Log</p>
+          ))}
         <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">{title}</h1>
         <p className="text-sm text-muted max-w-xl">{description}</p>
       </div>
-      <AppPageNav
-        current={current}
-        onGoHome={onGoHome}
-        onGoSessions={onGoSessions}
-        onGoDatasets={onGoDatasets}
-        onGoJournal={onGoJournal}
-      />
+      {embedded ? (
+        actions
+      ) : (
+        <AppPageNav
+          current={current}
+          onGoHome={onGoHome}
+          onGoSessions={onGoSessions}
+          onGoDatasets={onGoDatasets}
+          onGoJournal={onGoJournal}
+        />
+      )}
     </header>
   );
 }

@@ -33,6 +33,8 @@ interface CreateSessionPageProps {
   /** Open journal; pass session id to prefer that entry, or omit for latest. */
   onGoJournal?: (sessionId?: string) => void;
   onGoHome?: () => void;
+  /** Inside AppShell — hide duplicate top nav. */
+  embedded?: boolean;
 }
 
 const fieldClass =
@@ -67,6 +69,7 @@ export function CreateSessionPage({
   onGoDatasets,
   onGoJournal,
   onGoHome,
+  embedded = false,
 }: CreateSessionPageProps) {
   const [remoteStatus, setRemoteStatus] = useState<'loading' | 'ready' | 'error'>(
     'loading',
@@ -266,6 +269,19 @@ export function CreateSessionPage({
           onGoSessions={() => undefined}
           onGoDatasets={onGoDatasets}
           onGoJournal={onGoJournal ? () => onGoJournal() : undefined}
+          embedded={embedded}
+          actions={
+            embedded ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                className="min-h-11 sm:min-h-8"
+                onPress={onGoDatasets}
+              >
+                Datasets
+              </Button>
+            ) : undefined
+          }
         />
 
         <Card className="bg-surface border border-border">

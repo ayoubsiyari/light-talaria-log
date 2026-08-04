@@ -42,6 +42,8 @@ interface JournalPageProps {
   onOpenChart?: (sessionId: string, focus?: JournalChartFocus) => void;
   /** True when the chart session is still in memory (soft journal navigate). */
   canReturnToChart?: boolean;
+  /** Inside AppShell — hide duplicate top nav. */
+  embedded?: boolean;
 }
 
 function formatTime(unixSec: number): string {
@@ -284,6 +286,7 @@ export function JournalPage({
   onGoDatasets,
   onOpenChart,
   canReturnToChart = false,
+  embedded = false,
 }: JournalPageProps) {
   const [tick, setTick] = useState(0);
   const [tab, setTab] = useState<JournalTab>('orders');
@@ -415,6 +418,7 @@ export function JournalPage({
           onGoSessions={onGoSessions}
           onGoDatasets={onGoDatasets ?? onGoSessions}
           onGoJournal={undefined}
+          embedded={embedded}
         />
 
         <div
@@ -451,7 +455,7 @@ export function JournalPage({
                   then return here.
                 </p>
                 <Button variant="primary" className="min-h-11" onPress={onGoSessions}>
-                  Back to sessions
+                  {embedded ? 'New backtest' : 'Back to sessions'}
                 </Button>
               </Card.Content>
             </Card>
@@ -619,7 +623,7 @@ export function JournalPage({
                   Each run is kept here.
                 </p>
                 <Button variant="primary" className="min-h-11" onPress={onGoSessions}>
-                  Back to sessions
+                  {embedded ? 'New backtest' : 'Back to sessions'}
                 </Button>
               </Card.Content>
             </Card>

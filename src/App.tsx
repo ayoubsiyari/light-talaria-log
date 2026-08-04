@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { Alert, Button, toast } from '@heroui/react';
 import {
   createChartSyncStore,
@@ -119,24 +126,45 @@ import {
 import {
   formatAppRoute,
   parseAppRoute,
+  type AppTab,
   type AppView,
 } from '@/navigation/appRoute';
+import { AppShell } from '@/components/shell/AppShell';
+import { ProfilePage } from '@/components/shell/ProfilePage';
+import { DashboardPage } from '@/components/dashboard/DashboardPage';
+import { StrategyPage } from '@/components/strategy/StrategyPage';
 
 /** Throttle localStorage writes while replay is playing. */
 const REPLAY_PROGRESS_SAVE_MS = 2500;
 
 type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
-function bootRoute(): { view: AppView; journalSessionId: string | null } {
+function bootRoute(): {
+  view: AppView;
+  appTab: AppTab;
+  journalSessionId: string | null;
+} {
   const route = parseAppRoute();
   if (route.view === 'chart') {
     // Chart restore runs after loadSessionData is ready; keep view=chart.
-    return { view: route.sessionId ? 'chart' : 'sessions', journalSessionId: null };
+    return {
+      view: route.sessionId ? 'chart' : 'app',
+      appTab: 'backtest',
+      journalSessionId: null,
+    };
   }
-  if (route.view === 'journal') {
-    return { view: 'journal', journalSessionId: route.sessionId };
+  if (route.view === 'app') {
+    return {
+      view: 'app',
+      appTab: route.appTab ?? 'dashboard',
+      journalSessionId: route.appTab === 'journal' ? route.sessionId : null,
+    };
   }
-  return { view: route.view, journalSessionId: null };
+  return {
+    view: route.view,
+    appTab: 'dashboard',
+    journalSessionId: null,
+  };
 }
 
 interface PaneSeries {
@@ -183,6 +211,7 @@ export default function App() {
 
   const boot = useMemo(() => bootRoute(), []);
   const [view, setView] = useState<AppView>(boot.view);
+  const [appTab, setAppTab] = useState<AppTab>(boot.appTab);
   const [journalSessionId, setJournalSessionId] = useState<string | null>(
     boot.journalSessionId,
   );
@@ -1116,6 +1145,7 @@ export default function App() {
   const clearChartFocusHash = useCallback((sessionId: string) => {
     const clean = formatAppRoute({
       view: 'chart',
+      appTab: null,
       sessionId,
       focusTime: null,
       focusTradeId: null,
@@ -2326,7 +2356,8 @@ export default function App() {
 
   const handleExitSession = () => {
     teardownChartSession();
-    setView('sessions');
+    setAppTab('backtest');
+    setView('app');
   };
 
   const openJournalView = (sessionId?: string | null) => {
@@ -2336,7 +2367,14 @@ export default function App() {
     replayRef.current.pause();
     persistReplayProgress(true);
     setJournalSessionId(id);
-    setView('journal');
+    setAppTab('journal');
+    setView('app');
+  };
+
+  const goAppTab = (tab: AppTab, journalId: string | null = null) => {
+    setAppTab(tab);
+    setJournalSessionId(tab === 'journal' ? journalId : null);
+    setView('app');
   };
 
   const handlePlaceOrder = useCallback(() => {
@@ -2487,16 +2525,51 @@ export default function App() {
   const sessionNavRef = useRef(session);
   sessionNavRef.current = session;
 
-  // Keep the URL hash in sync so refresh restores chart / sessions / journal.
+  // Keep the URL hash in sync so refresh restores chart / app tabs.
   useEffect(() => {
-    const routeSessionId =
-      view === 'chart'
-        ? (session?.id ?? null)
-        : view === 'journal'
-          ? journalSessionId
-          : null;
-    if (view === 'chart' && !routeSessionId) return;
-    const next = formatAppRoute({ view, sessionId: routeSessionId });
+    if (view === 'chart') {
+      const routeSessionId = session?.id ?? null;
+      if (!routeSessionId) return;
+      const next = formatAppRoute({
+        view: 'chart',
+        appTab: null,
+        sessionId: routeSessionId,
+      });
+      if (window.location.hash === next) return;
+      suppressHashRef.current = true;
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${window.location.search}${next}`,
+      );
+      queueMicrotask(() => {
+        suppressHashRef.current = false;
+      });
+      return;
+    }
+    if (view === 'app') {
+      const next = formatAppRoute({
+        view: 'app',
+        appTab,
+        sessionId: appTab === 'journal' ? journalSessionId : null,
+      });
+      if (window.location.hash === next) return;
+      suppressHashRef.current = true;
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${window.location.search}${next}`,
+      );
+      queueMicrotask(() => {
+        suppressHashRef.current = false;
+      });
+      return;
+    }
+    const next = formatAppRoute({
+      view,
+      appTab: null,
+      sessionId: null,
+    });
     if (window.location.hash === next) return;
     suppressHashRef.current = true;
     window.history.replaceState(
@@ -2507,7 +2580,7 @@ export default function App() {
     queueMicrotask(() => {
       suppressHashRef.current = false;
     });
-  }, [view, session?.id, journalSessionId]);
+  }, [view, appTab, session?.id, journalSessionId]);
 
   // Cold start: reopen #/chart/:sessionId after refresh.
   useEffect(() => {
@@ -2515,7 +2588,8 @@ export default function App() {
     if (route.view !== 'chart' || !route.sessionId) return;
     const s = getSession(route.sessionId);
     if (!s) {
-      setView('sessions');
+      setAppTab('backtest');
+      setView('app');
       return;
     }
     void loadSessionDataRef.current(s);
@@ -2529,7 +2603,8 @@ export default function App() {
       if (route.view === 'chart') {
         if (!route.sessionId) {
           teardownChartSessionRef.current();
-          setView('sessions');
+          setAppTab('backtest');
+          setView('app');
           return;
         }
         if (sessionNavRef.current?.id === route.sessionId) {
@@ -2554,17 +2629,21 @@ export default function App() {
                 }
               : undefined,
           );
-        }
-        else {
+        } else {
           teardownChartSessionRef.current();
-          setView('sessions');
+          setAppTab('backtest');
+          setView('app');
         }
         return;
       }
-      if (route.view === 'journal') {
+      if (route.view === 'app') {
+        // Soft navigate: pause replay but keep session in memory (same as journal soft-exit).
         replayRef.current.pause();
-        setJournalSessionId(route.sessionId);
-        setView('journal');
+        setAppTab(route.appTab ?? 'dashboard');
+        setJournalSessionId(
+          route.appTab === 'journal' ? route.sessionId : null,
+        );
+        setView('app');
         return;
       }
       if (sessionNavRef.current) {
@@ -2580,8 +2659,8 @@ export default function App() {
   if (view === 'landing') {
     return (
       <MarketingHome
-        onStartFree={() => setView('sessions')}
-        onOpenApp={() => setView('sessions')}
+        onStartFree={() => goAppTab('dashboard')}
+        onOpenApp={() => goAppTab('dashboard')}
       />
     );
   }
@@ -2590,7 +2669,7 @@ export default function App() {
     return (
       <NotFoundPage
         onGoHome={() => setView('landing')}
-        onGoSessions={() => setView('sessions')}
+        onGoSessions={() => goAppTab('backtest')}
       />
     );
   }
@@ -2598,86 +2677,9 @@ export default function App() {
   if (view === 'datasets') {
     return (
       <DatasetsPage
-        onGoSessions={() => setView('sessions')}
+        onGoSessions={() => goAppTab('backtest')}
         onGoHome={() => setView('landing')}
-        onGoJournal={() => {
-          setJournalSessionId(null);
-          setView('journal');
-        }}
-      />
-    );
-  }
-
-  if (view === 'journal') {
-    return (
-      <JournalPage
-        initialSessionId={journalSessionId}
-        liveJournal={orderBridgeRef.current?.getJournal() ?? null}
-        canReturnToChart={!!session && session.id === (journalSessionId ?? session.id)}
-        onGoHome={() => {
-          setJournalSessionId(null);
-          if (session) teardownChartSession();
-          setView('landing');
-        }}
-        onGoDatasets={() => {
-          setJournalSessionId(null);
-          if (session) teardownChartSession();
-          setView('datasets');
-        }}
-        onGoSessions={() => {
-          setJournalSessionId(null);
-          if (session) teardownChartSession();
-          setView('sessions');
-        }}
-        onOpenChart={(id, focus) => {
-          // Restore strategy run markers when jumping from a backtest journal trade.
-          if (focus?.runId) {
-            const run = getJournalRun(focus.runId);
-            if (run) {
-              setBacktestResult(run.result, null);
-              setBacktestParams({
-                ...run.result.params,
-                sma: { ...run.result.params.sma },
-                donchian: { ...run.result.params.donchian },
-                costs: { ...run.result.params.costs },
-              });
-            }
-          }
-          if (focus) pendingJournalFocusRef.current = focus;
-          // Deep-link hash so refresh / share keeps the entry time.
-          if (focus) {
-            const hash = formatAppRoute({
-              view: 'chart',
-              sessionId: id,
-              focusTime: focus.time,
-              focusTradeId: focus.tradeId ?? null,
-            });
-            if (window.location.hash !== hash) {
-              suppressHashRef.current = true;
-              window.history.replaceState(
-                null,
-                '',
-                `${window.location.pathname}${window.location.search}${hash}`,
-              );
-              queueMicrotask(() => {
-                suppressHashRef.current = false;
-              });
-            }
-          }
-          // Same open session still in memory — remount chart without re-ingest.
-          if (session && session.id === id && panesRef.current.length > 0) {
-            setJournalSessionId(null);
-            setView('chart');
-            if (focus) {
-              applyJournalFocus(focus);
-              clearChartFocusHash(id);
-            }
-            pendingJournalFocusRef.current = null;
-            return;
-          }
-          const s = getSession(id);
-          if (s) void loadSessionData(s, focus);
-        }}
+        onGoJournal={() => goAppTab('journal')}
       />
     );
   }
@@ -2701,27 +2703,139 @@ export default function App() {
             className="min-h-11"
             onPress={() => {
               teardownChartSession();
-              setView('sessions');
+              goAppTab('backtest');
             }}
           >
-            Back to sessions
+            Back to backtest
           </Button>
         )}
       </div>
     );
   }
 
-  if (view === 'sessions' || !session) {
+  if (view === 'app' || !session) {
+    const openChartFromJournal = (
+      id: string,
+      focus?: {
+        time: number;
+        tradeId?: string | null;
+        runId?: string | null;
+      },
+    ) => {
+      if (focus?.runId) {
+        const run = getJournalRun(focus.runId);
+        if (run) {
+          setBacktestResult(run.result, null);
+          setBacktestParams({
+            ...run.result.params,
+            sma: { ...run.result.params.sma },
+            donchian: { ...run.result.params.donchian },
+            costs: { ...run.result.params.costs },
+          });
+        }
+      }
+      if (focus) pendingJournalFocusRef.current = focus;
+      if (focus) {
+        const hash = formatAppRoute({
+          view: 'chart',
+          appTab: null,
+          sessionId: id,
+          focusTime: focus.time,
+          focusTradeId: focus.tradeId ?? null,
+        });
+        if (window.location.hash !== hash) {
+          suppressHashRef.current = true;
+          window.history.replaceState(
+            null,
+            '',
+            `${window.location.pathname}${window.location.search}${hash}`,
+          );
+          queueMicrotask(() => {
+            suppressHashRef.current = false;
+          });
+        }
+      }
+      if (session && session.id === id && panesRef.current.length > 0) {
+        setJournalSessionId(null);
+        setView('chart');
+        if (focus) {
+          applyJournalFocus(focus);
+          clearChartFocusHash(id);
+        }
+        pendingJournalFocusRef.current = null;
+        return;
+      }
+      const s = getSession(id);
+      if (s) void loadSessionData(s, focus);
+    };
+
+    let shellBody: ReactNode;
+    switch (appTab) {
+      case 'dashboard':
+        shellBody = (
+          <DashboardPage
+            onGoBacktest={() => goAppTab('backtest')}
+            onGoJournal={() => goAppTab('journal')}
+            onGoStrategy={() => goAppTab('strategy')}
+          />
+        );
+        break;
+      case 'backtest':
+        shellBody = (
+          <CreateSessionPage
+            embedded
+            onStart={(s) => void loadSessionData(s)}
+            onGoDatasets={() => setView('datasets')}
+            onGoJournal={(sessionId) => goAppTab('journal', sessionId ?? null)}
+            onGoHome={() => setView('landing')}
+          />
+        );
+        break;
+      case 'journal':
+        shellBody = (
+          <JournalPage
+            embedded
+            initialSessionId={journalSessionId}
+            liveJournal={orderBridgeRef.current?.getJournal() ?? null}
+            canReturnToChart={
+              !!session && session.id === (journalSessionId ?? session.id)
+            }
+            onGoHome={() => {
+              setJournalSessionId(null);
+              if (session) teardownChartSession();
+              setView('landing');
+            }}
+            onGoDatasets={() => {
+              setJournalSessionId(null);
+              if (session) teardownChartSession();
+              setView('datasets');
+            }}
+            onGoSessions={() => goAppTab('backtest')}
+            onOpenChart={openChartFromJournal}
+          />
+        );
+        break;
+      case 'strategy':
+        shellBody = <StrategyPage />;
+        break;
+      case 'profile':
+        shellBody = <ProfilePage />;
+        break;
+      default:
+        shellBody = null;
+    }
+
     return (
-      <CreateSessionPage
-        onStart={(s) => void loadSessionData(s)}
-        onGoDatasets={() => setView('datasets')}
-        onGoJournal={(sessionId) => {
-          setJournalSessionId(sessionId ?? null);
-          setView('journal');
+      <AppShell
+        tab={appTab}
+        onTabChange={(tab) => goAppTab(tab, tab === 'journal' ? journalSessionId : null)}
+        onGoHome={() => {
+          if (session) teardownChartSession();
+          setView('landing');
         }}
-        onGoHome={() => setView('landing')}
-      />
+      >
+        {shellBody}
+      </AppShell>
     );
   }
 

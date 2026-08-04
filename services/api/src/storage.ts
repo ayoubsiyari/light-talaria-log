@@ -92,7 +92,7 @@ export async function getObject(key: string): Promise<Buffer | null> {
 /**
  * URL the SPA uses to fetch a chunk binary.
  * - `public_read` + `CDN_PUBLIC_BASE` → CDN (no cookie; offloads API)
- * - otherwise → API origin (ACL enforced on GET)
+ * - otherwise → same-origin relative path (vite preview / nginx proxy)
  */
 export function publicFileUrl(
   datasetId: string,
@@ -104,5 +104,6 @@ export function publicFileUrl(
   if (visibility === 'public_read' && config.cdnPublicBase) {
     return `${config.cdnPublicBase}/${pathPart}`;
   }
-  return `${config.publicApiUrl}/api/v1/files/${pathPart}`;
+  // Relative so browser stays on SPA origin (vite preview / nginx → API).
+  return `/api/v1/files/${pathPart}`;
 }

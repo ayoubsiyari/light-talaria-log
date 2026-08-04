@@ -151,25 +151,50 @@ function metaFromChunkSlices(
   };
 }
 
-/** Merge existing IDB meta with newly fetched range chunks (by chunkId). */
+/**
+ * Build viewport SeriesMeta from fetched chunks, optionally keeping nearby
+ * IDB meta entries. Never scans the full warm-cache series (that froze Start
+ * at 0% after importing 1k+ chunks per TF).
+ */
 async function buildRangeSeriesMeta(
   db: IDBDatabase,
   datasetId: string,
   timeframe: Timeframe,
   fetched: RemoteChunkRef[],
 ): Promise<SeriesMeta> {
+  if (fetched.length === 0) {
+    throw new Error('No server chunks for this date range.');
+  }
+
+  let winStart = Infinity;
+  let winEnd = -Infinity;
+  for (const ref of fetched) {
+    if (ref.timeStart < winStart) winStart = ref.timeStart;
+    if (ref.timeEnd > winEnd) winEnd = ref.timeEnd;
+  }
+  // Keep a small neighbor band from existing meta (no IDB buffer reads).
+  const padSec = Math.max(60, (winEnd - winStart) * 2);
+
   const byId = new Map<string, ChunkSlice>();
   const existing = await getSeriesMeta(db, datasetId, timeframe);
   if (existing) {
     for (let i = 0; i < existing.chunkIds.length; i++) {
+      const ts = existing.chunkTimeStarts[i] ?? 0;
+      const te = existing.chunkTimeEnds[i] ?? 0;
+      if (te < winStart - padSec || ts > winEnd + padSec) continue;
       const chunkId = existing.chunkIds[i]!;
-      const buf = await getChunk(db, chunkId);
+      const start = existing.chunkStarts[i] ?? 0;
+      const next = existing.chunkStarts[i + 1];
+      const bars =
+        next != null && next > start
+          ? next - start
+          : Math.max(0, existing.rowCount - start);
       byId.set(chunkId, {
         chunkId,
         serverLogicalStart: chunkIndexFromId(chunkId) * CHUNK_SIZE,
-        timeStart: existing.chunkTimeStarts[i] ?? 0,
-        timeEnd: existing.chunkTimeEnds[i] ?? 0,
-        bytes: buf?.byteLength ?? 0,
+        timeStart: ts,
+        timeEnd: te,
+        bytes: bars * BYTES_PER_BAR,
       });
     }
   }
@@ -182,11 +207,7 @@ async function buildRangeSeriesMeta(
       bytes: ref.bytes > 0 ? ref.bytes : byId.get(ref.chunkId)?.bytes ?? 0,
     });
   }
-  const slices = [...byId.values()];
-  if (slices.length === 0) {
-    throw new Error('No server chunks for this date range.');
-  }
-  return metaFromChunkSlices(datasetId, timeframe, slices);
+  return metaFromChunkSlices(datasetId, timeframe, [...byId.values()]);
 }
 
 async function refreshMetaBytesFromIdb(
@@ -301,16 +322,17 @@ export async function ingestRemoteChunksToIdb(
         chunkTimeEnds: uniqueChunks.map((c) => c.timeEnd),
       };
 
-  // Download missing binaries first, then refresh meta from actual buffer sizes.
+  // Download missing binaries for the fetched window only (not the whole series).
   for (const ref of uniqueChunks) {
     if (skipExisting) {
-      const existing = await getChunk(db, ref.chunkId);
-      if (existing != null && existing.byteLength > 0) continue;
+      const existingBuf = await getChunk(db, ref.chunkId);
+      if (existingBuf != null && existingBuf.byteLength > 0) continue;
     }
     const buf = await fetchChunkBinary(ref.url);
     await putChunk(db, ref.chunkId, buf);
   }
 
+  // Refresh sizes only for chunkIds in this viewport meta (bounded).
   meta = await refreshMetaBytesFromIdb(db, meta);
   await putSeriesMeta(db, meta);
 
@@ -464,12 +486,14 @@ export async function ensureSessionDataFromServer(
 
   for (let i = 0; i < tfsToFetch.length; i++) {
     const tf = tfsToFetch[i]!;
+    const tfBase = Math.round((i / tfsToFetch.length) * 100);
+    const tfSpan = Math.round((1 / tfsToFetch.length) * 100);
     onProgress?.({
       datasetId,
       timeframe: tf,
       index: i,
       total: tfsToFetch.length,
-      percent: Math.round((i / tfsToFetch.length) * 100),
+      percent: Math.min(99, tfBase + 5),
       detail: `Fetching ${remote.symbol} ${tf} viewport…`,
     });
     // Expand forward if the first window is a weekend / empty gap.
@@ -483,6 +507,14 @@ export async function ensureSessionDataFromServer(
         });
         loaded = true;
         fetchTo = attemptTo;
+        onProgress?.({
+          datasetId,
+          timeframe: tf,
+          index: i,
+          total: tfsToFetch.length,
+          percent: Math.min(99, tfBase + tfSpan),
+          detail: `Ready ${remote.symbol} ${tf}`,
+        });
       } catch (err) {
         const nextTo = Math.min(boundEnd, attemptTo + padSec);
         if (nextTo <= attemptTo) throw err;

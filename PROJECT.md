@@ -773,6 +773,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | **D3 done:** Tier 1 full function — measure stats, position RR/P&L/sizing, rect edges, text tab+bbox, brush handles | **go D4** (object tree + chrome) |
 | 2026-08-04 | **D4 done:** object tree, remove-all menu, zoom marquee, Alt-drag clone | **go D5** (Tier 2 polish) |
 | 2026-08-04 | **D5 done:** fib/channel/extended/measure box/callout/priceLabel Tier 2 polish | **go D6** (scope hygiene) optional |
+| 2026-08-04 | **D6 done:** maturity map; More tools flyout; shared-drawings decision documented | Drawings D1–D6 complete |
 | 2026-08-04 | Fix multi-chart replay stall: non-blocking server top-up + ≤1 chunk per fetch (was awaiting hours of 1m mid-play) | Multi layout → Play through cache edge |
 | 2026-08-04 | IDB sliding-window GC for remote chunks (max 8/series) + Datasets “Clear chart cache”; local CSV untouched | Long Play → IDB stays small; Clear cache frees disk |
 | 2026-08-04 | Power Jump plan P1–P3 in PROJECT.md; **P1 Done:** journal View on chart → `#/chart/:id?t=&trade=` seek + highlight | Verify trade → chart; then **go Step P2** |
@@ -864,22 +865,19 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 **Source:** TradingView drawing catalogue (Help Center, 2026-08-04) + local audit of `src/drawings/`.  
 **Honesty:** Registry lists ~80 tools with UI + paint paths; many are approximations. We do **not** aim for all ~97 TV tools. We make **Tier 1 solid**, then Tier 2, then stop unless users ask.
 
-### Audit snapshot (current)
+### Audit snapshot (after D1–D6)
 
 | Area | Status |
 |---|---|
 | Anchor model | **Correct** — `{ time, price }` (not bar index) |
 | Overlay canvas | **Correct** — drawings layer cached; series not repainted on drag |
-| Catalog / LeftToolbar | 80 tools registered + flyouts |
-| Line family, rectangle, fib retracement | Solid |
-| Magnet | On/off OHLC only — **no weak/strong** |
-| Keep drawing / lock / hide / templates | Work |
-| Per-TF Visibility tab | **Missing** (only visible + lock) |
-| Object tree | **Missing** |
-| Zoom marquee | Button is a no-op |
-| Hit-test | Generic segments; fib/channel/VP hard to select |
-| Patterns / Elliott / Gann / regression | Stub or simplified |
-| Multi-pane | One shared drawing list → all panes (no per-symbol scope) |
+| Catalog / LeftToolbar | ~80 registered; **default flyout = Tier 1–2 only**; More = approx/beta |
+| Tier 1–2 tools | **Full function** (D3–D5) |
+| Magnet | off / weak / strong |
+| Per-TF Visibility + object tree | Done |
+| Zoom marquee / Alt-clone / Shift-constrain | Done |
+| Patterns / Elliott / Gann / pitchforks | **Beta** — behind “More tools”; not product-complete |
+| Multi-pane drawings | **Shared** by session+dataset (all panes); not per-pane (see D6) |
 
 **Architectural rules (non-negotiable):**
 1. Anchors stay `{ time, price }` forever.
@@ -968,19 +966,22 @@ Fib extension, path, note, flag, anchored VWAP.
 
 #### D6 — Scope hygiene (optional)
 **Goal:** Stop lying that 80 tools are “done”.  
-**Status:** Pending.  
+**Status:** Done (2026-08-04).  
 **Deliverables:**
-- [ ] Mark registry / flyout: Tier 1–2 as primary; niche tools behind “More” or badge `beta` / hide from default flyout
-- [ ] Or leave catalog but PROJECT.md checklist reflects honesty (approx vs full)
-- [ ] Multi-pane: document “shared drawings” OR add per-pane/per-dataset scope (decide before changing storage key)
+- [x] Maturity map (`toolMaturity.ts`): `full` (Tier 1–2) / `approx` / `beta`
+- [x] LeftToolbar: default flyout shows **full** only; toggle **More tools (approx / beta)**; Patterns group + pitchforks/gann lists behind More; badges on approx/beta rows
+- [x] PROJECT.md audit snapshot updated for honesty
+- [x] Multi-pane decision (document only — no storage-key change):
+  - Drawings are **shared across panes** for a session+dataset (`fast-chart.drawings.v2:${sessionId}:${datasetId}`)
+  - Same list paints on every pane; per-TF Visibility filters which panes show a given object
+  - Per-pane / per-symbol drawing scopes are **out of scope** until a product need + migration plan exists
 **Done when:** Docs + UI don’t claim full TV parity for stubs.
 
 ### Suggested order
-`D1 → D2 → D3 → D4 → D5` — then D6.  
-Work one step at a time; say **go D1** to start implementation.
+`D1 → D2 → D3 → D4 → D5 → D6` — drawings wave complete.
 
 ### Out of scope this wave
-Gann, Elliott, harmonics, fib spiral/arcs/circles/wedge, pitchforks, emoji/stickers, ghost feed, sync-drawings toggle across layouts, cloud drawing sync.
+Gann, Elliott, harmonics, fib spiral/arcs/circles/wedge, pitchforks, emoji/stickers, ghost feed, sync-drawings toggle across layouts, cloud drawing sync, per-pane drawing storage.
 
 ---
 

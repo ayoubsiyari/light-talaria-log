@@ -34,6 +34,12 @@ import {
   type DrawingToolId,
   type ToolCategoryId,
 } from '@/drawings/toolRegistry';
+import {
+  isDefaultFlyoutTool,
+  maturityBadge,
+  readShowMoreTools,
+  writeShowMoreTools,
+} from '@/drawings/toolMaturity';
 import type { ChartToolId } from '@/types/ui';
 
 type CategoryIcon = (p: { className?: string }) => ReactNode;
@@ -62,17 +68,20 @@ const TOOLBAR_GROUPS: {
   label: string;
   Icon: CategoryIcon;
   categories: ToolCategoryId[];
+  /** Hide this group button until “More tools” is enabled. */
+  moreOnly?: boolean;
 }[] = [
   { id: 'lines', label: 'Lines', Icon: IconTrendLine, categories: ['lines'] },
   {
     id: 'channels',
-    label: 'Channels & Pitchforks',
+    label: 'Channels',
     Icon: IconPitchfork,
+    /** Pitchforks are beta — only listed when “More tools” is on. */
     categories: ['channels', 'pitchforks'],
   },
   {
     id: 'fib',
-    label: 'Fibonacci & Gann',
+    label: 'Fibonacci',
     Icon: IconFib,
     categories: ['fibonacci', 'gann'],
   },
@@ -88,10 +97,12 @@ const TOOLBAR_GROUPS: {
     label: 'Patterns & Elliott',
     Icon: IconEmoji,
     categories: ['patterns', 'elliott', 'cycles'],
+    /** Entire group is approximate/beta — hidden until More tools. */
+    moreOnly: true,
   },
   {
     id: 'measure',
-    label: 'Measure, Forecast & Volume',
+    label: 'Measure & Forecast',
     Icon: IconMeasure,
     categories: ['measure', 'forecast', 'volume'],
   },
@@ -132,6 +143,7 @@ export function LeftToolbar({
 }: LeftToolbarProps) {
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [removeMenuOpen, setRemoveMenuOpen] = useState(false);
+  const [showMoreTools, setShowMoreTools] = useState(() => readShowMoreTools());
   const [menuTop, setMenuTop] = useState(0);
   const [lastByCategory, setLastByCategory] = useState<Record<string, DrawingToolId>>(() => ({
     ...CATEGORY_DEFAULT_TOOL,
@@ -139,6 +151,31 @@ export function LeftToolbar({
   const rootRef = useRef<HTMLElement>(null);
   const groupRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const removeBtnRef = useRef<HTMLButtonElement>(null);
+
+  const setShowMore = (on: boolean) => {
+    setShowMoreTools(on);
+    writeShowMoreTools(on);
+  };
+
+  const toolVisible = (id: DrawingToolId) =>
+    showMoreTools || isDefaultFlyoutTool(id);
+
+  const categoryHasVisibleTools = (catId: ToolCategoryId) => {
+    const cat = TOOL_CATEGORIES.find((c) => c.id === catId);
+    if (!cat) return false;
+    return cat.sections.some((sec) => sec.tools.some(toolVisible));
+  };
+
+  const visibleGroups = useMemo(
+    () =>
+      TOOLBAR_GROUPS.filter((g) => {
+        if (g.moreOnly && !showMoreTools) return false;
+        return g.categories.some(categoryHasVisibleTools);
+      }),
+    // toolVisible closes over showMoreTools
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [showMoreTools],
+  );
 
   // pointerdown + capture: chart canvas preventDefault() suppresses mousedown
   useEffect(() => {
@@ -179,12 +216,25 @@ export function LeftToolbar({
     setOpenGroup(null);
   };
 
-  /** Icon click — activate last tool in the group (no menu). */
+  /** Icon click — activate last *visible* tool in the group (no menu). */
   const activateGroup = (categories: ToolCategoryId[]) => {
-    const firstCat = categories[0]!;
-    const last = lastByCategory[firstCat] ?? CATEGORY_DEFAULT_TOOL[firstCat];
-    onToolChange(last);
-    setOpenGroup(null);
+    for (const cat of categories) {
+      const last = lastByCategory[cat] ?? CATEGORY_DEFAULT_TOOL[cat];
+      if (toolVisible(last)) {
+        onToolChange(last);
+        setOpenGroup(null);
+        return;
+      }
+      const catDef = TOOL_CATEGORIES.find((c) => c.id === cat);
+      const firstVisible = catDef?.sections
+        .flatMap((s) => s.tools)
+        .find(toolVisible);
+      if (firstVisible) {
+        onToolChange(firstVisible);
+        setOpenGroup(null);
+        return;
+      }
+    }
   };
 
   /** Arrow click — open/close the TV-style flyout. */
@@ -211,7 +261,7 @@ export function LeftToolbar({
           <IconCursor />
         </button>
 
-        {TOOLBAR_GROUPS.map((g) => {
+        {visibleGroups.map((g) => {
           const active =
             !!activeDrawing &&
             g.categories.some((c) => TOOLS[activeDrawing].category === c);
@@ -399,51 +449,119 @@ export function LeftToolbar({
       {/* Flyout outside the scroll pane so it is never clipped */}
       {openGroup && openCategories.length > 0 && (
         <div
-          className="absolute left-full z-50 ml-1 w-[min(16rem,calc(100vw-4rem))] max-h-[min(80vh,640px)] overflow-y-auto rounded-lg border border-[color:var(--tv-panel-line)] bg-surface shadow-[0_2px_8px_rgba(0,0,0,0.14)] py-1"
+          className="absolute left-full z-50 ml-1 w-[min(16rem,calc(100vw-4rem))] max-h-[min(80vh,640px)] flex flex-col rounded-lg border border-[color:var(--tv-panel-line)] bg-surface shadow-[0_2px_8px_rgba(0,0,0,0.14)]"
           style={{ top: menuTop }}
         >
-          {openCategories.map((cat, idx) => (
-            <div key={cat.id}>
-              {cat.sections.map((sec) => (
-                <div key={sec.title}>
+          <div className="overflow-y-auto overscroll-contain py-1 min-h-0 flex-1">
+            {openCategories.map((cat, idx) => {
+              const primary = cat.sections.flatMap((s) =>
+                s.tools.filter((t) => isDefaultFlyoutTool(t)),
+              );
+              const extra = cat.sections.flatMap((s) =>
+                s.tools.filter((t) => !isDefaultFlyoutTool(t)),
+              );
+              const shownPrimary = primary.filter(toolVisible);
+              const shownExtra = showMoreTools ? extra : [];
+              if (shownPrimary.length === 0 && shownExtra.length === 0) {
+                return null;
+              }
+              return (
+                <div key={cat.id}>
                   <div
                     className={[
                       'px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted',
-                      idx > 0 || sec !== cat.sections[0]
-                        ? 'border-t border-[color:var(--tv-panel-line)] mt-1'
-                        : '',
+                      idx > 0 ? 'border-t border-[color:var(--tv-panel-line)] mt-1' : '',
                     ].join(' ')}
                   >
-                    {sec.title}
+                    {cat.label}
                   </div>
-                  {sec.tools.map((tid) => {
-                    const def = TOOLS[tid];
-                    const Icon = CATEGORY_ICONS[def.category];
-                    const selected = activeDrawing === tid;
-                    return (
-                      <button
-                        key={tid}
-                        type="button"
-                        onClick={() => selectTool(tid)}
-                        className={[
-                          'w-full flex items-center gap-2.5 px-3 h-9 [@media(hover:none)]:min-h-11 text-left text-[13px]',
-                          selected
-                            ? 'bg-accent/15 text-accent'
-                            : 'text-foreground hover:bg-background/80',
-                        ].join(' ')}
-                      >
-                        <Icon className="w-5 h-5 shrink-0 opacity-80" />
-                        <span className="truncate">{def.label}</span>
-                      </button>
-                    );
-                  })}
+                  {shownPrimary.map((tid) => (
+                    <ToolFlyoutRow
+                      key={tid}
+                      tid={tid}
+                      selected={activeDrawing === tid}
+                      onSelect={selectTool}
+                    />
+                  ))}
+                  {shownExtra.length > 0 && (
+                    <>
+                      <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted border-t border-[color:var(--tv-panel-line)] mt-1">
+                        More — approximate
+                      </div>
+                      {shownExtra.map((tid) => (
+                        <ToolFlyoutRow
+                          key={tid}
+                          tid={tid}
+                          selected={activeDrawing === tid}
+                          onSelect={selectTool}
+                          badge={maturityBadge(tid)}
+                        />
+                      ))}
+                    </>
+                  )}
                 </div>
-              ))}
-            </div>
-          ))}
+              );
+            })}
+          </div>
+          <div className="shrink-0 border-t border-[color:var(--tv-panel-line)] px-2 py-1.5">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showMoreTools}
+              onClick={() => setShowMore(!showMoreTools)}
+              className="w-full min-h-11 px-2 rounded-md flex items-center justify-between gap-2 text-left text-[12px] text-muted hover:text-foreground hover:bg-background/70"
+            >
+              <span>More tools (approx / beta)</span>
+              <span
+                className={[
+                  'text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded',
+                  showMoreTools
+                    ? 'bg-accent/20 text-accent'
+                    : 'bg-background text-muted',
+                ].join(' ')}
+              >
+                {showMoreTools ? 'On' : 'Off'}
+              </span>
+            </button>
+          </div>
         </div>
       )}
     </aside>
+  );
+}
+
+function ToolFlyoutRow({
+  tid,
+  selected,
+  onSelect,
+  badge,
+}: {
+  tid: DrawingToolId;
+  selected: boolean;
+  onSelect: (id: DrawingToolId) => void;
+  badge?: string | null;
+}) {
+  const def = TOOLS[tid];
+  const Icon = CATEGORY_ICONS[def.category];
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(tid)}
+      className={[
+        'w-full flex items-center gap-2.5 px-3 h-9 [@media(hover:none)]:min-h-11 text-left text-[13px]',
+        selected
+          ? 'bg-accent/15 text-accent'
+          : 'text-foreground hover:bg-background/80',
+      ].join(' ')}
+    >
+      <Icon className="w-5 h-5 shrink-0 opacity-80" />
+      <span className="truncate flex-1 min-w-0">{def.label}</span>
+      {badge && (
+        <span className="shrink-0 text-[9px] uppercase tracking-wide text-muted border border-[color:var(--tv-panel-line)] rounded px-1 py-0.5">
+          {badge}
+        </span>
+      )}
+    </button>
   );
 }
 

@@ -1,12 +1,16 @@
 # TalariaV8b — reference only
 
-`TalariaV8b.jsx` is **not imported** by the running app.
+The running app does **not** import `TalariaV8b.jsx`.
 
-Product UI is Hero AppShell pages:
-- `#/app/dashboard` → `DashboardPage` + real `AnalyticsDashboard`
-- `#/app/backtest` → `CreateSessionPage` (server datasets)
-- `#/app/journal` → `JournalPage`
-- `#/app/strategy` → `StrategyPage`
-- `#/app/profile` → `ProfilePage`
+Hero UI pages mirror V8b layout/roles:
 
-Do not re-host this monolith from `App.tsx`. Extract features into those modules when needed.
+| V8b `sessView` | Route | Page |
+|----------------|-------|------|
+| dashboard | `#/app/dashboard` | `DashboardPage` |
+| trades | `#/app/trades` | `JournalPage` (Trades) |
+| sessions | `#/app/backtest` | `CreateSessionPage` (cards + modal) |
+| stratbank | `#/app/strategy` | `StrategyPage` + `StrategyBuilderModal` |
+| resources | `#/app/resources` | `ResourcesPage` |
+| profile | `#/app/profile` | `ProfilePage` |
+
+Use this file only as a visual/behavior reference when deepening a port.

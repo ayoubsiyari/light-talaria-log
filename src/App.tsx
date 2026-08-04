@@ -133,6 +133,7 @@ import { DashboardPage } from '@/components/dashboard/DashboardPage';
 import { StrategyPage } from '@/components/strategy/StrategyPage';
 import { CreateSessionPage } from '@/components/session/CreateSessionPage';
 import { JournalPage } from '@/components/journal/JournalPage';
+import { ResourcesPage } from '@/components/resources/ResourcesPage';
 /** Throttle localStorage writes while replay is playing. */
 const REPLAY_PROGRESS_SAVE_MS = 2500;
 
@@ -156,7 +157,7 @@ function bootRoute(): {
     return {
       view: 'app',
       appTab: route.appTab ?? 'dashboard',
-      journalSessionId: route.appTab === 'journal' ? route.sessionId : null,
+      journalSessionId: route.appTab === 'trades' ? route.sessionId : null,
     };
   }
   return {
@@ -2366,13 +2367,13 @@ export default function App() {
     replayRef.current.pause();
     persistReplayProgress(true);
     setJournalSessionId(id);
-    setAppTab('journal');
+    setAppTab('trades');
     setView('app');
   };
 
   const goAppTab = (tab: AppTab, journalId: string | null = null) => {
     setAppTab(tab);
-    setJournalSessionId(tab === 'journal' ? journalId : null);
+    setJournalSessionId(tab === 'trades' ? journalId : null);
     setView('app');
   };
 
@@ -2550,7 +2551,7 @@ export default function App() {
       const next = formatAppRoute({
         view: 'app',
         appTab,
-        sessionId: appTab === 'journal' ? journalSessionId : null,
+        sessionId: appTab === 'trades' ? journalSessionId : null,
       });
       if (window.location.hash === next) return;
       suppressHashRef.current = true;
@@ -2640,7 +2641,7 @@ export default function App() {
         replayRef.current.pause();
         setAppTab(route.appTab ?? 'dashboard');
         setJournalSessionId(
-          route.appTab === 'journal' ? route.sessionId : null,
+          route.appTab === 'trades' ? route.sessionId : null,
         );
         setView('app');
         return;
@@ -2678,7 +2679,7 @@ export default function App() {
       <DatasetsPage
         onGoSessions={() => goAppTab('backtest')}
         onGoHome={() => setView('landing')}
-        onGoJournal={() => goAppTab('journal')}
+        onGoJournal={() => goAppTab('trades')}
       />
     );
   }
@@ -2776,23 +2777,12 @@ export default function App() {
           <DashboardPage
             liveJournal={orderBridgeRef.current?.getJournal() ?? null}
             onGoBacktest={() => goAppTab('backtest')}
-            onGoJournal={() => goAppTab('journal')}
+            onGoTrades={() => goAppTab('trades')}
             onGoStrategy={() => goAppTab('strategy')}
           />
         );
         break;
-      case 'backtest':
-        shellBody = (
-          <CreateSessionPage
-            embedded
-            onStart={(s) => void loadSessionData(s)}
-            onGoDatasets={() => setView('datasets')}
-            onGoJournal={(sessionId) => goAppTab('journal', sessionId ?? null)}
-            onGoHome={() => setView('landing')}
-          />
-        );
-        break;
-      case 'journal':
+      case 'trades':
         shellBody = (
           <JournalPage
             embedded
@@ -2816,8 +2806,23 @@ export default function App() {
           />
         );
         break;
+      case 'backtest':
+        shellBody = (
+          <CreateSessionPage
+            embedded
+            onStart={(s) => void loadSessionData(s)}
+            onGoDatasets={() => setView('datasets')}
+            onGoJournal={(sessionId) => goAppTab('trades', sessionId ?? null)}
+            onGoDashboard={() => goAppTab('dashboard')}
+            onGoHome={() => setView('landing')}
+          />
+        );
+        break;
       case 'strategy':
         shellBody = <StrategyPage onGoBacktest={() => goAppTab('backtest')} />;
+        break;
+      case 'resources':
+        shellBody = <ResourcesPage />;
         break;
       case 'profile':
         shellBody = <ProfilePage />;
@@ -2830,7 +2835,7 @@ export default function App() {
       <AppShell
         tab={appTab}
         onTabChange={(tab) =>
-          goAppTab(tab, tab === 'journal' ? journalSessionId : null)
+          goAppTab(tab, tab === 'trades' ? journalSessionId : null)
         }
         onGoHome={() => {
           if (session) teardownChartSession();

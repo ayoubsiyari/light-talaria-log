@@ -1,41 +1,122 @@
+import { useMemo, useState } from 'react';
 import { Button, Card } from '@heroui/react';
+import { StrategyBuilderModal } from '@/components/strategy/StrategyBuilderModal';
+import {
+  deleteStrategy,
+  listStrategies,
+  type StrategyRecord,
+} from '@/strategy/strategyStore';
 
 interface StrategyPageProps {
   onGoBacktest?: () => void;
 }
 
 /**
- * Hero UI strategy surface. Builder (ReactFlow) ships later as a real module —
- * not by hosting TalariaV8b.
+ * V8b Strategies bank + builder — Hero UI, persisted strategies (not mock community pool).
  */
 export function StrategyPage({ onGoBacktest }: StrategyPageProps) {
+  const [tick, setTick] = useState(0);
+  const strategies = useMemo(() => listStrategies(), [tick]);
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [edit, setEdit] = useState<StrategyRecord | null>(null);
+
+  const openNew = () => {
+    setEdit(null);
+    setBuilderOpen(true);
+  };
+  const openEdit = (s: StrategyRecord) => {
+    setEdit(s);
+    setBuilderOpen(true);
+  };
+
   return (
     <div className="min-h-full bg-background text-foreground">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6">
-        <header className="space-y-1.5">
-          <p className="text-xs uppercase tracking-[0.2em] text-muted">Builder</p>
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Strategy</h1>
-          <p className="text-sm text-muted max-w-xl">
-            Visual strategy building will live here as a first-party Hero UI module. Until then,
-            run SMA / Donchian from a chart session.
-          </p>
-        </header>
-
-        <Card className="bg-surface border border-border">
-          <Card.Content className="px-6 py-10 text-center space-y-4">
-            <p className="text-sm font-medium">Strategy canvas — next</p>
-            <p className="text-sm text-muted max-w-md mx-auto">
-              The legacy V8b file stays in <code className="text-xs">src/v8b/</code> as reference
-              only. This app does not mount it.
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6">
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1.5 min-w-0">
+            <p className="text-xs uppercase tracking-[0.2em] text-muted">Strategies</p>
+            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Strategy bank</h1>
+            <p className="text-sm text-muted max-w-xl">
+              Build visual strategies (General Info → Flow → Tags → Review). Saved in this browser.
             </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
             {onGoBacktest && (
-              <Button variant="primary" className="min-h-11" onPress={onGoBacktest}>
-                Open backtest
+              <Button variant="ghost" className="min-h-11" onPress={onGoBacktest}>
+                Backtest
               </Button>
             )}
-          </Card.Content>
-        </Card>
+            <Button variant="primary" className="min-h-11" onPress={openNew}>
+              Build strategy
+            </Button>
+          </div>
+        </header>
+
+        {strategies.length === 0 ? (
+          <Card className="bg-surface border border-border">
+            <Card.Content className="px-6 py-12 text-center space-y-4">
+              <p className="text-sm text-muted">No strategies yet. Open the builder to create one.</p>
+              <Button variant="primary" className="min-h-11" onPress={openNew}>
+                Build strategy
+              </Button>
+            </Card.Content>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {strategies.map((s) => (
+              <Card key={s.id} className="bg-surface border border-border">
+                <Card.Content className="px-4 py-4 space-y-3">
+                  <div className="space-y-1 min-w-0">
+                    <p className="font-semibold truncate">{s.name}</p>
+                    <p className="text-xs text-muted line-clamp-2">
+                      {s.desc || 'No description'}
+                    </p>
+                  </div>
+                  <p className="text-[11px] text-muted">
+                    {(s.markets || []).join(' · ') || '—'} ·{' '}
+                    {(s.timeframes || []).join(', ') || '—'}
+                  </p>
+                  <p className="text-[11px] text-muted tabular-nums">
+                    {s.nodes?.length ?? 0} nodes · {s.edges?.length ?? 0} edges
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="min-h-11"
+                      onPress={() => openEdit(s)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="min-h-11 text-danger"
+                      onPress={() => {
+                        deleteStrategy(s.id);
+                        setTick((n) => n + 1);
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </Card.Content>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
+
+      {builderOpen && (
+        <StrategyBuilderModal
+          edit={edit}
+          onClose={() => setBuilderOpen(false)}
+          onSaved={() => {
+            setTick((n) => n + 1);
+            setBuilderOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

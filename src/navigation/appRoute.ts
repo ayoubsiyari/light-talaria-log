@@ -2,23 +2,21 @@
  * Hash routes so refresh restores the current page without a router lib.
  * Vite serves index.html for `/`; deep links live in the hash.
  *
- *   #/                      landing
- *   #/app                   app shell (dashboard)
- *   #/app/dashboard|backtest|journal|strategy|profile
- *   #/sessions              → app/backtest (bookmark compat)
- *   #/datasets              datasets
- *   #/journal               → app/journal (bookmark compat)
- *   #/journal/:id           → app/journal + session id
- *   #/chart/:id             chart session
- *   #/chart/:id?t=&trade=   chart at unix time (journal deep link)
- *   #/404                   not found
+ * V8b-parity shell tabs (Hero UI pages — not hosting the monolith):
+ *   #/app/dashboard|trades|backtest|strategy|resources|profile
+ *
+ * Compat:
+ *   #/sessions → backtest
+ *   #/journal → trades
+ *   #/journal/:id → trades + session id
  */
 
 export type AppTab =
   | 'dashboard'
+  | 'trades'
   | 'backtest'
-  | 'journal'
   | 'strategy'
+  | 'resources'
   | 'profile';
 
 export type AppView =
@@ -30,21 +28,18 @@ export type AppView =
 
 export interface AppRoute {
   view: AppView;
-  /** Active tab when view === 'app'. */
   appTab: AppTab | null;
-  /** Chart or journal session id when present. */
   sessionId: string | null;
-  /** Unix seconds — seek replay cursor after chart load (journal → chart). */
   focusTime?: number | null;
-  /** Optional closed-trade / order id to highlight briefly. */
   focusTradeId?: string | null;
 }
 
 const APP_TABS: readonly AppTab[] = [
   'dashboard',
+  'trades',
   'backtest',
-  'journal',
   'strategy',
+  'resources',
   'profile',
 ];
 
@@ -96,6 +91,15 @@ function isAppTab(v: string | undefined): v is AppTab {
   return !!v && (APP_TABS as readonly string[]).includes(v);
 }
 
+/** Legacy tab ids → current */
+function normalizeTab(raw: string | undefined): AppTab {
+  if (raw === 'journal') return 'trades';
+  if (raw === 'sessions') return 'backtest';
+  if (raw === 'stratbank') return 'strategy';
+  if (isAppTab(raw)) return raw;
+  return 'dashboard';
+}
+
 export function parseAppRoute(hash: string = window.location.hash): AppRoute {
   const raw = hash.startsWith('#') ? hash.slice(1) : hash;
   const path = raw.split('?')[0] ?? '';
@@ -115,9 +119,9 @@ export function parseAppRoute(hash: string = window.location.hash): AppRoute {
     };
   }
   if (head === 'app') {
-    const tab = isAppTab(parts[1]) ? parts[1] : 'dashboard';
+    const tab = normalizeTab(parts[1]);
     const sessionId =
-      tab === 'journal' && parts[2] ? parts[2]! : null;
+      (tab === 'trades' || tab === 'backtest') && parts[2] ? parts[2]! : null;
     return {
       view: 'app',
       appTab: tab,
@@ -126,7 +130,6 @@ export function parseAppRoute(hash: string = window.location.hash): AppRoute {
       focusTradeId: null,
     };
   }
-  // Legacy bookmarks → shell tabs
   if (head === 'sessions') {
     return {
       view: 'app',
@@ -148,7 +151,7 @@ export function parseAppRoute(hash: string = window.location.hash): AppRoute {
   if (head === 'journal') {
     return {
       view: 'app',
-      appTab: 'journal',
+      appTab: 'trades',
       sessionId: parts[1] ?? null,
       focusTime: null,
       focusTradeId: null,
@@ -196,8 +199,8 @@ export function formatAppRoute(route: AppRoute): string {
       return '#/';
     case 'app': {
       const tab = route.appTab ?? 'dashboard';
-      if (tab === 'journal' && route.sessionId) {
-        return `#/app/journal/${encodeURIComponent(route.sessionId)}`;
+      if (tab === 'trades' && route.sessionId) {
+        return `#/app/trades/${encodeURIComponent(route.sessionId)}`;
       }
       return `#/app/${tab}`;
     }

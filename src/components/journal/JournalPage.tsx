@@ -412,8 +412,8 @@ export function JournalPage({
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6">
         <AppPageHeader
           current="journal"
-          title="Journal"
-          description="Replay order fills and strategy backtest runs — jump to any trade on the chart."
+          title="Trades"
+          description="Order fills and strategy runs — jump to any trade on the chart (V8b Trades tab)."
           onGoHome={onGoHome}
           onGoSessions={onGoSessions}
           onGoDatasets={onGoDatasets ?? onGoSessions}

@@ -4,15 +4,16 @@ import type { ReactNode } from 'react';
 export interface ShellNavItem {
   id: AppTab;
   label: string;
-  /** Pin to bottom of the rail (Profile). */
   pinBottom?: boolean;
 }
 
+/** V8b left-rail order (Hero shell). */
 export const SHELL_NAV_MAIN: readonly ShellNavItem[] = [
   { id: 'dashboard', label: 'Dashboard' },
+  { id: 'trades', label: 'Trades' },
   { id: 'backtest', label: 'Backtest' },
-  { id: 'journal', label: 'Journal' },
-  { id: 'strategy', label: 'Strategy' },
+  { id: 'strategy', label: 'Strategies' },
+  { id: 'resources', label: 'Resources' },
 ];
 
 export const SHELL_NAV_BOTTOM: readonly ShellNavItem[] = [
@@ -25,9 +26,18 @@ export function ShellIconDashboard({ className = 'w-5 h-5' }: { className?: stri
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
       <rect x="3" y="3" width="8" height="8" rx="1.5" />
-      <rect x="13" y="3" width="8" height="5" rx="1.5" />
-      <rect x="13" y="10" width="8" height="11" rx="1.5" />
+      <rect x="13" y="3" width="8" height="8" rx="1.5" />
       <rect x="3" y="13" width="8" height="8" rx="1.5" />
+      <rect x="13" y="13" width="8" height="8" rx="1.5" />
+    </svg>
+  );
+}
+
+export function ShellIconTrades({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+      <path d="M4 19V5M4 19h16" strokeLinecap="round" />
+      <path d="M8 16V10M12 16V7M16 16v-3" strokeLinecap="round" />
     </svg>
   );
 }
@@ -37,16 +47,6 @@ export function ShellIconBacktest({ className = 'w-5 h-5' }: { className?: strin
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
       <path d="M4 19V5M4 19h16" strokeLinecap="round" />
       <path d="M8 15l3-4 3 2 4-6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-export function ShellIconJournal({ className = 'w-5 h-5' }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
-      <path d="M6 4h10a2 2 0 012 2v14H8a2 2 0 01-2-2V4z" strokeLinejoin="round" />
-      <path d="M8 4v14a2 2 0 002 2h8" strokeLinecap="round" />
-      <path d="M10 9h6M10 13h4" strokeLinecap="round" />
     </svg>
   );
 }
@@ -62,6 +62,15 @@ export function ShellIconStrategy({ className = 'w-5 h-5' }: { className?: strin
   );
 }
 
+export function ShellIconResources({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+      <path d="M4 5h16v14H4z" strokeLinejoin="round" />
+      <path d="M8 9h8M8 13h6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function ShellIconProfile({ className = 'w-5 h-5' }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
@@ -73,8 +82,9 @@ export function ShellIconProfile({ className = 'w-5 h-5' }: { className?: string
 
 export const SHELL_ICONS: Record<AppTab, ShellIcon> = {
   dashboard: ShellIconDashboard,
+  trades: ShellIconTrades,
   backtest: ShellIconBacktest,
-  journal: ShellIconJournal,
   strategy: ShellIconStrategy,
+  resources: ShellIconResources,
   profile: ShellIconProfile,
 };

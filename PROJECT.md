@@ -793,6 +793,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | **Removed** all synthetic second timeframes (UI, synth, catalog, replay clock extras) — back to 1m…1D only | Confirm TF picker has no 1s–45s |
 | 2026-08-04 | Chart chrome → V8b style: 36px tool rail + left accent bars, TF underlines, blue Place Order, bottom clock/replay/balance grid | Hard-refresh chart session; compare to V8b screenshot |
 | 2026-08-04 | ToolIcons: swapped rail/chrome SVGs for TalariaV8b `I` paths (crosshair, trendline, fib, draw, magnet, eye, etc.) | Hard-refresh; compare left-rail icons to V8b |
+| 2026-08-04 | Left rail TV ordering + section gaps: draw | measure+zoom | magnet/lock/eye | trash | Confirm divider spacing vs TV screenshot |
 
 ---
 

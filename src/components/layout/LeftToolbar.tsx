@@ -61,47 +61,68 @@ const CATEGORY_ICONS: Record<ToolCategoryId, CategoryIcon> = {
   measure: IconMeasure,
 };
 
-/** Group related categories under one toolbar button (TV / V8b style). */
+/** TradingView rail sections — dividers create space between groups. */
+type RailSection = 'draw' | 'measure';
+
+/** Group related categories under one toolbar button (TV ordering). */
 const TOOLBAR_GROUPS: {
   id: string;
   label: string;
   Icon: CategoryIcon;
   categories: ToolCategoryId[];
+  section: RailSection;
   /** Hide this group button until “More tools” is enabled. */
   moreOnly?: boolean;
 }[] = [
-  { id: 'lines', label: 'Lines', Icon: IconTrendLine, categories: ['lines'] },
+  {
+    id: 'lines',
+    label: 'Lines',
+    Icon: IconTrendLine,
+    categories: ['lines'],
+    section: 'draw',
+  },
   {
     id: 'channels',
     label: 'Channels',
     Icon: IconChannel,
     categories: ['channels', 'pitchforks'],
+    section: 'draw',
   },
   {
     id: 'fib',
     label: 'Fibonacci',
     Icon: IconFib,
     categories: ['fibonacci', 'gann'],
+    section: 'draw',
   },
   {
     id: 'shapes',
     label: 'Brushes, Arrows & Shapes',
     Icon: IconBrush,
     categories: ['brushes', 'arrows', 'shapes'],
+    section: 'draw',
   },
-  { id: 'text', label: 'Text', Icon: IconText, categories: ['text'] },
   {
     id: 'patterns',
-    label: 'Patterns & Elliott',
+    label: 'Patterns',
     Icon: IconPattern,
     categories: ['patterns', 'elliott', 'cycles'],
+    section: 'draw',
     moreOnly: true,
+  },
+  {
+    id: 'text',
+    label: 'Text',
+    Icon: IconText,
+    categories: ['text'],
+    section: 'draw',
   },
   {
     id: 'measure',
     label: 'Measure & Forecast',
     Icon: IconMeasure,
     categories: ['measure', 'forecast', 'volume'],
+    section: 'measure',
   },
 ];
 
@@ -174,6 +195,15 @@ export function LeftToolbar({
     [showMoreTools],
   );
 
+  const drawGroups = useMemo(
+    () => visibleGroups.filter((g) => g.section === 'draw'),
+    [visibleGroups],
+  );
+  const measureGroups = useMemo(
+    () => visibleGroups.filter((g) => g.section === 'measure'),
+    [visibleGroups],
+  );
+
   useEffect(() => {
     if (!openGroup && !removeMenuOpen) return;
     const onDoc = (e: PointerEvent) => {
@@ -235,172 +265,188 @@ export function LeftToolbar({
     setOpenGroup((cur) => (cur === groupId ? null : groupId));
   };
 
+  const renderGroupButton = (g: (typeof TOOLBAR_GROUPS)[number]) => {
+    const active =
+      !!activeDrawing &&
+      g.categories.some((c) => TOOLS[activeDrawing].category === c);
+    const open = openGroup === g.id;
+    const lit = active || open;
+    return (
+      <div
+        key={g.id}
+        ref={(node) => {
+          groupRefs.current[g.id] = node;
+        }}
+        className="group/tool relative w-full"
+        data-open={open ? 'true' : undefined}
+      >
+        <button
+          type="button"
+          title={g.label}
+          aria-pressed={lit}
+          data-active={lit ? 'true' : undefined}
+          onClick={() => activateGroup(g.categories)}
+          className="v8b-tool"
+        >
+          <g.Icon />
+        </button>
+        <button
+          type="button"
+          title={`${g.label} menu`}
+          aria-label={`${g.label} menu`}
+          aria-expanded={open}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleGroupMenu(g.id);
+          }}
+          className={[
+            'absolute right-0 top-0 h-[34px] w-2.5 flex items-center justify-center',
+            'border-0 bg-transparent p-0 text-muted',
+            'opacity-0 pointer-events-none',
+            'group-hover/tool:opacity-80 group-hover/tool:pointer-events-auto',
+            '[@media(hover:none)]:opacity-80 [@media(hover:none)]:pointer-events-auto',
+            open ? 'opacity-100 pointer-events-auto text-accent' : '',
+          ].join(' ')}
+        >
+          <IconChevron className="w-2 h-2 shrink-0" />
+        </button>
+      </div>
+    );
+  };
+
   return (
     <aside
       ref={rootRef}
       className="chrome-toolbar v8b-rail relative shrink-0 z-40 overflow-visible [@media(hover:none)]:w-11"
     >
-      <div className="h-full w-full flex flex-col items-stretch pt-0.5 overflow-y-auto overscroll-contain">
-        <button
-          type="button"
-          title="Cursor"
-          aria-pressed={activeTool === 'cursor'}
-          onClick={() => {
-            onToolChange('cursor');
-            setOpenGroup(null);
-          }}
-          className="v8b-tool"
-        >
-          <IconCursor />
-        </button>
+      <div className="h-full w-full flex flex-col items-stretch py-1 px-0.5 overflow-y-auto overscroll-contain">
+        {/* 1 — Cursor + drawing tools */}
+        <div className="v8b-rail-section">
+          <button
+            type="button"
+            title="Cursor"
+            aria-pressed={activeTool === 'cursor'}
+            onClick={() => {
+              onToolChange('cursor');
+              setOpenGroup(null);
+            }}
+            className="v8b-tool"
+          >
+            <IconCursor />
+          </button>
+          {drawGroups.map(renderGroupButton)}
+        </div>
 
-        {visibleGroups.map((g) => {
-          const active =
-            !!activeDrawing &&
-            g.categories.some((c) => TOOLS[activeDrawing].category === c);
-          const open = openGroup === g.id;
-          const lit = active || open;
-          return (
-            <div
-              key={g.id}
-              ref={(node) => {
-                groupRefs.current[g.id] = node;
-              }}
-              className="group/tool relative w-full"
-              data-open={open ? 'true' : undefined}
-            >
-              <button
-                type="button"
-                title={g.label}
-                aria-pressed={lit}
-                data-active={lit ? 'true' : undefined}
-                onClick={() => activateGroup(g.categories)}
-                className="v8b-tool"
-              >
-                <g.Icon />
-              </button>
-              <button
-                type="button"
-                title={`${g.label} menu`}
-                aria-label={`${g.label} menu`}
-                aria-expanded={open}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleGroupMenu(g.id);
-                }}
-                className={[
-                  'absolute right-0 top-0 h-8 w-2 flex items-center justify-center',
-                  'border-0 bg-transparent p-0 text-muted',
-                  'opacity-0 pointer-events-none',
-                  'group-hover/tool:opacity-80 group-hover/tool:pointer-events-auto',
-                  '[@media(hover:none)]:opacity-80 [@media(hover:none)]:pointer-events-auto',
-                  open ? 'opacity-100 pointer-events-auto text-accent' : '',
-                ].join(' ')}
-              >
-                <IconChevron className="w-2 h-2 shrink-0 rotate-0" />
-              </button>
-            </div>
-          );
-        })}
+        <div className="v8b-rail-divider" aria-hidden />
 
-        <button
-          type="button"
-          title="Zoom marquee — drag a region to zoom"
-          aria-pressed={activeTool === 'zoom'}
-          onClick={() => {
-            onToolChange('zoom');
-            setOpenGroup(null);
-            setRemoveMenuOpen(false);
-          }}
-          className="v8b-tool"
-        >
-          <IconZoom />
-        </button>
+        {/* 2 — Measure + zoom (TV) */}
+        <div className="v8b-rail-section">
+          {measureGroups.map(renderGroupButton)}
+          <button
+            type="button"
+            title="Zoom marquee — drag a region to zoom"
+            aria-pressed={activeTool === 'zoom'}
+            onClick={() => {
+              onToolChange('zoom');
+              setOpenGroup(null);
+              setRemoveMenuOpen(false);
+            }}
+            className="v8b-tool"
+          >
+            <IconZoom />
+          </button>
+        </div>
 
-        <div className="v8b-sep !h-px !w-auto !mx-1.5 !my-1 self-stretch" aria-hidden />
+        <div className="v8b-rail-divider" aria-hidden />
 
-        <button
-          type="button"
-          title="Object tree"
-          aria-label="Object tree"
-          onClick={() => {
-            onOpenObjectTree?.();
-            setOpenGroup(null);
-            setRemoveMenuOpen(false);
-          }}
-          className="v8b-tool"
-        >
-          <IconObjectTree />
-          {drawingCount > 0 && (
-            <span className="absolute bottom-0.5 left-1 min-w-[10px] text-[8px] font-semibold leading-none text-accent">
-              {drawingCount > 99 ? '99+' : drawingCount}
-            </span>
-          )}
-        </button>
-        <button
-          type="button"
-          title={`${magnetModeLabel(magnetMode)} (click to cycle)`}
-          aria-pressed={magnetMode !== 'off'}
-          aria-label={magnetModeLabel(magnetMode)}
-          onClick={() => onMagnetModeChange(nextMagnetMode(magnetMode))}
-          className="v8b-tool"
-        >
-          <IconMagnet />
-          {magnetMode === 'weak' && (
-            <span className="absolute bottom-0.5 left-1 text-[8px] font-semibold leading-none text-accent">
-              W
-            </span>
-          )}
-          {magnetMode === 'strong' && (
-            <span className="absolute bottom-0.5 left-1 text-[8px] font-semibold leading-none text-accent">
-              S
-            </span>
-          )}
-        </button>
-        <button
-          type="button"
-          title="Stay in drawing mode"
-          aria-pressed={stayInDrawingMode}
-          onClick={() => onStayInDrawingModeChange(!stayInDrawingMode)}
-          className="v8b-tool"
-        >
-          <IconStayDraw />
-        </button>
-        <button
-          type="button"
-          title={drawingsLocked ? 'Unlock drawings' : 'Lock drawings'}
-          aria-pressed={drawingsLocked}
-          onClick={() => onDrawingsLockedChange(!drawingsLocked)}
-          className="v8b-tool"
-        >
-          <IconLock />
-        </button>
-        <button
-          type="button"
-          title={drawingsHidden ? 'Show drawings' : 'Hide drawings'}
-          aria-pressed={drawingsHidden}
-          onClick={() => onDrawingsHiddenChange(!drawingsHidden)}
-          className="v8b-tool"
-        >
-          {drawingsHidden ? <IconEyeOff /> : <IconEye />}
-        </button>
+        {/* 3 — Magnet / stay / lock / hide */}
+        <div className="v8b-rail-section">
+          <button
+            type="button"
+            title={`${magnetModeLabel(magnetMode)} (click to cycle)`}
+            aria-pressed={magnetMode !== 'off'}
+            aria-label={magnetModeLabel(magnetMode)}
+            onClick={() => onMagnetModeChange(nextMagnetMode(magnetMode))}
+            className="v8b-tool"
+          >
+            <IconMagnet />
+            {magnetMode === 'weak' && (
+              <span className="absolute bottom-0.5 right-0.5 text-[8px] font-semibold leading-none text-accent">
+                W
+              </span>
+            )}
+            {magnetMode === 'strong' && (
+              <span className="absolute bottom-0.5 right-0.5 text-[8px] font-semibold leading-none text-accent">
+                S
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            title="Stay in drawing mode"
+            aria-pressed={stayInDrawingMode}
+            onClick={() => onStayInDrawingModeChange(!stayInDrawingMode)}
+            className="v8b-tool"
+          >
+            <IconStayDraw />
+          </button>
+          <button
+            type="button"
+            title={drawingsLocked ? 'Unlock drawings' : 'Lock drawings'}
+            aria-pressed={drawingsLocked}
+            onClick={() => onDrawingsLockedChange(!drawingsLocked)}
+            className="v8b-tool"
+          >
+            <IconLock />
+          </button>
+          <button
+            type="button"
+            title={drawingsHidden ? 'Show drawings' : 'Hide drawings'}
+            aria-pressed={drawingsHidden}
+            onClick={() => onDrawingsHiddenChange(!drawingsHidden)}
+            className="v8b-tool"
+          >
+            {drawingsHidden ? <IconEyeOff /> : <IconEye />}
+          </button>
+          <button
+            type="button"
+            title="Object tree"
+            aria-label="Object tree"
+            onClick={() => {
+              onOpenObjectTree?.();
+              setOpenGroup(null);
+              setRemoveMenuOpen(false);
+            }}
+            className="v8b-tool"
+          >
+            <IconObjectTree />
+            {drawingCount > 0 && (
+              <span className="absolute bottom-0.5 right-0.5 min-w-[10px] text-[8px] font-semibold leading-none text-accent">
+                {drawingCount > 99 ? '99+' : drawingCount}
+              </span>
+            )}
+          </button>
+        </div>
 
-        <div className="v8b-sep !h-px !w-auto !mx-1.5 !my-1 self-stretch" aria-hidden />
+        <div className="v8b-rail-divider" aria-hidden />
 
-        <button
-          ref={removeBtnRef}
-          type="button"
-          title="Remove drawings"
-          aria-expanded={removeMenuOpen}
-          data-active={removeMenuOpen ? 'true' : undefined}
-          onClick={() => {
-            setRemoveMenuOpen((v) => !v);
-            setOpenGroup(null);
-          }}
-          className="v8b-tool hover:!text-danger"
-        >
-          <IconTrash />
-        </button>
+        {/* 4 — Remove */}
+        <div className="v8b-rail-section">
+          <button
+            ref={removeBtnRef}
+            type="button"
+            title="Remove drawings"
+            aria-expanded={removeMenuOpen}
+            data-active={removeMenuOpen ? 'true' : undefined}
+            onClick={() => {
+              setRemoveMenuOpen((v) => !v);
+              setOpenGroup(null);
+            }}
+            className="v8b-tool hover:!text-danger"
+          >
+            <IconTrash />
+          </button>
+        </div>
 
         <div className="flex-1 min-h-2" />
       </div>

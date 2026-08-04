@@ -26,12 +26,13 @@ import {
 import { getObject, objectKey, publicFileUrl, putObject } from './storage.js';
 
 const BYTES_PER_BAR = 28;
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+/** UUID or disk-stub slug (e.g. firstrate-eurusd-m1). */
+const DATASET_ID_RE =
+  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|[a-zA-Z0-9][a-zA-Z0-9._-]{0,127})$/i;
 const TF_RE = /^[a-zA-Z0-9]{1,8}$/;
 
-function isUuid(id: string): boolean {
-  return UUID_RE.test(id);
+function isDatasetId(id: string): boolean {
+  return DATASET_ID_RE.test(id);
 }
 
 function isTimeframe(tf: string): boolean {
@@ -226,9 +227,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const user = requireUser(req, reply);
     if (!user) return;
     const { id } = req.params as { id: string };
-    if (!isUuid(id)) {
+    if (!isDatasetId(id)) {
       return reply.code(400).send({
-        error: 'Dataset id must be a UUID for the SaaS API (use crypto.randomUUID)',
+        error: 'Invalid dataset id',
       });
     }
     const body = z
@@ -319,8 +320,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const user = requireUser(req, reply);
     if (!user) return;
     const { id, tf } = req.params as { id: string; tf: string };
-    if (!isUuid(id)) {
-      return reply.code(400).send({ error: 'Dataset id must be a UUID' });
+    if (!isDatasetId(id)) {
+      return reply.code(400).send({ error: 'Invalid dataset id' });
     }
     if (!isTimeframe(tf)) {
       return reply.code(400).send({ error: 'Invalid timeframe' });
@@ -467,8 +468,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const user = requireUser(req, reply);
     if (!user) return;
     const { id, tf, n } = req.params as { id: string; tf: string; n: string };
-    if (!isUuid(id)) {
-      return reply.code(400).send({ error: 'Dataset id must be a UUID' });
+    if (!isDatasetId(id)) {
+      return reply.code(400).send({ error: 'Invalid dataset id' });
     }
     if (!isTimeframe(tf)) {
       return reply.code(400).send({ error: 'Invalid timeframe' });

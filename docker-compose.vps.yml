@@ -1,0 +1,47 @@
+# VPS override: Postgres + Redis + API on disk storage (keeps existing data/chunks).
+# Usage on server:
+#   docker compose -f docker-compose.yml -f docker-compose.vps.yml up -d postgres redis api
+#
+# SPA stays on vite preview :4173 and proxies /api/v1 → 127.0.0.1:8787
+
+services:
+  minio:
+    profiles: ['s3']
+  createbuckets:
+    profiles: ['s3']
+
+  postgres:
+    ports:
+      - '127.0.0.1:5432:5432'
+
+  redis:
+    ports:
+      - '127.0.0.1:6379:6379'
+
+  api:
+    environment:
+      API_PORT: 8787
+      API_HOST: 0.0.0.0
+      NODE_ENV: production
+      # Chunk URLs go through SPA origin (preview proxy) — not :8787 public
+      PUBLIC_API_URL: http://88.223.95.90:4173
+      CDN_PUBLIC_BASE: ''
+      CORS_ORIGIN: http://88.223.95.90:4173
+      SECURE_COOKIES: 'false'
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in /var/www/talaria-log/.env}
+      SESSION_TTL_DAYS: 14
+      DATABASE_URL: postgres://talaria:talaria@postgres:5432/talaria
+      REDIS_URL: redis://redis:6379
+      STORAGE_DRIVER: disk
+      DISK_ROOT: /app/data/chunks
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@localhost}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin12345}
+      SEED_DEMO: 'true'
+      MAX_CHUNKS_PER_QUERY: 24
+      RATE_LIMIT_GLOBAL_RPM: 400
+      RATE_LIMIT_AUTH_RPM: 30
+      RATE_LIMIT_CHUNK_RPM: 400
+    ports:
+      - '127.0.0.1:8787:8787'
+    volumes:
+      - /var/www/talaria-log/data/chunks:/app/data/chunks

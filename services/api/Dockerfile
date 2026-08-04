@@ -17,4 +17,5 @@ COPY --from=build /app/dist ./dist
 COPY package.json ./
 COPY sql ./sql
 EXPOSE 8787
+# migrate + seed on boot; disk catalog import is a separate one-shot (deploy script)
 CMD ["sh", "-c", "node dist/migrate.js && node dist/seed.js && node dist/index.js"]

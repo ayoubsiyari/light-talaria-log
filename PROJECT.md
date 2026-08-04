@@ -770,6 +770,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | **P2 Done:** stub multi-browser plane docs; SaaS PUT publish parity; client meta-first publish | Smoke: publish → 2nd browser session; then **go Step P3** |
 | 2026-08-04 | **P3 Done:** Donchian + params menu; multi-run journal tab; View on chart restores run | Run SMA + Donchian → Journal Backtests → View on chart |
 | 2026-08-04 | API production hardening: CDN URLs, Cache-Control/ETag, Redis rate limits, chunk paging, download quota, security headers (`docs/API-PRODUCTION.md`) | Set `CDN_PUBLIC_BASE` in deploy; `saas:migrate` |
+| 2026-08-04 | VPS SaaS path: Docker Postgres/Redis/API (disk chunks), text dataset ids, import disk catalog, preview proxies `/api/v1` | Hard-refresh :4173; Create Session lists FirstRate |
 
 ---
 

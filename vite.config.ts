@@ -51,6 +51,17 @@ export default defineConfig(({ mode }) => {
           }
         : undefined,
     },
+    /** Same proxy for `vite preview` / VPS :4173 so SPA and cookies stay same-origin. */
+    preview: {
+      proxy: proxyTarget
+        ? {
+            '/api/v1': {
+              target: proxyTarget,
+              changeOrigin: true,
+            },
+          }
+        : undefined,
+    },
     worker: {
       format: 'es',
     },

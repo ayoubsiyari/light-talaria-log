@@ -424,8 +424,23 @@ function attachTalariaApi(middlewares: Connect.Server): void {
   });
 }
 
-/** Vite middleware: /api/v1/* Phase 11 API stub (dev + preview). */
+/**
+ * Vite middleware: /api/v1/* disk stub (dev + preview).
+ * Skipped when TALARIA_API_PROXY is set — real API handles /api/v1 instead.
+ */
 export function talariaApiPlugin(): Plugin {
+  const proxy = process.env.TALARIA_API_PROXY || '';
+  if (proxy) {
+    return {
+      name: 'talaria-log-api',
+      configureServer() {
+        console.log(`[api] stub disabled — proxying /api/v1 → ${proxy}`);
+      },
+      configurePreviewServer() {
+        console.log(`[api] stub disabled — proxying /api/v1 → ${proxy}`);
+      },
+    };
+  }
   return {
     name: 'talaria-log-api',
     configureServer(server) {

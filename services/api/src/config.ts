@@ -62,7 +62,11 @@ export const config = {
     secretKey: env('S3_SECRET_KEY', 'talaria-secret'),
     forcePathStyle: envBool('S3_FORCE_PATH_STYLE', true),
   },
-  diskRoot: path.resolve(__dirname, '..', '..', '..', 'data', 'chunks'),
+  /** Override in Docker: DISK_ROOT=/app/data/chunks */
+  diskRoot: env(
+    'DISK_ROOT',
+    path.resolve(__dirname, '..', '..', '..', 'data', 'chunks'),
+  ),
   quotas: {
     datasetsPerUser: envInt('QUOTA_DATASETS_PER_USER', 50),
     importBytesDay: envInt('QUOTA_IMPORT_BYTES_DAY', 2 * 1024 * 1024 * 1024),

@@ -12,7 +12,7 @@ import type {
   SessionBounds,
   SessionState,
 } from '@/session/sessionState';
-import { warmCache } from '@/session/warmCache';
+import { warmCache, type WarmCacheFillOpts } from '@/session/warmCache';
 import type { ChartBar } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
 import { MAX_BARS_IN_MEMORY, REPLAY_VISIBLE_BARS } from '@/utils/constants';
@@ -344,10 +344,23 @@ export function createSessionController() {
       const s = state;
       const datasets = new Set(Object.values(s.panes).map((p) => p.datasetId));
       const tfs = new Set<Timeframe>([s.baseTf]);
-      for (const p of Object.values(s.panes)) tfs.add(p.tf);
+      let coarsestSec = timeframeSeconds(s.baseTf);
+      for (const p of Object.values(s.panes)) {
+        tfs.add(p.tf);
+        coarsestSec = Math.max(coarsestSec, timeframeSeconds(p.tf));
+      }
+      const clockOpts = formingClockFillOpts(s.baseTf, coarsestSec, s.span);
       await Promise.all(
         [...datasets].flatMap((ds) =>
-          [...tfs].map((tf) => warmCache.fill(ds, tf, s.cursorTime, s.span)),
+          [...tfs].map((tf) =>
+            warmCache.fill(
+              ds,
+              tf,
+              s.cursorTime,
+              s.span,
+              tf === s.baseTf ? clockOpts : undefined,
+            ),
+          ),
         ),
       );
     },
@@ -396,17 +409,62 @@ export type SessionController = ReturnType<typeof createSessionController>;
 
 /** Throttle IDB top-ups while the clock is advancing (one fill per dataset×tf). */
 const fillAheadInflight = new Set<string>();
-/** Latest cursor requested while a fill is in flight — chain another fill if set. */
-const fillAheadPendingCursor = new Map<string, number>();
+/** Latest cursor + fill opts while a fill is in flight — chain another fill if set. */
+const fillAheadPending = new Map<
+  string,
+  { cursorTime: number; span: number; opts: WarmCacheFillOpts }
+>();
+
+/** Forward runway for the pane's own TF (compact — memory-safe at 21×). */
+function paneRunwayFillOpts(span: number): WarmCacheFillOpts {
+  return {
+    aheadRatio: 0.7,
+    windowBars: Math.min(900, Math.max(500, span * 6 + 200)),
+  };
+}
+
+/**
+ * Base-TF (clock) window biased backward so a coarser pane's open bucket can be
+ * formed tick-by-tick (1D needs ~1440×1m lookback — not a 70%-ahead tip window).
+ */
+function formingClockFillOpts(
+  baseTf: Timeframe,
+  coarsestPeriodSec: number,
+  span: number,
+): WarmCacheFillOpts {
+  const baseSec = Math.max(1, timeframeSeconds(baseTf));
+  const needBack = Math.ceil(coarsestPeriodSec / baseSec) + 64;
+  const windowBars = Math.min(
+    MAX_BARS_IN_MEMORY,
+    Math.max(needBack + 160, span * 4 + 200, 500),
+  );
+  const aheadRatio = Math.min(0.15, 160 / windowBars);
+  return { aheadRatio, windowBars };
+}
+
+function clockOverlapsBucket(
+  clockBars: readonly ChartBar[],
+  openBucket: number,
+  cursorTime: number,
+  periodSec: number,
+): boolean {
+  if (clockBars.length === 0 || cursorTime < openBucket) return false;
+  const end = Math.min(cursorTime, openBucket + periodSec - 1);
+  const first = clockBars[0]!.time;
+  const last = clockBars[clockBars.length - 1]!.time;
+  return first <= end && last >= openBucket;
+}
 
 function scheduleFillAhead(
   datasetId: string,
   tf: Timeframe,
   cursorTime: number,
   span: number,
+  opts?: WarmCacheFillOpts,
 ): void {
   const k = `${datasetId}|${tf}`;
-  fillAheadPendingCursor.set(k, cursorTime);
+  const fillOpts = opts ?? paneRunwayFillOpts(span);
+  fillAheadPending.set(k, { cursorTime, span, opts: fillOpts });
   if (fillAheadInflight.has(k)) return;
   fillAheadInflight.add(k);
   void (async () => {
@@ -414,22 +472,17 @@ function scheduleFillAhead(
       // Drain pending targets so a slow fill at an old cursor cannot strand
       // the tip while the clock races ahead at 20×+.
       for (;;) {
-        const target = fillAheadPendingCursor.get(k);
-        if (target == null) break;
-        fillAheadPendingCursor.delete(k);
-        // Compact forward window: ~900 bars × 70% ahead ≈ 630-bar runway
-        // (~30s at 21×) without holding a full 2500-bar entry per pair.
-        await warmCache.fill(datasetId, tf, target, span, {
-          aheadRatio: 0.7,
-          windowBars: Math.min(900, Math.max(500, span * 6 + 200)),
-        });
+        const pending = fillAheadPending.get(k);
+        if (pending == null) break;
+        fillAheadPending.delete(k);
+        await warmCache.fill(datasetId, tf, pending.cursorTime, pending.span, pending.opts);
       }
     } finally {
       fillAheadInflight.delete(k);
       // A request may have landed between the last fill and delete.
-      const late = fillAheadPendingCursor.get(k);
+      const late = fillAheadPending.get(k);
       if (late != null) {
-        scheduleFillAhead(datasetId, tf, late, span);
+        scheduleFillAhead(datasetId, tf, late.cursorTime, late.span, late.opts);
       }
     }
   })();
@@ -448,13 +501,22 @@ function extendRevealInPlace(
 
   // Pin active series so LRU cannot evict a live pane mid-play.
   const pinKeys: { datasetId: string; tf: Timeframe }[] = [];
+  const coarsestSecByDs = new Map<string, number>();
   for (const cfg of Object.values(s.panes)) {
     pinKeys.push({ datasetId: cfg.datasetId, tf: cfg.tf });
     if (cfg.tf !== s.baseTf) {
       pinKeys.push({ datasetId: cfg.datasetId, tf: s.baseTf });
     }
+    const sec = timeframeSeconds(cfg.tf);
+    coarsestSecByDs.set(
+      cfg.datasetId,
+      Math.max(coarsestSecByDs.get(cfg.datasetId) ?? 0, sec),
+    );
   }
   warmCache.setPinned(pinKeys);
+
+  // One clock top-up per dataset (not per pane) — covers coarsest open bucket.
+  const clockScheduled = new Set<string>();
 
   for (const id of Object.keys(views)) {
     const cfg = s.panes[id];
@@ -465,7 +527,9 @@ function extendRevealInPlace(
     const rawPeek = warmCache.peek(cfg.datasetId, cfg.tf);
     const raw =
       rawPeek && barsMatchTimeframe(rawPeek, cfg.tf) ? rawPeek : null;
-    const baseBars = warmCache.peek(cfg.datasetId, s.baseTf) ?? [];
+    const basePeek = warmCache.peek(cfg.datasetId, s.baseTf);
+    const baseBars =
+      basePeek && barsMatchTimeframe(basePeek, s.baseTf) ? basePeek : [];
 
     const openBucket = bucketStart(s.cursorTime, tfPeriod);
     const rawEnd = raw && raw.length > 0 ? raw[raw.length - 1]!.time : null;
@@ -473,11 +537,34 @@ function extendRevealInPlace(
       rawEnd != null && tfPeriod > 0
         ? Math.floor((rawEnd - openBucket) / tfPeriod)
         : -1;
-    // Top up before the tip freezes — high speed burns ~speed bars/sec.
+    // Top up pane TF runway before the tip freezes — high speed burns ~speed bars/sec.
     if (!raw || raw.length === 0 || aheadBars < Math.max(120, s.span)) {
       scheduleFillAhead(cfg.datasetId, cfg.tf, s.cursorTime, s.span);
-      if (cfg.tf !== s.baseTf) {
-        scheduleFillAhead(cfg.datasetId, s.baseTf, s.cursorTime, s.span);
+    }
+
+    // Higher-TF tip is built from base clock bars. Keep that window covering
+    // the coarsest open bucket and the cursor tip (not just this pane's TF).
+    if (cfg.tf !== s.baseTf && !clockScheduled.has(cfg.datasetId)) {
+      const coarsest = coarsestSecByDs.get(cfg.datasetId) ?? tfPeriod;
+      const coarseOpen = bucketStart(s.cursorTime, coarsest);
+      const clockTip =
+        baseBars.length > 0 ? baseBars[baseBars.length - 1]!.time : null;
+      const clockBehind =
+        clockTip == null ||
+        clockTip < s.cursorTime - timeframeSeconds(s.baseTf) * 2;
+      const needsClock =
+        baseBars.length === 0 ||
+        !clockOverlapsBucket(baseBars, coarseOpen, s.cursorTime, coarsest) ||
+        clockBehind;
+      if (needsClock) {
+        scheduleFillAhead(
+          cfg.datasetId,
+          s.baseTf,
+          s.cursorTime,
+          s.span,
+          formingClockFillOpts(s.baseTf, coarsest, s.span),
+        );
+        clockScheduled.add(cfg.datasetId);
       }
     }
 

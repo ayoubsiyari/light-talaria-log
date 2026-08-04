@@ -32,4 +32,9 @@ export interface ChartViewOptions {
   showVolume: boolean;
   showLastPrice: boolean;
   volumeOpacity: number;
+  /**
+   * Always-on “Talaria Log” bottom-left brand text.
+   * Only the primary (first) pane should enable this in multi-chart layouts.
+   */
+  showBrandWatermark: boolean;
 }

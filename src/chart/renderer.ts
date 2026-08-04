@@ -226,7 +226,7 @@ export function paintBaseFrame(
   const timeTicks = niceTimeTicks(range, bars, 6);
 
   drawGrid(ctx, layout, scale, range, priceTicks, timeTicks, colors);
-  drawWatermark(ctx, layout, colors);
+  drawWatermark(ctx, layout, colors, options.showBrandWatermark !== false);
   drawSeries(ctx, bars, range, plot, scale, colors, options.seriesType, maxBarIndex);
 
   if (indicators?.length) {
@@ -528,23 +528,26 @@ function drawWatermark(
   ctx: CanvasRenderingContext2D,
   layout: RenderLayout,
   colors: ChartColors,
+  showBrand: boolean,
 ): void {
   const { plot } = layout;
   if (plot.width < 40 || plot.height < 24) return;
 
   ctx.save();
 
-  // Always-on brand text — bottom-left (TV watermark weight). Canvas text
-  // only — never decode/draw the logo PNG here (keeps chart heap light).
-  ctx.globalAlpha = 0.5;
-  ctx.fillStyle = colors.muted;
-  ctx.font = '700 28px ui-sans-serif, system-ui, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'bottom';
-  ctx.fillText('Talaria Log', plot.left + 14, plot.top + plot.height - 12);
+  // Always-on brand — primary pane only (multi-chart: top-left / first pane).
+  // Canvas text only — never decode/draw the logo PNG here.
+  if (showBrand) {
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = colors.muted;
+    ctx.font = '700 28px ui-sans-serif, system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('Talaria Log', plot.left + 14, plot.top + plot.height - 12);
+  }
 
-  // Optional custom watermark (settings) — centered when enabled.
-  if (colors.watermarkEnabled) {
+  // Optional custom watermark (settings) — primary pane only, centered.
+  if (showBrand && colors.watermarkEnabled) {
     const text = colors.watermarkText.trim();
     if (text) {
       ctx.globalAlpha = colors.watermarkOpacity;

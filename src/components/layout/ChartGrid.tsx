@@ -153,7 +153,7 @@ export function ChartGrid({
       <div
         className={`flex-1 min-h-0 min-w-0 grid gap-px bg-[color:var(--tv-panel-line)] ${gridClass}`}
       >
-        {panes.map((pane) => (
+        {panes.map((pane, paneIndex) => (
           <div
             key={pane.id}
             className={[
@@ -207,6 +207,7 @@ export function ChartGrid({
               syncCrosshair={syncCrosshair}
               syncDateRange={syncDateRange}
               showSelectionBorder={panes.length > 1}
+              showBrandWatermark={paneIndex === 0}
             />
           </div>
         ))}

@@ -145,6 +145,7 @@ export interface ChartInstance {
   setSeriesType: (type: SeriesType) => void;
   getSeriesType: () => SeriesType;
   setShowVolume: (show: boolean) => void;
+  setShowBrandWatermark: (show: boolean) => void;
   setVolumeOpacity: (opacity: number) => void;
   getVolumeSettings: () => { visible: boolean; opacity: number };
   setShowLastPrice: (show: boolean) => void;
@@ -210,6 +211,7 @@ const DEFAULT_OPTIONS: ChartViewOptions = {
   showVolume: false,
   showLastPrice: true,
   volumeOpacity: 0.4,
+  showBrandWatermark: true,
 };
 
 /**
@@ -1115,6 +1117,12 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       options = { ...options, showVolume: show };
       rebuildLayout();
       updateCrosshairFromHover();
+      markDirty();
+    },
+
+    setShowBrandWatermark(show: boolean) {
+      if (options.showBrandWatermark === show) return;
+      options = { ...options, showBrandWatermark: show };
       markDirty();
     },
 

@@ -66,6 +66,8 @@ export interface ChartPaneProps {
   syncDateRange?: boolean;
   /** Accent border only when multiple panes (selection). */
   showSelectionBorder?: boolean;
+  /** Draw “Talaria Log” brand — only the primary (first) pane. */
+  showBrandWatermark?: boolean;
 }
 
 function formatOhlc(point: CrosshairPoint | null): string {
@@ -115,6 +117,7 @@ export function ChartPane({
   syncCrosshair = true,
   syncDateRange = true,
   showSelectionBorder = true,
+  showBrandWatermark = true,
 }: ChartPaneProps) {
   const ohlcRef = useRef<HTMLSpanElement>(null);
   const changeRef = useRef<HTMLSpanElement>(null);
@@ -239,6 +242,7 @@ export function ChartPane({
         backtestResult={backtestResult}
         syncCrosshair={syncCrosshair}
         syncDateRange={syncDateRange}
+        showBrandWatermark={showBrandWatermark}
         replayFollow={replayFollow}
         following={replayFollow}
         showFollowControl={showFollowControl}

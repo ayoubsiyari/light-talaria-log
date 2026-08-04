@@ -49,6 +49,8 @@ export interface UseChartOptions {
   seriesType?: SeriesType;
   showVolume?: boolean;
   volumeOpacity?: number;
+  /** Primary pane only — “Talaria Log” bottom-left brand. */
+  showBrandWatermark?: boolean;
   enabledIndicators?: readonly EnabledIndicator[];
   orders?: readonly ChartOrder[];
   selectedOrderId?: string | null;
@@ -134,6 +136,9 @@ export function useChart(
     }
     if (optionsRef.current.showVolume !== undefined) {
       instance.setShowVolume(optionsRef.current.showVolume);
+    }
+    if (optionsRef.current.showBrandWatermark !== undefined) {
+      instance.setShowBrandWatermark(optionsRef.current.showBrandWatermark);
     }
     if (optionsRef.current.volumeOpacity !== undefined) {
       instance.setVolumeOpacity(optionsRef.current.volumeOpacity);
@@ -235,6 +240,12 @@ export function useChart(
     if (!instance || options.showVolume === undefined) return;
     instance.setShowVolume(options.showVolume);
   }, [options.showVolume]);
+
+  useEffect(() => {
+    const instance = instanceRef.current;
+    if (!instance || options.showBrandWatermark === undefined) return;
+    instance.setShowBrandWatermark(options.showBrandWatermark);
+  }, [options.showBrandWatermark]);
 
   useEffect(() => {
     const instance = instanceRef.current;

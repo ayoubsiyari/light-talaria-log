@@ -15,6 +15,11 @@ import {
   magnetSnap,
   type MagnetMode,
 } from '@/drawings/magnet';
+import {
+  applyChannelWidthDrag,
+  isChannelTool,
+  isChannelWidthHandle,
+} from '@/drawings/channelHandles';
 import { syncRiskRewardMeta } from '@/drawings/positionMath';
 import {
   applyRectEdgeDrag,
@@ -1098,6 +1103,21 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
           drawingDrag.originPoints.length >= 2
         ) {
           nextPoints = applyRectEdgeDrag(drawingDrag.originPoints, hi, tip);
+        } else if (
+          isChannelTool(current.type) &&
+          isChannelWidthHandle(hi) &&
+          drawingDrag.originPoints.length >= 3
+        ) {
+          nextPoints = applyChannelWidthDrag(
+            drawingDrag.originPoints,
+            x,
+            y,
+            bars,
+            range,
+            layout.plot,
+            resolvePriceScale(),
+            current.type === 'flatTopBottom',
+          );
         } else {
           // Constrain vs the other anchor (not always point 0).
           const otherIdx = hi === 0 ? 1 : 0;

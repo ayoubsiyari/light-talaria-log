@@ -47,3 +47,29 @@ export function formatMeasureLabel(stats: MeasureStats, digits = 2): string {
   const time = formatElapsed(stats.elapsedSec);
   return `${price}  ${pct}  ·  ${bars}  ·  ${time}`;
 }
+
+export interface MeasureStatsLines {
+  lines: string[];
+  /** +1 up / -1 down / 0 flat — for tint. */
+  direction: -1 | 0 | 1;
+}
+
+/** Multi-row TV-style measure card content. */
+export function measureStatsLines(
+  stats: MeasureStats,
+  digits = 2,
+  angleDeg?: number | null,
+): MeasureStatsLines {
+  const sign = stats.deltaPrice > 0 ? '+' : '';
+  const direction: -1 | 0 | 1 =
+    stats.deltaPrice > 0 ? 1 : stats.deltaPrice < 0 ? -1 : 0;
+  const lines = [
+    `${sign}${stats.deltaPrice.toFixed(digits)}  (${sign}${stats.pct.toFixed(2)}%)`,
+    `${stats.bars} bar${stats.bars === 1 ? '' : 's'}`,
+    formatElapsed(stats.elapsedSec),
+  ];
+  if (angleDeg != null && Number.isFinite(angleDeg)) {
+    lines.push(`${angleDeg.toFixed(1)}°`);
+  }
+  return { lines, direction };
+}

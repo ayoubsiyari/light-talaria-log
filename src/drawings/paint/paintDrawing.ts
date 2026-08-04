@@ -12,7 +12,11 @@ import {
   visibleFibLevels,
   type FibLevel,
 } from '../fibLevels';
-import { computeMeasureStats, formatMeasureLabel } from '../measureStats';
+import {
+  channelWidthHandleXY,
+  isChannelTool,
+} from '../channelHandles';
+import { computeMeasureStats, measureStatsLines } from '../measureStats';
 import {
   positionGeometry,
   positionPnlAtTarget,
@@ -20,7 +24,15 @@ import {
 } from '../positionMath';
 import { isRectLikeTool, rectEdgeMidpoints } from '../rectHandles';
 import { asBool, asNumber } from '../toolSettings';
-import { barIndexAtTime, clipToPlot, pointToXY, pointsToXY, type PaintCtx } from './coords';
+import { drawCalloutBubble } from './calloutBubble';
+import {
+  barIndexAtTime,
+  clipToPlot,
+  extendLine,
+  pointToXY,
+  pointsToXY,
+  type PaintCtx,
+} from './coords';
 import {
   drawArrowHead,
   drawHandles,
@@ -43,7 +55,71 @@ function handleXYForDrawing(
     const edges = rectEdgeMidpoints(xy[0]!.x, xy[0]!.y, xy[1]!.x, xy[1]!.y);
     return [...xy, ...edges.map((e) => ({ x: e.x, y: e.y }))];
   }
+  if (selected && isChannelTool(d.type) && xy.length >= 3) {
+    const wh = channelWidthHandleXY(
+      xy[0]!,
+      xy[1]!,
+      xy[2]!,
+      d.type === 'flatTopBottom',
+    );
+    return [...xy, wh];
+  }
   return xy;
+}
+
+/** Multi-line measure stats card (TV-like). */
+function drawMeasureStatsBox(
+  pc: PaintCtx,
+  cx: number,
+  cy: number,
+  stats: ReturnType<typeof computeMeasureStats>,
+  digits: number,
+  angleDeg: number | null,
+  style: Drawing['style'],
+): void {
+  const { lines, direction } = measureStatsLines(stats, digits, angleDeg);
+  const { ctx, colors } = pc;
+  const fontSize = Math.min(style.fontSize, 12);
+  const padX = 8;
+  const padY = 6;
+  const lineH = fontSize + 3;
+  ctx.save();
+  ctx.font = `600 ${fontSize}px sans-serif`;
+  let maxW = 0;
+  for (const line of lines) {
+    maxW = Math.max(maxW, ctx.measureText(line).width);
+  }
+  const w = maxW + padX * 2;
+  const h = lines.length * lineH + padY * 2 - 3;
+  const x = cx - w / 2;
+  const y = cy - h / 2;
+  const tint =
+    direction > 0 ? colors.upColor : direction < 0 ? colors.downColor : colors.accent;
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = colors.labelBg;
+  ctx.strokeStyle = tint;
+  ctx.lineWidth = 1.25;
+  if (typeof ctx.roundRect === 'function') {
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 4);
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeRect(x, y, w, h);
+  }
+  ctx.globalAlpha = 1;
+  // Accent bar on left
+  ctx.fillStyle = tint;
+  ctx.fillRect(x, y, 3, h);
+  ctx.fillStyle = colors.text;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  lines.forEach((line, i) => {
+    ctx.fillStyle = i === 0 ? tint : colors.text;
+    ctx.fillText(line, x + padX + 2, y + padY + i * lineH);
+  });
+  ctx.restore();
 }
 
 function yPrice(price: number, pc: PaintCtx): number {
@@ -162,12 +238,17 @@ function paintFibLevels(
   const showLabels = opts.showLabels !== false;
   const showPrices = !!opts.showPrices;
   const { ctx, plot } = pc;
-  const lo = Math.min(price0, price1);
-  const hi = Math.max(price0, price1);
+  // Anchor order: coeff 0 @ price0, coeff 1 @ price1 (Reverse swaps).
+  const base = reverse ? price1 : price0;
+  const tip = reverse ? price0 : price1;
   const segL = Math.min(x0, x1);
   const segR = Math.max(x0, x1);
   const left = opts.extendLeft ? plot.left : segL;
   const right = opts.extendRight ? plot.left + plot.width : segR;
+  const labelX = opts.extendRight && !opts.extendLeft ? right - 4 : left + 4;
+  const labelAlign = opts.extendRight && !opts.extendLeft ? 'right' as const : 'left' as const;
+
+  const priceAt = (coeff: number) => base + (tip - base) * coeff;
 
   // Optional fill between consecutive levels (TV background).
   if (style.fill && levels.length >= 2) {
@@ -175,12 +256,8 @@ function paintFibLevels(
     for (let i = 0; i < sorted.length - 1; i++) {
       const a = sorted[i]!;
       const b = sorted[i + 1]!;
-      const ta = reverse ? 1 - a.coeff : a.coeff;
-      const tb = reverse ? 1 - b.coeff : b.coeff;
-      const pa = hi - (hi - lo) * ta;
-      const pb = hi - (hi - lo) * tb;
-      const y0 = yPrice(pa, pc);
-      const y1 = yPrice(pb, pc);
+      const y0 = yPrice(priceAt(a.coeff), pc);
+      const y1 = yPrice(priceAt(b.coeff), pc);
       ctx.save();
       ctx.globalAlpha = style.fillOpacity * style.opacity * 0.55;
       ctx.fillStyle = a.color || style.fillColor || style.color;
@@ -190,8 +267,7 @@ function paintFibLevels(
   }
 
   for (const lv of levels) {
-    const t = reverse ? 1 - lv.coeff : lv.coeff;
-    const price = hi - (hi - lo) * t;
+    const price = priceAt(lv.coeff);
     const y = yPrice(price, pc);
     const ls = levelStroke(style, lv);
     applyStrokeStyle(ctx, ls);
@@ -203,7 +279,14 @@ function paintFibLevels(
       const parts: string[] = [];
       if (showLabels) parts.push(formatFibCoeff(lv.coeff));
       if (showPrices) parts.push(price.toFixed(2));
-      drawTextLabel(pc, left + 4, y, parts.join('  '), { ...ls, textColor: ls.color }, false);
+      drawTextLabel(
+        pc,
+        labelX,
+        y,
+        parts.join('  '),
+        { ...ls, textColor: ls.color, textAlignH: labelAlign },
+        false,
+      );
     }
   }
   ctx.setLineDash([]);
@@ -474,11 +557,23 @@ export function paintDrawing(
     case 'flatTopBottom':
       if (xy.length >= 3) {
         const [a, b, c] = xy;
-        strokeLine(pc, a!.x, a!.y, b!.x, b!.y, style, 'extended');
         const dx = b!.x - a!.x;
         const dy = d.type === 'flatTopBottom' ? 0 : b!.y - a!.y;
+        const e1 = extendLine(a!.x, a!.y, b!.x, b!.y, pc.plot, 'extended');
+        const e2 = extendLine(c!.x, c!.y, c!.x + dx, c!.y + dy, pc.plot, 'extended');
+        // Fill the infinite band between rails (visible across the plot).
+        fillPoly(
+          pc,
+          [
+            { x: e1.x0, y: e1.y0 },
+            { x: e1.x1, y: e1.y1 },
+            { x: e2.x1, y: e2.y1 },
+            { x: e2.x0, y: e2.y0 },
+          ],
+          style,
+        );
+        strokeLine(pc, a!.x, a!.y, b!.x, b!.y, style, 'extended');
         strokeLine(pc, c!.x, c!.y, c!.x + dx, c!.y + dy, style, 'extended');
-        fillPoly(pc, [a!, b!, { x: c!.x + dx, y: c!.y + dy }, c!], style);
         if (asBool(d.meta?.showMidline, true)) {
           const mx0 = (a!.x + c!.x) / 2;
           const my0 = (a!.y + c!.y) / 2;
@@ -767,25 +862,13 @@ export function paintDrawing(
             pc.bars,
           );
           const digits = Math.abs(stats.deltaPrice) < 1 ? 5 : 2;
-          drawTextLabel(
-            pc,
-            x + w / 2,
-            y + h / 2,
-            formatMeasureLabel(stats, digits),
-            { ...style, textAlignH: 'center', fontSize: Math.min(style.fontSize, 12) },
-          );
+          let angle: number | null = null;
           if (asBool(d.meta?.showAngle, false)) {
-            const dx = xy[1]!.x - xy[0]!.x;
-            const dy = xy[1]!.y - xy[0]!.y;
-            const ang = ((Math.atan2(-dy, dx) * 180) / Math.PI).toFixed(1);
-            drawTextLabel(
-              pc,
-              x + w / 2,
-              y + h / 2 + 16,
-              `${ang}°`,
-              { ...style, textAlignH: 'center', fontSize: Math.min(style.fontSize, 11) },
-            );
+            const adx = xy[1]!.x - xy[0]!.x;
+            const ady = xy[1]!.y - xy[0]!.y;
+            angle = (Math.atan2(-ady, adx) * 180) / Math.PI;
           }
+          drawMeasureStatsBox(pc, x + w / 2, y + h / 2, stats, digits, angle, style);
         } else if (asBool(d.meta?.showCenter, false)) {
           paintShapeCenter(pc, x + w / 2, y + h / 2, style);
         }
@@ -935,13 +1018,71 @@ export function paintDrawing(
       }
       break;
 
+    case 'callout':
+      if (xy[0] && xy[1]) {
+        const textStyle = {
+          ...style,
+          textBold: style.textBold || asBool(d.meta?.bold, false),
+          fill: true,
+          fillOpacity: style.fill ? style.fillOpacity : 0.92,
+        };
+        const label = d.text || 'Callout';
+        drawCalloutBubble(
+          pc,
+          xy[0].x,
+          xy[0].y,
+          xy[1].x,
+          xy[1].y,
+          label,
+          textStyle,
+        );
+      }
+      break;
+
+    case 'priceLabel':
+      if (xy[0] && d.points[0]) {
+        const { ctx, plot, colors } = pc;
+        const y = xy[0].y;
+        const price = d.points[0].price;
+        const label = price.toFixed(Math.abs(price) < 1 ? 5 : 2);
+        const right = plot.left + plot.width;
+        // Stub to plot edge
+        applyStrokeStyle(ctx, { ...style, width: 1, lineStyle: 'dashed' });
+        ctx.beginPath();
+        ctx.moveTo(xy[0].x, y + 0.5);
+        ctx.lineTo(right, y + 0.5);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // Axis-style chip at right edge (inside plot)
+        ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif';
+        const labelH = 18;
+        const chipW = Math.max(48, ctx.measureText(label).width + 14);
+        const labelY = Math.min(
+          Math.max(y - labelH / 2, plot.top),
+          plot.top + plot.height - labelH,
+        );
+        const axisX = right - chipW;
+        const notch = 4;
+        ctx.fillStyle = style.color || colors.accent;
+        ctx.beginPath();
+        ctx.moveTo(axisX - notch, labelY + labelH / 2);
+        ctx.lineTo(axisX, labelY);
+        ctx.lineTo(axisX, labelY + labelH);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillRect(axisX, labelY, chipW, labelH);
+        ctx.fillStyle = colors.onSolid;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, axisX + 6, labelY + labelH / 2);
+      }
+      break;
+
     case 'text':
     case 'note':
     case 'priceNote':
     case 'pin':
     case 'comment':
-    case 'callout':
-    case 'priceLabel':
     case 'flagMark':
       if (xy[0]) {
         const textStyle = {
@@ -950,13 +1091,8 @@ export function paintDrawing(
         };
         const label =
           d.text ||
-          (d.type === 'priceLabel' || d.type === 'priceNote'
-            ? d.points[0]!.price.toFixed(2)
-            : d.type);
-        if (d.type === 'callout' && xy[1]) {
-          strokeLine(pc, xy[0].x, xy[0].y, xy[1].x, xy[1].y, style);
-          drawTextLabel(pc, xy[1].x + 6, xy[1].y, label, textStyle);
-        } else if (d.type === 'flagMark') {
+          (d.type === 'priceNote' ? d.points[0]!.price.toFixed(2) : d.type);
+        if (d.type === 'flagMark') {
           const { ctx } = pc;
           applyStrokeStyle(ctx, style);
           ctx.beginPath();

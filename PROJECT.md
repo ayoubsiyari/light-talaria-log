@@ -772,6 +772,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | **D2 done:** specialty hit-test (rays/fib/channel/rect/position); cursor by grab; brush press-drag | **go D3** (Tier 1 full function) |
 | 2026-08-04 | **D3 done:** Tier 1 full function — measure stats, position RR/P&L/sizing, rect edges, text tab+bbox, brush handles | **go D4** (object tree + chrome) |
 | 2026-08-04 | **D4 done:** object tree, remove-all menu, zoom marquee, Alt-drag clone | **go D5** (Tier 2 polish) |
+| 2026-08-04 | **D5 done:** fib/channel/extended/measure box/callout/priceLabel Tier 2 polish | **go D6** (scope hygiene) optional |
 | 2026-08-04 | Fix multi-chart replay stall: non-blocking server top-up + ≤1 chunk per fetch (was awaiting hours of 1m mid-play) | Multi layout → Play through cache edge |
 | 2026-08-04 | IDB sliding-window GC for remote chunks (max 8/series) + Datasets “Clear chart cache”; local CSV untouched | Long Play → IDB stays small; Clear cache frees disk |
 | 2026-08-04 | Power Jump plan P1–P3 in PROJECT.md; **P1 Done:** journal View on chart → `#/chart/:id?t=&trade=` seek + highlight | Verify trade → chart; then **go Step P2** |
@@ -955,14 +956,14 @@ Fib extension, path, note, flag, anchored VWAP.
 
 #### D5 — Tier 2 polish
 **Goal:** Six Tier 2 tools feel intentional.  
-**Status:** Pending (start only after D3 done).  
+**Status:** Done (2026-08-04).  
 **Deliverables:**
-- [ ] fibRetracement — level table already exists; verify extend L/R, reverse, labels, hit levels
-- [ ] parallelChannel — 3-click place, width handle, fill
-- [ ] extendedLine — already painted; hit extended infinite sides
-- [ ] datePriceRange — full measure stats box
-- [ ] callout — leader + text bubble
-- [ ] priceLabel — axis-style price tag
+- [x] fibRetracement — extend L/R, reverse (anchor-order 0/1), labels, hit levels
+- [x] parallelChannel — 3-click place, width handle, extended-band fill + interior hit
+- [x] extendedLine — infinite paint/hit; default Style extend=both
+- [x] datePriceRange — multi-line measure stats box (Δprice/%, bars, time, optional angle)
+- [x] callout — leader + rounded text bubble
+- [x] priceLabel — stub to right edge + axis-style price chip
 **Done when:** Tier 2 matrix passes same place/select/settings bar as Tier 1.
 
 #### D6 — Scope hygiene (optional)

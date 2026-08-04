@@ -363,6 +363,7 @@ export const TOOLS: Record<DrawingToolId, ToolDef> = {
     category: 'lines',
     label: 'Extended Line',
     points: FIXED(2),
+    defaultStyle: { extend: 'both' },
   },
   trendAngle: {
     id: 'trendAngle',

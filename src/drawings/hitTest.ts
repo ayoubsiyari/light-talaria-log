@@ -12,10 +12,18 @@ import {
 import { extendLine, type LineExtendPaint } from './paint/coords';
 import { extendModeToPaint } from './drawingStyle';
 import {
+  CHANNEL_WIDTH_HANDLE,
+  channelWidthHandleXY,
+  isChannelTool,
+  isChannelWidthHandle,
+} from './channelHandles';
+import { hitCalloutBubble } from './paint/calloutBubble';
+import {
   isRectEdgeHandle,
   isRectLikeTool,
   rectEdgeMidpoints,
 } from './rectHandles';
+import { asBool } from './toolSettings';
 import { isDrawingVisibleOnTf } from './visibility';
 
 /** Approximate text label hit box (no canvas measure on the hot path). */
@@ -213,11 +221,26 @@ function hitPaintedBody(
     ) {
       return true;
     }
-    // Midline
-    const mx0 = (a!.x + c!.x) / 2;
-    const my0 = (a!.y + c!.y) / 2;
-    if (nearExtended(x, y, mx0, my0, mx0 + dx, my0 + dy, plot, 'extended', hitPx)) {
-      return true;
+    if (asBool(d.meta?.showMidline, true)) {
+      const mx0 = (a!.x + c!.x) / 2;
+      const my0 = (a!.y + c!.y) / 2;
+      if (nearExtended(x, y, mx0, my0, mx0 + dx, my0 + dy, plot, 'extended', hitPx)) {
+        return true;
+      }
+    }
+    // Interior of the infinite band (easy grab on fill)
+    const abx = dx;
+    const aby = dy;
+    const len2 = abx * abx + aby * aby;
+    if (len2 > 1e-6) {
+      const crossA = (x - a!.x) * aby - (y - a!.y) * abx;
+      const crossC = (x - c!.x) * aby - (y - c!.y) * abx;
+      // Same-side of both rails? Between rails when signs differ (or near zero).
+      if (crossA * crossC <= 0) {
+        // Also require roughly between the extended span along the plot.
+        const along = ((x - a!.x) * abx + (y - a!.y) * aby) / len2;
+        if (along > -2 && along < 3) return true;
+      }
     }
     return false;
   }
@@ -241,15 +264,14 @@ function hitPaintedBody(
     const priceA = d.points[0].price;
     const priceB =
       p2 && type === 'fibExtension' ? p2.price : d.points[1].price;
-    const lo = Math.min(priceA, priceB);
-    const hi = Math.max(priceA, priceB);
+    const base = fib.reverse ? priceB : priceA;
+    const tip = fib.reverse ? priceA : priceB;
     const segL = Math.min(pts[0]!.x, pts[1]!.x);
     const segR = Math.max(pts[0]!.x, pts[1]!.x);
     const left = fib.extendLeft ? plot.left : segL;
     const right = fib.extendRight ? plot.left + plot.width : segR;
     for (const lv of levels) {
-      const t = fib.reverse ? 1 - lv.coeff : lv.coeff;
-      const price = hi - (hi - lo) * t;
+      const price = base + (tip - base) * lv.coeff;
       const ly = priceToY(price, priceScale, plot);
       if (nearSeg(x, y, left, ly, right, ly, hitPx)) return true;
     }
@@ -336,20 +358,64 @@ function hitPaintedBody(
     return nearPolySegments(x, y, pts, hitPx, type === 'polyline');
   }
 
+  if (type === 'callout' && pts.length >= 2) {
+    if (nearSeg(x, y, pts[0]!.x, pts[0]!.y, pts[1]!.x, pts[1]!.y, hitPx)) {
+      return true;
+    }
+    // Approximate bubble at tip (no canvas measure on hot path — use layout helper with fake ctx measure via length).
+    const label = d.text || 'Callout';
+    const fontSize = d.style.fontSize || 12;
+    const w = Math.max(24, label.length * fontSize * 0.55) + 16;
+    const h = fontSize + 12;
+    // Mirror layoutCalloutBubble placement roughly
+    const origin = pts[0]!;
+    const anchor = pts[1]!;
+    const dx = anchor.x - origin.x;
+    const dy = anchor.y - origin.y;
+    let bx = anchor.x - w / 2;
+    let by = anchor.y - h / 2;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      bx = dx >= 0 ? anchor.x + 4 : anchor.x - w - 4;
+      by = anchor.y - h / 2;
+    } else {
+      bx = anchor.x - w / 2;
+      by = dy >= 0 ? anchor.y + 4 : anchor.y - h - 4;
+    }
+    return hitCalloutBubble(x, y, { x: bx, y: by, w, h, tipX: bx, tipY: by }, hitPx);
+  }
+
+  if (type === 'priceLabel' && pts[0] && d.points[0]) {
+    const y0 = pts[0].y;
+    const right = plot.left + plot.width;
+    // Stub or axis chip
+    if (nearSeg(x, y, pts[0].x, y0, right, y0, hitPx)) return true;
+    const label = d.points[0].price.toFixed(2);
+    const chipW = Math.max(48, label.length * 7 + 14);
+    const labelH = 18;
+    const axisX = right - chipW;
+    const labelY = y0 - labelH / 2;
+    if (
+      x >= axisX - 4 - hitPx &&
+      x <= right + hitPx &&
+      y >= labelY - hitPx &&
+      y <= labelY + labelH + hitPx
+    ) {
+      return true;
+    }
+    return Math.hypot(x - pts[0].x, y - pts[0].y) <= hitPx * 1.5;
+  }
+
   if (
     type === 'text' ||
     type === 'note' ||
     type === 'priceNote' ||
     type === 'comment' ||
-    type === 'priceLabel' ||
     type === 'pin'
   ) {
     if (!pts[0]) return false;
     const label =
       d.text ||
-      (type === 'priceLabel' || type === 'priceNote'
-        ? String(d.points[0]?.price ?? '')
-        : type);
+      (type === 'priceNote' ? String(d.points[0]?.price ?? '') : type);
     return nearTextLabel(
       x,
       y,
@@ -402,6 +468,10 @@ export function cursorForDrawingHit(
   if (isRectEdgeHandle(hit.handleIndex) && isRectLikeTool(drawing.type)) {
     if (hit.handleIndex === 2 || hit.handleIndex === 4) return 'ns-resize';
     return 'ew-resize';
+  }
+
+  if (isChannelWidthHandle(hit.handleIndex) && isChannelTool(drawing.type)) {
+    return opts?.dragging ? 'grabbing' : 'ns-resize';
   }
 
   const pts: Array<{ x: number; y: number }> = [];
@@ -486,6 +556,17 @@ export function hitTestDrawings(
         if (Math.hypot(x - edge.x, y - edge.y) <= HANDLE_PX) {
           return { drawingId: d.id, handleIndex: edge.handleIndex };
         }
+      }
+    }
+    if (isChannelTool(d.type) && pts.length >= 3) {
+      const wh = channelWidthHandleXY(
+        pts[0]!,
+        pts[1]!,
+        pts[2]!,
+        d.type === 'flatTopBottom',
+      );
+      if (Math.hypot(x - wh.x, y - wh.y) <= HANDLE_PX) {
+        return { drawingId: d.id, handleIndex: CHANNEL_WIDTH_HANDLE };
       }
     }
     if (hitPaintedBody(x, y, d, pts, plot, priceScale, HIT_PX)) {

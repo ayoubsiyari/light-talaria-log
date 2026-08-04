@@ -756,6 +756,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | Fix flaky multi-pair TF switch: invalidate/cancel LOD + merge identity; per-pane TF list | Switch TF after pan on 2×2 |
 | 2026-08-04 | Session create defaults start/end to last 3 months of coverage | Open Sessions → check dates |
 | 2026-08-04 | TF switch awaits remote fill + gen/suppress/optimistic UI (first click sticks) | Multi-pair 2×2: change TF once |
+| 2026-08-04 | Fix replay freeze: don’t hold session-commit suppress across awaits; remote wait 8s cap | Hard-refresh → Play |
 | 2026-08-04 | Nav path close-the-loop: TopBar Sessions/Exit + Backtest→journal; honest landing; shared AppPageNav; Datasets Create session CTA; soft #/404 | Manual: Exit chart, run BT → Journal, unknown hash |
 | 2026-08-04 | Landing + chrome fully on Hero UI (removed `--m-*` marketing palette); ThemeToggle/logo use Hero Button | Hard-refresh landing — tokens follow dark/light |
 | 2026-08-04 | Analytics dashboard v1: columnar store, worker metrics (88), canvas charts subset, virtual list, honesty gating; report in `docs/ANALYTICS-REPORT.md` | Bottom Analytics tab; Demo 5k; `npm run test:analytics` / `bench:analytics` |

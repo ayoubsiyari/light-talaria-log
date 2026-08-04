@@ -216,7 +216,14 @@ export class WarmCache {
             }
           };
           if (opts?.awaitRemote) {
-            return topUp();
+            // Cap wait so a slow/offline VPS cannot freeze TF switch or replay arm.
+            const REMOTE_WAIT_MS = 8_000;
+            return await Promise.race([
+              topUp(),
+              new Promise<ChartBar[]>((resolve) => {
+                setTimeout(() => resolve(this.store.get(k)?.bars ?? bars), REMOTE_WAIT_MS);
+              }),
+            ]);
           }
           void topUp();
         } else {

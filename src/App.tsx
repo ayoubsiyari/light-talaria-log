@@ -1024,6 +1024,8 @@ export default function App() {
     detachedPanesRef.current.clear();
     cameraDetachedRef.current = false;
     setCameraDetached(false);
+    // Safety: never start play while a TF-switch suppress is stuck.
+    suppressSessionCommitRef.current = false;
     // Lock play rate to finest pane TF before the first tick.
     syncReplayClockTf();
 
@@ -1785,8 +1787,11 @@ export default function App() {
       // Span/anchor for fill size only — sibling cameras are preserved in commit/sync.
       sessionRef.current.setCamera(camera.anchorTime, camera.span);
       setActivePaneId(paneId);
+      // Only suppress the setActivePane notify — never hold this across awaits
+      // (a stuck lock freezes session commits and looks like replay is dead).
       suppressSessionCommitRef.current = true;
       sessionRef.current.setActivePane(paneId);
+      suppressSessionCommitRef.current = false;
       markPanesLoading(targets, true);
 
       void (async () => {
@@ -1819,7 +1824,6 @@ export default function App() {
           }
         } finally {
           if (switchGen === paneSwitchGenRef.current) {
-            suppressSessionCommitRef.current = false;
             markPanesLoading(targets, false);
           }
         }
@@ -1876,6 +1880,7 @@ export default function App() {
       setActivePaneId(paneId);
       suppressSessionCommitRef.current = true;
       sessionRef.current.setActivePane(paneId);
+      suppressSessionCommitRef.current = false;
       markPanesLoading(targets, true);
 
       void (async () => {
@@ -1911,7 +1916,6 @@ export default function App() {
           }
         } finally {
           if (switchGen === paneSwitchGenRef.current) {
-            suppressSessionCommitRef.current = false;
             markPanesLoading(targets, false);
           }
         }

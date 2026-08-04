@@ -37,9 +37,17 @@ import { ChartLoadingScreen } from '@/components/ChartLoadingScreen';
 import { PerfOverlay } from '@/components/perf/PerfOverlay';
 import { getChart } from '@/chart';
 /** Per-switch camera preserve: tip candle screen fraction + bar-count zoom. */
-type LiveCamera = { anchorTime: number; span: number; tipRatio: number };
+type LiveCamera = {
+  anchorTime: number;
+  span: number;
+  tipRatio: number;
+  /** TF the span was captured on — used to remap wall-clock into seconds TFs. */
+  fromTf: Timeframe;
+};
 import {
   canDeriveFrom,
+  indexAtOrBeforeBars,
+  remapSpanAcrossTf,
   smallestTimeframe,
   timeframeSeconds,
 } from '@/data/timeframeAgg';
@@ -432,7 +440,6 @@ export default function App() {
       const cursor = replay.cursorTime;
       const preserved = cameraPreserveRef.current;
       const applyCamera = opts?.applyCamera === true;
-      const span = Math.max(10, preserved?.span ?? s.span);
       const tipRatio = preserved?.tipRatio ?? 0.9;
       const only =
         opts?.paneIds != null ? new Set(opts.paneIds) : null;
@@ -447,11 +454,15 @@ export default function App() {
 
         const tipTime = Number.isFinite(cursor)
           ? cursor
-          : v.bars[v.bars.length - 1]!.time;
+          : (preserved?.anchorTime ?? v.bars[v.bars.length - 1]!.time);
         chart.syncReplayReveal(v.bars, tipTime);
 
         if (applyCamera) {
-          const tipIndex = v.bars.length - 1;
+          // Tip = cursor/anchor in the NEW series — never assume buffer end
+          // (synthetic second buffers often have ahead pad past the tip).
+          const tipIndex = indexAtOrBeforeBars(v.bars, tipTime);
+          // `preserved.span` is already remapped for the target TF in applyPaneTimeframe.
+          const span = Math.max(10, preserved?.span ?? s.span);
           const fromIndex = tipIndex - tipRatio * span;
           chart.setVisibleRange(fromIndex, fromIndex + span, { silent: true });
         }
@@ -476,7 +487,12 @@ export default function App() {
       const bars = engine?.getBars() ?? pane?.bars ?? [];
       const replay = replayRef.current.get();
       const cursor = replay.cursorTime;
-      const tipIndex = Math.max(0, bars.length - 1);
+      const fromTf = pane?.selectedTf ?? pane?.timeframe ?? catalog?.baseTf ?? '1m';
+      // Tip = cursor bar when replaying; else right edge of the visible window.
+      const tipIndex =
+        Number.isFinite(cursor) && bars.length > 0
+          ? indexAtOrBeforeBars(bars, cursor)
+          : Math.max(0, bars.length - 1);
       // Where the tip candle sits in the viewport (0 = left, 1 = right).
       const tipRatio = Math.max(
         0,
@@ -493,15 +509,16 @@ export default function App() {
         const tr = bars.length > 0 ? timeRangeFromVisible(bars, liveRange) : null;
         anchorTime =
           tr?.toTime ??
+          bars[tipIndex]?.time ??
           bars[bars.length - 1]?.time ??
           (Number.isFinite(cursor) ? cursor : (catalog?.timeEnd ?? 0));
         if (Number.isFinite(cursor)) {
           anchorTime = Math.min(anchorTime, cursor);
         }
       }
-      return { anchorTime, span, tipRatio };
+      return { anchorTime, span, tipRatio, fromTf };
     },
-    [catalog?.timeEnd],
+    [catalog?.timeEnd, catalog?.baseTf],
   );
 
   const activePane = panes.find((p) => p.id === activePaneId) ?? panes[0] ?? null;
@@ -1904,9 +1921,12 @@ export default function App() {
       setPanes(optimistic);
 
       const camera = captureLiveCamera(paneId);
-      cameraPreserveRef.current = camera;
+      const fromTf = existing.selectedTf ?? existing.timeframe;
+      // Seconds ↔ minutes: keep wall-clock zoom so the plot doesn't 60× jump.
+      const span = remapSpanAcrossTf(camera.span, fromTf, tf);
+      cameraPreserveRef.current = { ...camera, span, fromTf };
       // Span/anchor for fill size only — sibling cameras are preserved in commit/sync.
-      sessionRef.current.setCamera(camera.anchorTime, camera.span);
+      sessionRef.current.setCamera(camera.anchorTime, span);
       setActivePaneId(paneId);
       // Only suppress the setActivePane notify — never hold this across awaits
       // (a stuck lock freezes session commits and looks like replay is dead).
@@ -1930,9 +1950,10 @@ export default function App() {
           }
           if (switchGen !== paneSwitchGenRef.current) return;
 
+          // Clock TF before engine sync — forming/truncate use the new grid.
+          syncReplayClockTf(panesRef.current);
           commitSessionViews({ adoptRangePaneIds: targets });
           syncEnginesFromSession({ paneIds: targets, applyCamera: true });
-          syncReplayClockTf(panesRef.current);
 
           const focus = panesRef.current.find((p) => p.id === paneId);
           if (focus && focus.bars.length > 0) {

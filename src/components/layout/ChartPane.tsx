@@ -8,7 +8,9 @@ import type {
 } from '@/chart';
 import {
   formatPrice,
+  formatTime,
   getAppearance,
+  shouldShowSeconds,
   subscribeAppearance,
 } from '@/chart';
 import { ChartContainer } from '@/components/ChartContainer';
@@ -79,10 +81,15 @@ export interface ChartPaneProps {
   showBrandWatermark?: boolean;
 }
 
-function formatOhlc(point: CrosshairPoint | null): string {
+function formatOhlc(
+  point: CrosshairPoint | null,
+  timeframe: Timeframe,
+): string {
   const bar = point?.bar;
   if (!bar) return 'O —  H —  L —  C —';
-  return `O ${formatPrice(bar.open)}  H ${formatPrice(bar.high)}  L ${formatPrice(bar.low)}  C ${formatPrice(bar.close)}`;
+  const ohlc = `O ${formatPrice(bar.open)}  H ${formatPrice(bar.high)}  L ${formatPrice(bar.low)}  C ${formatPrice(bar.close)}`;
+  if (!shouldShowSeconds(timeframe)) return ohlc;
+  return `${formatTime(bar.time, { timeframe })}  ${ohlc}`;
 }
 
 /** One synced chart pane — legend is read-only; pair/TF change via TopBar (active pane). */
@@ -143,25 +150,28 @@ export function ChartPane({
     getAppearance,
   );
 
-  const onCrosshairMove = useCallback((point: CrosshairPoint | null) => {
-    sampleRef.current?.(point);
-    if (ohlcRef.current) {
-      ohlcRef.current.textContent = formatOhlc(point);
-    }
-    if (changeRef.current) {
-      if (point?.bar) {
-        const d = point.bar.close - point.bar.open;
-        const pct = point.bar.open !== 0 ? (d / point.bar.open) * 100 : 0;
-        const sign = d >= 0 ? '+' : '';
-        changeRef.current.textContent = `${sign}${formatPrice(d)} (${sign}${pct.toFixed(2)}%)`;
-        changeRef.current.className = `tabular-nums ${d >= 0 ? 'text-success' : 'text-danger'}`;
-        changeRef.current.hidden = false;
-      } else {
-        changeRef.current.textContent = '';
-        changeRef.current.hidden = true;
+  const onCrosshairMove = useCallback(
+    (point: CrosshairPoint | null) => {
+      sampleRef.current?.(point);
+      if (ohlcRef.current) {
+        ohlcRef.current.textContent = formatOhlc(point, timeframe);
       }
-    }
-  }, []);
+      if (changeRef.current) {
+        if (point?.bar) {
+          const d = point.bar.close - point.bar.open;
+          const pct = point.bar.open !== 0 ? (d / point.bar.open) * 100 : 0;
+          const sign = d >= 0 ? '+' : '';
+          changeRef.current.textContent = `${sign}${formatPrice(d)} (${sign}${pct.toFixed(2)}%)`;
+          changeRef.current.className = `tabular-nums ${d >= 0 ? 'text-success' : 'text-danger'}`;
+          changeRef.current.hidden = false;
+        } else {
+          changeRef.current.textContent = '';
+          changeRef.current.hidden = true;
+        }
+      }
+    },
+    [timeframe],
+  );
 
   return (
     <div

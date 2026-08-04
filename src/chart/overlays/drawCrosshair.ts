@@ -1,3 +1,4 @@
+import type { Timeframe } from '@/types/ui';
 import type { ChartColors } from '../chartTheme';
 import { formatPrice, formatTime } from '../format';
 import { contentBottom, type RenderLayout } from '../renderer';
@@ -8,6 +9,7 @@ export function drawCrosshair(
   layout: RenderLayout,
   point: CrosshairPoint,
   colors: ChartColors,
+  paneTimeframe?: Timeframe | null,
 ): void {
   const { plot, width, height, priceAxisWidth, timeAxisHeight } = layout;
   const bottom = contentBottom(layout);
@@ -65,8 +67,8 @@ export function drawCrosshair(
   ctx.textBaseline = 'middle';
   ctx.fillText(priceLabel, priceX + 4, priceY + labelH / 2);
 
-  // Time label on bottom axis
-  const timeLabel = formatTime(point.time);
+  // Time label on bottom axis (include seconds on 1s…45s panes)
+  const timeLabel = formatTime(point.time, { timeframe: paneTimeframe });
   const timeW = ctx.measureText(timeLabel).width + 10;
   const timeX = Math.min(
     Math.max(cx - timeW / 2, plot.left),

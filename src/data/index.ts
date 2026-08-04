@@ -31,6 +31,7 @@ export {
   isKnownTimeframe,
   isSecondTimeframe,
   logicalIndexAtTime,
+  remapSpanAcrossTf,
   smallestTimeframe,
   sortTimeframes,
   synthesizableSecondTimeframes,

@@ -66,6 +66,29 @@ export function isSecondTimeframe(tf: string): boolean {
   return (SECOND_TFS as readonly string[]).includes(tf);
 }
 
+/**
+ * Remap visible bar-count when switching TFs.
+ * Minute+ ↔ minute+: keep bar count (TV-like).
+ * Any switch involving sub-minute: preserve wall-clock window (clamped).
+ */
+export function remapSpanAcrossTf(
+  spanBars: number,
+  fromTf: Timeframe,
+  toTf: Timeframe,
+): number {
+  const fromSec = timeframeSeconds(fromTf);
+  const toSec = timeframeSeconds(toTf);
+  if (fromSec === toSec || !(spanBars > 0)) {
+    return Math.max(10, Math.min(MAX_BARS_IN_MEMORY, Math.round(spanBars)));
+  }
+  if (fromSec >= 60 && toSec >= 60) {
+    return Math.max(10, Math.min(MAX_BARS_IN_MEMORY, Math.round(spanBars)));
+  }
+  const wallSec = spanBars * fromSec;
+  const next = Math.round(wallSec / toSec);
+  return Math.max(10, Math.min(MAX_BARS_IN_MEMORY, next));
+}
+
 export function canAggregateFrom(baseTf: Timeframe, targetTf: Timeframe): boolean {
   return timeframeSeconds(targetTf) >= timeframeSeconds(baseTf);
 }

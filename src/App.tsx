@@ -656,19 +656,25 @@ export default function App() {
   );
 
   /**
-   * Clock grid = dataset base TF.
-   * Advance rate = finest (smallest) pane TF among all charts — e.g. 1m/5m/1h/4h
-   * → play at 1m speed so every pane stays in sync, not the focused pane’s TF.
+   * Clock grid = finest of dataset base + open pane TFs (so 1s panes step
+   * candle-by-candle; otherwise usually 1m).
+   * Advance rate = finest pane TF among all charts.
    */
   const syncReplayClockTf = useCallback((paneList?: readonly ChartPaneState[]) => {
     const list = paneList ?? panesRef.current;
-    const base = catalog?.baseTf ?? '1m';
-    replayRef.current.setBaseTf(base);
-    if (list.length === 0) return;
-    const rate = smallestTimeframe(
-      list.map((p) => p.selectedTf ?? p.timeframe),
-    );
+    const datasetBase = catalog?.baseTf ?? '1m';
+    if (list.length === 0) {
+      replayRef.current.setBaseTf(datasetBase);
+      replayRef.current.setRateTf(datasetBase);
+      sessionRef.current.setClockTf(datasetBase);
+      return;
+    }
+    const paneTfs = list.map((p) => p.selectedTf ?? p.timeframe);
+    const clock = smallestTimeframe([datasetBase, ...paneTfs]);
+    const rate = smallestTimeframe(paneTfs);
+    replayRef.current.setBaseTf(clock);
     replayRef.current.setRateTf(rate);
+    sessionRef.current.setClockTf(clock);
   }, [catalog?.baseTf]);
 
   /**
@@ -1355,10 +1361,10 @@ export default function App() {
               : REPLAY_VISIBLE_BARS,
           ),
         );
-        const windowSec = timeframeSeconds(baseTf) * resumeSpan;
-
-        // Replay clock on base TF; rate from open pane TF.
-        replayRef.current.setBaseTf(baseTf);
+        // Clock = finest of dataset base + open pane (1s steps when openTf is 1s).
+        const clockTf = smallestTimeframe([baseTf, openTf]);
+        const windowSec = timeframeSeconds(clockTf) * resumeSpan;
+        replayRef.current.setBaseTf(clockTf);
         replayRef.current.setRateTf(openTf);
         replayRef.current.configure(timeStart, timeEnd, windowSec);
         replayRef.current.seek(resumeCursor, { silent: true });
@@ -1366,7 +1372,7 @@ export default function App() {
 
         if (loadGen !== loadSessionGenRef.current) return;
         await sessionRef.current.configure({
-          baseTf,
+          baseTf: clockTf,
           bounds: { start: timeStart, end: timeEnd },
           panes: {
             'pane-0': {

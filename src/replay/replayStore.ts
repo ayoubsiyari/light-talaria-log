@@ -19,7 +19,10 @@ export interface ReplayController {
   subscribe(cb: ReplayListener): () => void;
   /** Set bounds without notifying (session load). */
   configure(startTime: number, endTime: number, windowSec: number): void;
-  /** Clock grid — always dataset base TF (usually 1m). */
+  /**
+   * Clock grid — finest of dataset base + open panes (1s when a second-TF
+   * pane is open; otherwise usually dataset 1m).
+   */
   setBaseTf(tf: Timeframe): void;
   /** Advance-rate TF — finest pane TF; converts speed into clock steps. */
   setRateTf(tf: Timeframe): void;
@@ -74,9 +77,17 @@ export function createReplayController(): ReplayController {
 
   const clockPeriod = () => timeframeSeconds(baseTf);
 
-  /** How many base-TF bars equal one rate-TF bar. */
-  const clockStepsPerRateBar = () =>
-    Math.max(1, Math.round(timeframeSeconds(rateTf) / timeframeSeconds(baseTf)));
+  /**
+   * How many clock bars equal one rate-TF bar.
+   * When rate is finer than or equal to the clock (e.g. both 1s), step 1:1.
+   * When rate is coarser (e.g. rate 1h, clock 1m), advance many clock bars.
+   */
+  const clockStepsPerRateBar = () => {
+    const rateSec = timeframeSeconds(rateTf);
+    const clockSec = timeframeSeconds(baseTf);
+    if (rateSec <= clockSec) return 1;
+    return Math.max(1, Math.round(rateSec / clockSec));
+  };
 
   const stopRaf = () => {
     if (raf) {

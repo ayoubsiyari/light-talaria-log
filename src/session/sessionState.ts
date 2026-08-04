@@ -21,7 +21,10 @@ export type RevealMode = 'replay' | 'full';
  * Camera is TF-invariant: `anchorTime` (right edge) + `span` (bar count).
  */
 export interface SessionState {
-  /** The ONLY clock. Always on the dataset BASE TF grid (usually 1m). */
+  /**
+   * The ONLY clock. Grid = finest of dataset base TF and open pane TFs
+   * (e.g. 1s when a synthetic-second pane is open; otherwise usually 1m).
+   */
   cursorTime: number;
   /** Wall-clock time at the camera's RIGHT edge. TF-invariant. */
   anchorTime: number;
@@ -31,7 +34,7 @@ export interface SessionState {
   activePaneId: string;
   revealMode: RevealMode;
   bounds: SessionBounds;
-  /** Dataset base TF — replay clock grid. */
+  /** Replay clock grid TF (may be finer than the dataset's stored base). */
   baseTf: Timeframe;
   playing: boolean;
 }

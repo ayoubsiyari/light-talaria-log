@@ -24,6 +24,7 @@ import { DrawingSettingsModal } from '@/components/drawings/DrawingSettingsModal
 import { ObjectTreePanel } from '@/components/drawings/ObjectTreePanel';
 import { ChartContextMenu, type ChartContextMenuState } from '@/components/chart/ChartContextMenu';
 import { ChartSettingsModal } from '@/components/chart/ChartSettingsModal';
+import { ensureExampleAnalyticsSession } from '@/analytics/exampleSession';
 import { AnalyticsDashboard } from '@/components/analytics/AnalyticsDashboard';
 import { BottomBar } from '@/components/layout/BottomBar';
 import { ChartGrid } from '@/components/layout/ChartGrid';
@@ -1484,6 +1485,11 @@ export default function App() {
     },
     [applyJournalFocus, clearChartFocusHash],
   );
+
+  // Example analytics session (200 enriched closed trades) for Dashboard/Trades.
+  useEffect(() => {
+    ensureExampleAnalyticsSession();
+  }, []);
 
   // Right-click / long-press chart → context menu (crosshair + settings)
   useEffect(() => {

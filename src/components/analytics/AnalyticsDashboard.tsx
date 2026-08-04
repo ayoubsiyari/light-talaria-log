@@ -82,19 +82,39 @@ export function AnalyticsDashboard({
       setStore(buildTradeStore(trades, { initialBalance: 10_000 }));
       return;
     }
-    const view =
-      (sessionId ? getOrderJournalView(sessionId, liveJournal) : null) ??
-      listOrderJournalViews(liveJournal)[0] ??
-      null;
-    if (!view || view.trades.length === 0) {
+    // Chart overlay: one session. Dashboard shell: all journals with closed trades.
+    if (sessionId) {
+      const view = getOrderJournalView(sessionId, liveJournal);
+      if (!view || view.trades.length === 0) {
+        setStore(null);
+        return;
+      }
+      setStore(
+        buildTradeStore(orderJournalToClosedTrades(view), {
+          accountCurrency: view.accountCurrency,
+          initialBalance: view.startBalance,
+        }),
+      );
+      return;
+    }
+    const views = listOrderJournalViews(liveJournal).filter((v) => v.trades.length > 0);
+    if (views.length === 0) {
       setStore(null);
       return;
     }
-    const closed = orderJournalToClosedTrades(view);
+    const closed = views
+      .flatMap((v) => orderJournalToClosedTrades(v))
+      .sort((a, b) => a.closeTime - b.closeTime);
+    // Rebuild balance curve across sessions from a shared start (not per-session).
+    let bal = views[0]!.startBalance;
+    for (const t of closed) {
+      bal += t.netPnl;
+      t.balanceAfter = bal;
+    }
     setStore(
       buildTradeStore(closed, {
-        accountCurrency: view.accountCurrency,
-        initialBalance: view.startBalance,
+        accountCurrency: views[0]!.accountCurrency,
+        initialBalance: views[0]!.startBalance,
       }),
     );
   }, [source, liveJournal, sessionId, allowDemo]);

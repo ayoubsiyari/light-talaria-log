@@ -116,6 +116,12 @@ export function deleteSession(id: string): void {
   writeAll(readAll().filter((s) => s.id !== id));
 }
 
+/** Insert or replace a session by id (example / restore paths). */
+export function upsertSession(session: BacktestSession): void {
+  const all = readAll().filter((s) => s.id !== session.id);
+  writeAll([session, ...all].slice(0, MAX_SESSIONS));
+}
+
 /** Persist replay progress so reopen/refresh can resume at the last candle. */
 export function updateSessionProgress(
   id: string,

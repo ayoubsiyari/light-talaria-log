@@ -1,5 +1,6 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button, Card } from '@heroui/react';
+import { ensureExampleAnalyticsSession } from '@/analytics/exampleSession';
 import { AnalyticsDashboard } from '@/components/analytics/AnalyticsDashboard';
 import { listJournalEntries } from '@/journal/journalStore';
 import type { OrderJournal } from '@/orders/journal';
@@ -15,7 +16,8 @@ interface DashboardPageProps {
 }
 
 /**
- * V8b Dashboard home — Hero UI + real local counts / journal analytics.
+ * App home — counts + the full Analytics dashboard (88 metrics / charts).
+ * Seeds an example 200-trade journal on first visit so the UI is populated.
  */
 export function DashboardPage({
   liveJournal = null,
@@ -23,7 +25,15 @@ export function DashboardPage({
   onGoTrades,
   onGoStrategy,
 }: DashboardPageProps) {
+  const [dataTick, setDataTick] = useState(0);
+
+  useEffect(() => {
+    ensureExampleAnalyticsSession();
+    setDataTick((n) => n + 1);
+  }, []);
+
   const stats = useMemo(() => {
+    void dataTick;
     const sessions = listSessions();
     const runs = listJournalEntries();
     const orderViews = listOrderJournalViews(liveJournal);
@@ -34,16 +44,17 @@ export function DashboardPage({
       closedTrades,
       strategies: listStrategies().length,
     };
-  }, [liveJournal]);
+  }, [liveJournal, dataTick]);
 
   return (
     <div className="min-h-full bg-background text-foreground">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-8">
         <header className="space-y-1.5">
           <p className="text-xs uppercase tracking-[0.2em] text-muted">Overview</p>
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted max-w-xl">
-            Same hub role as V8b Dashboard — wired to your sessions, trades, and strategies.
+          <p className="text-sm text-muted max-w-2xl">
+            Includes an example session with 200 closed trades (R, MFE/MAE, stops, costs) so
+            analytics charts and metrics render immediately.
           </p>
         </header>
 
@@ -64,14 +75,32 @@ export function DashboardPage({
           <Button variant="ghost" className="min-h-11" onPress={onGoStrategy}>
             Strategies
           </Button>
+          <Button
+            variant="ghost"
+            className="min-h-11"
+            onPress={() => {
+              ensureExampleAnalyticsSession({ force: true });
+              setDataTick((n) => n + 1);
+            }}
+          >
+            Reset example 200
+          </Button>
         </div>
 
-        <section className="space-y-3 min-h-[420px]">
-          <h2 className="text-lg font-semibold tracking-tight">Performance</h2>
-          <div className="rounded-lg border border-border bg-surface overflow-hidden min-h-[380px]">
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">Analytics</h2>
+              <p className="text-xs text-muted mt-0.5">
+                Full metric catalog, equity / R charts, and trade list
+              </p>
+            </div>
+          </div>
+          <div className="rounded-lg border border-border bg-surface overflow-hidden min-h-[min(70vh,720px)] h-[min(78vh,900px)]">
             <AnalyticsDashboard
+              key={dataTick}
               liveJournal={liveJournal}
-              allowDemo={false}
+              allowDemo
               onOpenJournal={onGoTrades}
             />
           </div>

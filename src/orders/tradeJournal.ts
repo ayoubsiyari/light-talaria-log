@@ -129,7 +129,9 @@ export function projectOrderJournal(journal: OrderJournal): OrderJournalView {
 
     if (e.type === 'POSITION_CLOSED') {
       const id = asStr(e.payload.positionId);
-      const fillPrice = asNum(e.payload.fillPrice);
+      // Engine writes `fillPrice`; accept legacy typo `fillsPrice`.
+      const fillPrice =
+        asNum(e.payload.fillPrice) ?? asNum(e.payload.fillsPrice);
       const size = asNum(e.payload.size);
       const net = asNum(e.payload.netPnLAccount) ?? 0;
       if (!id || fillPrice == null || size == null) continue;
@@ -156,10 +158,11 @@ export function projectOrderJournal(journal: OrderJournal): OrderJournalView {
         asNum(e.payload.openedAt) ?? open?.entryTime ?? e.cursorTime;
       const mfe = asNum(e.payload.mfePrice) ?? entryPrice;
       const mae = asNum(e.payload.maePrice) ?? entryPrice;
+      const tradeSymbol = asStr(e.payload.symbol) ?? symbol;
 
       trades.push({
         id: `${id}-${e.seq}`,
-        symbol,
+        symbol: tradeSymbol,
         side,
         entryTime,
         entryPrice,

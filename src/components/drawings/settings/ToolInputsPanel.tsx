@@ -200,6 +200,37 @@ export function ToolInputsPanel({
               className={`${fieldClass} w-24`}
             />
           </Row>
+          <Row label="Account">
+            <input
+              type="number"
+              min={100}
+              step={100}
+              value={asNumber(meta.accountSize, 10_000)}
+              onChange={(e) => set({ accountSize: Number(e.target.value) || 10_000 })}
+              className={`${fieldClass} w-28`}
+            />
+          </Row>
+          <Row label="Risk %">
+            <input
+              type="number"
+              min={0.1}
+              max={100}
+              step={0.1}
+              value={asNumber(meta.riskPercent, 1)}
+              onChange={(e) => set({ riskPercent: Number(e.target.value) || 1 })}
+              className={`${fieldClass} w-24`}
+            />
+          </Row>
+          <Row label="Lots (0=auto)">
+            <input
+              type="number"
+              min={0}
+              step={0.01}
+              value={asNumber(meta.lots, 0)}
+              onChange={(e) => set({ lots: Number(e.target.value) || 0 })}
+              className={`${fieldClass} w-24`}
+            />
+          </Row>
           <ToggleRow
             label="Show prices"
             checked={asBool(meta.showPrices, true)}
@@ -207,8 +238,13 @@ export function ToolInputsPanel({
           />
           <ToggleRow
             label="Show quantity"
-            checked={asBool(meta.showQty, false)}
+            checked={asBool(meta.showQty, true)}
             onChange={(v) => set({ showQty: v })}
+          />
+          <ToggleRow
+            label="Show P&L at target"
+            checked={asBool(meta.showPnl, true)}
+            onChange={(v) => set({ showPnl: v })}
           />
         </div>
       );

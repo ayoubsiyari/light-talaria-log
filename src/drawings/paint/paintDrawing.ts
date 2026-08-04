@@ -12,6 +12,13 @@ import {
   visibleFibLevels,
   type FibLevel,
 } from '../fibLevels';
+import { computeMeasureStats, formatMeasureLabel } from '../measureStats';
+import {
+  positionGeometry,
+  positionPnlAtTarget,
+  positionQty,
+} from '../positionMath';
+import { isRectLikeTool, rectEdgeMidpoints } from '../rectHandles';
 import { asBool, asNumber } from '../toolSettings';
 import { barIndexAtTime, clipToPlot, pointToXY, pointsToXY, type PaintCtx } from './coords';
 import {
@@ -22,6 +29,22 @@ import {
   strokeLine,
   strokePoly,
 } from './primitives';
+
+/** Handles drawn/hit for a drawing (sparse for brush; +edge mids for boxes). */
+function handleXYForDrawing(
+  d: Drawing,
+  xy: Array<{ x: number; y: number }>,
+  selected: boolean,
+): Array<{ x: number; y: number }> {
+  if ((d.type === 'brush' || d.type === 'highlighter') && xy.length > 2) {
+    return [xy[0]!, xy[xy.length - 1]!];
+  }
+  if (selected && isRectLikeTool(d.type) && xy.length >= 2) {
+    const edges = rectEdgeMidpoints(xy[0]!.x, xy[0]!.y, xy[1]!.x, xy[1]!.y);
+    return [...xy, ...edges.map((e) => ({ x: e.x, y: e.y }))];
+  }
+  return xy;
+}
 
 function yPrice(price: number, pc: PaintCtx): number {
   return priceToY(price, pc.priceScale, pc.plot);
@@ -363,10 +386,7 @@ export function paintDrawing(
   switch (d.type) {
     case 'hline':
       if (xy[0]) {
-        strokeLine(pc, pc.plot.left, xy[0].y, pc.plot.left + pc.plot.width, xy[0].y, {
-          ...style,
-          lineStyle: style.lineStyle === 'solid' ? 'dashed' : style.lineStyle,
-        });
+        strokeLine(pc, pc.plot.left, xy[0].y, pc.plot.left + pc.plot.width, xy[0].y, style);
         if (style.showPriceLabels && d.points[0]) {
           drawTextLabel(
             pc,
@@ -739,15 +759,33 @@ export function paintDrawing(
           ctx.globalAlpha = 1;
         }
         if (d.type === 'datePriceRange' && asBool(d.meta?.showStats, true) && d.points[0] && d.points[1]) {
-          const dp = Math.abs(d.points[1].price - d.points[0].price);
-          const dt = Math.abs(d.points[1].time - d.points[0].time);
+          const stats = computeMeasureStats(
+            d.points[0].time,
+            d.points[0].price,
+            d.points[1].time,
+            d.points[1].price,
+            pc.bars,
+          );
+          const digits = Math.abs(stats.deltaPrice) < 1 ? 5 : 2;
           drawTextLabel(
             pc,
             x + w / 2,
             y + h / 2,
-            `${dp.toFixed(2)} · ${Math.round(dt / 60)}m`,
-            style,
+            formatMeasureLabel(stats, digits),
+            { ...style, textAlignH: 'center', fontSize: Math.min(style.fontSize, 12) },
           );
+          if (asBool(d.meta?.showAngle, false)) {
+            const dx = xy[1]!.x - xy[0]!.x;
+            const dy = xy[1]!.y - xy[0]!.y;
+            const ang = ((Math.atan2(-dy, dx) * 180) / Math.PI).toFixed(1);
+            drawTextLabel(
+              pc,
+              x + w / 2,
+              y + h / 2 + 16,
+              `${ang}°`,
+              { ...style, textAlignH: 'center', fontSize: Math.min(style.fontSize, 11) },
+            );
+          }
         } else if (asBool(d.meta?.showCenter, false)) {
           paintShapeCenter(pc, x + w / 2, y + h / 2, style);
         }
@@ -1024,8 +1062,18 @@ export function paintDrawing(
         const target = xy[2]!;
         const left = Math.min(entry.x, stop.x, target.x);
         const right = Math.max(entry.x, stop.x, target.x) + 40;
-        const riskStyle = { ...style, color: '#F44336', fillOpacity: 0.2, fill: true };
-        const rewardStyle = { ...style, color: '#4CAF50', fillOpacity: 0.2, fill: true };
+        const riskStyle = {
+          ...style,
+          color: pc.colors.downColor,
+          fillOpacity: 0.2,
+          fill: true,
+        };
+        const rewardStyle = {
+          ...style,
+          color: pc.colors.upColor,
+          fillOpacity: 0.2,
+          fill: true,
+        };
         fillPoly(
           pc,
           [
@@ -1047,15 +1095,35 @@ export function paintDrawing(
           rewardStyle,
         );
         strokeLine(pc, left, entry.y, right, entry.y, style);
-        const rr = asNumber(d.meta?.riskReward, 2);
-        drawTextLabel(pc, right + 4, entry.y, `1:${rr.toFixed(1)}`, style, false);
+        const geo = positionGeometry(d.points, d.type);
+        const rr = geo?.riskReward ?? asNumber(d.meta?.riskReward, 2);
+        drawTextLabel(pc, right + 4, entry.y, `1:${rr.toFixed(2)}`, style, false);
         if (asBool(d.meta?.showPrices, true)) {
           drawTextLabel(pc, left + 4, entry.y - 12, d.points[0].price.toFixed(2), style, false);
           drawTextLabel(pc, left + 4, stop.y, d.points[1].price.toFixed(2), style, false);
           drawTextLabel(pc, left + 4, target.y, d.points[2].price.toFixed(2), style, false);
         }
-        if (asBool(d.meta?.showQty, false)) {
-          drawTextLabel(pc, right + 4, (entry.y + target.y) / 2, 'Qty 1', style, false);
+        if (geo) {
+          const qty = positionQty(geo.risk, d.meta);
+          let labelY = (entry.y + target.y) / 2;
+          if (asBool(d.meta?.showQty, true) && qty > 0) {
+            const qtyStr =
+              qty >= 100 ? qty.toFixed(0) : qty >= 1 ? qty.toFixed(2) : qty.toFixed(4);
+            drawTextLabel(pc, right + 4, labelY, `Qty ${qtyStr}`, style, false);
+            labelY += 14;
+          }
+          if (asBool(d.meta?.showPnl, true) && qty > 0) {
+            const pnl = positionPnlAtTarget(geo, qty);
+            const sign = pnl >= 0 ? '+' : '';
+            drawTextLabel(
+              pc,
+              right + 4,
+              labelY,
+              `P&L ${sign}${pnl.toFixed(2)}`,
+              style,
+              false,
+            );
+          }
         }
       }
       break;
@@ -1155,7 +1223,7 @@ export function paintDrawing(
   }
 
   pc.ctx.restore();
-  drawHandles(pc, xy, selected ? 'selected' : false);
+  drawHandles(pc, handleXYForDrawing(d, xy, selected), selected ? 'selected' : false);
 }
 
 export function paintAllDrawings(
@@ -1189,7 +1257,7 @@ export function paintAllDrawings(
     // Hover handles when near (TV); selected already drew handles above
     if (!isSelected && isHovered) {
       const xy = pointsToXY(d.points, pc);
-      drawHandles(pc, xy, 'hover');
+      drawHandles(pc, handleXYForDrawing(d, xy, false), 'hover');
     }
   }
   if (draft) {

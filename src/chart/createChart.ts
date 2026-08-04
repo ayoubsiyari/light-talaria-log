@@ -14,6 +14,12 @@ import {
   magnetSnap,
   type MagnetMode,
 } from '@/drawings/magnet';
+import { syncRiskRewardMeta } from '@/drawings/positionMath';
+import {
+  applyRectEdgeDrag,
+  isRectEdgeHandle,
+  isRectLikeTool,
+} from '@/drawings/rectHandles';
 import type { DrawingToolId } from '@/drawings/toolRegistry';
 import type { ChartBar, VisibleRange } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
@@ -985,23 +991,37 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       if (!current || current.locked) return;
 
       let nextPoints: DrawingPoint[];
+      let nextMeta = current.meta;
       if (drawingDrag.mode === 'handle' && drawingDrag.handleIndex != null) {
         // Magnet on handles only (body move keeps shape rigid).
-        logical = magnetSnap(logical, bars, drawingMagnetMode);
-        if (drawingShiftHeld && drawingDrag.originPoints[0]) {
-          logical = applyShiftConstrainIfNeeded(
-            current.type,
-            [drawingDrag.originPoints[0]!],
-            logical,
-            bars,
-            true,
+        let tip = magnetSnap(logical, bars, drawingMagnetMode);
+        const hi = drawingDrag.handleIndex;
+        if (
+          isRectLikeTool(current.type) &&
+          isRectEdgeHandle(hi) &&
+          drawingDrag.originPoints.length >= 2
+        ) {
+          nextPoints = applyRectEdgeDrag(drawingDrag.originPoints, hi, tip);
+        } else {
+          // Constrain vs the other anchor (not always point 0).
+          const otherIdx = hi === 0 ? 1 : 0;
+          const other = drawingDrag.originPoints[otherIdx];
+          if (drawingShiftHeld && other) {
+            tip = applyShiftConstrainIfNeeded(
+              current.type,
+              [other],
+              tip,
+              bars,
+              true,
+            );
+          }
+          nextPoints = drawingDrag.originPoints.map((p, i) =>
+            i === hi ? { time: tip.time, price: tip.price } : { ...p },
           );
         }
-        nextPoints = current.points.slice();
-        nextPoints[drawingDrag.handleIndex] = {
-          time: logical.time,
-          price: logical.price,
-        };
+        if (current.type === 'longPosition' || current.type === 'shortPosition') {
+          nextMeta = syncRiskRewardMeta(current.type, nextPoints, current.meta);
+        }
       } else {
         const dt = logical.time - drawingDrag.anchorTime;
         const dp = logical.price - drawingDrag.anchorPrice;
@@ -1011,11 +1031,13 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         }));
       }
 
-      emitDrawingsChange(
-        drawings.map((dr) =>
-          dr.id === drawingDrag!.id ? { ...dr, points: nextPoints } : dr,
-        ),
+      // Mid-drag: update engine only (overlay dirty). Persist on pointer-up.
+      drawings = drawings.map((dr) =>
+        dr.id === drawingDrag!.id
+          ? { ...dr, points: nextPoints, meta: nextMeta }
+          : dr,
       );
+      markDirty();
     },
     endDrawingDrag: () => {
       if (orderLevelDragging) {
@@ -1034,7 +1056,15 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         markOverlayDirty();
         return;
       }
-      drawingDrag = null;
+      if (drawingDrag) {
+        const id = drawingDrag.id;
+        drawingDrag = null;
+        emitDrawingsChange(drawings);
+        // Ensure React selection stays on the edited drawing
+        for (const cb of drawingSelectListeners) cb(id);
+      } else {
+        drawingDrag = null;
+      }
     },
   });
 
@@ -1263,7 +1293,17 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     followRealtime,
 
     setDrawings(next, draft = null, opts) {
-      drawings = next;
+      // Don't clobber in-flight drag geometry with a stale React snapshot.
+      if (drawingDrag) {
+        const live = drawings.find((d) => d.id === drawingDrag!.id);
+        drawings = next.map((d) =>
+          live && d.id === live.id
+            ? { ...d, points: live.points, meta: live.meta }
+            : d,
+        );
+      } else {
+        drawings = next;
+      }
       // Placement owns rubber-band draft; React draft only when not placing
       if (!placement) draftDrawing = draft;
       if (opts?.selectedId !== undefined) selectedDrawingId = opts.selectedId;

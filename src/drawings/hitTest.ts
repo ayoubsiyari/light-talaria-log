@@ -11,7 +11,38 @@ import {
 } from './fibLevels';
 import { extendLine, type LineExtendPaint } from './paint/coords';
 import { extendModeToPaint } from './drawingStyle';
+import {
+  isRectEdgeHandle,
+  isRectLikeTool,
+  rectEdgeMidpoints,
+} from './rectHandles';
 import { isDrawingVisibleOnTf } from './visibility';
+
+/** Approximate text label hit box (no canvas measure on the hot path). */
+function nearTextLabel(
+  x: number,
+  y: number,
+  ax: number,
+  ay: number,
+  text: string,
+  fontSize: number,
+  alignH: 'left' | 'center' | 'right' | undefined,
+  hitPx: number,
+): boolean {
+  const pad = 4;
+  const w = Math.max(fontSize, text.length * fontSize * 0.55) + pad * 2;
+  const h = fontSize + pad * 2;
+  let left = ax - pad;
+  if (alignH === 'center') left = ax - w / 2;
+  else if (alignH === 'right') left = ax - w;
+  const top = ay - h / 2;
+  return (
+    x >= left - hitPx &&
+    x <= left + w + hitPx &&
+    y >= top - hitPx &&
+    y <= top + h + hitPx
+  );
+}
 
 function toXY(
   p: DrawingPoint,
@@ -293,10 +324,42 @@ function hitPaintedBody(
     if (nearBoxEdge(x, y, pts[0]!.x, pts[0]!.y, pts[1]!.x, pts[1]!.y, hitPx)) {
       return true;
     }
+    // Interior fill — easy grab on large boxes (ellipse/circle use bbox approx)
+    const left = Math.min(pts[0]!.x, pts[1]!.x);
+    const right = Math.max(pts[0]!.x, pts[1]!.x);
+    const top = Math.min(pts[0]!.y, pts[1]!.y);
+    const bottom = Math.max(pts[0]!.y, pts[1]!.y);
+    if (x >= left && x <= right && y >= top && y <= bottom) return true;
   }
 
   if (type === 'brush' || type === 'highlighter' || type === 'path' || type === 'polyline') {
     return nearPolySegments(x, y, pts, hitPx, type === 'polyline');
+  }
+
+  if (
+    type === 'text' ||
+    type === 'note' ||
+    type === 'priceNote' ||
+    type === 'comment' ||
+    type === 'priceLabel' ||
+    type === 'pin'
+  ) {
+    if (!pts[0]) return false;
+    const label =
+      d.text ||
+      (type === 'priceLabel' || type === 'priceNote'
+        ? String(d.points[0]?.price ?? '')
+        : type);
+    return nearTextLabel(
+      x,
+      y,
+      pts[0].x,
+      pts[0].y,
+      label,
+      d.style.fontSize || 12,
+      d.style.textAlignH,
+      hitPx,
+    );
   }
 
   if (pts.length === 1) {
@@ -329,24 +392,17 @@ export function cursorForDrawingHit(
       return 'ns-resize';
     }
     if (drawing.type === 'vline') return 'ew-resize';
-    if (
-      drawing.type === 'fibRetracement' ||
-      drawing.type === 'fibExtension' ||
-      drawing.type === 'parallelChannel' ||
-      drawing.type === 'flatTopBottom' ||
-      drawing.type === 'disjointChannel' ||
-      drawing.type === 'rectangle' ||
-      drawing.type === 'longPosition' ||
-      drawing.type === 'shortPosition'
-    ) {
-      return opts?.dragging ? 'grabbing' : 'move';
-    }
     return opts?.dragging ? 'grabbing' : 'move';
   }
 
   if (drawing.type === 'hline') return 'ns-resize';
   if (drawing.type === 'vline') return 'ew-resize';
   if (drawing.type === 'crossLine') return 'move';
+
+  if (isRectEdgeHandle(hit.handleIndex) && isRectLikeTool(drawing.type)) {
+    if (hit.handleIndex === 2 || hit.handleIndex === 4) return 'ns-resize';
+    return 'ew-resize';
+  }
 
   const pts: Array<{ x: number; y: number }> = [];
   for (const p of drawing.points) {
@@ -414,9 +470,22 @@ export function hitTestDrawings(
       const xy = toXY(p, bars, range, plot, priceScale);
       if (xy) pts.push(xy);
     }
-    for (let h = 0; h < pts.length; h++) {
-      if (Math.hypot(x - pts[h]!.x, y - pts[h]!.y) <= HANDLE_PX) {
+    // Brush: only endpoints are handles (body drag moves the stroke).
+    const handleIdxs: number[] =
+      (d.type === 'brush' || d.type === 'highlighter') && pts.length > 2
+        ? [0, pts.length - 1]
+        : pts.map((_, i) => i);
+    for (const h of handleIdxs) {
+      const p = pts[h];
+      if (p && Math.hypot(x - p.x, y - p.y) <= HANDLE_PX) {
         return { drawingId: d.id, handleIndex: h };
+      }
+    }
+    if (isRectLikeTool(d.type) && pts.length >= 2) {
+      for (const edge of rectEdgeMidpoints(pts[0]!.x, pts[0]!.y, pts[1]!.x, pts[1]!.y)) {
+        if (Math.hypot(x - edge.x, y - edge.y) <= HANDLE_PX) {
+          return { drawingId: d.id, handleIndex: edge.handleIndex };
+        }
       }
     }
     if (hitPaintedBody(x, y, d, pts, plot, priceScale, HIT_PX)) {

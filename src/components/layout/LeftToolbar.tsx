@@ -90,9 +90,9 @@ const TOOLBAR_GROUPS: {
   },
   {
     id: 'measure',
-    label: 'Forecast, Volume & Measure',
+    label: 'Measure, Forecast & Volume',
     Icon: IconMeasure,
-    categories: ['forecast', 'volume', 'measure'],
+    categories: ['measure', 'forecast', 'volume'],
   },
 ];
 

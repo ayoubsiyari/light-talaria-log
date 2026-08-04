@@ -770,6 +770,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | Drawings audit + plan D1–D6 in PROJECT.md (Tier 1 full function first; no niche TV catalog) | Approve **go D1** |
 | 2026-08-04 | **D1 done:** magnet off/weak/strong, Shift H/V/45°, per-TF Visibility tab + paint/hit filter | **go D2** (specialty hit-test) |
 | 2026-08-04 | **D2 done:** specialty hit-test (rays/fib/channel/rect/position); cursor by grab; brush press-drag | **go D3** (Tier 1 full function) |
+| 2026-08-04 | **D3 done:** Tier 1 full function — measure stats, position RR/P&L/sizing, rect edges, text tab+bbox, brush handles | **go D4** (object tree + chrome) |
 | 2026-08-04 | Fix multi-chart replay stall: non-blocking server top-up + ≤1 chunk per fetch (was awaiting hours of 1m mid-play) | Multi layout → Play through cache edge |
 | 2026-08-04 | IDB sliding-window GC for remote chunks (max 8/series) + Datasets “Clear chart cache”; local CSV untouched | Long Play → IDB stays small; Clear cache frees disk |
 | 2026-08-04 | Power Jump plan P1–P3 in PROJECT.md; **P1 Done:** journal View on chart → `#/chart/:id?t=&trade=` seek + highlight | Verify trade → chart; then **go Step P2** |
@@ -930,14 +931,15 @@ Fib extension, path, note, flag, anchored VWAP.
 
 #### D3 — Tier 1 tools to “full function”
 **Goal:** Each Tier 1 tool places, paints, selects, moves, resizes, settings, persist.  
-**Status:** Pending.  
+**Status:** Done (2026-08-04).  
 **Deliverables (per tool checklist):**
-- [ ] trendLine / ray / extendedLine / hline / horizontalRay / vline — Style + Coordinates + Visibility; Shift constrain
-- [ ] rectangle — fill + stroke; edge/corner resize
-- [ ] longPosition / shortPosition — entry/SL/TP zones, R:R + P&L labels, Inputs (account/risk/lots) wired to paint
-- [ ] measure — one-shot or `datePriceRange`: Δprice, %, bars, elapsed time; clears or stays per TV measure vs tool
-- [ ] text — place opens Text tab; font size/color/align; drag label
-- [ ] arrow / brush — solid place + style
+- [x] trendLine / ray / extendedLine / hline / horizontalRay / vline — Style + Coordinates + Visibility; Shift constrain
+- [x] rectangle — fill + stroke; edge/corner resize (+ fill hit)
+- [x] longPosition / shortPosition — entry/SL/TP zones, live R:R + P&L labels, Inputs (account/risk/lots) wired to paint
+- [x] measure — persistent `datePriceRange`: Δprice, %, bars, elapsed time; toolbar Measure group defaults to it
+- [x] text — place opens Text tab; font size/color/align; bbox hit + drag label
+- [x] arrow / brush — solid place + style; brush endpoints-only handles
+**Also:** commit drawing geometry on pointer-up (not every move); Shift constrain vs other handle.  
 **Done when:** Manual matrix on desktop + ~390px: place/select/move/style/delete for all 12; reload session restores them.
 
 #### D4 — Object tree + chrome

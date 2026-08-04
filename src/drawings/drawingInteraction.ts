@@ -1,5 +1,6 @@
 import type { Drawing, DrawingPoint } from './drawingStore';
 import { createDrawing } from './drawingStore';
+import { syncRiskRewardMeta } from './positionMath';
 import { getTool, type DrawingToolId } from './toolRegistry';
 
 export type PlaceResult =
@@ -70,9 +71,17 @@ export function placeDrawingPoint(
   // Text tools get a placeholder — edit in the Text settings tab (no window.prompt).
   const text = def.needsText ? def.label : undefined;
 
+  let drawing = createDrawing(tool, pts, text != null ? { text } : undefined);
+  if (tool === 'longPosition' || tool === 'shortPosition') {
+    drawing = {
+      ...drawing,
+      meta: syncRiskRewardMeta(tool, pts, drawing.meta),
+    };
+  }
+
   return {
     status: 'complete',
-    drawing: createDrawing(tool, pts, text != null ? { text } : undefined),
+    drawing,
     points: [],
   };
 }

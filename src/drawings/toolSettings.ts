@@ -55,6 +55,14 @@ export interface PositionMeta {
   riskReward: number;
   showPrices: boolean;
   showQty: boolean;
+  /** Show estimated P&L at target from account risk sizing. */
+  showPnl: boolean;
+  /** Account equity used for risk sizing. */
+  accountSize: number;
+  /** Risk % of account for suggested size. */
+  riskPercent: number;
+  /** Manual lots override; 0 = compute from risk. */
+  lots: number;
 }
 
 export interface VolumeProfileMeta {
@@ -139,6 +147,8 @@ const LINE_EXTRAS = new Set<DrawingToolId>([
   'infoLine',
   'trendAngle',
   'horizontalRay',
+  'hline',
+  'vline',
 ]);
 
 const FILL_TOOLS = new Set<DrawingToolId>([
@@ -206,7 +216,15 @@ export function defaultMetaFor(type: DrawingToolId): Record<string, unknown> {
     case 'brush':
       return { softEdge: type === 'highlighter' } satisfies BrushMeta;
     case 'position':
-      return { riskReward: 2, showPrices: true, showQty: false } satisfies PositionMeta;
+      return {
+        riskReward: 2,
+        showPrices: true,
+        showQty: true,
+        showPnl: true,
+        accountSize: 10_000,
+        riskPercent: 1,
+        lots: 0,
+      } satisfies PositionMeta;
     case 'volumeProfile':
       return { rows: 24, valueAreaPct: 70, developRight: true } satisfies VolumeProfileMeta;
     case 'cycles':

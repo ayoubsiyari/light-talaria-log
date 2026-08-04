@@ -67,6 +67,13 @@ function cloneDrawing(d: Drawing): Drawing {
   };
 }
 
+/** Text tools open on Text; fib on Inputs; everything else Style. */
+function initialSettingsTab(type: Drawing['type']): SettingsTab {
+  if (getTool(type).needsText) return 'text';
+  if (getToolSettings(type).toolPanel === 'fibLevels') return 'inputs';
+  return 'style';
+}
+
 /**
  * Shared TV-style settings modal for every drawing tool.
  * Live-previews on the chart; Cancel restores the open-time snapshot.
@@ -79,9 +86,7 @@ export function DrawingSettingsModal({
 }: DrawingSettingsModalProps) {
   const tool = getTool(drawing.type);
   const settings = useMemo(() => getToolSettings(drawing.type), [drawing.type]);
-  const [tab, setTab] = useState<SettingsTab>(() =>
-    getToolSettings(drawing.type).toolPanel === 'fibLevels' ? 'inputs' : 'style',
-  );
+  const [tab, setTab] = useState<SettingsTab>(() => initialSettingsTab(drawing.type));
   const snapshotRef = useRef<Drawing>(cloneDrawing(drawing));
   const drawingIdRef = useRef(drawing.id);
   const skipLiveRef = useRef(false);
@@ -109,8 +114,7 @@ export function DrawingSettingsModal({
     snapshotRef.current = cloneDrawing(next);
     skipLiveRef.current = true;
     setDraft(next);
-    // Level tools open on Inputs (editable coeffs); others on Style.
-    setTab(getToolSettings(drawing.type).toolPanel === 'fibLevels' ? 'inputs' : 'style');
+    setTab(initialSettingsTab(drawing.type));
     setRenaming(false);
     setPickerOpen(false);
     setFillPickerOpen(false);

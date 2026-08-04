@@ -22,6 +22,7 @@ import { ChartGrid } from '@/components/layout/ChartGrid';
 import { LeftToolbar } from '@/components/layout/LeftToolbar';
 import { TopBar } from '@/components/layout/TopBar';
 import { MarketingHome } from '@/components/landing/MarketingHome';
+import { NotFoundPage } from '@/components/NotFoundPage';
 import { CreateSessionPage } from '@/components/session/CreateSessionPage';
 import { getSession, updateSessionProgress } from '@/sessions/sessionStore';
 import { LoadingProgress } from '@/components/LoadingProgress';
@@ -51,9 +52,15 @@ import { resolveBaseDatasetsForSession } from '@/datasets/resolveBaseDataset';
 import {
   clearBacktestResult,
   getBacktestState,
+  setBacktestCancelled,
+  setBacktestError,
+  setBacktestResult,
+  setBacktestRunning,
   subscribeBacktest,
 } from '@/backtest/backtestStore';
-import { cancelBacktest } from '@/backtest/runBacktestWorker';
+import { cancelBacktest, runBacktest } from '@/backtest/runBacktestWorker';
+import { saveJournalResult } from '@/journal/journalStore';
+import { DEFAULT_BACKTEST_PARAMS } from '@/types/backtest';
 import {
   createOrderSessionBridge,
   type OrderSessionBridge,
@@ -86,6 +93,7 @@ import type { BottomTabId, ChartLayout, ChartToolId, Timeframe } from '@/types/u
 import { debounce } from '@/utils/debounce';
 import {
   LOD_DEBOUNCE_MS,
+  MAX_BACKTEST_BARS,
   MAX_BARS_IN_MEMORY,
   REPLAY_VISIBLE_BARS,
 } from '@/utils/constants';
@@ -1920,7 +1928,45 @@ export default function App() {
 
   useEffect(() => subscribeBacktest(() => setBacktestTick((n) => n + 1)), []);
 
-  // Backtest TopBar entry removed for now — engine/store kept for a future UI.
+  const handleRunBacktest = useCallback(() => {
+    if (!session) return;
+    const pane = panesRef.current.find((p) => p.id === activePaneId) ?? panesRef.current[0];
+    if (!pane) return;
+    const series = seriesForPane(pane);
+    if (!series) return;
+
+    const { timeStart, timeEnd } = replayBounds(session, seriesRef.current);
+    setBacktestRunning();
+
+    void runBacktest({
+      sessionId: session.id,
+      datasetId: series.datasetId,
+      timeframe: pane.timeframe,
+      timeStart,
+      timeEnd,
+      params: DEFAULT_BACKTEST_PARAMS,
+    })
+      .then((result) => {
+        const note = result.truncated
+          ? `Capped at ${MAX_BACKTEST_BARS.toLocaleString()} bars (newest)`
+          : null;
+        setBacktestResult(result, note);
+        saveJournalResult(session.id, session.name, result);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          setBacktestCancelled();
+          return;
+        }
+        setBacktestError(err instanceof Error ? err.message : 'Backtest failed');
+      });
+  }, [session, activePaneId, seriesForPane]);
+
+  const handleCancelBacktest = useCallback(() => {
+    cancelBacktest();
+    setBacktestCancelled();
+  }, []);
+
   useEffect(() => {
     return () => {
       cancelBacktest();
@@ -2013,13 +2059,31 @@ export default function App() {
     return (
       <MarketingHome
         onStartFree={() => setView('sessions')}
-        onSignIn={() => setView('sessions')}
+        onOpenApp={() => setView('sessions')}
+      />
+    );
+  }
+
+  if (view === 'notFound') {
+    return (
+      <NotFoundPage
+        onGoHome={() => setView('landing')}
+        onGoSessions={() => setView('sessions')}
       />
     );
   }
 
   if (view === 'datasets') {
-    return <DatasetsPage onGoSessions={() => setView('sessions')} />;
+    return (
+      <DatasetsPage
+        onGoSessions={() => setView('sessions')}
+        onGoHome={() => setView('landing')}
+        onGoJournal={() => {
+          setJournalSessionId(null);
+          setView('journal');
+        }}
+      />
+    );
   }
 
   if (view === 'journal') {
@@ -2027,6 +2091,16 @@ export default function App() {
       <JournalPage
         initialSessionId={journalSessionId}
         canReturnToChart={!!session && session.id === (journalSessionId ?? session.id)}
+        onGoHome={() => {
+          setJournalSessionId(null);
+          if (session) teardownChartSession();
+          setView('landing');
+        }}
+        onGoDatasets={() => {
+          setJournalSessionId(null);
+          if (session) teardownChartSession();
+          setView('datasets');
+        }}
         onGoSessions={() => {
           setJournalSessionId(null);
           if (session) teardownChartSession();
@@ -2093,6 +2167,14 @@ export default function App() {
   void backtestTick;
   const bt = getBacktestState();
   const btResult = bt.result;
+  const btRunning = bt.status === 'running';
+  const btLabel = btRunning
+    ? 'Running…'
+    : bt.status === 'error'
+      ? (bt.error ?? 'Error')
+      : btResult
+        ? `${btResult.trades.length} trades${bt.note ? ' · capped' : ''}`
+        : undefined;
   const equityLabel = btResult ? btResult.finalEquity.toFixed(4) : undefined;
   const pnlPct = btResult ? (btResult.finalEquity - 1) * 100 : null;
   const pnlLabel =
@@ -2119,6 +2201,11 @@ export default function App() {
         enabledIndicators={enabledIndicators}
         onEnabledIndicatorsChange={setEnabledIndicators}
         onPlaceOrder={handlePlaceOrder}
+        onExitSession={handleExitSession}
+        backtestRunning={btRunning}
+        backtestLabel={btLabel}
+        onRunBacktest={loadStatus === 'ready' ? handleRunBacktest : undefined}
+        onCancelBacktest={handleCancelBacktest}
       />
 
       <div className="flex-1 min-h-0 flex">

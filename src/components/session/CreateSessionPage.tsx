@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Button, Card, Label } from '@heroui/react';
-import { ThemeToggle } from '@/components/ThemeToggle';
+import { AppPageHeader } from '@/components/layout/AppPageNav';
 import { listDatasets } from '@/datasets/datasetStore';
 import {
   clampDate,
@@ -162,48 +162,15 @@ export function CreateSessionPage({
   return (
     <div className="min-h-full bg-background text-foreground overflow-auto">
       <div className="max-w-3xl mx-auto px-6 py-10 space-y-8">
-        <header className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-2">
-            {onGoHome ? (
-              <button
-                type="button"
-                onClick={onGoHome}
-                className="text-xs uppercase tracking-[0.2em] text-muted hover:text-foreground"
-              >
-                Talaria-Log
-              </button>
-            ) : (
-              <p className="text-xs uppercase tracking-[0.2em] text-muted">Talaria-Log</p>
-            )}
-            <h1 className="text-3xl font-semibold tracking-tight">Backtest session</h1>
-            <p className="text-sm text-muted max-w-xl">
-              Select one or more pairs from your downloads. Session dates are limited to the
-              overlap shared by every selected pair. Prefer 1m data — the chart aggregates higher
-              timeframes.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <ThemeToggle />
-            {onGoJournal && (
-              <Button
-                variant="secondary"
-                size="sm"
-                className="min-h-11 sm:min-h-8"
-                onPress={() => onGoJournal()}
-              >
-                Journal
-              </Button>
-            )}
-            <Button
-              variant="secondary"
-              size="sm"
-              className="min-h-11 sm:min-h-8"
-              onPress={onGoDatasets}
-            >
-              Datasets
-            </Button>
-          </div>
-        </header>
+        <AppPageHeader
+          current="sessions"
+          title="Backtest session"
+          description="Select one or more pairs from your downloads. Session dates are limited to the overlap shared by every selected pair. Prefer 1m data — the chart aggregates higher timeframes."
+          onGoHome={onGoHome}
+          onGoSessions={() => undefined}
+          onGoDatasets={onGoDatasets}
+          onGoJournal={onGoJournal ? () => onGoJournal() : undefined}
+        />
 
         <Card className="bg-surface border border-border">
           <Card.Header className="px-6 pt-6 pb-2">

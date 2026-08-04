@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Button, Card } from '@heroui/react';
-import { ThemeToggle } from '@/components/ThemeToggle';
+import { AppPageHeader } from '@/components/layout/AppPageNav';
 import { computeJournalStats } from '@/journal/journalStats';
 import {
   deleteJournalEntry,
@@ -15,6 +15,8 @@ interface JournalPageProps {
   /** Prefer this session's entry when opening. */
   initialSessionId?: string | null;
   onGoSessions: () => void;
+  onGoHome?: () => void;
+  onGoDatasets?: () => void;
   onOpenChart?: (sessionId: string) => void;
   /** True when the chart session is still in memory (soft journal navigate). */
   canReturnToChart?: boolean;
@@ -140,6 +142,8 @@ function TradeRow({ trade }: { trade: BacktestTrade }) {
 export function JournalPage({
   initialSessionId = null,
   onGoSessions,
+  onGoHome,
+  onGoDatasets,
   onOpenChart,
   canReturnToChart = false,
 }: JournalPageProps) {
@@ -181,27 +185,15 @@ export function JournalPage({
   return (
     <div className="min-h-full bg-background text-foreground overflow-auto">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6">
-        <header className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1.5 min-w-0">
-            <p className="text-xs uppercase tracking-[0.2em] text-muted">Talaria-Log</p>
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Journal</h1>
-            <p className="text-sm text-muted max-w-xl">
-              Review the latest backtest trades and equity for a session. No OHLC history is loaded
-              here.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <ThemeToggle />
-            <Button
-              variant="secondary"
-              size="sm"
-              className="min-h-11 sm:min-h-8"
-              onPress={onGoSessions}
-            >
-              Sessions
-            </Button>
-          </div>
-        </header>
+        <AppPageHeader
+          current="journal"
+          title="Journal"
+          description="Review the latest backtest trades and equity for a session. No OHLC history is loaded here."
+          onGoHome={onGoHome}
+          onGoSessions={onGoSessions}
+          onGoDatasets={onGoDatasets ?? onGoSessions}
+          onGoJournal={undefined}
+        />
 
         {entries.length === 0 ? (
           <Card className="bg-surface border border-border">

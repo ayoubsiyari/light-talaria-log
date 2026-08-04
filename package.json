@@ -25,7 +25,6 @@
     "@heroui/react": "^3.0.0",
     "@heroui/styles": "^3.0.0",
     "dukascopy-node": "^1.50.0",
-    "framer-motion": "^12.43.0",
     "lucide-react": "^1.27.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

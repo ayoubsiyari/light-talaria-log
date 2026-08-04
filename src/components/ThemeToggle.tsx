@@ -1,3 +1,4 @@
+import { Button } from '@heroui/react';
 import { useTheme } from '@/hooks/useTheme';
 
 interface ThemeToggleProps {
@@ -10,21 +11,23 @@ export function ThemeToggle({ className = '', compact = false }: ThemeToggleProp
   const { isDark, toggleTheme } = useTheme();
 
   return (
-    <button
-      type="button"
-      onClick={toggleTheme}
-      title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+    <Button
+      variant="ghost"
+      size="sm"
+      onPress={toggleTheme}
       aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
       className={[
         compact
-          ? 'w-7 h-7 min-h-7 min-w-7 [@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11 rounded-[3px] flex items-center justify-center text-muted hover:text-foreground hover:bg-background/70'
-          : 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-[4px] text-xs font-medium text-muted hover:text-foreground hover:bg-background/70 border border-[color:var(--tv-panel-line)]',
+          ? 'h-7 min-h-7 w-7 min-w-7 [@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11 px-0'
+          : 'min-h-11 sm:min-h-8 gap-1.5',
         className,
-      ].join(' ')}
+      ]
+        .filter(Boolean)
+        .join(' ')}
     >
       {isDark ? <IconSun /> : <IconMoon />}
       {!compact && <span>{isDark ? 'Light' : 'Dark'}</span>}
-    </button>
+    </Button>
   );
 }
 
@@ -44,7 +47,7 @@ function IconMoon({ className = 'w-4 h-4' }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
       <path
-        d="M21 14.5A8.5 8.5 0 1111.5 3a7 7 0 009.5 11.5z"
+        d="M21 14.5A8.5 8.5 0 0 1 9.5 3 7 7 0 1 0 21 14.5Z"
         strokeLinejoin="round"
       />
     </svg>

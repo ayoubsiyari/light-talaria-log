@@ -38,6 +38,13 @@ interface TopBarProps {
   enabledIndicators: readonly EnabledIndicator[];
   onEnabledIndicatorsChange: (next: EnabledIndicator[]) => void;
   onPlaceOrder?: () => void;
+  /** Leave chart → sessions (teardown). */
+  onExitSession?: () => void;
+  /** Strategy backtest v1 */
+  backtestRunning?: boolean;
+  backtestLabel?: string;
+  onRunBacktest?: () => void;
+  onCancelBacktest?: () => void;
 }
 
 /**
@@ -63,6 +70,11 @@ export function TopBar({
   enabledIndicators,
   onEnabledIndicatorsChange,
   onPlaceOrder,
+  onExitSession,
+  backtestRunning = false,
+  backtestLabel,
+  onRunBacktest,
+  onCancelBacktest,
 }: TopBarProps) {
   return (
     <header
@@ -73,14 +85,16 @@ export function TopBar({
         'h-9 min-h-9 [@media(hover:none)]:h-11 [@media(hover:none)]:min-h-11',
       ].join(' ')}
     >
-      <a
-        href="/"
-        className="flex items-center justify-center shrink-0 h-7 w-7 [@media(hover:none)]:h-11 [@media(hover:none)]:w-11 mr-0.5 sm:mr-1 rounded-md hover:bg-background/60"
-        title="Talaria Log"
-        aria-label="Talaria Log home"
+      <Button
+        variant="ghost"
+        size="sm"
+        className="shrink-0 h-7 min-h-7 w-7 min-w-7 [@media(hover:none)]:h-11 [@media(hover:none)]:min-h-11 [@media(hover:none)]:w-11 [@media(hover:none)]:min-w-11 mr-0.5 sm:mr-1 px-0"
+        aria-label="Back to sessions"
+        onPress={onExitSession}
+        isDisabled={!onExitSession}
       >
         <BrandLogo size={22} variant="raster" className="w-[22px] h-[22px]" />
-      </a>
+      </Button>
 
       {/* Left: symbol + series + indicators — may shrink; never shove right corner */}
       <div className="flex items-center min-w-0 shrink">
@@ -161,7 +175,40 @@ export function TopBar({
           sync={layoutSync}
           onSyncChange={onLayoutSyncChange}
         />
+        {onExitSession && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 min-h-7 [@media(hover:none)]:min-h-11 px-2 text-xs shrink-0"
+            onPress={onExitSession}
+          >
+            Sessions
+          </Button>
+        )}
         <ThemeToggle compact />
+        {backtestRunning ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-7 min-h-7 [@media(hover:none)]:min-h-11 px-2 sm:px-2.5 text-xs shrink-0"
+            onPress={onCancelBacktest}
+            aria-label={backtestLabel ?? 'Cancel backtest'}
+          >
+            Cancel
+          </Button>
+        ) : (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-7 min-h-7 [@media(hover:none)]:min-h-11 px-2 sm:px-2.5 text-xs shrink-0"
+            isDisabled={!onRunBacktest}
+            onPress={onRunBacktest}
+            aria-label={backtestLabel ?? 'Run backtest'}
+          >
+            <span className="sm:hidden">BT</span>
+            <span className="hidden sm:inline">Backtest</span>
+          </Button>
+        )}
         <Button
           variant="primary"
           size="sm"

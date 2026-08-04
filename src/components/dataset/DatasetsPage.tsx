@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Card, Label } from '@heroui/react';
-import { ThemeToggle } from '@/components/ThemeToggle';
+import { AppPageHeader } from '@/components/layout/AppPageNav';
 import {
   datasetLabel,
   deleteDataset,
@@ -34,6 +34,8 @@ import type { Timeframe } from '@/types/ui';
 
 interface DatasetsPageProps {
   onGoSessions: () => void;
+  onGoHome?: () => void;
+  onGoJournal?: () => void;
 }
 
 function defaultDates(): { start: string; end: string } {
@@ -47,7 +49,11 @@ function defaultDates(): { start: string; end: string } {
 const fieldClass =
   'w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent';
 
-export function DatasetsPage({ onGoSessions }: DatasetsPageProps) {
+export function DatasetsPage({
+  onGoSessions,
+  onGoHome,
+  onGoJournal,
+}: DatasetsPageProps) {
   const defaults = useMemo(() => defaultDates(), []);
   const [pair, setPair] = useState<PairSymbol>('EUR/USD');
   const [timeframe, setTimeframe] = useState<Timeframe>('1m');
@@ -212,22 +218,37 @@ export function DatasetsPage({ onGoSessions }: DatasetsPageProps) {
   return (
     <div className="min-h-full bg-background text-foreground overflow-auto">
       <div className="max-w-3xl mx-auto px-6 py-10 space-y-8">
-        <header className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-2">
-            <p className="text-xs uppercase tracking-[0.2em] text-muted">Talaria-Log</p>
-            <h1 className="text-3xl font-semibold tracking-tight">Datasets</h1>
-            <p className="text-sm text-muted max-w-xl">
-              Download OHLC history from Dukascopy or import shared datasets from the
-              API. Saved datasets appear on the session page.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <Button variant="secondary" size="sm" className="min-h-11" onPress={onGoSessions}>
-              Sessions
-            </Button>
-          </div>
-        </header>
+        <AppPageHeader
+          current="datasets"
+          title="Datasets"
+          description="Download OHLC history from Dukascopy or import shared datasets from the API. Saved datasets appear on the session page."
+          onGoHome={onGoHome}
+          onGoSessions={onGoSessions}
+          onGoDatasets={() => undefined}
+          onGoJournal={onGoJournal}
+        />
+
+        {datasets.length > 0 && (
+          <Card className="bg-surface border border-border border-l-4 border-l-accent">
+            <Card.Content className="px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">
+                  {datasets.length} dataset{datasets.length === 1 ? '' : 's'} ready
+                </p>
+                <p className="text-xs text-muted mt-0.5">
+                  Create a backtest session with your downloaded pairs.
+                </p>
+              </div>
+              <Button
+                variant="primary"
+                className="min-h-11 shrink-0"
+                onPress={onGoSessions}
+              >
+                Create session
+              </Button>
+            </Card.Content>
+          </Card>
+        )}
 
         <Card className="bg-surface border border-border">
           <Card.Header className="px-6 pt-6 pb-2">

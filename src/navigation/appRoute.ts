@@ -8,9 +8,16 @@
  *   #/journal          journal
  *   #/journal/:id      journal (prefer session)
  *   #/chart/:id        chart session
+ *   #/404              not found (also any unknown path)
  */
 
-export type AppView = 'landing' | 'sessions' | 'datasets' | 'journal' | 'chart';
+export type AppView =
+  | 'landing'
+  | 'sessions'
+  | 'datasets'
+  | 'journal'
+  | 'chart'
+  | 'notFound';
 
 export interface AppRoute {
   view: AppView;
@@ -40,7 +47,10 @@ export function parseAppRoute(hash: string = window.location.hash): AppRoute {
   if (head === 'chart') {
     return { view: 'sessions', sessionId: null };
   }
-  return { ...DEFAULT_ROUTE };
+  if (head === '404') {
+    return { view: 'notFound', sessionId: null };
+  }
+  return { view: 'notFound', sessionId: null };
 }
 
 export function formatAppRoute(route: AppRoute): string {
@@ -59,6 +69,8 @@ export function formatAppRoute(route: AppRoute): string {
       return route.sessionId
         ? `#/chart/${encodeURIComponent(route.sessionId)}`
         : '#/sessions';
+    case 'notFound':
+      return '#/404';
     default:
       return '#/';
   }

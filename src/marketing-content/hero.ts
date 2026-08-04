@@ -1,18 +1,18 @@
 export const heroCopy = {
-  eyebrow: "BACKTEST · JOURNAL · ONE RECORD",
-  h1: "Test the strategy. Then keep the receipts.",
-  sub: "TALARIA-LOG replays your rules against years of historical bars, then tracks every live trade you take against them — so you find out whether you're losing to the market or to yourself.",
-  primaryCta: "Start free journal",
-  secondaryCta: "Watch a 90-second replay",
-  footnote: "Free for your first 100 trades. No card.",
+  eyebrow: "BACKTEST · CHART · JOURNAL",
+  h1: "Replay the market. Keep the receipts.",
+  sub: "TALARIA-LOG loads historical FX bars, runs strategy backtests on a fast canvas chart, and saves every run to a local journal — so you can see whether the edge is real before you size up.",
+  primaryCta: "Start free",
+  secondaryCta: "See how it works",
+  footnote: "Runs locally in your browser. No account required for Phase 1.",
   metrics: {
     equity: "+184.2%",
     pf: "PF 1.71",
     maxDd: "MAX DD -8.4%",
   },
   journalCard: {
-    header: "ES · LONG · 2 CONTRACTS",
-    tags: ["breakout", "A+ setup", "revenge?"],
-    note: "Entered before the retest. Right idea, wrong patience.",
+    header: "EUR/USD · SMA CROSS · 10/30",
+    tags: ["backtest", "journal", "local"],
+    note: "Ran on Dukascopy 1m. Edge held — patience did not.",
   },
 } as const;

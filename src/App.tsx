@@ -68,8 +68,11 @@ import {
   subscribeBacktest,
 } from '@/backtest/backtestStore';
 import { cancelBacktest, runBacktest } from '@/backtest/runBacktestWorker';
-import { saveJournalResult } from '@/journal/journalStore';
-import { DEFAULT_BACKTEST_PARAMS } from '@/types/backtest';
+import { getJournalRun, saveJournalResult } from '@/journal/journalStore';
+import {
+  DEFAULT_BACKTEST_PARAMS,
+  type BacktestParams,
+} from '@/types/backtest';
 import {
   createOrderSessionBridge,
   type OrderSessionBridge,
@@ -224,6 +227,14 @@ export default function App() {
   const stepOrderEngineRef = useRef<(cursorTime: number) => void>(() => {});
   void orderEngineTick;
   const [backtestTick, setBacktestTick] = useState(0);
+  const [backtestParams, setBacktestParams] = useState<BacktestParams>(
+    () => ({
+      ...DEFAULT_BACKTEST_PARAMS,
+      sma: { ...DEFAULT_BACKTEST_PARAMS.sma },
+      donchian: { ...DEFAULT_BACKTEST_PARAMS.donchian },
+      costs: { ...DEFAULT_BACKTEST_PARAMS.costs },
+    }),
+  );
   const [chartLayout, setChartLayout] = useState<ChartLayout>('1');
   const [layoutSync, setLayoutSync] = useState<LayoutSyncOptions>(DEFAULT_LAYOUT_SYNC);
   const layoutSyncRef = useRef(layoutSync);
@@ -264,6 +275,10 @@ export default function App() {
   const prefetchGenRef = useRef(0);
   /** Cancel pending pan/zoom LOD debounce (TF/symbol switch must win). */
   const lodReloadCancelRef = useRef<(() => void) | null>(null);
+  /** Bumps on each TF/symbol switch — ignore stale async completions. */
+  const paneSwitchGenRef = useRef(0);
+  /** While set, session notify must not commit (avoids stomping mid-switch). */
+  const suppressSessionCommitRef = useRef(false);
   /** User pan/zoom during play detaches camera follow (stops fighting the drag). */
   const [cameraDetached, setCameraDetached] = useState(false);
   const cameraDetachedRef = useRef(false);
@@ -1070,8 +1085,83 @@ export default function App() {
     replayRef.current.play();
   }, [commitSessionViews, syncEnginesFromSession, syncReplayClockTf]);
 
+  /** Journal → chart deep link (consumed once per open / soft return). */
+  const pendingJournalFocusRef = useRef<{
+    time: number;
+    tradeId?: string | null;
+    runId?: string | null;
+  } | null>(null);
+  const focusHighlightTimerRef = useRef(0);
+
+  const clearChartFocusHash = useCallback((sessionId: string) => {
+    const clean = formatAppRoute({
+      view: 'chart',
+      sessionId,
+      focusTime: null,
+      focusTradeId: null,
+    });
+    if (window.location.hash === clean) return;
+    suppressHashRef.current = true;
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${window.location.search}${clean}`,
+    );
+    queueMicrotask(() => {
+      suppressHashRef.current = false;
+    });
+  }, []);
+
+  const applyJournalFocus = useCallback(
+    (focus: { time: number; tradeId?: string | null }) => {
+      if (!sessionRef.current.get()) return;
+      const rs = replayRef.current.get();
+      if (!(rs.endTime > rs.startTime)) return;
+      const t = Math.min(rs.endTime, Math.max(rs.startTime, focus.time));
+      replayRef.current.pause();
+      cameraDetachedRef.current = false;
+      setCameraDetached(false);
+      detachedPanesRef.current.clear();
+      replayRef.current.seek(t, { silent: true });
+      lastReplayCursorRef.current = t;
+
+      void (async () => {
+        const sess = sessionRef.current.get();
+        if (!sess) return;
+        for (const cfg of Object.values(sess.panes)) {
+          await warmCache.fill(cfg.datasetId, cfg.tf, t, sess.span);
+          if (cfg.tf !== sess.baseTf) {
+            await warmCache.fill(cfg.datasetId, sess.baseTf, t, sess.span);
+          }
+        }
+        if (!sessionRef.current.get()) return;
+        sessionRef.current.setCursorTime(t, { follow: true, react: true });
+        const ids = Object.keys(sessionRef.current.getViews());
+        commitSessionViews({ adoptRangePaneIds: ids });
+        syncEnginesFromSession({ applyCamera: true });
+        applyReplayReveal(t, { playEdge: true });
+        persistReplayProgress(true);
+      })();
+
+      if (focus.tradeId) {
+        setSelectedOrderId(focus.tradeId);
+        if (focusHighlightTimerRef.current) {
+          window.clearTimeout(focusHighlightTimerRef.current);
+        }
+        const tid = focus.tradeId;
+        focusHighlightTimerRef.current = window.setTimeout(() => {
+          setSelectedOrderId((prev) => (prev === tid ? null : prev));
+        }, 5000);
+      }
+    },
+    [applyReplayReveal, commitSessionViews, persistReplayProgress, syncEnginesFromSession],
+  );
+
   const loadSessionData = useCallback(
-    async (next: BacktestSession) => {
+    async (
+      next: BacktestSession,
+      focus?: { time: number; tradeId?: string | null },
+    ) => {
       viewportReloadEnabledRef.current = false;
       lastReplayCursorRef.current = null;
       lastProgressSaveRef.current = 0;
@@ -1085,6 +1175,21 @@ export default function App() {
       // Prefer disk copy so reopen after exit picks up last saved cursor.
       const fresh = getSession(next.id) ?? next;
       sessionIdRef.current = fresh.id;
+
+      // Capture journal deep link before awaits (hash sync may strip ?t=).
+      const routeAtStart = parseAppRoute();
+      const journalFocus =
+        focus ??
+        pendingJournalFocusRef.current ??
+        (routeAtStart.view === 'chart' &&
+        routeAtStart.sessionId === fresh.id &&
+        routeAtStart.focusTime != null
+          ? {
+              time: routeAtStart.focusTime,
+              tradeId: routeAtStart.focusTradeId ?? null,
+            }
+          : null);
+      pendingJournalFocusRef.current = null;
 
       setSession(fresh);
       setLoadStatus('loading');
@@ -1155,9 +1260,11 @@ export default function App() {
         const { timeStart, timeEnd } = replayBounds(fresh, seriesList);
         const baseTf = primary.catalog.baseTf;
         const resumeCursor =
-          typeof fresh.cursorTime === 'number' && Number.isFinite(fresh.cursorTime)
-            ? Math.min(timeEnd, Math.max(timeStart, fresh.cursorTime))
-            : timeStart;
+          journalFocus != null && Number.isFinite(journalFocus.time)
+            ? Math.min(timeEnd, Math.max(timeStart, journalFocus.time))
+            : typeof fresh.cursorTime === 'number' && Number.isFinite(fresh.cursorTime)
+              ? Math.min(timeEnd, Math.max(timeStart, fresh.cursorTime))
+              : timeStart;
         const resumeSpan = Math.max(
           10,
           Math.min(
@@ -1258,10 +1365,27 @@ export default function App() {
 
         setLoadStatus('ready');
 
+        if (journalFocus?.tradeId) {
+          setSelectedOrderId(journalFocus.tradeId);
+          if (focusHighlightTimerRef.current) {
+            window.clearTimeout(focusHighlightTimerRef.current);
+          }
+          const tid = journalFocus.tradeId;
+          focusHighlightTimerRef.current = window.setTimeout(() => {
+            setSelectedOrderId((prev) => (prev === tid ? null : prev));
+          }, 5000);
+        }
+
+        clearChartFocusHash(fresh.id);
+
         queueMicrotask(() => {
           const tr = timeRangeFromVisible(nextPanes[0]!.bars, nextPanes[0]!.range);
           if (tr) syncStoreRef.current?.setTimeRange(tr, 'session-load');
           viewportReloadEnabledRef.current = true;
+          if (journalFocus != null) {
+            // Ensure viewport/follow settle on the journal entry time after chrome mounts.
+            applyJournalFocus(journalFocus);
+          }
         });
       } catch (err) {
         viewportReloadEnabledRef.current = false;
@@ -1270,7 +1394,7 @@ export default function App() {
         setLoadError(err instanceof Error ? err.message : 'Failed to load dataset');
       }
     },
-    [],
+    [applyJournalFocus, clearChartFocusHash],
   );
 
   // Right-click / long-press chart → context menu (crosshair + settings)
@@ -1328,6 +1452,8 @@ export default function App() {
   useEffect(() => {
     return sessionRef.current.subscribe(() => {
       if (!viewportReloadEnabledRef.current) return;
+      // TF/symbol switch owns the commit/sync so mid-await notifies cannot revert UI.
+      if (suppressSessionCommitRef.current) return;
       commitSessionViews();
       syncEnginesFromSession({ applyCamera: false });
     });
@@ -1626,10 +1752,12 @@ export default function App() {
       if (!sessionRef.current.get()) return;
 
       const paneSeries = seriesForPane(existing);
+      // Allow switch when catalog omits a TF that can still be served (remote agg).
       if (
         paneSeries &&
         paneSeries.catalog.timeframes.length > 0 &&
-        !paneSeries.catalog.timeframes.includes(tf)
+        !paneSeries.catalog.timeframes.includes(tf) &&
+        !canAggregateFrom(paneSeries.catalog.baseTf, tf)
       ) {
         return;
       }
@@ -1637,26 +1765,45 @@ export default function App() {
       // Drop in-flight / pending pan-LOD so it cannot overwrite this TF switch.
       lodReloadCancelRef.current?.();
       prefetchGenRef.current += 1;
+      const switchGen = ++paneSwitchGenRef.current;
 
       const syncAll = layoutSyncRef.current.interval;
       const targets = syncAll
         ? panesRef.current.map((p) => p.id)
         : [paneId];
+      const targetSet = new Set(targets);
+
+      // Optimistic UI — TopBar + pane legend update on first click.
+      const optimistic = panesRef.current.map((p) =>
+        targetSet.has(p.id) ? { ...p, selectedTf: tf, timeframe: tf } : p,
+      );
+      panesRef.current = optimistic;
+      setPanes(optimistic);
 
       const camera = captureLiveCamera(paneId);
       cameraPreserveRef.current = camera;
       // Span/anchor for fill size only — sibling cameras are preserved in commit/sync.
       sessionRef.current.setCamera(camera.anchorTime, camera.span);
       setActivePaneId(paneId);
+      suppressSessionCommitRef.current = true;
       sessionRef.current.setActivePane(paneId);
       markPanesLoading(targets, true);
 
       void (async () => {
         try {
           for (const id of targets) {
+            if (switchGen !== paneSwitchGenRef.current) return;
             await sessionRef.current.setPaneTimeframe(id, tf);
           }
-          if (!viewportReloadEnabledRef.current) return;
+          if (switchGen !== paneSwitchGenRef.current) return;
+
+          // If sync derive was still empty, force a full refresh once.
+          const views = sessionRef.current.getViews();
+          if (targets.some((id) => (views[id]?.bars.length ?? 0) === 0)) {
+            await sessionRef.current.refreshViews(targets);
+          }
+          if (switchGen !== paneSwitchGenRef.current) return;
+
           commitSessionViews({ adoptRangePaneIds: targets });
           syncEnginesFromSession({ paneIds: targets, applyCamera: true });
           syncReplayClockTf(panesRef.current);
@@ -1671,7 +1818,10 @@ export default function App() {
             replayBufferRef.current.set(paneId, focus.bars);
           }
         } finally {
-          markPanesLoading(targets, false);
+          if (switchGen === paneSwitchGenRef.current) {
+            suppressSessionCommitRef.current = false;
+            markPanesLoading(targets, false);
+          }
         }
       })();
     },
@@ -1706,6 +1856,7 @@ export default function App() {
       // Drop in-flight / pending pan-LOD so it cannot overwrite this symbol switch.
       lodReloadCancelRef.current?.();
       prefetchGenRef.current += 1;
+      const switchGen = ++paneSwitchGenRef.current;
 
       const syncAll = layoutSyncRef.current.symbol;
       const targets = syncAll
@@ -1723,12 +1874,14 @@ export default function App() {
         : (series.catalog.timeframes ?? [existing.selectedTf]);
 
       setActivePaneId(paneId);
+      suppressSessionCommitRef.current = true;
       sessionRef.current.setActivePane(paneId);
       markPanesLoading(targets, true);
 
       void (async () => {
         try {
           for (const id of targets) {
+            if (switchGen !== paneSwitchGenRef.current) return;
             await sessionRef.current.setPaneSymbol(
               id,
               { datasetId: series.datasetId, pair: series.pair },
@@ -1736,7 +1889,14 @@ export default function App() {
             );
             replayBufferRef.current.delete(id);
           }
-          if (!viewportReloadEnabledRef.current) return;
+          if (switchGen !== paneSwitchGenRef.current) return;
+
+          const views = sessionRef.current.getViews();
+          if (targets.some((id) => (views[id]?.bars.length ?? 0) === 0)) {
+            await sessionRef.current.refreshViews(targets);
+          }
+          if (switchGen !== paneSwitchGenRef.current) return;
+
           commitSessionViews({ adoptRangePaneIds: targets });
           syncEnginesFromSession({ paneIds: targets, applyCamera: true });
           syncReplayClockTf(panesRef.current);
@@ -1750,7 +1910,10 @@ export default function App() {
             replayBufferRef.current.set(paneId, focus.bars);
           }
         } finally {
-          markPanesLoading(targets, false);
+          if (switchGen === paneSwitchGenRef.current) {
+            suppressSessionCommitRef.current = false;
+            markPanesLoading(targets, false);
+          }
         }
       })();
     },
@@ -2134,7 +2297,7 @@ export default function App() {
       timeframe: pane.timeframe,
       timeStart,
       timeEnd,
-      params: DEFAULT_BACKTEST_PARAMS,
+      params: backtestParams,
     })
       .then((result) => {
         const note = result.truncated
@@ -2150,7 +2313,7 @@ export default function App() {
         }
         setBacktestError(err instanceof Error ? err.message : 'Backtest failed');
       });
-  }, [session, activePaneId, seriesForPane]);
+  }, [session, activePaneId, seriesForPane, backtestParams]);
 
   const handleCancelBacktest = useCallback(() => {
     cancelBacktest();
@@ -2167,6 +2330,8 @@ export default function App() {
 
   const loadSessionDataRef = useRef(loadSessionData);
   loadSessionDataRef.current = loadSessionData;
+  const applyJournalFocusRef = useRef(applyJournalFocus);
+  applyJournalFocusRef.current = applyJournalFocus;
   const teardownChartSessionRef = useRef(teardownChartSession);
   teardownChartSessionRef.current = teardownChartSession;
   const sessionNavRef = useRef(session);
@@ -2219,10 +2384,27 @@ export default function App() {
         }
         if (sessionNavRef.current?.id === route.sessionId) {
           setView('chart');
+          if (route.focusTime != null) {
+            applyJournalFocusRef.current({
+              time: route.focusTime,
+              tradeId: route.focusTradeId ?? null,
+            });
+            clearChartFocusHash(route.sessionId);
+          }
           return;
         }
         const s = getSession(route.sessionId);
-        if (s) void loadSessionDataRef.current(s);
+        if (s) {
+          void loadSessionDataRef.current(
+            s,
+            route.focusTime != null
+              ? {
+                  time: route.focusTime,
+                  tradeId: route.focusTradeId ?? null,
+                }
+              : undefined,
+          );
+        }
         else {
           teardownChartSessionRef.current();
           setView('sessions');
@@ -2297,15 +2479,54 @@ export default function App() {
           if (session) teardownChartSession();
           setView('sessions');
         }}
-        onOpenChart={(id) => {
+        onOpenChart={(id, focus) => {
+          // Restore strategy run markers when jumping from a backtest journal trade.
+          if (focus?.runId) {
+            const run = getJournalRun(focus.runId);
+            if (run) {
+              setBacktestResult(run.result, null);
+              setBacktestParams({
+                ...run.result.params,
+                sma: { ...run.result.params.sma },
+                donchian: { ...run.result.params.donchian },
+                costs: { ...run.result.params.costs },
+              });
+            }
+          }
+          if (focus) pendingJournalFocusRef.current = focus;
+          // Deep-link hash so refresh / share keeps the entry time.
+          if (focus) {
+            const hash = formatAppRoute({
+              view: 'chart',
+              sessionId: id,
+              focusTime: focus.time,
+              focusTradeId: focus.tradeId ?? null,
+            });
+            if (window.location.hash !== hash) {
+              suppressHashRef.current = true;
+              window.history.replaceState(
+                null,
+                '',
+                `${window.location.pathname}${window.location.search}${hash}`,
+              );
+              queueMicrotask(() => {
+                suppressHashRef.current = false;
+              });
+            }
+          }
           // Same open session still in memory — remount chart without re-ingest.
           if (session && session.id === id && panesRef.current.length > 0) {
             setJournalSessionId(null);
             setView('chart');
+            if (focus) {
+              applyJournalFocus(focus);
+              clearChartFocusHash(id);
+            }
+            pendingJournalFocusRef.current = null;
             return;
           }
           const s = getSession(id);
-          if (s) void loadSessionData(s);
+          if (s) void loadSessionData(s, focus);
         }}
       />
     );
@@ -2399,6 +2620,8 @@ export default function App() {
         onExitSession={handleExitSession}
         backtestRunning={btRunning}
         backtestLabel={btLabel}
+        backtestParams={backtestParams}
+        onBacktestParamsChange={setBacktestParams}
         onRunBacktest={loadStatus === 'ready' ? handleRunBacktest : undefined}
         onCancelBacktest={handleCancelBacktest}
       />

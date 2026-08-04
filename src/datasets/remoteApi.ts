@@ -120,9 +120,18 @@ export async function fetchRemoteChunks(opts: {
   );
 }
 
-/** Fetch packed OHLCV ArrayBuffer for a chunk URL from the API. */
+/** Fetch packed OHLCV ArrayBuffer for a chunk URL (API or CDN). */
 export async function fetchChunkBinary(url: string): Promise<ArrayBuffer> {
-  const res = await fetch(url, { credentials: 'include' });
+  // CDN public_read URLs are cross-origin — omit cookies (ACL is public).
+  // Same-origin / proxied API URLs keep session cookies for private datasets.
+  let credentials: RequestCredentials = 'include';
+  try {
+    const abs = new URL(url, window.location.href);
+    if (abs.origin !== window.location.origin) credentials = 'omit';
+  } catch {
+    credentials = 'include';
+  }
+  const res = await fetch(url, { credentials });
   if (!res.ok) {
     throw new Error(`Chunk fetch failed (${res.status}): ${url}`);
   }

@@ -32,6 +32,11 @@ export interface WarmCacheFillOpts {
   aheadRatio?: number;
   /** Cap bars loaded (≤ MAX_BARS_IN_MEMORY). */
   windowBars?: number;
+  /**
+   * TF/symbol switch: wait for remote chunk top-up before returning so the
+   * first click paints the new interval (not the previous candles).
+   */
+  awaitRemote?: boolean;
 }
 
 function key(datasetId: string, tf: Timeframe): CacheKey {
@@ -175,7 +180,8 @@ export class WarmCache {
       const bars = vp.bars as ChartBar[];
       this.writeEntry(k, { bars, anchorTime, loadedAt: Date.now(), touchedAt: Date.now() });
 
-      // Background top-up: one chunk ahead when tip is short (play keeps moving).
+      // Remote top-up when tip is short / empty. Interactive TF switches await
+      // this so the first click does not keep painting the previous interval.
       const entry = getDataset(datasetId);
       if (!entry || entry.source === 'remote') {
         const tfSec = timeframeSeconds(tf);
@@ -185,21 +191,35 @@ export class WarmCache {
         if (tipShort) {
           const fetchFrom = tip ?? anchorTime;
           const fetchTo = needAheadTo;
-          void ensureRemoteTimeCoverage(datasetId, tf, fetchFrom, fetchTo, {
-            maxBars: Math.min(CHUNK_SIZE, Math.max(500, windowBars)),
-          })
-            .then((fetched) => {
-              // Sliding window: drop far-behind chunks after a successful top-up.
+          const topUp = async (): Promise<ChartBar[]> => {
+            try {
+              const fetched = await ensureRemoteTimeCoverage(
+                datasetId,
+                tf,
+                fetchFrom,
+                fetchTo,
+                {
+                  maxBars: Math.min(CHUNK_SIZE, Math.max(500, windowBars)),
+                },
+              );
               scheduleRemoteChunkGc(datasetId, tf, anchorTime);
-              if (!fetched) return;
-              // Refresh cache from the new IDB bytes (non-blocking for prior callers).
-              void this.fill(datasetId, tf, anchorTime, span, opts);
-            })
-            .catch(() => {
-              // Offline / gap — keep playing on whatever is already cached.
-            });
+              if (!fetched || this.epochs.get(k) !== epoch) {
+                return this.store.get(k)?.bars ?? bars;
+              }
+              // Reload from IDB without nesting another remote wait.
+              return this.fill(datasetId, tf, anchorTime, span, {
+                ...opts,
+                awaitRemote: false,
+              });
+            } catch {
+              return this.store.get(k)?.bars ?? bars;
+            }
+          };
+          if (opts?.awaitRemote) {
+            return topUp();
+          }
+          void topUp();
         } else {
-          // Still GC when over budget even if tip has runway.
           scheduleRemoteChunkGc(datasetId, tf, anchorTime);
         }
       }

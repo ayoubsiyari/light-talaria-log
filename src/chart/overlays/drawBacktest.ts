@@ -25,6 +25,8 @@ export function drawBacktest(
   plot: PlotRect,
   scale: PriceScale,
   colors: ChartColors,
+  /** Journal / deep-link focus — brief highlight on matching trade id. */
+  focusedTradeId: string | null = null,
 ): void {
   if (!result || bars.length === 0) return;
 
@@ -63,6 +65,7 @@ export function drawBacktest(
       colors,
       lastEntryX,
       lastExitX,
+      focusedTradeId != null && trade.id === focusedTradeId,
     );
     if (painted.entryX != null) lastEntryX = painted.entryX;
     if (painted.exitX != null) lastExitX = painted.exitX;
@@ -107,6 +110,7 @@ function drawTrade(
   colors: ChartColors,
   lastEntryX: number,
   lastExitX: number,
+  focused = false,
 ): { drew: boolean; entryX: number | null; exitX: number | null } {
   const win = trade.pnl >= 0;
   const segColor = win ? colors.upColor : colors.downColor;
@@ -114,17 +118,20 @@ function drawTrade(
   const entry = pointXY(trade.entryTime, trade.entryPrice, bars, range, plot, scale);
   const exit = pointXY(trade.exitTime, trade.exitPrice, bars, range, plot, scale);
 
-  const showEntry = entry != null && Math.abs(entry.x - lastEntryX) >= MIN_MARKER_PX;
-  const showExit = exit != null && Math.abs(exit.x - lastExitX) >= MIN_MARKER_PX;
+  // Always show focused trade even when dense-decimated.
+  const showEntry =
+    entry != null && (focused || Math.abs(entry.x - lastEntryX) >= MIN_MARKER_PX);
+  const showExit =
+    exit != null && (focused || Math.abs(exit.x - lastExitX) >= MIN_MARKER_PX);
   if (!showEntry && !showExit) {
     return { drew: false, entryX: null, exitX: null };
   }
 
   if (entry && exit && (showEntry || showExit)) {
-    ctx.strokeStyle = segColor;
-    ctx.globalAlpha = 0.45;
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = focused ? colors.accent : segColor;
+    ctx.globalAlpha = focused ? 0.9 : 0.45;
+    ctx.lineWidth = focused ? 2 : 1;
+    ctx.setLineDash(focused ? [] : [3, 3]);
     ctx.beginPath();
     ctx.moveTo(entry.x, entry.y);
     ctx.lineTo(exit.x, exit.y);
@@ -134,6 +141,13 @@ function drawTrade(
   }
 
   if (showEntry && entry) {
+    if (focused) {
+      ctx.strokeStyle = colors.accent;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(entry.x, entry.y, MARKER_R + 4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     drawTriangle(ctx, entry.x, entry.y, trade.side === 'buy' ? 'up' : 'down', colors.upColor);
   }
   if (showExit && exit) {

@@ -1,5 +1,6 @@
 import { Button } from '@heroui/react';
 import type { SeriesType } from '@/chart';
+import { BacktestRunMenu } from '@/components/backtest/BacktestRunMenu';
 import { IndicatorsMenu } from '@/components/indicators/IndicatorsMenu';
 import { BrandLogo } from '@/components/landing/BrandLogo';
 import { ChartTemplatesMenu } from '@/components/chart/ChartTemplatesMenu';
@@ -10,6 +11,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { IconCandles } from '@/components/icons/ToolIcons';
 import type { EnabledIndicator } from '@/types/indicator';
 import type { LayoutSyncOptions } from '@/types/layout';
+import type { BacktestParams } from '@/types/backtest';
 import type { PairSymbol } from '@/types/session';
 import type { ChartLayout, Timeframe } from '@/types/ui';
 
@@ -43,6 +45,8 @@ interface TopBarProps {
   /** Strategy backtest v1 */
   backtestRunning?: boolean;
   backtestLabel?: string;
+  backtestParams?: BacktestParams;
+  onBacktestParamsChange?: (next: BacktestParams) => void;
   onRunBacktest?: () => void;
   onCancelBacktest?: () => void;
 }
@@ -73,6 +77,8 @@ export function TopBar({
   onExitSession,
   backtestRunning = false,
   backtestLabel,
+  backtestParams,
+  onBacktestParamsChange,
   onRunBacktest,
   onCancelBacktest,
 }: TopBarProps) {
@@ -186,7 +192,17 @@ export function TopBar({
           </Button>
         )}
         <ThemeToggle compact />
-        {backtestRunning ? (
+        {backtestParams && onBacktestParamsChange ? (
+          <BacktestRunMenu
+            running={backtestRunning}
+            label={backtestLabel}
+            disabled={!onRunBacktest && !backtestRunning}
+            params={backtestParams}
+            onParamsChange={onBacktestParamsChange}
+            onRun={() => onRunBacktest?.()}
+            onCancel={onCancelBacktest}
+          />
+        ) : backtestRunning ? (
           <Button
             variant="secondary"
             size="sm"

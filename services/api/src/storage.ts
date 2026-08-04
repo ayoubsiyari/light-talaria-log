@@ -64,6 +64,8 @@ export async function putObject(key: string, body: Buffer): Promise<void> {
       Key: key,
       Body: body,
       ContentType: 'application/octet-stream',
+      CacheControl:
+        'public, max-age=86400, immutable',
     }),
   );
 }
@@ -87,7 +89,20 @@ export async function getObject(key: string): Promise<Buffer | null> {
   }
 }
 
-/** Public URL used by the SPA to fetch chunk binaries (proxied via API for ACL). */
-export function publicFileUrl(datasetId: string, tf: string, chunkIndex: number): string {
-  return `${config.publicApiUrl}/api/v1/files/datasets/${encodeURIComponent(datasetId)}/${encodeURIComponent(tf)}/${chunkIndex}.bin`;
+/**
+ * URL the SPA uses to fetch a chunk binary.
+ * - `public_read` + `CDN_PUBLIC_BASE` → CDN (no cookie; offloads API)
+ * - otherwise → API origin (ACL enforced on GET)
+ */
+export function publicFileUrl(
+  datasetId: string,
+  tf: string,
+  chunkIndex: number,
+  visibility: string = 'private',
+): string {
+  const pathPart = `datasets/${encodeURIComponent(datasetId)}/${encodeURIComponent(tf)}/${chunkIndex}.bin`;
+  if (visibility === 'public_read' && config.cdnPublicBase) {
+    return `${config.cdnPublicBase}/${pathPart}`;
+  }
+  return `${config.publicApiUrl}/api/v1/files/${pathPart}`;
 }

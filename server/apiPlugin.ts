@@ -208,18 +208,27 @@ async function handleApi(
       sendJson(res, 404, { error: 'Dataset or timeframe not found' });
       return;
     }
+    // Match SaaS API paging — keep warm-cache / large series from one huge JSON.
+    const maxChunks = 24;
+    const page = result.chunks.slice(0, maxChunks);
+    const truncated = result.chunks.length > maxChunks;
+    const lastEnd =
+      page.length > 0 ? page[page.length - 1]!.timeEnd : result.series.timeEnd;
     sendJson(res, 200, {
       datasetId: id,
       timeframe: tf,
+      truncated,
+      nextFromTime: truncated ? lastEnd + 1 : null,
+      maxChunksPerQuery: maxChunks,
       seriesMeta: {
-        rowCount: result.series.rowCount,
-        timeStart: result.series.timeStart,
-        timeEnd: result.series.timeEnd,
-        chunkIds: result.series.chunkIds,
-        chunkStarts: result.series.chunkStarts,
-        chunkTimeStarts: result.series.chunkTimeStarts,
-        chunkTimeEnds: result.series.chunkTimeEnds,
-        chunks: result.chunks,
+        rowCount: page.reduce((n, c) => n + Math.max(0, Math.floor(c.bytes / 28)), 0),
+        timeStart: page[0]?.timeStart ?? result.series.timeStart,
+        timeEnd: lastEnd,
+        chunkIds: page.map((c) => c.chunkId),
+        chunkStarts: page.map((c) => c.logicalStart),
+        chunkTimeStarts: page.map((c) => c.timeStart),
+        chunkTimeEnds: page.map((c) => c.timeEnd),
+        chunks: page,
       },
     });
     return;

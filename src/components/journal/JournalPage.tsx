@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Button, Card } from '@heroui/react';
 import { AppPageHeader } from '@/components/layout/AppPageNav';
+import {
+  BACKTEST_STRATEGY_LABELS,
+  type BacktestTrade,
+} from '@/types/backtest';
 import type { OrderJournal } from '@/orders/journal';
 import {
   clearOrderJournal,
@@ -10,7 +14,22 @@ import {
   type OrderJournalView,
   type OrderTrade,
 } from '@/orders/tradeJournal';
+import { computeJournalStats } from '@/journal/journalStats';
+import {
+  deleteJournalRun,
+  listJournalEntries,
+  type JournalEntry,
+} from '@/journal/journalStore';
 import { getSession } from '@/sessions/sessionStore';
+
+type JournalTab = 'orders' | 'backtests';
+
+export interface JournalChartFocus {
+  time: number;
+  tradeId?: string | null;
+  /** When set, App restores that strategy run onto the chart. */
+  runId?: string | null;
+}
 
 interface JournalPageProps {
   /** Prefer this session when opening. */
@@ -20,7 +39,7 @@ interface JournalPageProps {
   onGoSessions: () => void;
   onGoHome?: () => void;
   onGoDatasets?: () => void;
-  onOpenChart?: (sessionId: string) => void;
+  onOpenChart?: (sessionId: string, focus?: JournalChartFocus) => void;
   /** True when the chart session is still in memory (soft journal navigate). */
   canReturnToChart?: boolean;
 }
@@ -39,6 +58,11 @@ function formatPct(n: number, digits = 2): string {
 function formatMoney(n: number, currency: string): string {
   const sign = n >= 0 ? '+' : '';
   return `${sign}${n.toFixed(2)} ${currency}`;
+}
+
+function formatPricePnl(n: number, digits: number): string {
+  const sign = n >= 0 ? '+' : '';
+  return `${sign}${n.toFixed(digits)}`;
 }
 
 function EquitySparkline({
@@ -113,21 +137,25 @@ function StatCell({
   );
 }
 
-function TradeRow({
+function OrderTradeRow({
   trade,
   currency,
   digits,
+  canOpenChart,
+  onViewOnChart,
 }: {
   trade: OrderTrade;
   currency: string;
   digits: number;
+  canOpenChart: boolean;
+  onViewOnChart?: (trade: OrderTrade) => void;
 }) {
   const win = trade.pnlAccount > 0;
   const flat = trade.pnlAccount === 0;
   return (
     <li className="rounded-lg border border-border bg-surface px-3 py-3 sm:px-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-medium">
             <span className={trade.side === 'buy' ? 'text-success' : 'text-danger'}>
               {trade.side.toUpperCase()}
@@ -144,7 +172,7 @@ function TradeRow({
             {trade.entryPrice.toFixed(digits)} → {trade.exitPrice.toFixed(digits)}
           </p>
         </div>
-        <div className="text-right shrink-0">
+        <div className="text-right shrink-0 space-y-2">
           <p
             className={[
               'text-sm font-medium tabular-nums',
@@ -153,10 +181,77 @@ function TradeRow({
           >
             {formatMoney(trade.pnlAccount, currency)}
           </p>
-          <p className="text-[11px] text-muted tabular-nums mt-0.5">
+          <p className="text-[11px] text-muted tabular-nums">
             {trade.exitReason}
             {trade.rMultiple != null ? ` · ${trade.rMultiple.toFixed(2)}R` : ''}
           </p>
+          {canOpenChart && onViewOnChart && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="min-h-11 sm:min-h-8 w-full sm:w-auto"
+              onPress={() => onViewOnChart(trade)}
+              aria-label={`View ${trade.symbol} trade on chart at entry`}
+            >
+              View on chart
+            </Button>
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function BacktestTradeRow({
+  trade,
+  digits,
+  canOpenChart,
+  onViewOnChart,
+}: {
+  trade: BacktestTrade;
+  digits: number;
+  canOpenChart: boolean;
+  onViewOnChart?: (trade: BacktestTrade) => void;
+}) {
+  const win = trade.pnl > 0;
+  const flat = trade.pnl === 0;
+  return (
+    <li className="rounded-lg border border-border bg-surface px-3 py-3 sm:px-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">
+            <span className={trade.side === 'buy' ? 'text-success' : 'text-danger'}>
+              {trade.side.toUpperCase()}
+            </span>
+          </p>
+          <p className="text-xs text-muted tabular-nums mt-1">
+            {formatTime(trade.entryTime)} → {formatTime(trade.exitTime)}
+          </p>
+          <p className="text-xs text-muted tabular-nums mt-0.5">
+            {trade.entryPrice.toFixed(digits)} → {trade.exitPrice.toFixed(digits)}
+          </p>
+        </div>
+        <div className="text-right shrink-0 space-y-2">
+          <p
+            className={[
+              'text-sm font-medium tabular-nums',
+              flat ? 'text-muted' : win ? 'text-success' : 'text-danger',
+            ].join(' ')}
+          >
+            {formatPricePnl(trade.pnl, digits)}{' '}
+            <span className="text-xs text-muted">({formatPct(trade.pnlPct * 100)})</span>
+          </p>
+          {canOpenChart && onViewOnChart && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="min-h-11 sm:min-h-8 w-full sm:w-auto"
+              onPress={() => onViewOnChart(trade)}
+              aria-label="View backtest trade on chart at entry"
+            >
+              View on chart
+            </Button>
+          )}
         </div>
       </div>
     </li>
@@ -170,6 +265,17 @@ function digitsForSymbol(symbol: string): number {
   return 5;
 }
 
+function strategyLabel(entry: JournalEntry): string {
+  const id = entry.result.params.strategyId;
+  return BACKTEST_STRATEGY_LABELS[id] ?? id;
+}
+
+function runOptionLabel(entry: JournalEntry): string {
+  const stats = computeJournalStats(entry.result);
+  const when = formatTime(entry.savedAt / 1000);
+  return `${entry.sessionName} · ${strategyLabel(entry)} · ${stats.tradeCount}t · ${when}`;
+}
+
 export function JournalPage({
   initialSessionId = null,
   liveJournal = null,
@@ -180,53 +286,123 @@ export function JournalPage({
   canReturnToChart = false,
 }: JournalPageProps) {
   const [tick, setTick] = useState(0);
-  const views = useMemo(
+  const [tab, setTab] = useState<JournalTab>('orders');
+
+  const orderViews = useMemo(
     () => listOrderJournalViews(liveJournal),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- tick forces refresh from storage
     [liveJournal, tick],
   );
 
-  const [selectedId, setSelectedId] = useState<string | null>(() => {
+  const backtestRuns = useMemo(
+    () => listJournalEntries(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tick forces refresh from storage
+    [tick],
+  );
+
+  const [selectedOrderSessionId, setSelectedOrderSessionId] = useState<string | null>(() => {
     if (initialSessionId && getOrderJournalView(initialSessionId, liveJournal)) {
       return initialSessionId;
     }
     return listOrderJournalViews(liveJournal)[0]?.sessionId ?? initialSessionId ?? null;
   });
 
-  const selected: OrderJournalView | null = useMemo(() => {
-    if (!selectedId) return null;
-    return (
-      views.find((v) => v.sessionId === selectedId) ??
-      getOrderJournalView(selectedId, liveJournal)
-    );
-  }, [views, selectedId, liveJournal]);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(() => {
+    const runs = listJournalEntries();
+    if (initialSessionId) {
+      const match = runs.find((r) => r.sessionId === initialSessionId);
+      if (match) return match.id;
+    }
+    return runs[0]?.id ?? null;
+  });
 
-  const stats = useMemo(
-    () => (selected ? computeOrderJournalStats(selected) : null),
-    [selected],
+  const selectedOrder: OrderJournalView | null = useMemo(() => {
+    if (!selectedOrderSessionId) return null;
+    return (
+      orderViews.find((v) => v.sessionId === selectedOrderSessionId) ??
+      getOrderJournalView(selectedOrderSessionId, liveJournal)
+    );
+  }, [orderViews, selectedOrderSessionId, liveJournal]);
+
+  const selectedRun: JournalEntry | null = useMemo(() => {
+    if (!selectedRunId) return null;
+    return backtestRuns.find((r) => r.id === selectedRunId) ?? null;
+  }, [backtestRuns, selectedRunId]);
+
+  const orderStats = useMemo(
+    () => (selectedOrder ? computeOrderJournalStats(selectedOrder) : null),
+    [selectedOrder],
+  );
+
+  const backtestStats = useMemo(
+    () => (selectedRun ? computeJournalStats(selectedRun.result) : null),
+    [selectedRun],
   );
 
   const refresh = () => setTick((n) => n + 1);
 
-  const handleClear = () => {
-    if (!selectedId) return;
-    clearOrderJournal(selectedId);
-    const next = listOrderJournalViews(liveJournal?.sessionId === selectedId ? null : liveJournal);
+  const handleClearOrders = () => {
+    if (!selectedOrderSessionId) return;
+    clearOrderJournal(selectedOrderSessionId);
+    const next = listOrderJournalViews(
+      liveJournal?.sessionId === selectedOrderSessionId ? null : liveJournal,
+    );
     setTick((n) => n + 1);
-    setSelectedId(next[0]?.sessionId ?? null);
+    setSelectedOrderSessionId(next[0]?.sessionId ?? null);
   };
 
-  const openChart = () => {
-    if (!selectedId || !onOpenChart) return;
-    if (canReturnToChart || getSession(selectedId)) onOpenChart(selectedId);
+  const handleDeleteRun = () => {
+    if (!selectedRunId) return;
+    deleteJournalRun(selectedRunId);
+    const next = listJournalEntries();
+    setTick((n) => n + 1);
+    setSelectedRunId(next[0]?.id ?? null);
   };
 
-  const sessionAlive = !!selectedId && !!getSession(selectedId);
-  const canOpenChart =
-    !!selectedId && !!onOpenChart && (canReturnToChart || sessionAlive);
+  const openOrderChart = () => {
+    if (!selectedOrderSessionId || !onOpenChart) return;
+    if (canReturnToChart || getSession(selectedOrderSessionId)) {
+      onOpenChart(selectedOrderSessionId);
+    }
+  };
 
-  const digits = selected ? digitsForSymbol(selected.symbol) : 5;
-  const ccy = selected?.accountCurrency ?? 'USD';
+  const viewOrderTradeOnChart = (trade: OrderTrade) => {
+    if (!selectedOrderSessionId || !onOpenChart) return;
+    if (!(canReturnToChart || getSession(selectedOrderSessionId))) return;
+    onOpenChart(selectedOrderSessionId, { time: trade.entryTime, tradeId: trade.id });
+  };
+
+  const openBacktestChart = () => {
+    if (!selectedRun || !onOpenChart) return;
+    if (!(canReturnToChart || getSession(selectedRun.sessionId))) return;
+    onOpenChart(selectedRun.sessionId, { time: selectedRun.result.timeStart, runId: selectedRun.id });
+  };
+
+  const viewBacktestTradeOnChart = (trade: BacktestTrade) => {
+    if (!selectedRun || !onOpenChart) return;
+    if (!(canReturnToChart || getSession(selectedRun.sessionId))) return;
+    onOpenChart(selectedRun.sessionId, {
+      time: trade.entryTime,
+      tradeId: trade.id,
+      runId: selectedRun.id,
+    });
+  };
+
+  const orderSessionAlive =
+    !!selectedOrderSessionId && !!getSession(selectedOrderSessionId);
+  const canOpenOrderChart =
+    !!selectedOrderSessionId && !!onOpenChart && (canReturnToChart || orderSessionAlive);
+
+  const runSessionAlive = !!selectedRun && !!getSession(selectedRun.sessionId);
+  const canOpenRunChart =
+    !!selectedRun && !!onOpenChart && (canReturnToChart || runSessionAlive);
+
+  const orderDigits = selectedOrder ? digitsForSymbol(selectedOrder.symbol) : 5;
+  const orderCcy = selectedOrder?.accountCurrency ?? 'USD';
+  const runDigits = 5;
+
+  const emptyOrders = orderViews.length === 0;
+  const emptyRuns = backtestRuns.length === 0;
 
   return (
     <div className="min-h-full bg-background text-foreground overflow-auto">
@@ -234,172 +410,375 @@ export function JournalPage({
         <AppPageHeader
           current="journal"
           title="Journal"
-          description="Your Place Order / replay fills for each session — not strategy backtests."
+          description="Replay order fills and strategy backtest runs — jump to any trade on the chart."
           onGoHome={onGoHome}
           onGoSessions={onGoSessions}
           onGoDatasets={onGoDatasets ?? onGoSessions}
           onGoJournal={undefined}
         />
 
-        {views.length === 0 ? (
-          <Card className="bg-surface border border-border">
-            <Card.Content className="px-6 py-10 space-y-4 text-center">
-              <p className="text-sm text-muted">
-                No closed trades yet. Open a session, place orders, let them fill / hit SL·TP,
-                then return here.
-              </p>
-              <Button variant="primary" className="min-h-11" onPress={onGoSessions}>
-                Back to sessions
-              </Button>
-            </Card.Content>
-          </Card>
-        ) : (
-          <>
-            <div className="space-y-1.5">
-              <label htmlFor="journal-session" className="text-xs text-muted">
-                Session
-              </label>
-              <select
-                id="journal-session"
-                className="w-full min-h-11 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent"
-                value={selectedId ?? ''}
-                onChange={(e) => setSelectedId(e.target.value || null)}
-              >
-                {views.map((v) => (
-                  <option key={v.sessionId} value={v.sessionId}>
-                    {v.sessionName} · {v.trades.length} trades
-                  </option>
-                ))}
-              </select>
-            </div>
+        <div
+          className="flex rounded-lg border border-border bg-surface p-1 gap-1"
+          role="tablist"
+          aria-label="Journal source"
+        >
+          <Button
+            variant={tab === 'orders' ? 'primary' : 'ghost'}
+            size="sm"
+            className="flex-1 min-h-11"
+            onPress={() => setTab('orders')}
+            aria-selected={tab === 'orders'}
+          >
+            Orders{emptyOrders ? '' : ` (${orderViews.reduce((n, v) => n + v.trades.length, 0)})`}
+          </Button>
+          <Button
+            variant={tab === 'backtests' ? 'primary' : 'ghost'}
+            size="sm"
+            className="flex-1 min-h-11"
+            onPress={() => setTab('backtests')}
+            aria-selected={tab === 'backtests'}
+          >
+            Backtests{emptyRuns ? '' : ` (${backtestRuns.length})`}
+          </Button>
+        </div>
 
-            {selected && stats && (
-              <>
-                <div className="flex flex-wrap gap-2 items-center">
-                  {canOpenChart ? (
+        {tab === 'orders' &&
+          (emptyOrders ? (
+            <Card className="bg-surface border border-border">
+              <Card.Content className="px-6 py-10 space-y-4 text-center">
+                <p className="text-sm text-muted">
+                  No closed trades yet. Open a session, place orders, let them fill / hit SL·TP,
+                  then return here.
+                </p>
+                <Button variant="primary" className="min-h-11" onPress={onGoSessions}>
+                  Back to sessions
+                </Button>
+              </Card.Content>
+            </Card>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <label htmlFor="journal-session" className="text-xs text-muted">
+                  Session
+                </label>
+                <select
+                  id="journal-session"
+                  className="w-full min-h-11 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent"
+                  value={selectedOrderSessionId ?? ''}
+                  onChange={(e) => setSelectedOrderSessionId(e.target.value || null)}
+                >
+                  {orderViews.map((v) => (
+                    <option key={v.sessionId} value={v.sessionId}>
+                      {v.sessionName} · {v.trades.length} trades
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedOrder && orderStats && (
+                <>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    {canOpenOrderChart ? (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        className="min-h-11 sm:min-h-8"
+                        onPress={openOrderChart}
+                      >
+                        {canReturnToChart ? 'Back to chart' : 'Open chart'}
+                      </Button>
+                    ) : (
+                      <p className="text-xs text-muted min-h-11 flex items-center">
+                        Session deleted — journal kept. Clear to remove.
+                      </p>
+                    )}
                     <Button
-                      variant="primary"
+                      variant="ghost"
                       size="sm"
                       className="min-h-11 sm:min-h-8"
-                      onPress={openChart}
+                      onPress={handleClearOrders}
                     >
-                      {canReturnToChart ? 'Back to chart' : 'Open chart'}
+                      Clear journal
                     </Button>
-                  ) : (
-                    <p className="text-xs text-muted min-h-11 flex items-center">
-                      Session deleted — journal kept. Clear to remove.
-                    </p>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="min-h-11 sm:min-h-8"
-                    onPress={handleClear}
-                  >
-                    Clear journal
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="min-h-11 sm:min-h-8"
-                    onPress={refresh}
-                  >
-                    Refresh
-                  </Button>
-                </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="min-h-11 sm:min-h-8"
+                      onPress={refresh}
+                    >
+                      Refresh
+                    </Button>
+                  </div>
 
-                <Card className="bg-surface border border-border">
-                  <Card.Header className="px-4 sm:px-6 pt-5 pb-2">
-                    <Card.Title className="text-lg">Stats</Card.Title>
-                    <Card.Description className="text-muted text-sm">
-                      {selected.symbol} · replay orders · start {selected.startBalance.toFixed(2)}{' '}
-                      {ccy}
-                    </Card.Description>
-                  </Card.Header>
-                  <Card.Content className="px-4 sm:px-6 pb-5 space-y-4">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      <StatCell label="Trades" value={String(stats.tradeCount)} />
-                      <StatCell
-                        label="Win rate"
-                        value={
-                          stats.winRate == null
-                            ? '—'
-                            : `${(stats.winRate * 100).toFixed(1)}%`
-                        }
-                      />
-                      <StatCell
-                        label="Net P&L"
-                        value={formatMoney(stats.netPnl, ccy)}
-                        tone={
-                          stats.netPnl > 0 ? 'success' : stats.netPnl < 0 ? 'danger' : null
-                        }
-                      />
-                      <StatCell
-                        label="Balance"
-                        value={`${stats.finalBalance.toFixed(2)} ${ccy}`}
-                        tone={
-                          stats.returnPct > 0
-                            ? 'success'
-                            : stats.returnPct < 0
-                              ? 'danger'
-                              : null
-                        }
-                      />
-                      <StatCell
-                        label="Return"
-                        value={formatPct(stats.returnPct)}
-                        tone={
-                          stats.returnPct > 0
-                            ? 'success'
-                            : stats.returnPct < 0
-                              ? 'danger'
-                              : null
-                        }
-                      />
-                      <StatCell
-                        label="Payoff R"
-                        value={stats.payoffR == null ? '—' : stats.payoffR.toFixed(2)}
-                      />
-                    </div>
-                    <div>
-                      <p className="text-[11px] uppercase tracking-wide text-muted mb-1">
-                        Equity summary
-                      </p>
-                      <p className="text-xs text-muted tabular-nums mb-2">
-                        Min {stats.minEquity.toFixed(2)} · Max {stats.maxEquity.toFixed(2)} ·{' '}
-                        {selected.equity.length} samples
-                      </p>
-                      <EquitySparkline equity={selected.equity} />
-                    </div>
-                  </Card.Content>
-                </Card>
-
-                <section className="space-y-3">
-                  <h2 className="text-sm font-medium text-muted uppercase tracking-wide">
-                    Closed trades ({selected.trades.length})
-                  </h2>
-                  {selected.trades.length === 0 ? (
-                    <p className="text-sm text-muted">
-                      Orders were placed but none have closed yet (wait for fill + SL/TP or
-                      close).
-                    </p>
-                  ) : (
-                    <ul className="space-y-2">
-                      {selected.trades.map((t) => (
-                        <TradeRow
-                          key={t.id}
-                          trade={t}
-                          currency={ccy}
-                          digits={digits}
+                  <Card className="bg-surface border border-border">
+                    <Card.Header className="px-4 sm:px-6 pt-5 pb-2">
+                      <Card.Title className="text-lg">Stats</Card.Title>
+                      <Card.Description className="text-muted text-sm">
+                        {selectedOrder.symbol} · replay orders · start{' '}
+                        {selectedOrder.startBalance.toFixed(2)} {orderCcy}
+                      </Card.Description>
+                    </Card.Header>
+                    <Card.Content className="px-4 sm:px-6 pb-5 space-y-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        <StatCell label="Trades" value={String(orderStats.tradeCount)} />
+                        <StatCell
+                          label="Win rate"
+                          value={
+                            orderStats.winRate == null
+                              ? '—'
+                              : `${(orderStats.winRate * 100).toFixed(1)}%`
+                          }
                         />
-                      ))}
-                    </ul>
-                  )}
-                </section>
-              </>
-            )}
-          </>
-        )}
+                        <StatCell
+                          label="Net P&L"
+                          value={formatMoney(orderStats.netPnl, orderCcy)}
+                          tone={
+                            orderStats.netPnl > 0
+                              ? 'success'
+                              : orderStats.netPnl < 0
+                                ? 'danger'
+                                : null
+                          }
+                        />
+                        <StatCell
+                          label="Balance"
+                          value={`${orderStats.finalBalance.toFixed(2)} ${orderCcy}`}
+                          tone={
+                            orderStats.returnPct > 0
+                              ? 'success'
+                              : orderStats.returnPct < 0
+                                ? 'danger'
+                                : null
+                          }
+                        />
+                        <StatCell
+                          label="Return"
+                          value={formatPct(orderStats.returnPct)}
+                          tone={
+                            orderStats.returnPct > 0
+                              ? 'success'
+                              : orderStats.returnPct < 0
+                                ? 'danger'
+                                : null
+                          }
+                        />
+                        <StatCell
+                          label="Payoff R"
+                          value={orderStats.payoffR == null ? '—' : orderStats.payoffR.toFixed(2)}
+                        />
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wide text-muted mb-1">
+                          Equity summary
+                        </p>
+                        <p className="text-xs text-muted tabular-nums mb-2">
+                          Min {orderStats.minEquity.toFixed(2)} · Max{' '}
+                          {orderStats.maxEquity.toFixed(2)} · {selectedOrder.equity.length}{' '}
+                          samples
+                        </p>
+                        <EquitySparkline equity={selectedOrder.equity} />
+                      </div>
+                    </Card.Content>
+                  </Card>
+
+                  <section className="space-y-3">
+                    <h2 className="text-sm font-medium text-muted uppercase tracking-wide">
+                      Closed trades ({selectedOrder.trades.length})
+                    </h2>
+                    {selectedOrder.trades.length === 0 ? (
+                      <p className="text-sm text-muted">
+                        Orders were placed but none have closed yet (wait for fill + SL/TP or
+                        close).
+                      </p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {selectedOrder.trades.map((t) => (
+                          <OrderTradeRow
+                            key={t.id}
+                            trade={t}
+                            currency={orderCcy}
+                            digits={orderDigits}
+                            canOpenChart={canOpenOrderChart}
+                            onViewOnChart={viewOrderTradeOnChart}
+                          />
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                </>
+              )}
+            </>
+          ))}
+
+        {tab === 'backtests' &&
+          (emptyRuns ? (
+            <Card className="bg-surface border border-border">
+              <Card.Content className="px-6 py-10 space-y-4 text-center">
+                <p className="text-sm text-muted">
+                  No strategy runs yet. Open a session, tap Backtest, choose a strategy, and Run.
+                  Each run is kept here.
+                </p>
+                <Button variant="primary" className="min-h-11" onPress={onGoSessions}>
+                  Back to sessions
+                </Button>
+              </Card.Content>
+            </Card>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <label htmlFor="journal-run" className="text-xs text-muted">
+                  Run
+                </label>
+                <select
+                  id="journal-run"
+                  className="w-full min-h-11 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent"
+                  value={selectedRunId ?? ''}
+                  onChange={(e) => setSelectedRunId(e.target.value || null)}
+                >
+                  {backtestRuns.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {runOptionLabel(r)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedRun && backtestStats && (
+                <>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    {canOpenRunChart ? (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        className="min-h-11 sm:min-h-8"
+                        onPress={openBacktestChart}
+                      >
+                        {canReturnToChart &&
+                        selectedRun.sessionId === (initialSessionId ?? selectedRun.sessionId)
+                          ? 'Back to chart'
+                          : 'Open chart'}
+                      </Button>
+                    ) : (
+                      <p className="text-xs text-muted min-h-11 flex items-center">
+                        Session deleted — run kept. Delete to remove.
+                      </p>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="min-h-11 sm:min-h-8"
+                      onPress={handleDeleteRun}
+                    >
+                      Delete run
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="min-h-11 sm:min-h-8"
+                      onPress={refresh}
+                    >
+                      Refresh
+                    </Button>
+                  </div>
+
+                  <Card className="bg-surface border border-border">
+                    <Card.Header className="px-4 sm:px-6 pt-5 pb-2">
+                      <Card.Title className="text-lg">Stats</Card.Title>
+                      <Card.Description className="text-muted text-sm">
+                        {strategyLabel(selectedRun)} · {selectedRun.result.timeframe} ·{' '}
+                        {selectedRun.result.barCount.toLocaleString()} bars
+                        {selectedRun.result.truncated ? ' (capped)' : ''}
+                      </Card.Description>
+                    </Card.Header>
+                    <Card.Content className="px-4 sm:px-6 pb-5 space-y-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        <StatCell label="Trades" value={String(backtestStats.tradeCount)} />
+                        <StatCell
+                          label="Win rate"
+                          value={
+                            backtestStats.winRate == null
+                              ? '—'
+                              : `${(backtestStats.winRate * 100).toFixed(1)}%`
+                          }
+                        />
+                        <StatCell
+                          label="Net P&L"
+                          value={formatPricePnl(backtestStats.netPnl, runDigits)}
+                          tone={
+                            backtestStats.netPnl > 0
+                              ? 'success'
+                              : backtestStats.netPnl < 0
+                                ? 'danger'
+                                : null
+                          }
+                        />
+                        <StatCell
+                          label="Equity"
+                          value={backtestStats.finalEquity.toFixed(4)}
+                          tone={
+                            backtestStats.equityReturnPct > 0
+                              ? 'success'
+                              : backtestStats.equityReturnPct < 0
+                                ? 'danger'
+                                : null
+                          }
+                        />
+                        <StatCell
+                          label="Return"
+                          value={formatPct(backtestStats.equityReturnPct)}
+                          tone={
+                            backtestStats.equityReturnPct > 0
+                              ? 'success'
+                              : backtestStats.equityReturnPct < 0
+                                ? 'danger'
+                                : null
+                          }
+                        />
+                        <StatCell
+                          label="Payoff R"
+                          value={
+                            backtestStats.payoffR == null
+                              ? '—'
+                              : backtestStats.payoffR.toFixed(2)
+                          }
+                        />
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wide text-muted mb-1">
+                          Equity curve
+                        </p>
+                        <EquitySparkline equity={selectedRun.result.equity} />
+                      </div>
+                    </Card.Content>
+                  </Card>
+
+                  <section className="space-y-3">
+                    <h2 className="text-sm font-medium text-muted uppercase tracking-wide">
+                      Closed trades ({selectedRun.result.trades.length})
+                    </h2>
+                    {selectedRun.result.trades.length === 0 ? (
+                      <p className="text-sm text-muted">
+                        This run produced no closed trades (try longer window or different
+                        params).
+                      </p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {selectedRun.result.trades.map((t) => (
+                          <BacktestTradeRow
+                            key={t.id}
+                            trade={t}
+                            digits={runDigits}
+                            canOpenChart={canOpenRunChart}
+                            onViewOnChart={viewBacktestTradeOnChart}
+                          />
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                </>
+              )}
+            </>
+          ))}
       </div>
     </div>
   );

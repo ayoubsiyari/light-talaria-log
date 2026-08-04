@@ -35,6 +35,11 @@ export interface RemoteChunkRef {
 export interface RemoteChunksResponse {
   datasetId: string;
   timeframe: string;
+  /** True when more chunks exist beyond this page (API maxChunksPerQuery). */
+  truncated?: boolean;
+  /** Resume warm-cache / full pull with fromTime = this value. */
+  nextFromTime?: number | null;
+  maxChunksPerQuery?: number;
   seriesMeta: {
     rowCount: number;
     timeStart: number;

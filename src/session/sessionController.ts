@@ -232,7 +232,10 @@ export function createSessionController() {
         };
       }
       const s = state;
-      await warmCache.fill(s.panes[paneId]!.datasetId, tf, s.anchorTime, s.span);
+      // Await remote chunks so the first TF click paints the new series.
+      await warmCache.fill(s.panes[paneId]!.datasetId, tf, s.anchorTime, s.span, {
+        awaitRemote: true,
+      });
       if (!state) return;
       if (tf !== state.baseTf) {
         await warmCache.fill(
@@ -240,11 +243,13 @@ export function createSessionController() {
           state.baseTf,
           state.cursorTime,
           state.span,
+          { awaitRemote: true },
         );
       }
       if (!state) return;
       rederiveSync();
       notify();
+      // Second pass after any late IDB write (no remote wait).
       void rederiveAsync([paneId]);
     },
 
@@ -282,11 +287,15 @@ export function createSessionController() {
         if (!stillUsed) warmCache.clearDataset(prevDs);
       }
       const s = state;
-      // Warm the active TF (+ base) before painting — full prefetch can finish after.
-      await warmCache.fill(meta.datasetId, keepTf, s.anchorTime, s.span);
+      // Warm the active TF (+ base) before painting — await remote for first paint.
+      await warmCache.fill(meta.datasetId, keepTf, s.anchorTime, s.span, {
+        awaitRemote: true,
+      });
       if (!state) return;
       if (keepTf !== state.baseTf) {
-        await warmCache.fill(meta.datasetId, state.baseTf, state.cursorTime, state.span);
+        await warmCache.fill(meta.datasetId, state.baseTf, state.cursorTime, state.span, {
+          awaitRemote: true,
+        });
       }
       if (!state) return;
       rederiveSync();

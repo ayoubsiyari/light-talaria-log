@@ -27,11 +27,18 @@ export async function withClient<T>(fn: (client: pg.PoolClient) => Promise<T>): 
   }
 }
 
+/** Apply all `sql/*.sql` files in sorted order (idempotent migrations). */
 export async function migrate(): Promise<void> {
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const sqlPath = path.resolve(__dirname, '..', 'sql', '001_init.sql');
-  const sql = fs.readFileSync(sqlPath, 'utf8');
-  await pool.query(sql);
+  const sqlDir = path.resolve(__dirname, '..', 'sql');
+  const files = fs
+    .readdirSync(sqlDir)
+    .filter((f) => f.endsWith('.sql'))
+    .sort();
+  for (const file of files) {
+    const sql = fs.readFileSync(path.join(sqlDir, file), 'utf8');
+    await pool.query(sql);
+  }
 }
 
 export async function readyCheck(): Promise<{ postgres: boolean; error?: string }> {

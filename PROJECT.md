@@ -594,6 +594,55 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 
 ---
 
+## Next Work Plan — Power Jump (P1–P3) (2026-08-04)
+
+**North star:** Powerful backtest / replay / journal on *our* data — not a TradingView clone. Canvas ≤2500; server = OHLC library.
+
+### How we work
+1. Approve **go Step PN** (or continue after previous Done when)
+2. Agent implements only that step
+3. You verify → **Passed** / **fix Step PN: …** / **skip Step PN**
+4. Checklist + Session Log updated; do not start P(N+1) until P(N) is Done when
+
+### Step P1 — Journal → chart at trade time
+**Goal:** From Journal, open the session chart at a trade’s entry time.  
+**Status:** Done (2026-08-04).  
+**Deliverables:**
+- [x] Chart hash supports `?t=<unix>&trade=<id>` (`appRoute.ts`)
+- [x] Journal per-trade **View on chart** (≥44px)
+- [x] App seeks replay + viewport after load; brief trade focus highlight
+- [x] Mobile-friendly tap targets  
+**Done when:** One tap from Journal lands on the entry bar; Play/pan still work.  
+**Depends on:** `replayStore.seek`, order journal `entryTime`.
+
+### Step P2 — Data plane publish parity
+**Goal:** Publish → other browser Create Session → viewport fetch on one contract.  
+**Status:** Done (2026-08-04).  
+**Deliverables:**
+- [x] Document stub (`npm run dev`) as supported local multi-browser plane (`docs/SAAS-LEVEL-2.md` §6a)
+- [x] Port PUT publish into `services/api` for `saas:dev` parity (meta → chunks → series; UUID + ACL + quotas)
+- [x] Client publish order: meta first (Postgres FK); same paths as stub
+- [x] Smoke checklist documented (2nd browser Create Session ≤2500)  
+**Done when:** Stub and production API accept the same client publish/import contract.  
+**Depends on:** P1 Done when.
+
+### Step P3 — Pro backtest v1 (client Worker)
+**Goal:** Strategy choice + multi-run journal, not a single SMA demo.  
+**Status:** Done (2026-08-04).  
+**Deliverables:**
+- [x] Second strategy (`donchian_breakout`) + params UI (`BacktestRunMenu`)
+- [x] Multi-run local save (`journalStore` append); Journal **Backtests** tab lists runs
+- [x] Backtest trades use P1 View on chart (seek + restore run markers + focus ring)
+- [x] Keep `MAX_BACKTEST_BARS` (50k)  
+**Done when:** Run twice, see both runs, jump to a trade on chart.  
+**Depends on:** P1 + P2 Done when.
+
+**Out of scope this wave:** L3 market data, SSO/billing, Redis backtest worker, full 1M stress.
+
+**Suggested order:** `P1 → P2 → P3`
+
+---
+
 ## Session Log
 
 | Date | Work done | Next up |
@@ -706,6 +755,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | Replay play rate = finest pane TF (not focused); multi-TF 1m/5m/1h/4h run at 1m | Play on 2×2 mixed TFs |
 | 2026-08-04 | Fix flaky multi-pair TF switch: invalidate/cancel LOD + merge identity; per-pane TF list | Switch TF after pan on 2×2 |
 | 2026-08-04 | Session create defaults start/end to last 3 months of coverage | Open Sessions → check dates |
+| 2026-08-04 | TF switch awaits remote fill + gen/suppress/optimistic UI (first click sticks) | Multi-pair 2×2: change TF once |
 | 2026-08-04 | Nav path close-the-loop: TopBar Sessions/Exit + Backtest→journal; honest landing; shared AppPageNav; Datasets Create session CTA; soft #/404 | Manual: Exit chart, run BT → Journal, unknown hash |
 | 2026-08-04 | Landing + chrome fully on Hero UI (removed `--m-*` marketing palette); ThemeToggle/logo use Hero Button | Hard-refresh landing — tokens follow dark/light |
 | 2026-08-04 | Analytics dashboard v1: columnar store, worker metrics (88), canvas charts subset, virtual list, honesty gating; report in `docs/ANALYTICS-REPORT.md` | Bottom Analytics tab; Demo 5k; `npm run test:analytics` / `bench:analytics` |
@@ -715,6 +765,10 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | TV-style remote load: viewport (~2 chunks) on Start; contiguous IDB meta; server top-up on pan/replay; fix empty replay after clear-cache | Short session → Play; pan left loads more from server |
 | 2026-08-04 | Fix multi-chart replay stall: non-blocking server top-up + ≤1 chunk per fetch (was awaiting hours of 1m mid-play) | Multi layout → Play through cache edge |
 | 2026-08-04 | IDB sliding-window GC for remote chunks (max 8/series) + Datasets “Clear chart cache”; local CSV untouched | Long Play → IDB stays small; Clear cache frees disk |
+| 2026-08-04 | Power Jump plan P1–P3 in PROJECT.md; **P1 Done:** journal View on chart → `#/chart/:id?t=&trade=` seek + highlight | Verify trade → chart; then **go Step P2** |
+| 2026-08-04 | **P2 Done:** stub multi-browser plane docs; SaaS PUT publish parity; client meta-first publish | Smoke: publish → 2nd browser session; then **go Step P3** |
+| 2026-08-04 | **P3 Done:** Donchian + params menu; multi-run journal tab; View on chart restores run | Run SMA + Donchian → Journal Backtests → View on chart |
+| 2026-08-04 | API production hardening: CDN URLs, Cache-Control/ETag, Redis rate limits, chunk paging, download quota, security headers (`docs/API-PRODUCTION.md`) | Set `CDN_PUBLIC_BASE` in deploy; `saas:migrate` |
 
 ---
 

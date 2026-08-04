@@ -372,7 +372,16 @@ export function paintOverlayFrame(
       : computePriceScale(bars, range, maxBarIndex);
 
   if (backtestResult) {
-    drawBacktest(ctx, backtestResult, bars, range, plot, scale, colors);
+    drawBacktest(
+      ctx,
+      backtestResult,
+      bars,
+      range,
+      plot,
+      scale,
+      colors,
+      selectedOrderId ?? null,
+    );
   }
 
   if (orders?.length) {

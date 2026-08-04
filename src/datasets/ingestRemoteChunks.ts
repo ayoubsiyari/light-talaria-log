@@ -246,15 +246,27 @@ export async function ingestRemoteChunksToIdb(
   const skipExisting = opts.skipExisting !== false;
   const ranged = opts.fromTime != null || opts.toTime != null;
   const remote = await getRemoteDataset(datasetId);
-  const chunksRes = await fetchRemoteChunks({
-    datasetId,
-    timeframe,
-    fromTime: opts.fromTime,
-    toTime: opts.toTime,
-  });
 
-  const sm = chunksRes.seriesMeta;
-  if (ranged && sm.chunks.length === 0) {
+  // API pages large series (maxChunksPerQuery). Follow nextFromTime until done.
+  const allChunks: RemoteChunkRef[] = [];
+  let pageFrom = opts.fromTime;
+  const pageTo = opts.toTime;
+  for (let page = 0; page < 64; page++) {
+    const chunksRes = await fetchRemoteChunks({
+      datasetId,
+      timeframe,
+      fromTime: pageFrom,
+      toTime: pageTo,
+    });
+    const pageChunks = chunksRes.seriesMeta.chunks;
+    if (pageChunks.length === 0) break;
+    for (const c of pageChunks) allChunks.push(c);
+    if (!chunksRes.truncated || chunksRes.nextFromTime == null) break;
+    if (pageTo != null && chunksRes.nextFromTime > pageTo) break;
+    pageFrom = chunksRes.nextFromTime;
+  }
+
+  if (ranged && allChunks.length === 0) {
     throw new Error(
       `No server data for ${remote.symbol} ${timeframe} in the requested time window.`,
     );
@@ -262,22 +274,35 @@ export async function ingestRemoteChunksToIdb(
 
   const db = await openDb();
 
+  // Deduplicate by chunkId (overlap between pages).
+  const seen = new Set<string>();
+  const uniqueChunks: RemoteChunkRef[] = [];
+  for (const c of allChunks) {
+    if (seen.has(c.chunkId)) continue;
+    seen.add(c.chunkId);
+    uniqueChunks.push(c);
+  }
+  uniqueChunks.sort((a, b) => a.chunkIndex - b.chunkIndex);
+
   let meta: SeriesMeta = ranged
-    ? await buildRangeSeriesMeta(db, datasetId, timeframe, sm.chunks)
+    ? await buildRangeSeriesMeta(db, datasetId, timeframe, uniqueChunks)
     : {
         datasetId,
         timeframe,
-        rowCount: sm.rowCount,
-        timeStart: sm.timeStart,
-        timeEnd: sm.timeEnd,
-        chunkIds: sm.chunkIds,
-        chunkStarts: sm.chunkStarts,
-        chunkTimeStarts: sm.chunkTimeStarts,
-        chunkTimeEnds: sm.chunkTimeEnds,
+        rowCount: uniqueChunks.reduce((n, c) => {
+          // Approximate until buffers refresh; prefer logical span.
+          return Math.max(n, c.logicalStart + Math.max(1, Math.floor(c.bytes / 28)));
+        }, 0),
+        timeStart: uniqueChunks[0]?.timeStart ?? 0,
+        timeEnd: uniqueChunks[uniqueChunks.length - 1]?.timeEnd ?? 0,
+        chunkIds: uniqueChunks.map((c) => c.chunkId),
+        chunkStarts: uniqueChunks.map((c) => c.logicalStart),
+        chunkTimeStarts: uniqueChunks.map((c) => c.timeStart),
+        chunkTimeEnds: uniqueChunks.map((c) => c.timeEnd),
       };
 
   // Download missing binaries first, then refresh meta from actual buffer sizes.
-  for (const ref of sm.chunks) {
+  for (const ref of uniqueChunks) {
     if (skipExisting) {
       const existing = await getChunk(db, ref.chunkId);
       if (existing != null && existing.byteLength > 0) continue;
@@ -286,9 +311,7 @@ export async function ingestRemoteChunksToIdb(
     await putChunk(db, ref.chunkId, buf);
   }
 
-  if (ranged) {
-    meta = await refreshMetaBytesFromIdb(db, meta);
-  }
+  meta = await refreshMetaBytesFromIdb(db, meta);
   await putSeriesMeta(db, meta);
 
   const baseTf = (remote.baseTimeframe as Timeframe) || timeframe;

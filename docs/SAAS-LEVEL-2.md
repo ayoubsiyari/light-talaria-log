@@ -19,6 +19,7 @@
 | Docker Compose (Postgres + Redis + MinIO + API) | Implemented |
 | Vite proxy to real API when SaaS is up | Implemented |
 | Client Import-from-API → IDB → chart ≤2500 | Already shipped |
+| Client publish (PUT meta / series / chunks) on stub + SaaS API | Shipped (P2) |
 | Billing / SSO / HA multi-region | Deferred (Level 3) |
 
 ---
@@ -82,26 +83,31 @@ Assumptions: ~100 concurrent chart sessions peak; each opens 1–2 datasets; 70%
 
 ## 5. Launch checklist
 
+Full multi-user hardening notes: [`docs/API-PRODUCTION.md`](./API-PRODUCTION.md).
+
 ### A. Infrastructure
 - [ ] DNS + TLS (Caddy/Nginx or platform)
 - [ ] `docker compose -f docker-compose.yml up -d` (or managed equivalents)
 - [ ] Persistent volumes for Postgres + MinIO
 - [ ] Nightly Postgres backups + S3 versioning
 - [ ] Secrets in env / vault (never commit `.env`)
+- [ ] CDN in front of public chunk binaries (`CDN_PUBLIC_BASE`)
 
 ### B. Security
-- [ ] Change `JWT_SECRET` / `SESSION_SECRET` (32+ random bytes)
+- [ ] Change `SESSION_SECRET` (32+ random bytes; API refuses default in `NODE_ENV=production`)
 - [ ] Change default MinIO + Postgres passwords
 - [ ] HTTPS only in production (`SECURE_COOKIES=true`)
-- [ ] CORS allowlist = real SPA origin
-- [ ] Rate limits on auth + import endpoints
-- [ ] ACL enforced on every dataset/chunk route
+- [ ] CORS allowlist = real SPA origin (comma-separated ok)
+- [x] Rate limits on auth + publish + chunks + jobs (Redis when available)
+- [x] ACL enforced on every dataset/chunk route
+- [x] Security headers + chunk size / alignment guards
 
 ### C. Data
-- [ ] Run migrations (`npm run saas:migrate`)
+- [ ] Run migrations (`npm run saas:migrate`) — includes download quota column
 - [ ] Seed admin user + demo dataset (`npm run saas:seed`)
 - [ ] Upload real symbol packs (1m + pre-agg TFs)
 - [ ] Verify Import → Create Session → chart ≤2500
+- [x] Chunk query paging (`MAX_CHUNKS_PER_QUERY` + client follow)
 
 ### D. App
 - [ ] Build SPA (`npm run build`) → serve static
@@ -118,12 +124,40 @@ Assumptions: ~100 concurrent chart sessions peak; each opens 1–2 datasets; 70%
 ### F. Product gates before public
 - [ ] Terms + privacy
 - [ ] Soft launch invite list
-- [ ] Quota: max datasets / import bytes per user (env knobs)
+- [x] Quota: max datasets / import / download bytes / backtest hour (env knobs)
 - [ ] Status page
 
 ---
 
-## 6. Local SaaS mode (developers)
+## 6. Local data planes (developers)
+
+### 6a. Vite disk stub (supported multi-browser plane — no Docker)
+
+**Default for day-to-day chart work.** `npm run dev` mounts `server/apiPlugin.ts` and writes packed chunks under `data/chunks/`. Any browser on the same Vite origin shares that store — publish once, Create Session in a second browser.
+
+```bash
+npm run dev
+# SPA: http://127.0.0.1:5173
+# Auth: fixed stub user (no register required)
+# Store: data/chunks/datasets/{id}/{tf}/{n}.bin + dataset.json / series.json
+```
+
+**Publish contract (client `publishDataset.ts` → same paths on stub and SaaS API):**
+
+| Order | Method | Path | Body |
+|---|---|---|---|
+| 1 | `PUT` | `/api/v1/datasets/:id` | JSON meta (`symbol`, `baseTimeframe`, `name`, …) |
+| 2 | `PUT` | `/api/v1/datasets/:id/chunks/:tf/:n` | `application/octet-stream` packed OHLCV |
+| 3 | `PUT` | `/api/v1/datasets/:id/series/:tf` | JSON chunk index (`chunkIds`, starts, times) |
+
+Meta must be first on the SaaS API (Postgres FK). The stub accepts any string id; SaaS requires a **UUID** (`newId()` / `crypto.randomUUID`).
+
+**Smoke checklist (stub):**
+1. Browser A: Datasets → download / ingest → **Save to server** (or auto-publish).
+2. Browser B (or private window) on the same origin: Create Session → pick the remote dataset + dates → Start.
+3. Chart paints ≤2500 bars; Play / pan tops up from the shared store.
+
+### 6b. Full SaaS API (`saas:dev`)
 
 **Requires Docker Desktop** (or compatible engine) for Postgres / Redis / MinIO.
 
@@ -152,7 +186,7 @@ npm run saas:dev
 
 **Disk-only API (no MinIO):** set `STORAGE_DRIVER=disk` in `.env`, still need Postgres (+ Redis optional; jobs degrade to stub complete).
 
-**Zero-Docker chart work still works:** `npm run dev` uses the Vite disk stub (`server/apiPlugin.ts`) — no Postgres required.
+**Publish parity:** same PUT contract as §6a (`services/api` routes). Register/login first (session cookie). Quotas apply (`QUOTA_DATASETS_PER_USER`, `QUOTA_IMPORT_BYTES_DAY`).
 
 ---
 
@@ -195,8 +229,9 @@ npm run saas:dev
 | Path | Role |
 |---|---|
 | `docs/SAAS-LEVEL-2.md` | This plan |
+| `docs/API-PRODUCTION.md` | Multi-user hardening + CDN / limits |
 | `docker-compose.yml` | Postgres, Redis, MinIO, API |
-| `.env.example` | Secrets template |
+| `.env.example` | Secrets + quota / rate-limit knobs |
 | `services/api/` | Production Fastify API |
-| `services/api/sql/001_init.sql` | Schema |
+| `services/api/sql/*.sql` | Schema + migrations |
 | `vite.config.ts` | Optional proxy to `:8787` |

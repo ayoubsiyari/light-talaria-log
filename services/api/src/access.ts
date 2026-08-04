@@ -1,6 +1,18 @@
 import { query } from './db.js';
 import type { AuthUser } from './auth.js';
 
+export async function getDatasetVisibility(
+  datasetId: string,
+): Promise<'private' | 'shared' | 'public_read' | null> {
+  const { rows } = await query<{ visibility: string }>(
+    `SELECT visibility FROM datasets WHERE id = $1`,
+    [datasetId],
+  );
+  const v = rows[0]?.visibility;
+  if (v === 'private' || v === 'shared' || v === 'public_read') return v;
+  return null;
+}
+
 export async function canReadDataset(user: AuthUser | null, datasetId: string): Promise<boolean> {
   const { rows } = await query<{
     owner_user_id: string;

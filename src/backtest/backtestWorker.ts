@@ -1,20 +1,34 @@
+import { runDonchianBreakout } from '@/backtest/strategies/donchianBreakout';
 import { runSmaCross } from '@/backtest/strategies/smaCross';
-import type { BacktestWorkerRequest, BacktestWorkerResponse } from '@/types/backtest';
+import {
+  normalizeBacktestParams,
+  type BacktestWorkerRequest,
+  type BacktestWorkerResponse,
+} from '@/types/backtest';
 
 self.onmessage = (e: MessageEvent<BacktestWorkerRequest>) => {
   const msg = e.data;
   if (msg.type !== 'run') return;
 
   try {
-    if (msg.params.strategyId !== 'sma_cross') {
-      throw new Error(`Unknown strategy: ${msg.params.strategyId}`);
-    }
-    const out = runSmaCross({
-      times: msg.times,
-      closes: msg.closes,
-      sma: msg.params.sma,
-      costs: msg.params.costs,
-    });
+    const params = normalizeBacktestParams(msg.params);
+    const out =
+      params.strategyId === 'donchian_breakout'
+        ? runDonchianBreakout({
+            times: msg.times,
+            highs: msg.highs,
+            lows: msg.lows,
+            closes: msg.closes,
+            donchian: params.donchian,
+            costs: params.costs,
+          })
+        : runSmaCross({
+            times: msg.times,
+            closes: msg.closes,
+            sma: params.sma,
+            costs: params.costs,
+          });
+
     const res: BacktestWorkerResponse = {
       type: 'result',
       requestId: msg.requestId,

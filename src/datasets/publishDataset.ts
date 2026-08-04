@@ -86,6 +86,31 @@ async function uploadCatalogToServer(
   const totalChunks = metas.reduce((n, m) => n + m.chunkIds.length, 0);
   let doneChunks = 0;
 
+  const rowCounts: Record<string, number> = {};
+  for (const [tf, n] of Object.entries(catalog.rowCounts)) {
+    if (typeof n === 'number') rowCounts[tf] = n;
+  }
+
+  // Meta first — SaaS Postgres FK requires datasets row before chunk rows.
+  // Stub disk store also accepts overwrite; same client contract for both.
+  onProgress?.({
+    phase: 'upload',
+    percent: 42,
+    detail: 'Publishing dataset meta…',
+  });
+  await putRemoteDatasetMeta(catalog.datasetId, {
+    id: catalog.datasetId,
+    symbol,
+    baseTimeframe: catalog.baseTf,
+    name: `${symbol} ${catalog.baseTf} (${catalog.datasetId.slice(0, 8)})`,
+    visibility: 'public_read',
+    status: 'ready',
+    timeStart: catalog.timeStart,
+    timeEnd: catalog.timeEnd,
+    rowCounts,
+    timeframes: tfs,
+  });
+
   for (const meta of metas) {
     for (let i = 0; i < meta.chunkIds.length; i++) {
       const chunkId = meta.chunkIds[i]!;
@@ -102,10 +127,10 @@ async function uploadCatalogToServer(
       chunkCount += 1;
       doneChunks += 1;
       const uploadPct =
-        totalChunks > 0 ? Math.round((doneChunks / totalChunks) * 55) : 55;
+        totalChunks > 0 ? Math.round((doneChunks / totalChunks) * 50) : 50;
       onProgress?.({
         phase: 'upload',
-        percent: 40 + uploadPct,
+        percent: 45 + uploadPct,
         detail: `Uploading ${meta.timeframe} chunk ${i + 1}/${meta.chunkIds.length}…`,
       });
     }
@@ -120,24 +145,6 @@ async function uploadCatalogToServer(
       chunkTimeEnds: meta.chunkTimeEnds,
     });
   }
-
-  const rowCounts: Record<string, number> = {};
-  for (const [tf, n] of Object.entries(catalog.rowCounts)) {
-    if (typeof n === 'number') rowCounts[tf] = n;
-  }
-
-  await putRemoteDatasetMeta(catalog.datasetId, {
-    id: catalog.datasetId,
-    symbol,
-    baseTimeframe: catalog.baseTf,
-    name: `${symbol} ${catalog.baseTf} (${catalog.datasetId.slice(0, 8)})`,
-    visibility: 'public_read',
-    status: 'ready',
-    timeStart: catalog.timeStart,
-    timeEnd: catalog.timeEnd,
-    rowCounts,
-    timeframes: tfs,
-  });
 
   markDatasetServerSynced(catalog.datasetId);
   onProgress?.({

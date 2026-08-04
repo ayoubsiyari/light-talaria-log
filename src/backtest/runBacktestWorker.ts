@@ -5,6 +5,7 @@ import type {
   BacktestWorkerResponse,
 } from '@/types/backtest';
 import type { Timeframe } from '@/types/ui';
+import { newId } from '@/utils/uuid';
 import { loadBarsForBacktest } from './loadBarsForBacktest';
 
 let worker: Worker | null = null;
@@ -95,6 +96,7 @@ export async function runBacktest(input: RunBacktestInput): Promise<BacktestResu
       }
 
       resolve({
+        runId: newId(),
         sessionId: input.sessionId,
         datasetId: input.datasetId,
         timeframe: input.timeframe,

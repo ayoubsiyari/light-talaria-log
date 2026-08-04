@@ -73,6 +73,8 @@ services:
       API_HOST: 0.0.0.0
       NODE_ENV: production
       PUBLIC_API_URL: http://127.0.0.1:8787
+      # Set CDN_PUBLIC_BASE in real deploys to offload public_read .bin GETs
+      CDN_PUBLIC_BASE: ''
       CORS_ORIGIN: http://127.0.0.1:5173
       SECURE_COOKIES: 'false'
       SESSION_SECRET: change-me-in-production-use-openssl-rand
@@ -86,6 +88,10 @@ services:
       S3_ACCESS_KEY: talaria
       S3_SECRET_KEY: talaria-secret
       S3_FORCE_PATH_STYLE: 'true'
+      MAX_CHUNKS_PER_QUERY: 24
+      RATE_LIMIT_GLOBAL_RPM: 300
+      RATE_LIMIT_AUTH_RPM: 20
+      RATE_LIMIT_CHUNK_RPM: 240
       SEED_ADMIN_EMAIL: admin@localhost
       SEED_ADMIN_PASSWORD: admin12345
       SEED_DEMO: 'true'

@@ -21,11 +21,17 @@ export interface EquityPoint {
   equity: number;
 }
 
-export type BacktestStrategyId = 'sma_cross';
+export type BacktestStrategyId = 'sma_cross' | 'donchian_breakout';
 
 export interface SmaCrossParams {
   fastPeriod: number;
   slowPeriod: number;
+}
+
+/** Donchian channel breakout — enter on N-bar high break, exit on N-bar low break. */
+export interface DonchianBreakoutParams {
+  /** Lookback for channel high/low (entry/exit). */
+  period: number;
 }
 
 /** Cost model hooks — v1 defaults to zero. */
@@ -39,6 +45,7 @@ export interface BacktestCostParams {
 export interface BacktestParams {
   strategyId: BacktestStrategyId;
   sma: SmaCrossParams;
+  donchian: DonchianBreakoutParams;
   costs: BacktestCostParams;
 }
 
@@ -46,6 +53,8 @@ export type BacktestStatus = 'idle' | 'running' | 'done' | 'cancelled' | 'error'
 
 /** Session-scoped result kept outside the chart engine. */
 export interface BacktestResult {
+  /** Unique run id (multi-run journal). Older saves may omit. */
+  runId?: string;
   sessionId: string;
   datasetId: string;
   timeframe: Timeframe;
@@ -94,5 +103,35 @@ export type BacktestWorkerResponse =
 export const DEFAULT_BACKTEST_PARAMS: BacktestParams = {
   strategyId: 'sma_cross',
   sma: { fastPeriod: 10, slowPeriod: 30 },
+  donchian: { period: 20 },
   costs: { slippage: 0, spread: 0 },
 };
+
+export const BACKTEST_STRATEGY_LABELS: Record<BacktestStrategyId, string> = {
+  sma_cross: 'SMA cross',
+  donchian_breakout: 'Donchian breakout',
+};
+
+/** Normalize older saved params that may lack `donchian`. */
+export function normalizeBacktestParams(
+  raw: Partial<BacktestParams> | null | undefined,
+): BacktestParams {
+  const base = DEFAULT_BACKTEST_PARAMS;
+  if (!raw || typeof raw !== 'object') return { ...base, sma: { ...base.sma }, donchian: { ...base.donchian }, costs: { ...base.costs } };
+  const strategyId: BacktestStrategyId =
+    raw.strategyId === 'donchian_breakout' ? 'donchian_breakout' : 'sma_cross';
+  return {
+    strategyId,
+    sma: {
+      fastPeriod: Number(raw.sma?.fastPeriod) || base.sma.fastPeriod,
+      slowPeriod: Number(raw.sma?.slowPeriod) || base.sma.slowPeriod,
+    },
+    donchian: {
+      period: Number(raw.donchian?.period) || base.donchian.period,
+    },
+    costs: {
+      slippage: Number(raw.costs?.slippage) || 0,
+      spread: Number(raw.costs?.spread) || 0,
+    },
+  };
+}

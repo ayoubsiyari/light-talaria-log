@@ -538,8 +538,11 @@ Do not invent a second trade/equity shape for the server — extend `BacktestRes
 | `GET` | `/api/v1/health` | Public |
 | `GET` | `/api/v1/auth/me` | Dev stub user |
 | `POST` | `/api/v1/auth/login` \| `/register` \| `/logout` | Dev stub |
-| `GET` | `/api/v1/datasets` | Meta only (seeded demo dataset) |
+| `GET` | `/api/v1/datasets` | Meta only (seeded + published) |
 | `GET` | `/api/v1/datasets/:id` | Dataset meta |
+| `PUT` | `/api/v1/datasets/:id` | Publish / overwrite dataset meta |
+| `PUT` | `/api/v1/datasets/:id/series/:tf` | Publish series chunk index |
+| `PUT` | `/api/v1/datasets/:id/chunks/:tf/:n` | Raw packed OHLCV binary |
 | `GET` | `/api/v1/datasets/:id/chunks` | `tf`, `fromTime`, `toTime` → chunk meta + relative URLs |
 | `GET` | `/api/v1/files/datasets/:id/:tf/:n.bin` | Packed OHLCV binary (CDN stand-in) |
 | `POST` | `/api/v1/jobs/ingest` | In-memory job stub |
@@ -548,6 +551,8 @@ Do not invent a second trade/equity shape for the server — extend `BacktestRes
 | `POST` | `/api/v1/datasets/:id/ingest` | Enqueue ingest stub |
 
 Auth: fixed dev user; optional `X-Talaria-User-Id` header (display only). Not production security.
+
+**Multi-browser local plane:** stub disk under `data/chunks/` is the supported zero-Docker shared store — same client publish/import contract as production API (`docs/SAAS-LEVEL-2.md` §6). Production PUT routes live in `services/api/src/routes.ts` (UUID ids, ACL, quotas).
 
 **Default client path unchanged:** Create Session / Dukascopy / local IDB ingest remain offline-capable. Remote → IDB is available from Datasets → **Import from API** (`ingestRemoteDatasetAllTfs` → catalog `source: 'remote'`).
 

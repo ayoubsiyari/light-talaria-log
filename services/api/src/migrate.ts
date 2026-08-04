@@ -1,7 +1,7 @@
 import { migrate, pool } from './db.js';
 
 async function main(): Promise<void> {
-  console.log('[migrate] applying 001_init.sql…');
+  console.log('[migrate] applying sql/*.sql…');
   await migrate();
   console.log('[migrate] done');
   await pool.end();

@@ -106,3 +106,22 @@ export function clampDate(date: string, min: string, max: string): string {
   if (date > max) return max;
   return date;
 }
+
+/**
+ * Default session window: last `months` ending at coverage end,
+ * clamped so it never starts before coverage start.
+ */
+export function defaultLastMonthsCoverage(
+  coverage: DateCoverage,
+  months = 3,
+): DateCoverage {
+  const end = coverage.endDate;
+  const endMs = Date.parse(`${end}T00:00:00Z`);
+  if (!Number.isFinite(endMs)) return { ...coverage };
+  const startDt = new Date(endMs);
+  startDt.setUTCMonth(startDt.getUTCMonth() - months);
+  let start = startDt.toISOString().slice(0, 10);
+  if (start < coverage.startDate) start = coverage.startDate;
+  if (start > end) start = end;
+  return { startDate: start, endDate: end };
+}

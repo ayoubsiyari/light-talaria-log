@@ -10,6 +10,7 @@ import {
   clampDate,
   commonTimeframes,
   coverageForPair,
+  defaultLastMonthsCoverage,
   overlapCoverage,
   pickDatasetForRange,
 } from '@/sessions/sessionOverlap';
@@ -135,11 +136,34 @@ export function CreateSessionPage({
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  // Default to last 3 months of shared coverage (not the full history).
+  const preferredRange = useMemo(
+    () => (overlap ? defaultLastMonthsCoverage(overlap, 3) : null),
+    [overlap],
+  );
+
+  useEffect(() => {
+    if (!preferredRange) return;
+    // Seed once while empty; keep user edits after they touch the fields.
+    if (!startDate && !endDate) {
+      setStartDate(preferredRange.startDate);
+      setEndDate(preferredRange.endDate);
+    }
+  }, [preferredRange, startDate, endDate]);
+
   const boundStart = overlap
-    ? clampDate(startDate || overlap.startDate, overlap.startDate, overlap.endDate)
+    ? clampDate(
+        startDate || preferredRange?.startDate || overlap.startDate,
+        overlap.startDate,
+        overlap.endDate,
+      )
     : '';
   const boundEnd = overlap
-    ? clampDate(endDate || overlap.endDate, overlap.startDate, overlap.endDate)
+    ? clampDate(
+        endDate || preferredRange?.endDate || overlap.endDate,
+        overlap.startDate,
+        overlap.endDate,
+      )
     : '';
   const sessionStart = boundStart && boundEnd && boundStart > boundEnd ? boundEnd : boundStart;
   const sessionEnd = boundStart && boundEnd && boundStart > boundEnd ? boundStart : boundEnd;
@@ -395,7 +419,7 @@ export function CreateSessionPage({
 
                 {overlap ? (
                   <p className="text-xs text-muted">
-                    Server coverage:{' '}
+                    Default: last 3 months. Server coverage:{' '}
                     <span className="text-foreground tabular-nums">
                       {overlap.startDate} → {overlap.endDate}
                     </span>

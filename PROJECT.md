@@ -705,6 +705,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | “Talaria Log” brand watermark only on primary (first) pane in multi-chart | Verify 2×2 layout |
 | 2026-08-04 | Replay play rate = finest pane TF (not focused); multi-TF 1m/5m/1h/4h run at 1m | Play on 2×2 mixed TFs |
 | 2026-08-04 | Fix flaky multi-pair TF switch: invalidate/cancel LOD + merge identity; per-pane TF list | Switch TF after pan on 2×2 |
+| 2026-08-04 | Session create defaults start/end to last 3 months of coverage | Open Sessions → check dates |
 | 2026-08-04 | Nav path close-the-loop: TopBar Sessions/Exit + Backtest→journal; honest landing; shared AppPageNav; Datasets Create session CTA; soft #/404 | Manual: Exit chart, run BT → Journal, unknown hash |
 | 2026-08-04 | Landing + chrome fully on Hero UI (removed `--m-*` marketing palette); ThemeToggle/logo use Hero Button | Hard-refresh landing — tokens follow dark/light |
 | 2026-08-04 | Analytics dashboard v1: columnar store, worker metrics (88), canvas charts subset, virtual list, honesty gating; report in `docs/ANALYTICS-REPORT.md` | Bottom Analytics tab; Demo 5k; `npm run test:analytics` / `bench:analytics` |

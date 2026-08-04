@@ -377,6 +377,18 @@ export default function App() {
           });
           continue;
         }
+        // Sync-off TF/symbol switch: non-targets keep bars + camera (shared session
+        // camera must not slide sibling buffers / auto Y-scale).
+        if (adopt != null && old && !adopt.has(id)) {
+          next.push({
+            ...old,
+            timeframe: cfg.tf,
+            selectedTf: cfg.selectedTf,
+            pair: cfg.pair as PairSymbol,
+            datasetId: cfg.datasetId,
+          });
+          continue;
+        }
         // Keep each pane's camera unless it was an explicit TF/pair target.
         const takeSessionRange = !old || (adopt != null && adopt.has(id));
         next.push({

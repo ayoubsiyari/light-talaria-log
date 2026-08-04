@@ -64,6 +64,18 @@ export function createSessionController() {
     views = next;
   };
 
+  /** Redraw one pane only — keeps sibling cameras/bars when layout sync is off. */
+  const rederivePaneSync = (paneId: string) => {
+    if (!state) return;
+    const v = derivePaneSync(state, paneId);
+    if (v) views = { ...views, [paneId]: v };
+    else {
+      const next = { ...views };
+      delete next[paneId];
+      views = next;
+    }
+  };
+
   const rederiveAsync = async (paneIds?: string[]) => {
     if (!state) return;
     const ids = paneIds ?? Object.keys(state.panes);
@@ -180,7 +192,10 @@ export function createSessionController() {
       void this.topUpCaches();
     },
 
-    /** Capture user pan/zoom into TF-invariant camera. */
+    /**
+     * Capture fill-size camera (anchor + span) without touching views.
+     * Silent like setSpan — TF/symbol switch must not rederive sibling panes.
+     */
     setCamera(anchorTime: number, span: number): void {
       if (!state) return;
       const nextSpan = Math.max(1, Math.min(MAX_BARS_IN_MEMORY, span));
@@ -189,8 +204,6 @@ export function createSessionController() {
         Math.max(state.bounds.start, anchorTime),
       );
       state = { ...state, anchorTime: clampedAnchor, span: nextSpan };
-      rederiveSync();
-      notify();
     },
 
     /** Update bar-count zoom only (no rederive) — keep Play/Pause from changing scale. */
@@ -247,7 +260,7 @@ export function createSessionController() {
         );
       }
       if (!state) return;
-      rederiveSync();
+      rederivePaneSync(paneId);
       notify();
       // Second pass after any late IDB write (no remote wait).
       void rederiveAsync([paneId]);
@@ -298,7 +311,7 @@ export function createSessionController() {
         });
       }
       if (!state) return;
-      rederiveSync();
+      rederivePaneSync(paneId);
       notify();
       void warmCache
         .prefetchAll(meta.datasetId, availableTfs, state.cursorTime, state.span)
@@ -370,7 +383,11 @@ export function createSessionController() {
       if (!state) return;
       await this.topUpCaches();
       if (!state) return;
-      rederiveSync();
+      if (paneIds && paneIds.length > 0) {
+        for (const id of paneIds) rederivePaneSync(id);
+      } else {
+        rederiveSync();
+      }
       await rederiveAsync(paneIds);
       notify();
     },

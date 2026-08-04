@@ -251,12 +251,22 @@ export function createOrderSessionBridge(input: {
         ) {
           continue;
         }
+        const isMarket = o.type === 'MARKET';
+        const expectedEntry = isMarket
+          ? o.side === 'BUY'
+            ? ask > 0
+              ? ask
+              : null
+            : bid > 0
+              ? bid
+              : null
+          : (o.price ?? null);
         out.push({
           id: o.id,
           sessionId,
           pair: o.symbol,
           side: o.side === 'BUY' ? 'buy' : 'sell',
-          entry: o.type === 'MARKET' ? null : (o.price ?? null),
+          entry: expectedEntry,
           stopLoss: o.stopLoss ?? null,
           takeProfit: o.takeProfit ?? null,
           createdAt: o.createdAt,
@@ -264,6 +274,8 @@ export function createOrderSessionBridge(input: {
           working: true,
           size: o.size,
           unrealizedPnL: null,
+          // Pending market: show expected fill, but don't treat as a draggable limit.
+          entryLocked: isMarket,
         });
       }
       return out;

@@ -72,6 +72,9 @@ export interface OrderDragContext {
   riskPercent: number;
   riskLocked: boolean;
   container: HTMLElement;
+  /** Live bid/ask for LIMIT↔STOP helper while dragging entry. */
+  bid: number;
+  ask: number;
 }
 
 export interface DrawingPlacement {
@@ -830,6 +833,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
             price: orderHit.price,
             entryPrice: entryForValidate ?? orderHit.price,
             side: order.side,
+            bid: orderDragCtx.bid,
+            ask: orderDragCtx.ask,
           });
           ensureDragReadout(orderDragCtx.container);
           orderLevelDragging = true;
@@ -881,6 +886,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
           clientX: rect.left + x * scaleX,
           clientY: rect.top + y * scaleY,
           parent: orderDragCtx.container,
+          bid: orderDragCtx.bid,
+          ask: orderDragCtx.ask,
         });
         markOverlayDirty();
         return;

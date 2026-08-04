@@ -826,6 +826,9 @@ export default function App() {
       if (!chart?.setOrderDragContext) continue;
       const container = chart.canvas.parentElement;
       if (!container) continue;
+      const last = pane.bars[pane.bars.length - 1];
+      const bid = last?.close ?? 0;
+      const ask = bid > 0 ? bid + spec.typicalSpread : 0;
       chart.setOrderDragContext({
         tickSize: spec.tickSize,
         digits: spec.digits,
@@ -840,6 +843,8 @@ export default function App() {
         riskPercent: 0.01,
         riskLocked: true,
         container,
+        bid,
+        ask,
       });
       unsubs.push(
         chart.onOrderLevelCommit((hit) => {
@@ -1846,6 +1851,7 @@ export default function App() {
   };
 
   const handlePlaceOrder = useCallback(() => {
+    setLastOrderReject(null);
     setTicketOpen(true);
     setActiveTab('open');
   }, []);
@@ -1918,6 +1924,14 @@ export default function App() {
         },
       });
       syncOrdersFromBridge();
+      const reject = bridge.getLastReject();
+      if (reject) {
+        // Keep ticket + draft levels so the user can fix and resubmit.
+        setLastOrderReject(reject);
+        setSelectedOrderId(null);
+        return;
+      }
+      setLastOrderReject(null);
       setSelectedOrderId(id);
       setTicketOpen(false);
       setTicketDraft(null);
@@ -2405,6 +2419,7 @@ export default function App() {
               pipSize={orderBridgeRef.current?.getSpec().pipSize ?? 0.01}
               tickSize={orderBridgeRef.current?.getSpec().tickSize ?? 0.00001}
               contractSize={orderBridgeRef.current?.getSpec().contractSize ?? 100_000}
+              baseCurrency={orderBridgeRef.current?.getSpec().baseCurrency ?? 'USD'}
               leverage={
                 orderBridgeRef.current?.getState().account.leverage ??
                 orderBridgeRef.current?.getSpec().leverage ??

@@ -5,6 +5,10 @@
 
 import { distancePips, sizeFromRisk } from './sizing';
 import { roundToTick, type InstrumentSpec } from './instrumentSpec';
+import {
+  inferPendingType,
+  type PendingOrderType,
+} from './inferPendingType';
 import type { OrderLineKind } from '@/types/order';
 
 /** Minimal fields needed for snap / pip / risk readout during drag. */
@@ -30,6 +34,8 @@ export interface LevelDragState {
   entryPrice: number;
   side: 'buy' | 'sell';
   invalidReason: string | null;
+  /** Live LIMIT/STOP while dragging entry above/below market. */
+  pendingType: PendingOrderType | null;
 }
 
 /** Mutable drag slot — intentionally not React state. */
@@ -42,6 +48,7 @@ export const levelDrag: LevelDragState = {
   entryPrice: 0,
   side: 'buy',
   invalidReason: null,
+  pendingType: null,
 };
 
 let readoutEl: HTMLElement | null = null;
@@ -66,6 +73,8 @@ export function beginLevelDrag(input: {
   price: number;
   entryPrice: number;
   side: 'buy' | 'sell';
+  bid?: number;
+  ask?: number;
 }): void {
   levelDrag.active = true;
   levelDrag.orderId = input.orderId;
@@ -75,6 +84,13 @@ export function beginLevelDrag(input: {
   levelDrag.entryPrice = input.entryPrice;
   levelDrag.side = input.side;
   levelDrag.invalidReason = null;
+  levelDrag.pendingType =
+    input.kind === 'entry' &&
+    input.bid != null &&
+    input.ask != null &&
+    input.bid > 0
+      ? inferPendingType(input.side, input.price, input.bid, input.ask)
+      : null;
 }
 
 export function moveLevelDrag(
@@ -87,6 +103,8 @@ export function moveLevelDrag(
     clientX: number;
     clientY: number;
     parent: HTMLElement;
+    bid?: number;
+    ask?: number;
   },
 ): void {
   if (!levelDrag.active) return;
@@ -97,8 +115,31 @@ export function moveLevelDrag(
   if (levelDrag.kind === 'entry') levelDrag.entryPrice = snapped;
   levelDrag.invalidReason = validateDrag(levelDrag, snapped);
 
+  if (
+    levelDrag.kind === 'entry' &&
+    opts.bid != null &&
+    opts.ask != null &&
+    opts.bid > 0
+  ) {
+    levelDrag.pendingType = inferPendingType(
+      levelDrag.side,
+      snapped,
+      opts.bid,
+      opts.ask,
+    );
+  } else if (levelDrag.kind !== 'entry') {
+    levelDrag.pendingType = null;
+  }
+
   const el = ensureDragReadout(opts.parent);
-  const pips = distancePips(levelDrag.entryPrice, snapped, asSpec);
+  const pips =
+    levelDrag.kind === 'entry'
+      ? distancePips(
+          levelDrag.side === 'buy' ? (opts.ask ?? snapped) : (opts.bid ?? snapped),
+          snapped,
+          asSpec,
+        )
+      : distancePips(levelDrag.entryPrice, snapped, asSpec);
   let riskTxt = '';
   let lotsTxt = '';
   if (levelDrag.kind === 'sl' && opts.riskLocked) {
@@ -119,7 +160,9 @@ export function moveLevelDrag(
       : null;
 
   // Direct DOM only — never React setState (§8.3)
+  const typeBadge = levelDrag.pendingType;
   el.textContent = [
+    typeBadge ? typeBadge : null,
     `${snapped.toFixed(spec.digits)}`,
     `${pips.toFixed(1)} pips`,
     rr != null ? `R:R ${rr}` : '',
@@ -130,6 +173,17 @@ export function moveLevelDrag(
     .filter(Boolean)
     .join(' · ');
   el.style.display = 'block';
+  // LIMIT = accent-ish border; STOP = warmer — CSS tokens via inline where needed
+  if (typeBadge === 'STOP') {
+    el.style.borderColor = 'var(--danger)';
+    el.style.color = 'var(--danger)';
+  } else if (typeBadge === 'LIMIT') {
+    el.style.borderColor = 'var(--accent)';
+    el.style.color = 'var(--accent)';
+  } else {
+    el.style.borderColor = '';
+    el.style.color = '';
+  }
   const rect = opts.parent.getBoundingClientRect();
   el.style.left = `${Math.min(rect.width - 180, Math.max(8, opts.clientX - rect.left + 12))}px`;
   el.style.top = `${Math.min(rect.height - 40, Math.max(8, opts.clientY - rect.top - 28))}px`;
@@ -151,7 +205,12 @@ export function endLevelDrag(): {
     invalidReason: levelDrag.invalidReason,
   };
   levelDrag.active = false;
-  if (readoutEl) readoutEl.style.display = 'none';
+  levelDrag.pendingType = null;
+  if (readoutEl) {
+    readoutEl.style.display = 'none';
+    readoutEl.style.borderColor = '';
+    readoutEl.style.color = '';
+  }
   return result;
 }
 
@@ -159,7 +218,12 @@ export function cancelLevelDrag(): void {
   levelDrag.active = false;
   levelDrag.currentPrice = levelDrag.originPrice;
   levelDrag.invalidReason = null;
-  if (readoutEl) readoutEl.style.display = 'none';
+  levelDrag.pendingType = null;
+  if (readoutEl) {
+    readoutEl.style.display = 'none';
+    readoutEl.style.borderColor = '';
+    readoutEl.style.color = '';
+  }
 }
 
 function validateDrag(d: LevelDragState, price: number): string | null {

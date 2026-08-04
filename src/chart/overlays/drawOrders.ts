@@ -42,6 +42,13 @@ export function drawOrders(
     const dashed = Boolean(order.working || order.draft);
     const prefix = order.draft ? 'Draft ' : '';
     const openPos = !order.working && !order.draft && order.entry != null;
+    const dragType =
+      levelDrag.active &&
+      levelDrag.orderId === order.id &&
+      levelDrag.kind === 'entry' &&
+      levelDrag.pendingType
+        ? levelDrag.pendingType
+        : null;
 
     if (entry != null) {
       const pnlText =
@@ -52,6 +59,7 @@ export function drawOrders(
         openPos && order.size != null && Number.isFinite(order.size)
           ? ` ${order.size.toFixed(2)}`
           : '';
+      const typeTxt = dragType ? `${dragType} ` : '';
       drawPriceLine(
         ctx,
         plot,
@@ -61,7 +69,7 @@ export function drawOrders(
         entryColor,
         selected,
         dashed,
-        `${prefix}${order.side.toUpperCase()}${sizeText} ${formatPrice(entry)}${pnlText}`,
+        `${prefix}${typeTxt}${order.side.toUpperCase()}${sizeText} ${formatPrice(entry)}${pnlText}`,
         false,
         openPos ? order.unrealizedPnL ?? undefined : undefined,
       );
@@ -199,7 +207,9 @@ export function hitTestOrderLevel(
   for (let i = orders.length - 1; i >= 0; i--) {
     const o = orders[i]!;
     const levels: { kind: OrderLineKind; price: number }[] = [];
-    if (o.entry != null) levels.push({ kind: 'entry', price: o.entry });
+    if (o.entry != null && !o.entryLocked) {
+      levels.push({ kind: 'entry', price: o.entry });
+    }
     if (o.stopLoss != null) levels.push({ kind: 'sl', price: o.stopLoss });
     if (o.takeProfit != null) levels.push({ kind: 'tp', price: o.takeProfit });
     for (const lv of levels) {

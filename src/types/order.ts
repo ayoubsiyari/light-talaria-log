@@ -22,6 +22,11 @@ export interface ChartOrder {
   size?: number;
   /** Unrealized P&L in account currency; null/undefined = pending/draft (no P&L). */
   unrealizedPnL?: number | null;
+  /**
+   * When true, entry line is display-only (e.g. pending market expected fill).
+   * SL/TP remain draggable.
+   */
+  entryLocked?: boolean;
 }
 
 export type OrderLineKind = 'entry' | 'sl' | 'tp';

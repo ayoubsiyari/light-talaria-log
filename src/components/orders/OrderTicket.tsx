@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { inferPendingType } from '@/orders/inferPendingType';
 import type { OrderSide, OrderType, TimeInForce } from '@/orders/orderTypes';
 
 const REJECT_MESSAGES: Record<string, string> = {
@@ -51,6 +52,8 @@ interface OrderTicketProps {
   pipSize: number;
   tickSize: number;
   contractSize: number;
+  /** Instrument base currency — needed for correct margin (e.g. USDJPY). */
+  baseCurrency: string;
   leverage: number;
   freeMargin: number;
   accountCurrency: string;
@@ -80,6 +83,7 @@ export function OrderTicket({
   pipSize,
   tickSize,
   contractSize,
+  baseCurrency,
   leverage,
   freeMargin,
   accountCurrency,
@@ -99,29 +103,36 @@ export function OrderTicket({
   const [sl, setSl] = useState('');
   const [tp, setTp] = useState('');
   const [tif, setTif] = useState<TimeInForce>('GTC');
-  const [tpTicks, setTpTicks] = useState(40);
-  const [slTicks, setSlTicks] = useState(20);
+  /** Offsets in pips (not ticks) — ticks≈spread on JPY pairs and parked SL on last price. */
+  const [tpPips, setTpPips] = useState(40);
+  const [slPips, setSlPips] = useState(20);
 
   const spreadPips = pipSize > 0 ? (ask - bid) / pipSize : 0;
   const entryPx =
     type === 'MARKET' ? (side === 'BUY' ? ask : bid) : Number(price) || (side === 'BUY' ? ask : bid);
 
   const defaultSl = useMemo(
-    () => round(entryPx + (side === 'BUY' ? -1 : 1) * tickSize * slTicks, digits),
-    [entryPx, side, tickSize, slTicks, digits],
+    () => round(entryPx + (side === 'BUY' ? -1 : 1) * pipSize * slPips, digits),
+    [entryPx, side, pipSize, slPips, digits],
   );
   const defaultTp = useMemo(
-    () => round(entryPx + (side === 'BUY' ? 1 : -1) * tickSize * tpTicks, digits),
-    [entryPx, side, tickSize, tpTicks, digits],
+    () => round(entryPx + (side === 'BUY' ? 1 : -1) * pipSize * tpPips, digits),
+    [entryPx, side, pipSize, tpPips, digits],
   );
 
   const lots = Number(size) || 0;
-  const tradeValue = lots * contractSize * entryPx;
-  // Approximate used margin for this ticket (base→account via price when quote=account)
-  const reqMargin = leverage > 0 ? (lots * contractSize * entryPx) / leverage : 0;
-  const tickValue = tickSize * contractSize * lots;
+  // Notional in account: base==account → lots*contract; else ≈ lots*contract*price (quote=account).
+  const baseIsAccount =
+    baseCurrency.toUpperCase() === accountCurrency.toUpperCase();
+  const notionalAccount = lots * contractSize * (baseIsAccount ? 1 : entryPx);
+  const reqMargin = leverage > 0 ? notionalAccount / leverage : 0;
+  const tradeValue = notionalAccount;
+  const tickValue = baseIsAccount
+    ? tickSize * contractSize * lots // quote tick → divide by price for account
+      / (entryPx > 0 ? entryPx : 1)
+    : tickSize * contractSize * lots;
 
-  // Seed fields when opening / switching side — Market at current bid/ask
+  // Seed fields when opening / switching side — Market at current bid/ask, SL/TP in pips
   useEffect(() => {
     if (!open) return;
     const seed = (side === 'BUY' ? ask : bid).toFixed(digits);
@@ -129,13 +140,13 @@ export function OrderTicket({
     setPrice(seed);
     setSl(
       round(
-        Number(seed) + (side === 'BUY' ? -1 : 1) * tickSize * slTicks,
+        Number(seed) + (side === 'BUY' ? -1 : 1) * pipSize * slPips,
         digits,
       ).toFixed(digits),
     );
     setTp(
       round(
-        Number(seed) + (side === 'BUY' ? 1 : -1) * tickSize * tpTicks,
+        Number(seed) + (side === 'BUY' ? 1 : -1) * pipSize * tpPips,
         digits,
       ).toFixed(digits),
     );
@@ -148,20 +159,22 @@ export function OrderTicket({
     setPrice((side === 'BUY' ? ask : bid).toFixed(digits));
   }, [open, type, side, bid, ask, digits]);
 
-  // Recompute SL/TP from tick offsets when toggles / tick counts change (not every live tick)
+  // Recompute SL/TP from pip offsets when toggles / pip counts change (not every live tick)
   useEffect(() => {
     if (!open) return;
     if (slOn) setSl(defaultSl.toFixed(digits));
     if (tpOn) setTp(defaultTp.toFixed(digits));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slTicks, tpTicks, slOn, tpOn, side, type]);
+  }, [slPips, tpPips, slOn, tpOn, side, type]);
 
   // Chart drag → ticket fields (mouseup)
   useEffect(() => {
     if (!open || !levelPatch) return;
-    const px = levelPatch.price.toFixed(digits);
+    const pxNum = levelPatch.price;
+    const px = pxNum.toFixed(digits);
     if (levelPatch.kind === 'entry') {
-      setType((t) => (t === 'MARKET' ? 'LIMIT' : t));
+      // Dragging above/below market picks STOP vs LIMIT (buy limit above ask was rejected).
+      setType(inferPendingType(side, pxNum, bid, ask));
       setPrice(px);
     } else if (levelPatch.kind === 'sl') {
       setSlOn(true);
@@ -171,7 +184,7 @@ export function OrderTicket({
       setTp(px);
     }
     onLevelPatchConsumed?.();
-  }, [levelPatch, open, digits, onLevelPatchConsumed]);
+  }, [levelPatch, open, digits, onLevelPatchConsumed, side, bid, ask]);
 
   useEffect(() => {
     if (!open) {
@@ -324,11 +337,18 @@ export function OrderTicket({
               <input
                 className={inputCls}
                 value={price}
-                onChange={(e) => setPrice(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setPrice(v);
+                  const n = Number(v);
+                  if (Number.isFinite(n)) {
+                    setType(inferPendingType(side, n, bid, ask));
+                  }
+                }}
                 inputMode="decimal"
               />
               <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-muted">
-                {side === 'BUY' ? 'Ask' : 'Bid'}
+                {type === 'STOP' ? 'Stop' : side === 'BUY' ? 'Ask' : 'Bid'}
               </span>
             </div>
           </Field>
@@ -356,8 +376,8 @@ export function OrderTicket({
           onToggle={setTpOn}
           price={tp}
           onPrice={setTp}
-          ticks={tpTicks}
-          onTicks={(n) => setTpTicks(n)}
+          pips={tpPips}
+          onPips={(n) => setTpPips(n)}
           accent="success"
         />
 
@@ -368,8 +388,8 @@ export function OrderTicket({
           onToggle={setSlOn}
           price={sl}
           onPrice={setSl}
-          ticks={slTicks}
-          onTicks={(n) => setSlTicks(n)}
+          pips={slPips}
+          onPips={(n) => setSlPips(n)}
           accent="danger"
         />
 
@@ -401,24 +421,32 @@ export function OrderTicket({
             </div>
             <div className="h-1.5 rounded-full bg-background overflow-hidden">
               <div
-                className="h-full rounded-full bg-accent transition-[width]"
+                className={[
+                  'h-full rounded-full transition-[width]',
+                  reqMargin > freeMargin ? 'bg-danger' : 'bg-accent',
+                ].join(' ')}
                 style={{
                   width: `${Math.min(100, freeMargin > 0 ? (reqMargin / freeMargin) * 100 : 0)}%`,
                 }}
               />
             </div>
+            {reqMargin > freeMargin && (
+              <p className="text-[10px] text-danger mt-1">
+                Required margin exceeds free margin — reduce lots or close the ticket.
+              </p>
+            )}
           </div>
           <InfoRow label="Leverage" value={`${leverage}:1`} />
           <InfoRow
             label="Tick value"
-            value={`${tickValue.toFixed(Math.min(5, digits))} ${accountCurrency}`}
+            value={`${tickValue.toFixed(2)} ${accountCurrency}`}
           />
           <InfoRow
-            label="Trade value"
+            label="Notional"
             value={`${fmt(tradeValue)} ${accountCurrency}`}
           />
           <p className="text-[10px] text-muted leading-snug pt-1">
-            Levels draw on the chart · market fills at next bar open
+            Levels stay on the chart after Set · market fills at next bar open
           </p>
         </section>
 
@@ -487,8 +515,8 @@ function BracketRow({
   onToggle,
   price,
   onPrice,
-  ticks,
-  onTicks,
+  pips,
+  onPips,
   accent,
 }: {
   label: string;
@@ -496,8 +524,8 @@ function BracketRow({
   onToggle: (v: boolean) => void;
   price: string;
   onPrice: (v: string) => void;
-  ticks: number;
-  onTicks: (n: number) => void;
+  pips: number;
+  onPips: (n: number) => void;
   accent: 'success' | 'danger';
 }) {
   return (
@@ -536,12 +564,12 @@ function BracketRow({
           />
           <select
             className="shrink-0 min-h-11 w-[7.5rem] rounded-md border border-border bg-surface px-2 text-[11px] text-muted"
-            value={ticks}
-            onChange={(e) => onTicks(Number(e.target.value))}
+            value={pips}
+            onChange={(e) => onPips(Number(e.target.value))}
           >
             {[10, 15, 20, 25, 40, 50, 75, 100, 150, 200].map((t) => (
               <option key={t} value={t}>
-                {t} ticks
+                {t} pips
               </option>
             ))}
           </select>

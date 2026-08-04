@@ -6,6 +6,7 @@ import { computeFilterMask, hashFilter } from './filterMask';
 import { lttbIndices } from './math/lttb';
 import { hashStringToSeed } from './math/rng';
 import { deriveMetrics, extractRSample } from './metrics';
+import { EXIT_REASON_LABEL } from './types';
 import type { FilterState, TradeStore } from './types';
 
 export type WorkerRequest =
@@ -30,6 +31,9 @@ export type WorkerResponse =
       buckets: {
         hour: { n: number; wins: number; netPnl: number }[];
         weekday: { n: number; wins: number; netPnl: number }[];
+        session: { label: string; n: number; wins: number; netPnl: number }[];
+        symbol: { label: string; n: number; wins: number; netPnl: number }[];
+        exitReason: { label: string; n: number }[];
       };
       /** Downsampled chart payloads (main thread never scans 100k). */
       charts: {
@@ -37,6 +41,13 @@ export type WorkerResponse =
         maeR: Float64Array;
         mfeR: Float64Array;
         outcome: Uint8Array;
+        cumR: Float64Array;
+        netPnl: Float64Array;
+        rollingWr: Float64Array;
+        longPnl: number;
+        shortPnl: number;
+        longN: number;
+        shortN: number;
       };
       ambiguousPct: number;
       approxCount: number;
@@ -96,10 +107,46 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
     const maeR: number[] = [];
     const mfeR: number[] = [];
     const outcome: number[] = [];
-    for (let k = 0; k < acc.selectedIndex.length; k += step) {
+    const netPnlSample: number[] = [];
+    // Full chronological path for cum-R / rolling WR (cap length).
+    const pathCap = Math.min(acc.selectedIndex.length, 4_000);
+    const pathStep = Math.max(1, Math.floor(acc.selectedIndex.length / Math.max(1, pathCap)));
+    const cumR: number[] = [];
+    const rollingWr: number[] = [];
+    let runR = 0;
+    const winWindow: number[] = [];
+    const ROLL = 20;
+    let longPnl = 0;
+    let shortPnl = 0;
+    let longN = 0;
+    let shortN = 0;
+
+    for (let k = 0; k < acc.selectedIndex.length; k++) {
       const i = acc.selectedIndex[k]!;
+      const pnl = msg.store.netPnl[i]!;
+      if (msg.store.side[i] === 1) {
+        shortPnl += pnl;
+        shortN++;
+      } else {
+        longPnl += pnl;
+        longN++;
+      }
+
+      if (k % pathStep === 0) {
+        const r = msg.store.rMultiple[i]!;
+        if (Number.isFinite(r)) runR += r;
+        cumR.push(runR);
+        winWindow.push(pnl > 0 ? 1 : 0);
+        if (winWindow.length > ROLL) winWindow.shift();
+        const wr =
+          winWindow.reduce((s, x) => s + x, 0) / Math.max(1, winWindow.length);
+        rollingWr.push(wr);
+      }
+
+      if (k % step !== 0) continue;
       const r = msg.store.rMultiple[i]!;
       if (Number.isFinite(r)) rVals.push(r);
+      netPnlSample.push(pnl);
       const entry = msg.store.entryPrice[i]!;
       const stop = msg.store.initialStop[i]!;
       const risk = Math.abs(entry - stop);
@@ -107,7 +154,7 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
       const dir = msg.store.side[i] === 1 ? -1 : 1;
       maeR.push(Math.max(0, (dir * (entry - msg.store.mae[i]!)) / risk));
       mfeR.push(Math.max(0, (dir * (msg.store.mfe[i]! - entry)) / risk));
-      outcome.push(msg.store.netPnl[i]! > 0 ? 1 : 0);
+      outcome.push(pnl > 0 ? 1 : 0);
     }
 
     const charts = {
@@ -115,7 +162,25 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
       maeR: Float64Array.from(maeR),
       mfeR: Float64Array.from(mfeR),
       outcome: Uint8Array.from(outcome),
+      cumR: Float64Array.from(cumR),
+      netPnl: Float64Array.from(netPnlSample),
+      rollingWr: Float64Array.from(rollingWr),
+      longPnl,
+      shortPnl,
+      longN,
+      shortN,
     };
+
+    const sessionLabels = ['Asia', 'London', 'NY', 'Overlap'];
+    const symbolBuckets = [...acc.buckets.symbol.entries()]
+      .map(([id, b]) => ({
+        label: msg.store.symbols[id] ?? `#${id}`,
+        n: b.n,
+        wins: b.wins,
+        netPnl: b.netPnl,
+      }))
+      .sort((a, b) => Math.abs(b.netPnl) - Math.abs(a.netPnl))
+      .slice(0, 8);
 
     const res: WorkerResponse = {
       type: 'result',
@@ -135,6 +200,17 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
           wins: b.wins,
           netPnl: b.netPnl,
         })),
+        session: acc.buckets.session.map((b, i) => ({
+          n: b.n,
+          wins: b.wins,
+          netPnl: b.netPnl,
+          label: sessionLabels[i] ?? `S${i}`,
+        })),
+        symbol: symbolBuckets,
+        exitReason: EXIT_REASON_LABEL.map((label, i) => ({
+          label,
+          n: acc.counts.exitReason[i] ?? 0,
+        })),
       },
       charts,
       ambiguousPct,
@@ -149,6 +225,9 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
       charts.maeR.buffer,
       charts.mfeR.buffer,
       charts.outcome.buffer,
+      charts.cumR.buffer,
+      charts.netPnl.buffer,
+      charts.rollingWr.buffer,
     ]);
   } catch (err) {
     const res: WorkerResponse = {

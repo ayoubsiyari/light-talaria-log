@@ -96,7 +96,7 @@ export function DashboardPage({
               </p>
             </div>
           </div>
-          <div className="rounded-lg border border-border bg-surface overflow-hidden min-h-[min(70vh,720px)] h-[min(78vh,900px)]">
+          <div className="rounded-lg border border-border bg-surface overflow-hidden min-h-[min(75vh,800px)] h-[min(85vh,1100px)]">
             <AnalyticsDashboard
               key={dataTick}
               liveJournal={liveJournal}

@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Button, Card } from '@heroui/react';
 import { METRIC_CATALOG } from '@/analytics/catalog';
-import { drawEquityChart } from '@/analytics/charts/drawEquity';
+import { drawEquityChart, drawUnderwater } from '@/analytics/charts/drawEquity';
 import {
   drawBars,
+  drawHBars,
   drawHistogram,
+  drawLineSeries,
+  drawRollingLine,
   drawScatter,
-  drawUnderwater,
 } from '@/analytics/charts/drawSimple';
 import { computeFilterMask, selectedIndices } from '@/analytics/filterMask';
 import { exportFilteredCsv } from '@/analytics/exportCsv';
@@ -36,6 +38,35 @@ interface Props {
   allowDemo?: boolean;
 }
 
+type ChartPack = {
+  rValues: Float64Array;
+  maeR: Float64Array;
+  mfeR: Float64Array;
+  outcome: Uint8Array;
+  cumR: Float64Array;
+  netPnl: Float64Array;
+  rollingWr: Float64Array;
+  longPnl: number;
+  shortPnl: number;
+  longN: number;
+  shortN: number;
+};
+
+type BucketPack = {
+  hour: Float64Array;
+  weekday: Float64Array;
+  session: Float64Array;
+  sessionLabels: string[];
+  symbolValues: Float64Array;
+  symbolLabels: string[];
+  exitValues: Float64Array;
+  exitLabels: string[];
+  sideValues: Float64Array;
+};
+
+/**
+ * Chart-first analytics dashboard. Numbers are secondary; visuals carry the story.
+ */
 export function AnalyticsDashboard({
   liveJournal,
   sessionId,
@@ -51,24 +82,27 @@ export function AnalyticsDashboard({
     e: Float64Array;
     dd: Float64Array;
   } | null>(null);
-  const [charts, setCharts] = useState<{
-    rValues: Float64Array;
-    maeR: Float64Array;
-    mfeR: Float64Array;
-    outcome: Uint8Array;
-  } | null>(null);
-  const [hourBars, setHourBars] = useState<Float64Array | null>(null);
-  const [weekdayBars, setWeekdayBars] = useState<Float64Array | null>(null);
+  const [charts, setCharts] = useState<ChartPack | null>(null);
+  const [buckets, setBuckets] = useState<BucketPack | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [elapsed, setElapsed] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [source, setSource] = useState<'journal' | 'demo'>('journal');
+  const [showNumbers, setShowNumbers] = useState(false);
+
   const equityRef = useRef<HTMLCanvasElement>(null);
   const ddRef = useRef<HTMLCanvasElement>(null);
+  const cumRRef = useRef<HTMLCanvasElement>(null);
+  const rollRef = useRef<HTMLCanvasElement>(null);
   const rHistRef = useRef<HTMLCanvasElement>(null);
+  const pnlHistRef = useRef<HTMLCanvasElement>(null);
   const scatterRef = useRef<HTMLCanvasElement>(null);
   const hourRef = useRef<HTMLCanvasElement>(null);
   const weekdayRef = useRef<HTMLCanvasElement>(null);
+  const sessionRef = useRef<HTMLCanvasElement>(null);
+  const symbolRef = useRef<HTMLCanvasElement>(null);
+  const exitRef = useRef<HTMLCanvasElement>(null);
+  const sideRef = useRef<HTMLCanvasElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -82,7 +116,6 @@ export function AnalyticsDashboard({
       setStore(buildTradeStore(trades, { initialBalance: 10_000 }));
       return;
     }
-    // Chart overlay: one session. Dashboard shell: all journals with closed trades.
     if (sessionId) {
       const view = getOrderJournalView(sessionId, liveJournal);
       if (!view || view.trades.length === 0) {
@@ -105,7 +138,6 @@ export function AnalyticsDashboard({
     const closed = views
       .flatMap((v) => orderJournalToClosedTrades(v))
       .sort((a, b) => a.closeTime - b.closeTime);
-    // Rebuild balance curve across sessions from a shared start (not per-session).
     let bal = views[0]!.startBalance;
     for (const t of closed) {
       bal += t.netPnl;
@@ -124,6 +156,7 @@ export function AnalyticsDashboard({
       setMetrics([]);
       setEquity(null);
       setCharts(null);
+      setBuckets(null);
       return;
     }
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -134,8 +167,17 @@ export function AnalyticsDashboard({
           setMetrics(res.metrics);
           setEquity(res.equityDownsampled);
           setCharts(res.charts);
-          setHourBars(Float64Array.from(res.buckets.hour.map((b) => b.netPnl)));
-          setWeekdayBars(Float64Array.from(res.buckets.weekday.map((b) => b.netPnl)));
+          setBuckets({
+            hour: Float64Array.from(res.buckets.hour.map((b) => b.netPnl)),
+            weekday: Float64Array.from(res.buckets.weekday.map((b) => b.netPnl)),
+            session: Float64Array.from(res.buckets.session.map((b) => b.netPnl)),
+            sessionLabels: res.buckets.session.map((b) => b.label),
+            symbolValues: Float64Array.from(res.buckets.symbol.map((b) => b.netPnl)),
+            symbolLabels: res.buckets.symbol.map((b) => b.label),
+            exitValues: Float64Array.from(res.buckets.exitReason.map((b) => b.n)),
+            exitLabels: res.buckets.exitReason.map((b) => b.label),
+            sideValues: Float64Array.from([res.charts.longPnl, res.charts.shortPnl]),
+          });
           setWarnings(res.warnings);
           setElapsed(res.elapsedMs);
         })
@@ -152,67 +194,76 @@ export function AnalyticsDashboard({
 
   useEffect(() => () => terminateAnalyticsWorker(), []);
 
+  // Paint all canvases when data arrives (and on resize).
   useEffect(() => {
-    const c = equityRef.current;
-    if (!c || !equity) return;
-    drawEquityChart(c, equity.t, equity.e, equity.dd, {
-      line: 'var(--accent)',
-      dd: 'rgba(243, 18, 96, 0.25)',
-      grid: 'var(--border)',
-      text: 'var(--muted)',
-    });
-  }, [equity]);
-
-  useEffect(() => {
-    const c = ddRef.current;
-    if (!c || !equity) return;
-    drawUnderwater(c, equity.dd, {
-      fill: 'rgba(243, 18, 96, 0.35)',
-      line: 'var(--danger)',
-      text: 'var(--muted)',
-    });
-  }, [equity]);
-
-  useEffect(() => {
-    const c = rHistRef.current;
-    if (!c || !charts) return;
-    drawHistogram(c, charts.rValues, {
-      bar: 'var(--accent)',
-      text: 'var(--muted)',
-      grid: 'var(--border)',
-    });
-  }, [charts]);
-
-  useEffect(() => {
-    const c = scatterRef.current;
-    if (!c || !charts) return;
-    drawScatter(c, charts.maeR, charts.mfeR, charts.outcome, {
-      win: 'var(--success)',
-      loss: 'var(--danger)',
-      text: 'var(--muted)',
-    });
-  }, [charts]);
-
-  useEffect(() => {
-    const c = hourRef.current;
-    if (!c || !hourBars) return;
-    drawBars(
-      c,
-      hourBars,
-      Array.from({ length: 24 }, (_, i) => (i % 3 === 0 ? String(i) : '')),
-      { pos: 'var(--success)', neg: 'var(--danger)', text: 'var(--muted)' },
-    );
-  }, [hourBars]);
-
-  useEffect(() => {
-    const c = weekdayRef.current;
-    if (!c || !weekdayBars) return;
-    drawBars(c, weekdayBars, ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'], {
-      pos: 'var(--success)',
-      neg: 'var(--danger)',
-      text: 'var(--muted)',
-    });
-  }, [weekdayBars]);
+    const paint = () => {
+      if (equity && equityRef.current) {
+        drawEquityChart(equityRef.current, equity.t, equity.e, equity.dd);
+      }
+      if (equity && ddRef.current) drawUnderwater(ddRef.current, equity.dd);
+      if (charts?.cumR && cumRRef.current) drawLineSeries(cumRRef.current, charts.cumR);
+      if (charts?.rollingWr && rollRef.current) {
+        drawRollingLine(rollRef.current, charts.rollingWr, 0.5);
+      }
+      if (charts?.rValues && rHistRef.current) {
+        drawHistogram(rHistRef.current, charts.rValues, undefined, {
+          diverging: true,
+          bins: 40,
+        });
+      }
+      if (charts?.netPnl && pnlHistRef.current) {
+        drawHistogram(pnlHistRef.current, charts.netPnl, undefined, {
+          diverging: true,
+          bins: 36,
+        });
+      }
+      if (charts && scatterRef.current) {
+        drawScatter(scatterRef.current, charts.maeR, charts.mfeR, charts.outcome);
+      }
+      if (buckets && hourRef.current) {
+        drawBars(
+          hourRef.current,
+          buckets.hour,
+          Array.from({ length: 24 }, (_, i) => (i % 3 === 0 ? String(i) : '')),
+        );
+      }
+      if (buckets && weekdayRef.current) {
+        drawBars(weekdayRef.current, buckets.weekday, [
+          'Su',
+          'Mo',
+          'Tu',
+          'We',
+          'Th',
+          'Fr',
+          'Sa',
+        ]);
+      }
+      if (buckets && sessionRef.current) {
+        drawBars(sessionRef.current, buckets.session, buckets.sessionLabels);
+      }
+      if (buckets && symbolRef.current && buckets.symbolValues.length > 0) {
+        drawHBars(symbolRef.current, buckets.symbolValues, buckets.symbolLabels);
+      }
+      if (buckets && exitRef.current) {
+        drawHBars(exitRef.current, buckets.exitValues, buckets.exitLabels);
+      }
+      if (buckets && sideRef.current) {
+        drawBars(sideRef.current, buckets.sideValues, [
+          `Long (${charts?.longN ?? 0})`,
+          `Short (${charts?.shortN ?? 0})`,
+        ]);
+      }
+    };
+    paint();
+    const ro = new ResizeObserver(() => paint());
+    const root = equityRef.current?.parentElement?.parentElement;
+    if (root) ro.observe(root);
+    window.addEventListener('resize', paint);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', paint);
+    };
+  }, [equity, charts, buckets]);
 
   const indices = useMemo(() => {
     if (!store) return new Uint32Array(0);
@@ -231,10 +282,17 @@ export function AnalyticsDashboard({
     return g;
   }, [metrics]);
 
-  const expectancy = metrics.find((m) => m.id === 25);
-  const tradesNeeded = metrics.find((m) => m.id === 33);
-  const costDrag = metrics.find((m) => m.id === 9);
-  const ambiguous = metrics.find((m) => m.id === 81);
+  const kpi = useMemo(() => {
+    const get = (id: number) => metrics.find((m) => m.id === id);
+    return {
+      netPnl: get(1),
+      winRate: get(15),
+      expectancy: get(25),
+      profitFactor: get(4),
+      maxDd: get(46),
+      sqn: get(28),
+    };
+  }, [metrics]);
 
   if (!store) {
     return (
@@ -299,6 +357,14 @@ export function AnalyticsDashboard({
               </Button>
             </>
           )}
+          <Button
+            size="sm"
+            variant={showNumbers ? 'primary' : 'ghost'}
+            className="min-h-11 sm:min-h-8"
+            onPress={() => setShowNumbers((v) => !v)}
+          >
+            {showNumbers ? 'Hide numbers' : 'All numbers'}
+          </Button>
           <Button
             size="sm"
             variant="ghost"
@@ -373,105 +439,114 @@ export function AnalyticsDashboard({
       )}
 
       <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <Callout
-            title="Expectancy (R)"
-            value={fmt(expectancy)}
-            low={expectancy?.lowSample}
-            n={expectancy?.n}
-            hint={METRIC_CATALOG[24]?.formula}
-          />
-          <Callout
-            title="Trades needed (sig.)"
-            value={fmt(tradesNeeded)}
-            low={tradesNeeded?.lowSample}
-            n={tradesNeeded?.n}
-            hint={METRIC_CATALOG[32]?.formula}
-          />
-          <Callout
-            title="Cost drag %"
-            value={fmt(costDrag)}
-            low={costDrag?.lowSample}
-            n={costDrag?.n}
-            hint={METRIC_CATALOG[8]?.formula}
-          />
+        {/* Compact KPI strip — glanceable, not the main story */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          <Kpi label="Net P&L" value={fmt(kpi.netPnl)} hint={METRIC_CATALOG[0]?.formula} />
+          <Kpi label="Win rate" value={fmt(kpi.winRate)} hint={METRIC_CATALOG[14]?.formula} />
+          <Kpi label="Expectancy R" value={fmt(kpi.expectancy)} hint={METRIC_CATALOG[24]?.formula} />
+          <Kpi label="Profit factor" value={fmt(kpi.profitFactor)} hint={METRIC_CATALOG[3]?.formula} />
+          <Kpi label="Max DD" value={fmt(kpi.maxDd)} hint={METRIC_CATALOG[45]?.formula} />
+          <Kpi label="SQN" value={fmt(kpi.sqn)} hint={METRIC_CATALOG[27]?.formula} />
         </div>
 
-        {ambiguous && (ambiguous.value ?? 0) > 5 && (
-          <p className="text-[12px] text-danger">
-            Ambiguous fills {fmt(ambiguous)} — results depend on intrabar path assumptions.
-          </p>
-        )}
+        {/* Hero equity */}
+        <ChartCard
+          title="Equity curve"
+          desc="Closed-trade account balance over time (not mark-to-market)"
+          wide
+        >
+          <canvas ref={equityRef} className="w-full h-52 sm:h-64 block" />
+        </ChartCard>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <ChartCard
-            title="Equity (closed-trade balance)"
-            desc="Drawdown on closed equity — not mark-to-market with opens"
-          >
-            <canvas ref={equityRef} className="w-full h-40 block" />
+          <ChartCard title="Drawdown (underwater)" desc="How deep and how long below peak equity">
+            <canvas ref={ddRef} className="w-full h-44 block" />
           </ChartCard>
-          <ChartCard title="Underwater / drawdown" desc="Always ≤ 0 on closed equity">
-            <canvas ref={ddRef} className="w-full h-40 block" />
+          <ChartCard title="Cumulative R" desc="Running sum of R-multiples — edge over time">
+            <canvas ref={cumRRef} className="w-full h-44 block" />
           </ChartCard>
-          <ChartCard title="R-multiple distribution" desc="Histogram of finite R">
-            <canvas ref={rHistRef} className="w-full h-40 block" />
+          <ChartCard title="Rolling win rate (20)" desc="Dashed line = 50% coin-flip baseline">
+            <canvas ref={rollRef} className="w-full h-40 block" />
+          </ChartCard>
+          <ChartCard title="Long vs Short P&L" desc="Net result by side">
+            <canvas ref={sideRef} className="w-full h-40 block" />
+          </ChartCard>
+          <ChartCard title="R-multiple distribution" desc="Green = winners · Red = losers · line at 0R">
+            <canvas ref={rHistRef} className="w-full h-44 block" />
+          </ChartCard>
+          <ChartCard title="P&L distribution" desc="Dollar outcome histogram">
+            <canvas ref={pnlHistRef} className="w-full h-44 block" />
           </ChartCard>
           <ChartCard
             title="MFE / MAE scatter"
-            desc="x = MAE(R), y = MFE(R) — most diagnostic chart"
+            desc="Each dot is a trade — winners green, losers red"
+            wide
           >
-            <canvas ref={scatterRef} className="w-full h-48 block" />
+            <canvas ref={scatterRef} className="w-full h-56 block" />
           </ChartCard>
-          <ChartCard title="Hour-of-day net P&L" desc="UTC buckets (session TZ deferred)">
-            <canvas ref={hourRef} className="w-full h-36 block" />
+          <ChartCard title="Hour of day (UTC)" desc="When you make or lose money">
+            <canvas ref={hourRef} className="w-full h-40 block" />
           </ChartCard>
-          <ChartCard title="Weekday net P&L" desc="UTC weekday">
-            <canvas ref={weekdayRef} className="w-full h-36 block" />
+          <ChartCard title="Weekday (UTC)" desc="Day-of-week edge">
+            <canvas ref={weekdayRef} className="w-full h-40 block" />
+          </ChartCard>
+          <ChartCard title="Session (UTC)" desc="Asia / London / NY / Overlap">
+            <canvas ref={sessionRef} className="w-full h-40 block" />
+          </ChartCard>
+          <ChartCard title="By symbol" desc="Net P&L ranking">
+            <canvas
+              ref={symbolRef}
+              className="w-full block"
+              style={{ height: Math.max(140, (buckets?.symbolLabels.length ?? 1) * 28 + 40) }}
+            />
+          </ChartCard>
+          <ChartCard title="Exit reasons" desc="How trades actually closed">
+            <canvas ref={exitRef} className="w-full h-44 block" />
           </ChartCard>
         </div>
 
-        {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'].map((g) => {
-          const list = byGroup.get(g);
-          if (!list?.length) return null;
-          return (
-            <section key={g} className="space-y-2">
-              <h3 className="text-[11px] uppercase tracking-wide text-muted">
-                Group {g}
-              </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                {list.map((m) => {
-                  const def = METRIC_CATALOG[m.id - 1];
-                  if (m.value == null && !m.infinite) {
-                    if (m.id >= 71 && m.id <= 74) return null;
-                    if (m.id === 80 || m.id === 83 || m.id === 84) {
-                      return (
-                        <MetricTile
-                          key={m.id}
-                          label={def?.label ?? m.key}
-                          value="—"
-                          n={m.n}
-                          low
-                          title={def?.formula ?? ''}
-                          blocked={false}
-                        />
-                      );
+        {showNumbers &&
+          ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'].map((g) => {
+            const list = byGroup.get(g);
+            if (!list?.length) return null;
+            return (
+              <section key={g} className="space-y-2">
+                <h3 className="text-[11px] uppercase tracking-wide text-muted">
+                  Group {g} — numbers
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {list.map((m) => {
+                    const def = METRIC_CATALOG[m.id - 1];
+                    if (m.value == null && !m.infinite) {
+                      if (m.id >= 71 && m.id <= 74) return null;
+                      if (m.id === 80 || m.id === 83 || m.id === 84) {
+                        return (
+                          <MetricTile
+                            key={m.id}
+                            label={def?.label ?? m.key}
+                            value="—"
+                            n={m.n}
+                            low
+                            title={def?.formula ?? ''}
+                          />
+                        );
+                      }
                     }
-                  }
-                  return (
-                    <MetricTile
-                      key={m.id}
-                      label={def?.label ?? m.key}
-                      value={m.infinite ? '—' : fmt(m)}
-                      n={m.n}
-                      low={m.lowSample}
-                      title={`${def?.formula ?? ''}\nmin N=${m.minSampleSize}`}
-                    />
-                  );
-                })}
-              </div>
-            </section>
-          );
-        })}
+                    return (
+                      <MetricTile
+                        key={m.id}
+                        label={def?.label ?? m.key}
+                        value={m.infinite ? '—' : fmt(m)}
+                        n={m.n}
+                        low={m.lowSample}
+                        title={`${def?.formula ?? ''}\nmin N=${m.minSampleSize}`}
+                      />
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
 
         <section className="space-y-2 min-h-[240px] flex flex-col">
           <h3 className="text-[11px] uppercase tracking-wide text-muted">Trade list</h3>
@@ -486,19 +561,46 @@ function ChartCard({
   title,
   desc,
   children,
+  wide,
 }: {
   title: string;
   desc: string;
   children: ReactNode;
+  wide?: boolean;
 }) {
   return (
-    <Card className="bg-surface border border-border">
+    <Card
+      className={[
+        'bg-surface border border-border',
+        wide ? 'lg:col-span-2' : '',
+      ].join(' ')}
+    >
       <Card.Header className="px-3 pt-3 pb-1">
         <Card.Title className="text-sm">{title}</Card.Title>
         <Card.Description className="text-[11px] text-muted">{desc}</Card.Description>
       </Card.Header>
       <Card.Content className="px-2 pb-3">{children}</Card.Content>
     </Card>
+  );
+}
+
+function Kpi({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div
+      className="rounded-lg border border-border bg-surface px-3 py-2.5"
+      title={hint}
+    >
+      <p className="text-[10px] text-muted uppercase tracking-wide">{label}</p>
+      <p className="text-base sm:text-lg font-semibold tabular-nums mt-0.5">{value}</p>
+    </div>
   );
 }
 
@@ -513,66 +615,32 @@ function fmt(m?: MetricResult): string {
   return m.value.toFixed(3);
 }
 
-function Callout({
-  title,
-  value,
-  low,
-  n,
-  hint,
-}: {
-  title: string;
-  value: string;
-  low?: boolean;
-  n?: number;
-  hint?: string;
-}) {
-  return (
-    <div
-      className={[
-        'rounded-lg border border-border px-3 py-3',
-        low ? 'opacity-60 italic' : 'bg-surface',
-      ].join(' ')}
-      title={hint}
-    >
-      <p className="text-[11px] text-muted">{title}</p>
-      <p className="text-lg font-semibold tabular-nums mt-0.5">{value}</p>
-      <p className="text-[10px] text-muted">
-        n={n ?? 0}
-        {low ? ' · low sample' : ''}
-      </p>
-    </div>
-  );
-}
-
 function MetricTile({
   label,
   value,
   n,
   low,
   title,
-  blocked,
 }: {
   label: string;
   value: string;
   n: number;
   low?: boolean;
   title: string;
-  blocked?: boolean;
 }) {
   return (
     <div
       className={[
         'rounded-md border border-border bg-background px-2.5 py-2 min-h-11',
-        low || blocked ? 'opacity-55 italic' : '',
+        low ? 'opacity-55 italic' : '',
       ].join(' ')}
-      title={blocked ? `${title} (blocked — missing data)` : title}
+      title={title}
     >
       <p className="text-[10px] text-muted leading-tight">{label}</p>
       <p className="text-[13px] font-medium tabular-nums mt-0.5">{value}</p>
       <p className="text-[9px] text-muted">
         n={n}
         {low ? ' · low sample' : ''}
-        {blocked ? ' · blocked' : ''}
       </p>
     </div>
   );

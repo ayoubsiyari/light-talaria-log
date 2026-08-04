@@ -790,6 +790,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | Fix replay stuck after Exit→new session: always sync wasPlayingRef; load gen; no Play on empty chart | Exit while playing → Start → Play advances |
 | 2026-08-04 | Dashboard hosts full Analytics (aggregate journals + demo); was empty only because Closed trades=0 | Hard-refresh → Dashboard → Load 5k demo |
 | 2026-08-04 | Example session 200 trades (full R/MFE/costs); fix journal fillPrice projection typo | Hard-refresh → Dashboard shows metrics |
+| 2026-08-04 | Analytics chart-first UI: bright canvases, 12+ charts, numbers behind toggle | Hard-refresh → Dashboard charts readable |
 | 2026-08-04 | Synthetic second TFs (1s/5s/10s/15s/30s/45s) from 1m — deterministic viewport path; picker + LOD + remote 1m top-up | Smoke: open 1m session → switch 1s/15s/30s |
 | 2026-08-04 | Replay clock follows finest pane TF (1s steps candle-by-candle; session + replayStore sync) | Play on 1s — advances one candle per tick |
 | 2026-08-04 | **Removed** all synthetic second timeframes (UI, synth, catalog, replay clock extras) — back to 1m…1D only | Confirm TF picker has no 1s–45s |

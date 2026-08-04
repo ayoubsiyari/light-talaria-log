@@ -62,7 +62,7 @@ const CATEGORY_ICONS: Record<ToolCategoryId, CategoryIcon> = {
   measure: IconMeasure,
 };
 
-/** Group related categories under one toolbar button (TV-style). */
+/** Group related categories under one toolbar button (TV / V8b style). */
 const TOOLBAR_GROUPS: {
   id: string;
   label: string;
@@ -76,7 +76,6 @@ const TOOLBAR_GROUPS: {
     id: 'channels',
     label: 'Channels',
     Icon: IconPitchfork,
-    /** Pitchforks are beta — only listed when “More tools” is on. */
     categories: ['channels', 'pitchforks'],
   },
   {
@@ -97,7 +96,6 @@ const TOOLBAR_GROUPS: {
     label: 'Patterns & Elliott',
     Icon: IconEmoji,
     categories: ['patterns', 'elliott', 'cycles'],
-    /** Entire group is approximate/beta — hidden until More tools. */
     moreOnly: true,
   },
   {
@@ -177,7 +175,6 @@ export function LeftToolbar({
     [showMoreTools],
   );
 
-  // pointerdown + capture: chart canvas preventDefault() suppresses mousedown
   useEffect(() => {
     if (!openGroup && !removeMenuOpen) return;
     const onDoc = (e: PointerEvent) => {
@@ -190,7 +187,6 @@ export function LeftToolbar({
     return () => document.removeEventListener('pointerdown', onDoc, true);
   }, [openGroup, removeMenuOpen]);
 
-  // Align flyout with the open group button (outside scroll clip).
   useLayoutEffect(() => {
     if (!openGroup || !rootRef.current) return;
     const el = groupRefs.current[openGroup];
@@ -216,7 +212,6 @@ export function LeftToolbar({
     setOpenGroup(null);
   };
 
-  /** Icon click — activate last *visible* tool in the group (no menu). */
   const activateGroup = (categories: ToolCategoryId[]) => {
     for (const cat of categories) {
       const last = lastByCategory[cat] ?? CATEGORY_DEFAULT_TOOL[cat];
@@ -237,7 +232,6 @@ export function LeftToolbar({
     }
   };
 
-  /** Arrow click — open/close the TV-style flyout. */
   const toggleGroupMenu = (groupId: string) => {
     setOpenGroup((cur) => (cur === groupId ? null : groupId));
   };
@@ -245,9 +239,9 @@ export function LeftToolbar({
   return (
     <aside
       ref={rootRef}
-      className="chrome-toolbar tv-panel-r relative w-[52px] [@media(hover:none)]:w-[56px] shrink-0 z-40 overflow-visible"
+      className="chrome-toolbar v8b-rail relative shrink-0 z-40 overflow-visible [@media(hover:none)]:w-11"
     >
-      <div className="h-full w-full flex flex-col items-center px-0.5 py-1 gap-0.5 overflow-y-auto overscroll-contain">
+      <div className="h-full w-full flex flex-col items-stretch pt-0.5 overflow-y-auto overscroll-contain">
         <button
           type="button"
           title="Cursor"
@@ -256,7 +250,7 @@ export function LeftToolbar({
             onToolChange('cursor');
             setOpenGroup(null);
           }}
-          className={toolBtn(activeTool === 'cursor')}
+          className="v8b-tool"
         >
           <IconCursor />
         </button>
@@ -273,56 +267,39 @@ export function LeftToolbar({
               ref={(node) => {
                 groupRefs.current[g.id] = node;
               }}
-              className="group/tool relative shrink-0 w-full flex justify-center"
+              className="group/tool relative w-full"
               data-open={open ? 'true' : undefined}
             >
-              {/*
-                TV: one hover chip; chevron is a right-hand extension of that chip
-                (same fill), never a second tab painted over the icon.
-              */}
-              <div
+              <button
+                type="button"
+                title={g.label}
+                aria-pressed={lit}
+                data-active={lit ? 'true' : undefined}
+                onClick={() => activateGroup(g.categories)}
+                className="v8b-tool"
+              >
+                <g.Icon />
+              </button>
+              <button
+                type="button"
+                title={`${g.label} menu`}
+                aria-label={`${g.label} menu`}
+                aria-expanded={open}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleGroupMenu(g.id);
+                }}
                 className={[
-                  'flex items-stretch rounded-[4px] transition-colors max-w-full',
-                  lit
-                    ? 'bg-accent/15 text-accent'
-                    : 'text-muted group-hover/tool:bg-background/70 group-hover/tool:text-foreground',
+                  'absolute right-0 top-0 h-8 w-2 flex items-center justify-center',
+                  'border-0 bg-transparent p-0 text-muted',
+                  'opacity-0 pointer-events-none',
+                  'group-hover/tool:opacity-80 group-hover/tool:pointer-events-auto',
+                  '[@media(hover:none)]:opacity-80 [@media(hover:none)]:pointer-events-auto',
+                  open ? 'opacity-100 pointer-events-auto text-accent' : '',
                 ].join(' ')}
               >
-                <button
-                  type="button"
-                  title={g.label}
-                  aria-pressed={active}
-                  onClick={() => activateGroup(g.categories)}
-                  className="w-9 h-10 [@media(hover:none)]:w-10 [@media(hover:none)]:h-11 flex items-center justify-center shrink-0 [&_svg]:w-5 [&_svg]:h-5"
-                >
-                  <g.Icon />
-                </button>
-                <button
-                  type="button"
-                  title={`${g.label} menu`}
-                  aria-label={`${g.label} menu`}
-                  aria-expanded={open}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleGroupMenu(g.id);
-                  }}
-                  className={[
-                    'flex items-center justify-center shrink-0',
-                    'border-0 bg-transparent p-0 shadow-none',
-                    'text-current',
-                    'transition-[width,opacity,margin] duration-100 ease-out',
-                    open
-                      ? 'w-3 opacity-100'
-                      : [
-                          'w-0 opacity-0 m-0 pointer-events-none overflow-hidden',
-                          'group-hover/tool:w-3 group-hover/tool:opacity-80 group-hover/tool:pointer-events-auto',
-                          '[@media(hover:none)]:w-3.5 [@media(hover:none)]:opacity-80 [@media(hover:none)]:pointer-events-auto',
-                        ].join(' '),
-                  ].join(' ')}
-                >
-                  <IconChevron className="w-2.5 h-2.5 shrink-0 opacity-80" />
-                </button>
-              </div>
+                <IconChevron className="w-2 h-2 shrink-0 rotate-0" />
+              </button>
             </div>
           );
         })}
@@ -336,12 +313,12 @@ export function LeftToolbar({
             setOpenGroup(null);
             setRemoveMenuOpen(false);
           }}
-          className={toolBtn(activeTool === 'zoom')}
+          className="v8b-tool"
         >
           <IconZoom />
         </button>
 
-        <div className="flex-1 min-h-2" />
+        <div className="v8b-sep !h-px !w-auto !mx-1.5 !my-1 self-stretch" aria-hidden />
 
         <button
           type="button"
@@ -352,11 +329,11 @@ export function LeftToolbar({
             setOpenGroup(null);
             setRemoveMenuOpen(false);
           }}
-          className={toolBtn(false)}
+          className="v8b-tool"
         >
           <IconObjectTree />
           {drawingCount > 0 && (
-            <span className="absolute bottom-0.5 right-0.5 min-w-[10px] text-[8px] font-semibold leading-none text-accent">
+            <span className="absolute bottom-0.5 left-1 min-w-[10px] text-[8px] font-semibold leading-none text-accent">
               {drawingCount > 99 ? '99+' : drawingCount}
             </span>
           )}
@@ -367,16 +344,16 @@ export function LeftToolbar({
           aria-pressed={magnetMode !== 'off'}
           aria-label={magnetModeLabel(magnetMode)}
           onClick={() => onMagnetModeChange(nextMagnetMode(magnetMode))}
-          className={toolBtn(magnetMode !== 'off')}
+          className="v8b-tool"
         >
           <IconMagnet />
           {magnetMode === 'weak' && (
-            <span className="absolute bottom-0.5 right-0.5 text-[8px] font-semibold leading-none text-accent">
+            <span className="absolute bottom-0.5 left-1 text-[8px] font-semibold leading-none text-accent">
               W
             </span>
           )}
           {magnetMode === 'strong' && (
-            <span className="absolute bottom-0.5 right-0.5 text-[8px] font-semibold leading-none text-accent">
+            <span className="absolute bottom-0.5 left-1 text-[8px] font-semibold leading-none text-accent">
               S
             </span>
           )}
@@ -386,7 +363,7 @@ export function LeftToolbar({
           title="Stay in drawing mode"
           aria-pressed={stayInDrawingMode}
           onClick={() => onStayInDrawingModeChange(!stayInDrawingMode)}
-          className={toolBtn(stayInDrawingMode)}
+          className="v8b-tool"
         >
           <IconStayDraw />
         </button>
@@ -395,7 +372,7 @@ export function LeftToolbar({
           title={drawingsLocked ? 'Unlock drawings' : 'Lock drawings'}
           aria-pressed={drawingsLocked}
           onClick={() => onDrawingsLockedChange(!drawingsLocked)}
-          className={toolBtn(drawingsLocked)}
+          className="v8b-tool"
         >
           <IconLock />
         </button>
@@ -404,27 +381,34 @@ export function LeftToolbar({
           title={drawingsHidden ? 'Show drawings' : 'Hide drawings'}
           aria-pressed={drawingsHidden}
           onClick={() => onDrawingsHiddenChange(!drawingsHidden)}
-          className={toolBtn(drawingsHidden)}
+          className="v8b-tool"
         >
           {drawingsHidden ? <IconEyeOff /> : <IconEye />}
         </button>
+
+        <div className="v8b-sep !h-px !w-auto !mx-1.5 !my-1 self-stretch" aria-hidden />
+
         <button
           ref={removeBtnRef}
           type="button"
           title="Remove drawings"
           aria-expanded={removeMenuOpen}
+          data-active={removeMenuOpen ? 'true' : undefined}
           onClick={() => {
             setRemoveMenuOpen((v) => !v);
             setOpenGroup(null);
           }}
-          className={toolBtn(removeMenuOpen) + ' hover:text-danger'}
+          className="v8b-tool hover:!text-danger"
         >
           <IconTrash />
         </button>
+
+        <div className="flex-1 min-h-2" />
       </div>
 
       {removeMenuOpen && (
-        <div className="absolute left-full bottom-2 z-50 ml-1 w-[min(14rem,calc(100vw-4rem))] rounded-lg border border-[color:var(--tv-panel-line)] bg-surface shadow-[0_2px_8px_rgba(0,0,0,0.14)] py-1">
+        <div className="absolute left-full bottom-2 z-50 ml-1 w-[min(14rem,calc(100vw-4rem))] rounded-sm border border-[color:var(--tv-panel-line)] bg-surface shadow-[0_8px_28px_rgba(0,0,0,0.55)] py-1 overflow-hidden">
+          <div className="h-0.5 bg-gradient-to-r from-accent via-[color-mix(in_oklab,var(--accent)_50%,white)] to-accent" />
           <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted">
             Remove
           </p>
@@ -446,12 +430,12 @@ export function LeftToolbar({
         </div>
       )}
 
-      {/* Flyout outside the scroll pane so it is never clipped */}
       {openGroup && openCategories.length > 0 && (
         <div
-          className="absolute left-full z-50 ml-1 w-[min(16rem,calc(100vw-4rem))] max-h-[min(80vh,640px)] flex flex-col rounded-lg border border-[color:var(--tv-panel-line)] bg-surface shadow-[0_2px_8px_rgba(0,0,0,0.14)]"
+          className="absolute left-full z-50 ml-1 w-[min(16rem,calc(100vw-4rem))] max-h-[min(80vh,640px)] flex flex-col rounded-sm border border-[color:var(--tv-panel-line)] bg-surface shadow-[0_8px_28px_rgba(0,0,0,0.55)] overflow-hidden"
           style={{ top: menuTop }}
         >
+          <div className="h-0.5 shrink-0 bg-gradient-to-r from-accent via-[color-mix(in_oklab,var(--accent)_50%,white)] to-accent" />
           <div className="overflow-y-auto overscroll-contain py-1 min-h-0 flex-1">
             {openCategories.map((cat, idx) => {
               const primary = cat.sections.flatMap((s) =>
@@ -548,13 +532,24 @@ function ToolFlyoutRow({
       type="button"
       onClick={() => onSelect(tid)}
       className={[
-        'w-full flex items-center gap-2.5 px-3 h-9 [@media(hover:none)]:min-h-11 text-left text-[13px]',
+        'relative w-full flex items-center gap-2.5 px-3 h-9 [@media(hover:none)]:min-h-11 text-left text-[13px]',
         selected
-          ? 'bg-accent/15 text-accent'
+          ? 'bg-accent/10 text-[color-mix(in_oklab,var(--accent)_55%,white)] font-semibold'
           : 'text-foreground hover:bg-background/80',
       ].join(' ')}
     >
-      <Icon className="w-5 h-5 shrink-0 opacity-80" />
+      {selected && (
+        <span
+          className="absolute left-0 top-[15%] bottom-[15%] w-0.5 rounded-sm"
+          style={{
+            background:
+              'linear-gradient(180deg, transparent, color-mix(in oklab, var(--accent) 70%, white), transparent)',
+            boxShadow: '0 0 6px color-mix(in oklab, var(--accent) 45%, transparent)',
+          }}
+          aria-hidden
+        />
+      )}
+      <Icon className="w-[17px] h-[17px] shrink-0 opacity-80" />
       <span className="truncate flex-1 min-w-0">{def.label}</span>
       {badge && (
         <span className="shrink-0 text-[9px] uppercase tracking-wide text-muted border border-[color:var(--tv-panel-line)] rounded px-1 py-0.5">
@@ -563,13 +558,4 @@ function ToolFlyoutRow({
       )}
     </button>
   );
-}
-
-function toolBtn(active: boolean): string {
-  return [
-    'relative w-10 h-10 [@media(hover:none)]:w-11 [@media(hover:none)]:h-11 rounded-[4px] flex items-center justify-center transition-colors shrink-0 [&_svg]:w-5 [&_svg]:h-5',
-    active
-      ? 'bg-accent/15 text-accent'
-      : 'text-muted hover:text-foreground hover:bg-background/70',
-  ].join(' ');
 }

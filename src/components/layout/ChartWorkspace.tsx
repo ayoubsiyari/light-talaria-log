@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
 import type { CrosshairPoint, CrosshairMode, SeriesType } from '@/chart';
-import { formatPrice, formatTime, shouldShowSeconds } from '@/chart';
+import { formatPrice } from '@/chart';
 import { ChartContainer } from '@/components/ChartContainer';
 import { VolumeIndicator } from '@/components/layout/VolumeIndicator';
 import type { Timeframe } from '@/types/ui';
@@ -16,15 +16,10 @@ interface ChartWorkspaceProps {
   onVolumeOpacityChange: (v: number) => void;
 }
 
-function formatOhlc(
-  point: CrosshairPoint | null,
-  timeframe: Timeframe,
-): string {
+function formatOhlc(point: CrosshairPoint | null): string {
   const bar = point?.bar;
   if (!bar) return 'O —  H —  L —  C —';
-  const ohlc = `O ${formatPrice(bar.open)}  H ${formatPrice(bar.high)}  L ${formatPrice(bar.low)}  C ${formatPrice(bar.close)}`;
-  if (!shouldShowSeconds(timeframe)) return ohlc;
-  return `${formatTime(bar.time, { timeframe })}  ${ohlc}`;
+  return `O ${formatPrice(bar.open)}  H ${formatPrice(bar.high)}  L ${formatPrice(bar.low)}  C ${formatPrice(bar.close)}`;
 }
 
 /**
@@ -47,7 +42,7 @@ export function ChartWorkspace({
 
   const onCrosshairMove = useCallback((point: CrosshairPoint | null) => {
     if (ohlcRef.current) {
-      ohlcRef.current.textContent = formatOhlc(point, timeframe);
+      ohlcRef.current.textContent = formatOhlc(point);
     }
     if (changeRef.current) {
       if (point?.bar) {
@@ -62,7 +57,7 @@ export function ChartWorkspace({
         changeRef.current.hidden = true;
       }
     }
-  }, [timeframe]);
+  }, []);
 
   return (
     <div className="relative flex-1 min-h-0 min-w-0 bg-background">

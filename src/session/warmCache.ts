@@ -8,7 +8,7 @@
  *    and kicks async fill (epoch-guarded). Never returns a finer TF.
  * 5. Replay fill-ahead uses a compact forward-biased window (not a larger budget).
  */
-import { isSecondTimeframe, timeframeSeconds } from '@/data/timeframeAgg';
+import { timeframeSeconds } from '@/data/timeframeAgg';
 import { getDataset } from '@/datasets/datasetStore';
 import { scheduleRemoteChunkGc } from '@/datasets/idbChunkGc';
 import { ensureRemoteTimeCoverage } from '@/datasets/ingestRemoteChunks';
@@ -17,10 +17,6 @@ import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
 import type { ChartBar } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
 import { CHUNK_SIZE, MAX_BARS_IN_MEMORY } from '@/utils/constants';
-
-function storageTf(tf: Timeframe): Timeframe {
-  return isSecondTimeframe(tf) ? '1m' : tf;
-}
 
 type CacheKey = string;
 
@@ -47,20 +43,7 @@ function key(datasetId: string, tf: Timeframe): CacheKey {
   return `${datasetId}|${tf}`;
 }
 
-const TF_FALLBACK_ORDER: Timeframe[] = [
-  '1s',
-  '5s',
-  '10s',
-  '15s',
-  '30s',
-  '45s',
-  '1m',
-  '5m',
-  '15m',
-  '1h',
-  '4h',
-  '1D',
-];
+const TF_FALLBACK_ORDER: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D'];
 
 /**
  * Entry cap — enough for 4 panes × (pane TF + base TF) + spare.
@@ -219,7 +202,7 @@ export class WarmCache {
                   maxBars: Math.min(CHUNK_SIZE, Math.max(500, windowBars)),
                 },
               );
-              scheduleRemoteChunkGc(datasetId, storageTf(tf), anchorTime);
+              scheduleRemoteChunkGc(datasetId, tf, anchorTime);
               if (!fetched || this.epochs.get(k) !== epoch) {
                 return this.store.get(k)?.bars ?? bars;
               }

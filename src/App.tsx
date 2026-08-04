@@ -37,17 +37,9 @@ import { ChartLoadingScreen } from '@/components/ChartLoadingScreen';
 import { PerfOverlay } from '@/components/perf/PerfOverlay';
 import { getChart } from '@/chart';
 /** Per-switch camera preserve: tip candle screen fraction + bar-count zoom. */
-type LiveCamera = {
-  anchorTime: number;
-  span: number;
-  tipRatio: number;
-  /** TF the span was captured on — used to remap wall-clock into seconds TFs. */
-  fromTf: Timeframe;
-};
+type LiveCamera = { anchorTime: number; span: number; tipRatio: number };
 import {
-  canDeriveFrom,
-  indexAtOrBeforeBars,
-  remapSpanAcrossTf,
+  canAggregateFrom,
   smallestTimeframe,
   timeframeSeconds,
 } from '@/data/timeframeAgg';
@@ -440,6 +432,7 @@ export default function App() {
       const cursor = replay.cursorTime;
       const preserved = cameraPreserveRef.current;
       const applyCamera = opts?.applyCamera === true;
+      const span = Math.max(10, preserved?.span ?? s.span);
       const tipRatio = preserved?.tipRatio ?? 0.9;
       const only =
         opts?.paneIds != null ? new Set(opts.paneIds) : null;
@@ -454,15 +447,11 @@ export default function App() {
 
         const tipTime = Number.isFinite(cursor)
           ? cursor
-          : (preserved?.anchorTime ?? v.bars[v.bars.length - 1]!.time);
+          : v.bars[v.bars.length - 1]!.time;
         chart.syncReplayReveal(v.bars, tipTime);
 
         if (applyCamera) {
-          // Tip = cursor/anchor in the NEW series — never assume buffer end
-          // (synthetic second buffers often have ahead pad past the tip).
-          const tipIndex = indexAtOrBeforeBars(v.bars, tipTime);
-          // `preserved.span` is already remapped for the target TF in applyPaneTimeframe.
-          const span = Math.max(10, preserved?.span ?? s.span);
+          const tipIndex = v.bars.length - 1;
           const fromIndex = tipIndex - tipRatio * span;
           chart.setVisibleRange(fromIndex, fromIndex + span, { silent: true });
         }
@@ -487,12 +476,7 @@ export default function App() {
       const bars = engine?.getBars() ?? pane?.bars ?? [];
       const replay = replayRef.current.get();
       const cursor = replay.cursorTime;
-      const fromTf = pane?.selectedTf ?? pane?.timeframe ?? catalog?.baseTf ?? '1m';
-      // Tip = cursor bar when replaying; else right edge of the visible window.
-      const tipIndex =
-        Number.isFinite(cursor) && bars.length > 0
-          ? indexAtOrBeforeBars(bars, cursor)
-          : Math.max(0, bars.length - 1);
+      const tipIndex = Math.max(0, bars.length - 1);
       // Where the tip candle sits in the viewport (0 = left, 1 = right).
       const tipRatio = Math.max(
         0,
@@ -509,16 +493,15 @@ export default function App() {
         const tr = bars.length > 0 ? timeRangeFromVisible(bars, liveRange) : null;
         anchorTime =
           tr?.toTime ??
-          bars[tipIndex]?.time ??
           bars[bars.length - 1]?.time ??
           (Number.isFinite(cursor) ? cursor : (catalog?.timeEnd ?? 0));
         if (Number.isFinite(cursor)) {
           anchorTime = Math.min(anchorTime, cursor);
         }
       }
-      return { anchorTime, span, tipRatio, fromTf };
+      return { anchorTime, span, tipRatio };
     },
-    [catalog?.timeEnd, catalog?.baseTf],
+    [catalog?.timeEnd],
   );
 
   const activePane = panes.find((p) => p.id === activePaneId) ?? panes[0] ?? null;
@@ -632,7 +615,7 @@ export default function App() {
       if (!series) return null;
       const cat = series.catalog;
       const floor = selectedTf ?? tf;
-      if (!canDeriveFrom(cat.baseTf, floor) && floor !== cat.baseTf) return null;
+      if (!canAggregateFrom(cat.baseTf, floor) && floor !== cat.baseTf) return null;
       const sync = syncStoreRef.current?.get().timeRange;
       const available = cat.timeframes;
       let loadTf = floor;
@@ -673,25 +656,19 @@ export default function App() {
   );
 
   /**
-   * Clock grid = finest of dataset base + open pane TFs (so 1s panes step
-   * candle-by-candle; otherwise usually 1m).
-   * Advance rate = finest pane TF among all charts.
+   * Clock grid = dataset base TF.
+   * Advance rate = finest (smallest) pane TF among all charts — e.g. 1m/5m/1h/4h
+   * → play at 1m speed so every pane stays in sync, not the focused pane’s TF.
    */
   const syncReplayClockTf = useCallback((paneList?: readonly ChartPaneState[]) => {
     const list = paneList ?? panesRef.current;
-    const datasetBase = catalog?.baseTf ?? '1m';
-    if (list.length === 0) {
-      replayRef.current.setBaseTf(datasetBase);
-      replayRef.current.setRateTf(datasetBase);
-      sessionRef.current.setClockTf(datasetBase);
-      return;
-    }
-    const paneTfs = list.map((p) => p.selectedTf ?? p.timeframe);
-    const clock = smallestTimeframe([datasetBase, ...paneTfs]);
-    const rate = smallestTimeframe(paneTfs);
-    replayRef.current.setBaseTf(clock);
+    const base = catalog?.baseTf ?? '1m';
+    replayRef.current.setBaseTf(base);
+    if (list.length === 0) return;
+    const rate = smallestTimeframe(
+      list.map((p) => p.selectedTf ?? p.timeframe),
+    );
     replayRef.current.setRateTf(rate);
-    sessionRef.current.setClockTf(clock);
   }, [catalog?.baseTf]);
 
   /**
@@ -1378,10 +1355,10 @@ export default function App() {
               : REPLAY_VISIBLE_BARS,
           ),
         );
-        // Clock = finest of dataset base + open pane (1s steps when openTf is 1s).
-        const clockTf = smallestTimeframe([baseTf, openTf]);
-        const windowSec = timeframeSeconds(clockTf) * resumeSpan;
-        replayRef.current.setBaseTf(clockTf);
+        const windowSec = timeframeSeconds(baseTf) * resumeSpan;
+
+        // Replay clock on base TF; rate from open pane TF.
+        replayRef.current.setBaseTf(baseTf);
         replayRef.current.setRateTf(openTf);
         replayRef.current.configure(timeStart, timeEnd, windowSec);
         replayRef.current.seek(resumeCursor, { silent: true });
@@ -1389,7 +1366,7 @@ export default function App() {
 
         if (loadGen !== loadSessionGenRef.current) return;
         await sessionRef.current.configure({
-          baseTf: clockTf,
+          baseTf,
           bounds: { start: timeStart, end: timeEnd },
           panes: {
             'pane-0': {
@@ -1892,12 +1869,12 @@ export default function App() {
       if (!sessionRef.current.get()) return;
 
       const paneSeries = seriesForPane(existing);
-      // Allow switch when catalog omits a TF that can still be served (agg / synth).
+      // Allow switch when catalog omits a TF that can still be served (remote agg).
       if (
         paneSeries &&
         paneSeries.catalog.timeframes.length > 0 &&
         !paneSeries.catalog.timeframes.includes(tf) &&
-        !canDeriveFrom(paneSeries.catalog.baseTf, tf)
+        !canAggregateFrom(paneSeries.catalog.baseTf, tf)
       ) {
         return;
       }
@@ -1921,12 +1898,9 @@ export default function App() {
       setPanes(optimistic);
 
       const camera = captureLiveCamera(paneId);
-      const fromTf = existing.selectedTf ?? existing.timeframe;
-      // Seconds ↔ minutes: keep wall-clock zoom so the plot doesn't 60× jump.
-      const span = remapSpanAcrossTf(camera.span, fromTf, tf);
-      cameraPreserveRef.current = { ...camera, span, fromTf };
+      cameraPreserveRef.current = camera;
       // Span/anchor for fill size only — sibling cameras are preserved in commit/sync.
-      sessionRef.current.setCamera(camera.anchorTime, span);
+      sessionRef.current.setCamera(camera.anchorTime, camera.span);
       setActivePaneId(paneId);
       // Only suppress the setActivePane notify — never hold this across awaits
       // (a stuck lock freezes session commits and looks like replay is dead).
@@ -1950,10 +1924,9 @@ export default function App() {
           }
           if (switchGen !== paneSwitchGenRef.current) return;
 
-          // Clock TF before engine sync — forming/truncate use the new grid.
-          syncReplayClockTf(panesRef.current);
           commitSessionViews({ adoptRangePaneIds: targets });
           syncEnginesFromSession({ paneIds: targets, applyCamera: true });
+          syncReplayClockTf(panesRef.current);
 
           const focus = panesRef.current.find((p) => p.id === paneId);
           if (focus && focus.bars.length > 0) {

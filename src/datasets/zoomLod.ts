@@ -17,20 +17,7 @@ export const LOD_COARSEN_BARS = 1800;
 /** Refine toward selected TF only when current TF is this sparse (hysteresis). */
 export const LOD_REFINE_BARS = 700;
 
-const TF_ORDER: readonly Timeframe[] = [
-  '1s',
-  '5s',
-  '10s',
-  '15s',
-  '30s',
-  '45s',
-  '1m',
-  '5m',
-  '15m',
-  '1h',
-  '4h',
-  '1D',
-];
+const TF_ORDER: readonly Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D'];
 
 /** Approximate visible bar count for a wall-clock span at `tf`. */
 export function projectedVisibleBars(windowSec: number, tf: Timeframe): number {

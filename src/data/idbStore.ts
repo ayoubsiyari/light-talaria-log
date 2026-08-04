@@ -12,13 +12,8 @@ import type { ChartBarWithVolume, DatasetMeta } from '@/types/bar';
 import type { SeriesMeta } from '@/types/series';
 import { seriesMetaKey } from '@/types/series';
 import type { Timeframe } from '@/types/ui';
-import { chunkIndexForTime, chunkIndexForLogical } from './barIndex';
-import {
-  createBarStore,
-  toChartBars,
-  unpackBuffer,
-  type BinaryBarStore,
-} from './binaryBar';
+import { chunkIndexForLogical } from './barIndex';
+import { toChartBars, unpackBuffer } from './binaryBar';
 
 export async function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -199,59 +194,6 @@ export async function deleteSeriesForDataset(
 ): Promise<void> {
   await deleteKeysByPrefix(db, IDB_STORE_META, `${datasetId}:`);
   await deleteKeysByPrefix(db, IDB_STORE_CHUNKS, `${datasetId}/`);
-}
-
-/**
- * Load bars overlapping [fromTime, toTime] into a BinaryBarStore (for synthesis).
- * Includes one chunk of padding on each side when available.
- */
-export async function getStoreInTimeRange(
-  db: IDBDatabase,
-  meta: SeriesMeta,
-  fromTime: number,
-  toTime: number,
-): Promise<BinaryBarStore> {
-  if (!meta || meta.rowCount === 0 || meta.chunkIds.length === 0) {
-    return createBarStore(0);
-  }
-  const fromChunk = Math.max(0, chunkIndexForTime(meta, fromTime) - 1);
-  const toChunk = Math.min(
-    meta.chunkIds.length - 1,
-    chunkIndexForTime(meta, toTime) + 1,
-  );
-
-  // Upper bound: full chunks in the span (cap to avoid huge allocations).
-  let capacity = 0;
-  for (let c = fromChunk; c <= toChunk; c++) {
-    const start = meta.chunkStarts[c]!;
-    const end =
-      c + 1 < meta.chunkStarts.length
-        ? meta.chunkStarts[c + 1]!
-        : meta.rowCount;
-    capacity += Math.max(0, end - start);
-  }
-  capacity = Math.min(capacity, meta.rowCount);
-  const out = createBarStore(Math.max(1, capacity));
-
-  for (let c = fromChunk; c <= toChunk; c++) {
-    const buffer = await getChunk(db, meta.chunkIds[c]!);
-    if (!buffer) continue;
-    const store = unpackBuffer(buffer);
-    for (let i = 0; i < store.length; i++) {
-      const t = store.time[i]!;
-      if (t < fromTime || t > toTime) continue;
-      const idx = out.length;
-      if (idx >= out.time.length) break;
-      out.time[idx] = t;
-      out.open[idx] = store.open[i]!;
-      out.high[idx] = store.high[i]!;
-      out.low[idx] = store.low[i]!;
-      out.close[idx] = store.close[i]!;
-      out.volume[idx] = store.volume[i]!;
-      out.length++;
-    }
-  }
-  return out;
 }
 
 /** Load bars for logical index range from series chunks. */

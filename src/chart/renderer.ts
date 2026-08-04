@@ -269,7 +269,7 @@ export function paintBaseFrame(
     drawPriceAxis(ctx, layout, scale, priceTicks, colors);
   }
   if (layout.timeAxisHeight > 0) {
-    drawTimeAxis(ctx, layout, range, timeTicks, colors, state.paneTimeframe);
+    drawTimeAxis(ctx, layout, range, timeTicks, colors);
   }
 
   // Last-price chip must paint AFTER the axis fill or it is covered.
@@ -430,7 +430,7 @@ export function paintOverlayFrame(
   }
 
   if (crosshair && options.crosshairMode !== 'hidden') {
-    drawCrosshair(ctx, layout, crosshair, colors, state.paneTimeframe);
+    drawCrosshair(ctx, layout, crosshair, colors);
   }
 }
 
@@ -533,7 +533,6 @@ function drawTimeAxis(
   range: VisibleRange,
   timeTicks: { index: number; time: number }[],
   colors: ChartColors,
-  paneTimeframe?: import('@/types/ui').Timeframe | null,
 ): void {
   const { plot, height, timeAxisHeight, width } = layout;
   const axisY = height - timeAxisHeight;
@@ -555,7 +554,7 @@ function drawTimeAxis(
   for (const tick of timeTicks) {
     const x = indexToX(tick.index, range, plot);
     if (x < plot.left || x > plot.left + plot.width) continue;
-    ctx.fillText(formatTime(tick.time, { timeframe: paneTimeframe }), x, axisY + 8);
+    ctx.fillText(formatTime(tick.time), x, axisY + 8);
   }
 }
 

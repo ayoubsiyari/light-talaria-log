@@ -30,7 +30,7 @@ export function SymbolPicker({
 
   if (!multi) {
     return (
-      <div className="flex items-center gap-1 h-7 min-h-7 [@media(hover:none)]:min-h-11 px-1.5 sm:px-2 rounded-md bg-background/80 text-xs font-semibold text-foreground min-w-0 shrink">
+      <div className="v8b-chrome-btn !font-bold min-w-0 shrink [@media(hover:none)]:min-h-11">
         <span className="truncate max-w-[5.5rem] sm:max-w-[10rem]">{label}</span>
       </div>
     );
@@ -44,12 +44,21 @@ export function SymbolPicker({
         aria-label="Change symbol"
         aria-disabled={disabled || undefined}
         className={[
-          'flex items-center gap-1 h-7 min-h-7 [@media(hover:none)]:min-h-11 px-1.5 sm:px-2 rounded-md bg-background/80 text-xs font-semibold text-foreground hover:bg-background min-w-0 shrink',
+          'v8b-chrome-btn !font-bold min-w-0 shrink [@media(hover:none)]:min-h-11',
           disabled ? 'opacity-50 pointer-events-none' : '',
         ].join(' ')}
       >
         <span className="truncate max-w-[5.5rem] sm:max-w-[12rem]">{label}</span>
-        <span className="text-muted text-[10px] leading-none">▾</span>
+        <svg width={10} height={6} viewBox="0 0 10 6" aria-hidden className="opacity-70">
+          <path
+            d="M1,1 L5,5 L9,1"
+            stroke="currentColor"
+            strokeWidth={1.8}
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </Popover.Trigger>
       <Popover.Content placement="bottom start" className="p-0 z-[100]">
         <Popover.Dialog className="w-[14rem] bg-surface border border-[color:var(--tv-panel-line)] rounded-md shadow-[0_2px_8px_rgba(0,0,0,0.14)] overflow-hidden">

@@ -181,6 +181,200 @@
     flex-shrink: 0;
   }
 
+  /*
+   * V8b chrome language: left/bottom gradient accent bars + soft hover wells.
+   * Colors stay on Hero tokens (--accent / --muted / --foreground).
+   */
+  .v8b-rail {
+    width: 36px;
+    border-right: 1px solid color-mix(in oklab, var(--accent) 22%, transparent);
+  }
+
+  .v8b-tool {
+    position: relative;
+    width: 100%;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 10px 0 0;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    transition: color 0.15s ease, background 0.12s ease, transform 0.08s ease;
+  }
+  .v8b-tool:hover {
+    color: var(--foreground);
+    background: color-mix(in oklab, var(--foreground) 4%, transparent);
+  }
+  .v8b-tool[aria-pressed='true'],
+  .v8b-tool[data-active='true'] {
+    color: color-mix(in oklab, var(--accent) 55%, white);
+    background: color-mix(in oklab, var(--accent) 8%, transparent);
+  }
+  .v8b-tool[aria-pressed='true']::before,
+  .v8b-tool[data-active='true']::before {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 15%;
+    bottom: 15%;
+    width: 2px;
+    border-radius: 1px;
+    background: linear-gradient(
+      180deg,
+      transparent,
+      color-mix(in oklab, var(--accent) 70%, white),
+      transparent
+    );
+    box-shadow: 0 0 6px color-mix(in oklab, var(--accent) 45%, transparent);
+    pointer-events: none;
+  }
+  .v8b-tool:hover:not([aria-pressed='true']):not([data-active='true'])::before {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 25%;
+    bottom: 25%;
+    width: 1px;
+    background: linear-gradient(
+      180deg,
+      transparent,
+      color-mix(in oklab, var(--foreground) 35%, transparent),
+      transparent
+    );
+    pointer-events: none;
+  }
+  .v8b-tool:active {
+    transform: scale(0.92);
+  }
+  .v8b-tool svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .v8b-chrome-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 28px;
+    padding: 0 8px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+    transition: color 0.12s ease, background 0.12s ease;
+  }
+  .v8b-chrome-btn:hover {
+    color: var(--foreground);
+    background: color-mix(in oklab, var(--foreground) 4%, transparent);
+  }
+  .v8b-chrome-btn[data-active='true'],
+  .v8b-chrome-btn[aria-pressed='true'] {
+    color: color-mix(in oklab, var(--accent) 55%, white);
+    background: color-mix(in oklab, var(--accent) 8%, transparent);
+    font-weight: 700;
+  }
+  .v8b-chrome-btn[data-active='true']::after,
+  .v8b-chrome-btn[aria-pressed='true']::after {
+    content: '';
+    position: absolute;
+    left: 10%;
+    right: 10%;
+    bottom: -1px;
+    height: 2px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, var(--accent) 70%, white),
+      transparent
+    );
+    box-shadow: 0 0 6px color-mix(in oklab, var(--accent) 45%, transparent);
+    pointer-events: none;
+  }
+
+  .v8b-place-order {
+    height: 28px;
+    padding: 0 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    border: 1px solid color-mix(in oklab, var(--accent) 50%, transparent);
+    background: linear-gradient(
+      135deg,
+      var(--accent),
+      color-mix(in oklab, var(--accent) 40%, white)
+    );
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    transition: transform 0.08s ease, box-shadow 0.1s ease, filter 0.1s ease;
+  }
+  .v8b-place-order:hover {
+    filter: brightness(1.08);
+    box-shadow: 0 0 10px color-mix(in oklab, var(--accent) 35%, transparent);
+  }
+  .v8b-place-order:active {
+    transform: scale(0.95);
+  }
+  .v8b-place-order:disabled {
+    opacity: 0.45;
+    pointer-events: none;
+  }
+
+  .v8b-tf {
+    position: relative;
+    height: 28px;
+    min-width: 1.75rem;
+    padding: 0 7px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+    transition: color 0.12s ease, background 0.12s ease;
+  }
+  .v8b-tf:hover:not(:disabled) {
+    color: var(--foreground);
+    background: color-mix(in oklab, var(--foreground) 4%, transparent);
+  }
+  .v8b-tf[data-active='true'] {
+    color: color-mix(in oklab, var(--accent) 55%, white);
+    background: color-mix(in oklab, var(--accent) 8%, transparent);
+    font-weight: 700;
+  }
+  .v8b-tf[data-active='true']::after {
+    content: '';
+    position: absolute;
+    left: 10%;
+    right: 10%;
+    bottom: -1px;
+    height: 2px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, var(--accent) 70%, white),
+      transparent
+    );
+    box-shadow: 0 0 6px color-mix(in oklab, var(--accent) 45%, transparent);
+    pointer-events: none;
+  }
+  .v8b-tf:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .v8b-sep {
+    width: 1px;
+    height: 16px;
+    margin: 0 2px;
+    background: color-mix(in oklab, var(--accent) 18%, transparent);
+    flex-shrink: 0;
+  }
+
   /* Chart legend — 3-dot load while TF / ticker fills */
   @keyframes legend-dot-pulse {
     0%,

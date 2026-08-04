@@ -1,9 +1,14 @@
 import type { Timeframe } from '@/types/ui';
 import type { Drawing } from './drawingStore';
 
-import { ALL_TIMEFRAMES_ORDERED, isKnownTimeframe } from '@/data/timeframeAgg';
-
-export const DRAWING_VISIBILITY_TFS: readonly Timeframe[] = ALL_TIMEFRAMES_ORDERED;
+export const DRAWING_VISIBILITY_TFS: readonly Timeframe[] = [
+  '1m',
+  '5m',
+  '15m',
+  '1h',
+  '4h',
+  '1D',
+];
 
 /**
  * `undefined` / `'all'` / empty handling:
@@ -19,7 +24,14 @@ export function normalizeVisibleOnTfs(
   if (!Array.isArray(raw)) return 'all';
   const out: Timeframe[] = [];
   for (const t of raw) {
-    if (typeof t === 'string' && isKnownTimeframe(t)) {
+    if (
+      t === '1m' ||
+      t === '5m' ||
+      t === '15m' ||
+      t === '1h' ||
+      t === '4h' ||
+      t === '1D'
+    ) {
       out.push(t);
     }
   }

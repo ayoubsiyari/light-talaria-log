@@ -1,18 +1,8 @@
 import { useCallback, useState } from 'react';
-import { ALL_TIMEFRAMES_ORDERED, isKnownTimeframe } from '@/data/timeframeAgg';
 import type { Timeframe } from '@/types/ui';
 
-const STORAGE_KEY = 'talaria.pinnedTimeframes.v2';
-const DEFAULT_PINNED: Timeframe[] = [
-  '1s',
-  '5s',
-  '15s',
-  '30s',
-  '1m',
-  '5m',
-  '15m',
-  '1h',
-];
+const STORAGE_KEY = 'talaria.pinnedTimeframes.v1';
+const DEFAULT_PINNED: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D'];
 
 function readPinned(): Timeframe[] {
   try {
@@ -20,9 +10,7 @@ function readPinned(): Timeframe[] {
     if (!raw) return [...DEFAULT_PINNED];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [...DEFAULT_PINNED];
-    const next = parsed.filter(
-      (x): x is Timeframe => typeof x === 'string' && isKnownTimeframe(x),
-    );
+    const next = parsed.filter((x): x is Timeframe => typeof x === 'string');
     return next.length > 0 ? next : [...DEFAULT_PINNED];
   } catch {
     return [...DEFAULT_PINNED];
@@ -48,9 +36,8 @@ export function usePinnedTimeframes() {
   }, []);
 
   const setPinnedOrder = useCallback((next: Timeframe[]) => {
-    const filtered = next.filter((tf) => ALL_TIMEFRAMES_ORDERED.includes(tf));
-    setPinned(filtered);
-    writePinned(filtered);
+    setPinned(next);
+    writePinned(next);
   }, []);
 
   return { pinned, isPinned, togglePin, setPinnedOrder, defaults: DEFAULT_PINNED };

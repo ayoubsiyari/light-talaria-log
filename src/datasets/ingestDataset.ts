@@ -11,7 +11,6 @@ import {
 import { getDataset } from '@/datasets/datasetStore';
 import { ingestRemoteDatasetAllTfs } from '@/datasets/ingestRemoteChunks';
 import { aggregatableTimeframes } from '@/data/timeframeAgg';
-import { withDerivedTimeframes } from '@/datasets/derivedTimeframes';
 import type { CsvWorkerResponse } from '@/types/bar';
 import type { SeriesCatalog, SeriesMeta } from '@/types/series';
 import type { Timeframe } from '@/types/ui';
@@ -108,14 +107,14 @@ async function buildCatalog(
     throw new Error('Ingest produced no series metadata.');
   }
 
-  return withDerivedTimeframes({
+  return {
     datasetId,
     baseTf,
     timeframes: available,
     rowCounts,
     timeStart,
     timeEnd,
-  });
+  };
 }
 
 function runIngestWorker(

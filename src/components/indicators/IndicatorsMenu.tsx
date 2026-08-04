@@ -246,10 +246,10 @@ export function IndicatorsMenu({
       <Button
         variant="ghost"
         size="sm"
-        className="inline-flex gap-1.5 h-7 min-h-7 [@media(hover:none)]:min-h-11 px-1.5 sm:px-2 text-xs"
+        className="v8b-chrome-btn !h-7 min-h-7 [@media(hover:none)]:min-h-11 gap-1.5"
         onPress={() => setOpen(true)}
       >
-        <IconIndicators className="w-3.5 h-3.5" />
+        <IconIndicators className="w-[15px] h-[15px]" />
         <span className="hidden sm:inline">Indicators</span>
         {enabled.length > 0 && (
           <span className="text-[10px] text-muted tabular-nums">{enabled.length}</span>

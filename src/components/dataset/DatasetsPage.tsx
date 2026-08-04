@@ -28,8 +28,8 @@ import {
 } from '@/datasets/remoteApi';
 import { warmCache } from '@/session/warmCache';
 import {
-  DOWNLOAD_TIMEFRAME_OPTIONS,
   PAIR_OPTIONS,
+  TIMEFRAME_OPTIONS,
   type PairSymbol,
 } from '@/types/session';
 import type { RemoteDatasetMeta, RemoteUser } from '@/types/remoteApi';
@@ -356,7 +356,7 @@ export function DatasetsPage({
                   onChange={(e) => setTimeframe(e.target.value as Timeframe)}
                   disabled={downloading}
                 >
-                  {DOWNLOAD_TIMEFRAME_OPTIONS.map((t) => (
+                  {TIMEFRAME_OPTIONS.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.label}
                     </option>

@@ -47,7 +47,7 @@ export type {
   SeriesType,
   ChartViewOptions,
 } from './types';
-export { formatPrice, formatTime, shouldShowSeconds } from './format';
+export { formatPrice, formatTime } from './format';
 export { createChartSyncStore, attachChartSync } from './sync';
 export type {
   ChartId,

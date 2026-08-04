@@ -86,12 +86,6 @@ function mapTimeframe(raw: string | undefined): Timeframe {
     .trim()
     .toLowerCase();
   const table: Record<string, Timeframe> = {
-    '1s': '1s',
-    '5s': '5s',
-    '10s': '10s',
-    '15s': '15s',
-    '30s': '30s',
-    '45s': '45s',
     '1m': '1m',
     '1min': '1m',
     '2m': '1m',

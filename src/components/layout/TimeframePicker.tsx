@@ -1,18 +1,11 @@
 import { Popover } from '@heroui/react';
-import { ALL_TIMEFRAMES_ORDERED } from '@/data/timeframeAgg';
 import { usePinnedTimeframes } from '@/hooks/usePinnedTimeframes';
 import type { Timeframe } from '@/types/ui';
 
 /** All intervals offered in the pin menu (toolbar shows favorites only). */
-export const ALL_TIMEFRAMES: Timeframe[] = [...ALL_TIMEFRAMES_ORDERED];
+export const ALL_TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D'];
 
 const TF_LABELS: Record<Timeframe, string> = {
-  '1s': '1 second',
-  '5s': '5 seconds',
-  '10s': '10 seconds',
-  '15s': '15 seconds',
-  '30s': '30 seconds',
-  '45s': '45 seconds',
   '1m': '1 minute',
   '5m': '5 minutes',
   '15m': '15 minutes',
@@ -50,8 +43,8 @@ export function TimeframePicker({
   })();
 
   return (
-    <div className="flex items-center gap-0.5 min-w-0">
-      <div className="flex items-center gap-0.5 min-w-0 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="flex items-center gap-0 min-w-0">
+      <div className="flex items-center gap-0 min-w-0 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {barTfs.map((tf) => {
           const active = tf === timeframe;
           const enabled = isEnabled(tf);
@@ -60,23 +53,16 @@ export function TimeframePicker({
               key={tf}
               type="button"
               disabled={!enabled}
+              data-active={active ? 'true' : undefined}
               title={
                 enabled
                   ? TF_LABELS[tf]
-                  : `${tf} needs a 1m base dataset`
+                  : `${tf} needs a finer base (download 1m)`
               }
               onClick={() => {
                 if (enabled) onTimeframeChange(tf);
               }}
-              className={[
-                'shrink-0 h-6 min-w-6 px-1 rounded text-[11px] font-medium transition-colors',
-                '[@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11 [@media(hover:none)]:text-xs',
-                active
-                  ? 'bg-accent text-accent-foreground'
-                  : enabled
-                    ? 'text-muted hover:text-foreground hover:bg-background/60'
-                    : 'text-muted/40 cursor-not-allowed',
-              ].join(' ')}
+              className="v8b-tf shrink-0 [@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11"
             >
               {tf}
             </button>
@@ -89,7 +75,7 @@ export function TimeframePicker({
         <Popover.Trigger
           title="All intervals"
           aria-label="All intervals"
-          className="shrink-0 h-6 w-5 min-h-6 min-w-5 [@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11 rounded inline-flex items-center justify-center text-muted hover:text-foreground hover:bg-background/60 text-[10px]"
+          className="v8b-chrome-btn shrink-0 !px-1.5 [@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11"
         >
           ▾
         </Popover.Trigger>

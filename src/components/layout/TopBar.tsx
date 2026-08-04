@@ -52,9 +52,7 @@ interface TopBarProps {
 }
 
 /**
- * TradingView-style top banner.
- * Phone (~390px): 44px hits, safe-area, truncating symbol, scrollable TFs,
- * right corner keeps layout / theme / order without crowding the left chrome.
+ * V8b-style top chrome: logo · symbol · series · indicators · TFs · Place Order · utils.
  */
 export function TopBar({
   symbol,
@@ -85,24 +83,25 @@ export function TopBar({
   return (
     <header
       className={[
-        'chrome-topbar tv-panel-b shrink-0 flex items-center gap-0',
-        'px-1 sm:px-1.5 pt-[env(safe-area-inset-top)]',
-        // Desktop ≈ TV ~36px; phone keeps 44px touch row
+        'chrome-topbar shrink-0 flex items-center gap-0',
+        'px-1.5 sm:px-2.5 pt-[env(safe-area-inset-top)]',
         'h-9 min-h-9 [@media(hover:none)]:h-11 [@media(hover:none)]:min-h-11',
+        'border-b border-[color-mix(in_oklab,var(--accent)_22%,transparent)]',
       ].join(' ')}
     >
       <Button
         variant="ghost"
         size="sm"
-        className="shrink-0 h-7 min-h-7 w-7 min-w-7 [@media(hover:none)]:h-11 [@media(hover:none)]:min-h-11 [@media(hover:none)]:w-11 [@media(hover:none)]:min-w-11 mr-0.5 sm:mr-1 px-0"
+        className="shrink-0 h-8 min-h-8 w-8 min-w-8 [@media(hover:none)]:h-11 [@media(hover:none)]:min-h-11 [@media(hover:none)]:w-11 [@media(hover:none)]:min-w-11 mr-0.5 px-0"
         aria-label="Back to sessions"
         onPress={onExitSession}
         isDisabled={!onExitSession}
       >
-        <BrandLogo size={22} variant="raster" className="w-[22px] h-[22px]" />
+        <BrandLogo size={28} variant="raster" className="w-7 h-7" />
       </Button>
 
-      {/* Left: symbol + series + indicators — may shrink; never shove right corner */}
+      <span className="v8b-sep" aria-hidden />
+
       <div className="flex items-center min-w-0 shrink">
         <SymbolPicker
           symbol={symbol}
@@ -110,14 +109,14 @@ export function TopBar({
           onSymbolChange={onSymbolChange}
         />
 
-        <span className="tv-divider-y mx-0.5 hidden sm:block h-4 self-center" aria-hidden />
+        <span className="v8b-sep hidden sm:block" aria-hidden />
 
-        <label className="hidden sm:flex items-center gap-1 h-7 px-1.5 rounded text-xs text-foreground hover:bg-background/70 cursor-pointer">
-          <IconCandles className="w-3.5 h-3.5 text-foreground" />
+        <label className="v8b-chrome-btn hidden sm:inline-flex cursor-pointer">
+          <IconCandles className="w-[15px] h-[15px]" />
           <select
             value={seriesType}
             onChange={(e) => onSeriesTypeChange(e.target.value as SeriesType)}
-            className="bg-transparent text-foreground text-xs outline-none cursor-pointer appearance-none pr-2"
+            className="bg-transparent text-inherit text-[13px] font-semibold outline-none cursor-pointer appearance-none pr-1 max-w-[7.5rem]"
             aria-label="Series type"
           >
             {SERIES.map((s) => (
@@ -128,7 +127,7 @@ export function TopBar({
           </select>
         </label>
 
-        <span className="tv-divider-y mx-0.5 hidden sm:block h-4 self-center" aria-hidden />
+        <span className="v8b-sep hidden sm:block" aria-hidden />
 
         <IndicatorsMenu
           showVolume={showVolume}
@@ -163,8 +162,9 @@ export function TopBar({
         />
       </div>
 
-      {/* Center TFs — scroll horizontally on narrow phones */}
-      <div className="flex items-center min-w-0 flex-1 basis-0 px-0.5 sm:px-1.5 overflow-hidden">
+      <span className="v8b-sep mx-1" aria-hidden />
+
+      <div className="flex items-center min-w-0 flex-1 basis-0 px-0.5 overflow-hidden">
         <TimeframePicker
           timeframe={timeframe}
           onTimeframeChange={onTimeframeChange}
@@ -172,8 +172,27 @@ export function TopBar({
         />
       </div>
 
-      {/* Right corner — always visible, 44px hits on touch */}
-      <div className="flex items-center gap-0.5 shrink-0 ml-auto pl-0.5">
+      <div className="flex items-center gap-0.5 shrink-0 ml-auto pl-1">
+        <button
+          type="button"
+          className="v8b-place-order rounded-sm shrink-0"
+          disabled={!onPlaceOrder}
+          onClick={onPlaceOrder}
+        >
+          <svg width={12} height={12} viewBox="0 0 12 12" fill="none" aria-hidden>
+            <path
+              d="M6,1 L6,11 M1,6 L11,6"
+              stroke="#fff"
+              strokeWidth={2.4}
+              strokeLinecap="round"
+            />
+          </svg>
+          <span className="sm:hidden">Order</span>
+          <span className="hidden sm:inline">Place Order</span>
+        </button>
+
+        <span className="v8b-sep" aria-hidden />
+
         <ChartTemplatesMenu />
         <LayoutPicker
           layout={chartLayout}
@@ -225,16 +244,6 @@ export function TopBar({
             <span className="hidden sm:inline">Backtest</span>
           </Button>
         )}
-        <Button
-          variant="primary"
-          size="sm"
-          className="h-7 min-h-7 [@media(hover:none)]:min-h-11 px-2 sm:px-2.5 text-xs font-medium shrink-0"
-          isDisabled={!onPlaceOrder}
-          onPress={onPlaceOrder}
-        >
-          <span className="sm:hidden">+ Order</span>
-          <span className="hidden sm:inline">+ Place Order</span>
-        </Button>
       </div>
     </header>
   );

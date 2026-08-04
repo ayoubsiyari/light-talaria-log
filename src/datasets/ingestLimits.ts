@@ -27,14 +27,7 @@ export const MAX_CSV_UPLOAD_BYTES = 80 * 1024 * 1024; // 80 MB
 export const CSV_BYTES_PER_ROW_ESTIMATE = 50;
 export const HARD_MAX_CSV_ROWS_ESTIMATE = 1_000_000;
 
-/** Downloadable / calendar-estimate TFs only (seconds are client-synthesized). */
-const TF_MINUTES: Partial<Record<Timeframe, number>> = {
-  '1s': 1 / 60,
-  '5s': 5 / 60,
-  '10s': 10 / 60,
-  '15s': 15 / 60,
-  '30s': 30 / 60,
-  '45s': 45 / 60,
+const TF_MINUTES: Record<Timeframe, number> = {
   '1m': 1,
   '5m': 5,
   '15m': 15,
@@ -44,7 +37,7 @@ const TF_MINUTES: Partial<Record<Timeframe, number>> = {
 };
 
 export function timeframeMinutes(tf: Timeframe): number {
-  return TF_MINUTES[tf] ?? 1;
+  return TF_MINUTES[tf];
 }
 
 /** Inclusive calendar span in days (UTC date strings YYYY-MM-DD). */

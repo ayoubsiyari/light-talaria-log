@@ -153,28 +153,6 @@ export function createSessionController() {
       notify();
     },
 
-    /**
-     * Move the replay clock grid (e.g. 1m → 1s when a second-TF pane opens).
-     * Does not notify React — caller syncs engines after TF switch.
-     */
-    setClockTf(tf: Timeframe): void {
-      if (!state || state.baseTf === tf) return;
-      const period = timeframeSeconds(tf);
-      const snapped = bucketStart(state.cursorTime, period);
-      const clamped = Math.min(
-        state.bounds.end,
-        Math.max(state.bounds.start, snapped),
-      );
-      state = { ...state, baseTf: tf, cursorTime: clamped };
-      if (state.playing || state.revealMode === 'replay') {
-        state = {
-          ...state,
-          anchorTime: Math.min(state.anchorTime, state.cursorTime),
-        };
-      }
-      void this.topUpCaches();
-    },
-
     setRevealMode(mode: RevealMode): void {
       if (!state) return;
       state = { ...state, revealMode: mode };
@@ -184,7 +162,7 @@ export function createSessionController() {
     },
 
     /**
-     * Replay tick — cursor on clock TF grid only.
+     * Replay tick — cursor on base TF grid only.
      * `react: false` (playback): mutate forming tip in place, no listener notify
      * (addendum §6 — must not drive React at frame rate).
      */

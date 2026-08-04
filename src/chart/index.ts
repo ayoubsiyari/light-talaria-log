@@ -20,10 +20,15 @@ export { getChartColors } from './chartTheme';
 export type { ChartColors } from './chartTheme';
 export {
   CHART_STYLE_TEMPLATES,
+  CHART_TEMPLATE_CATEGORIES,
   getChartStyleTemplate,
+  applyChartStyleTemplate,
+  resetChartStyleTemplate,
+  getActiveTemplateId,
+  matchTemplateId,
   withOpacity,
 } from './chartStyleTemplates';
-export type { ChartStyleTemplate } from './chartStyleTemplates';
+export type { ChartStyleTemplate, ChartTemplateCategory } from './chartStyleTemplates';
 export {
   getAppearance,
   setAppearance,

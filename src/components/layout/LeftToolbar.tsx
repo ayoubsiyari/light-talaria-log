@@ -180,7 +180,7 @@ export function LeftToolbar({
       ref={rootRef}
       className="chrome-toolbar tv-panel-r relative w-[52px] [@media(hover:none)]:w-[56px] shrink-0 z-40 overflow-visible"
     >
-      <div className="h-full w-full flex flex-col items-center py-1 gap-0.5 overflow-y-auto overscroll-contain">
+      <div className="h-full w-full flex flex-col items-center px-0.5 py-1 gap-0.5 overflow-y-auto overscroll-contain">
         <button
           type="button"
           title="Cursor"
@@ -199,59 +199,63 @@ export function LeftToolbar({
             !!activeDrawing &&
             g.categories.some((c) => TOOLS[activeDrawing].category === c);
           const open = openGroup === g.id;
+          const lit = active || open;
           return (
             <div
               key={g.id}
               ref={(node) => {
                 groupRefs.current[g.id] = node;
               }}
-              className="group/tool relative shrink-0"
+              className="group/tool relative shrink-0 w-full flex justify-center"
               data-open={open ? 'true' : undefined}
             >
-              <button
-                type="button"
-                title={g.label}
-                aria-pressed={active}
-                onClick={() => activateGroup(g.categories)}
-                className={toolBtn(active || open)}
-              >
-                <g.Icon />
-              </button>
-
               {/*
-                TV-style arrow: hidden until hover (desktop), always on touch,
-                stays visible while menu open. Anchored on the button’s right edge
-                (inside the hit box) so the scroll container never clips it.
+                TV: one hover chip; chevron is a right-hand extension of that chip
+                (same fill), never a second tab painted over the icon.
               */}
-              <button
-                type="button"
-                title={`${g.label} menu`}
-                aria-label={`${g.label} menu`}
-                aria-expanded={open}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleGroupMenu(g.id);
-                }}
+              <div
                 className={[
-                  'absolute top-1 bottom-1 right-0 z-10 w-3.5',
-                  'rounded-r-[3px] border-l border-[color:var(--tv-panel-line)]/70',
-                  'bg-surface/95 text-muted',
-                  'flex items-center justify-center',
-                  'transition-opacity duration-100',
-                  open
-                    ? 'opacity-100 text-foreground bg-background'
-                    : [
-                        'opacity-0 pointer-events-none',
-                        'group-hover/tool:opacity-100 group-hover/tool:pointer-events-auto',
-                        // Touch: always show a tappable arrow strip
-                        '[@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto',
-                        '[@media(hover:none)]:w-4',
-                        'hover:text-foreground hover:bg-background',
-                      ].join(' '),
+                  'flex items-stretch rounded-[4px] transition-colors max-w-full',
+                  lit
+                    ? 'bg-accent/15 text-accent'
+                    : 'text-muted group-hover/tool:bg-background/70 group-hover/tool:text-foreground',
                 ].join(' ')}
               >
-                <IconChevron className="w-2.5 h-2.5 rotate-180" />
-              </button>
+                <button
+                  type="button"
+                  title={g.label}
+                  aria-pressed={active}
+                  onClick={() => activateGroup(g.categories)}
+                  className="w-9 h-10 [@media(hover:none)]:w-10 [@media(hover:none)]:h-11 flex items-center justify-center shrink-0 [&_svg]:w-5 [&_svg]:h-5"
+                >
+                  <g.Icon />
+                </button>
+                <button
+                  type="button"
+                  title={`${g.label} menu`}
+                  aria-label={`${g.label} menu`}
+                  aria-expanded={open}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleGroupMenu(g.id);
+                  }}
+                  className={[
+                    'flex items-center justify-center shrink-0',
+                    'border-0 bg-transparent p-0 shadow-none',
+                    'text-current',
+                    'transition-[width,opacity,margin] duration-100 ease-out',
+                    open
+                      ? 'w-3 opacity-100'
+                      : [
+                          'w-0 opacity-0 m-0 pointer-events-none overflow-hidden',
+                          'group-hover/tool:w-3 group-hover/tool:opacity-80 group-hover/tool:pointer-events-auto',
+                          '[@media(hover:none)]:w-3.5 [@media(hover:none)]:opacity-80 [@media(hover:none)]:pointer-events-auto',
+                        ].join(' '),
+                  ].join(' ')}
+                >
+                  <IconChevron className="w-2.5 h-2.5 shrink-0 opacity-80" />
+                </button>
+              </div>
             </div>
           );
         })}

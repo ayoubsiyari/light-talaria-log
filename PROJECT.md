@@ -693,6 +693,8 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-03 | Indicator replay: no flicker (length-tolerant paint + buffer align); tip sync via trailing 320-bar Worker window | Verify SMA/RSI during play |
 | 2026-08-04 | Left tools: TV hover arrow on groups; arrow opens categorized flyout; icon click uses last tool | Hard-refresh → hover tool groups |
 | 2026-08-04 | Tool icons restyled: thin 1.5 stroke, 28×28, TV-like brush/T/ruler/smiley pictograms | Hard-refresh → compare left rail |
+| 2026-08-04 | Tool-group arrow: shared hover chip + side chevron (no overlay tab on icon) | Hard-refresh → hover groups |
+| 2026-08-04 | Chart templates menu (TopBar): Color Mix + full looks (candles/grid/volume/chrome); settings link | Try Color Mix / Classic / Aurora |
 
 ---
 

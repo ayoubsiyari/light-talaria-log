@@ -5,7 +5,11 @@ import {
   resetAppearance,
   setAppearance,
 } from '@/chart/appearanceStore';
-import { CHART_STYLE_TEMPLATES } from '@/chart/chartStyleTemplates';
+import {
+  CHART_STYLE_TEMPLATES,
+  applyChartStyleTemplate,
+  matchTemplateId,
+} from '@/chart/chartStyleTemplates';
 import { getTheme, setTheme, type ThemeMode } from '@/theme/theme';
 import {
   ColorSwatches,
@@ -214,25 +218,23 @@ function SymbolTab({
 }) {
   return (
     <>
-      <SectionTitle>Style templates</SectionTitle>
+      <SectionTitle>Chart templates</SectionTitle>
       <p className="text-[11px] text-muted -mt-1 mb-1">
-        Apply a candle + background look. You can still tweak colors below.
+        Full look: candles, grid, volume, scales & chrome. Tweak any color below after applying.
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {CHART_STYLE_TEMPLATES.map((t) => {
-          const [bg, bull, bear] = t.preview;
-          const active =
-            draft.background?.toLowerCase() === bg.toLowerCase() &&
-            draft.upBody.toLowerCase().startsWith(bull.toLowerCase()) &&
-            draft.downBody.toLowerCase().startsWith(bear.toLowerCase());
+          const active = matchTemplateId(draft) === t.id;
           return (
             <button
               key={t.id}
               type="button"
-              title={`Apply ${t.name}`}
+              title={t.description}
               onClick={() => {
-                applyLive(t.patch);
+                applyChartStyleTemplate(t.id);
                 onThemeChange(t.theme);
+                // Keep modal draft in sync with store after full apply
+                applyLive({ ...getAppearance() });
               }}
               className={[
                 'rounded-lg border px-2 py-2 text-left transition-colors min-h-11',
@@ -242,13 +244,14 @@ function SymbolTab({
               ].join(' ')}
             >
               <div className="flex h-5 overflow-hidden rounded-sm mb-1.5">
-                <span className="flex-1" style={{ background: bg }} />
-                <span className="w-1/3" style={{ background: bull }} />
-                <span className="w-1/3" style={{ background: bear }} />
+                {t.preview.map((c, i) => (
+                  <span key={i} className="flex-1" style={{ background: c }} />
+                ))}
               </div>
-              <span className="text-[11px] font-medium text-foreground">
+              <span className="text-[11px] font-medium text-foreground block truncate">
                 {t.name}
               </span>
+              <span className="text-[10px] text-muted block truncate">{t.description}</span>
             </button>
           );
         })}

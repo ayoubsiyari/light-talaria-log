@@ -2,6 +2,7 @@ import { Button } from '@heroui/react';
 import type { SeriesType } from '@/chart';
 import { IndicatorsMenu } from '@/components/indicators/IndicatorsMenu';
 import { BrandLogo } from '@/components/landing/BrandLogo';
+import { ChartTemplatesMenu } from '@/components/chart/ChartTemplatesMenu';
 import { LayoutPicker } from '@/components/layout/LayoutPicker';
 import { SymbolPicker } from '@/components/layout/SymbolPicker';
 import { TimeframePicker } from '@/components/layout/TimeframePicker';
@@ -153,6 +154,7 @@ export function TopBar({
 
       {/* Right corner — always visible, 44px hits on touch */}
       <div className="flex items-center gap-0.5 shrink-0 ml-auto pl-0.5">
+        <ChartTemplatesMenu />
         <LayoutPicker
           layout={chartLayout}
           onLayoutChange={onChartLayoutChange}

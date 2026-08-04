@@ -106,7 +106,7 @@ export function ChartTemplatesMenu() {
               </button>
             </div>
             <p className="text-[11px] text-muted mt-0.5">
-              Full look: candles, grid, volume, scales & chrome colors.
+              Full look: candles, grid, volume, chrome, buttons & selection.
             </p>
             <div className="flex flex-wrap gap-1 mt-2">
               <FilterChip

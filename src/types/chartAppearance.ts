@@ -69,6 +69,13 @@ export interface ChartAppearance {
   toolbarBg: string | null;
   chromeText: string | null;
   chromeBorder: string | null;
+  /**
+   * UI accent — buttons, TF selection, active tools, focus rings.
+   * null = Hero theme `--accent`.
+   */
+  accent: string | null;
+  /** Text/icon on solid accent surfaces; null = auto from luminance. */
+  accentForeground: string | null;
 }
 
 export const DEFAULT_CHART_APPEARANCE: ChartAppearance = {
@@ -126,4 +133,6 @@ export const DEFAULT_CHART_APPEARANCE: ChartAppearance = {
   toolbarBg: null,
   chromeText: null,
   chromeBorder: null,
+  accent: null,
+  accentForeground: null,
 };

@@ -33,6 +33,18 @@ function setCssVar(name: string, value: string | null | undefined): void {
   }
 }
 
+/** Readable text color on a solid accent fill. */
+function contrastOn(hex: string): string {
+  const h = hex.replace('#', '').slice(0, 6);
+  if (h.length < 6) return '#ffffff';
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  if ([r, g, b].some((n) => Number.isNaN(n))) return '#ffffff';
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.62 ? '#0a0a0a' : '#ffffff';
+}
+
 function setFlag(name: string, on: boolean): void {
   setCssVar(name, on ? '1' : '0');
 }
@@ -68,6 +80,15 @@ export function applyAppearanceToDom(a: ChartAppearance): void {
   setCssVar('--chrome-toolbar', a.toolbarBg);
   setCssVar('--chrome-foreground', a.chromeText);
   setCssVar('--chrome-border', a.chromeBorder);
+
+  // Buttons / selection / focus — Hero tokens; soft/hover derive from --accent
+  setCssVar('--accent', a.accent);
+  setCssVar(
+    '--accent-foreground',
+    a.accent
+      ? (a.accentForeground ?? contrastOn(a.accent))
+      : a.accentForeground,
+  );
 
   setFlag('--chart-show-body', a.showBody);
   setFlag('--chart-show-border', a.showBorder);

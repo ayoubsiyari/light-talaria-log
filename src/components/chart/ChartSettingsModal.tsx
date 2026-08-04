@@ -220,7 +220,7 @@ function SymbolTab({
     <>
       <SectionTitle>Chart templates</SectionTitle>
       <p className="text-[11px] text-muted -mt-1 mb-1">
-        Full look: candles, grid, volume, scales & chrome. Tweak any color below after applying.
+        Full look: candles, grid, volume, chrome, buttons & selection. Tweak below after applying.
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {CHART_STYLE_TEMPLATES.map((t) => {
@@ -687,6 +687,23 @@ function LayoutTab({
         checked={draft.showToolbar}
         onChange={(v) => applyLive({ showToolbar: v })}
       />
+
+      <SectionTitle>Accent / selection</SectionTitle>
+      <ColorField
+        label="Accent"
+        value={draft.accent}
+        onChange={(c) => applyLive({ accent: c, accentForeground: null })}
+        onClear={() => applyLive({ accent: null, accentForeground: null })}
+      />
+      <ColorField
+        label="On accent"
+        value={draft.accentForeground}
+        onChange={(c) => applyLive({ accentForeground: c })}
+        onClear={() => applyLive({ accentForeground: null })}
+      />
+      <p className="text-[11px] text-muted -mt-1 mb-1">
+        Buttons, timeframe chip, tool selection, focus rings. Clear to use theme default.
+      </p>
 
       <SectionTitle>Chrome colors</SectionTitle>
       <ColorField

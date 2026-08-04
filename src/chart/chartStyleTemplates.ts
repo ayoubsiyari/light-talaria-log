@@ -49,6 +49,9 @@ interface PaletteOpts {
   gridStyle?: ChartAppearance['gridHStyle'];
   lineColor?: string;
   chromeBg?: string;
+  /** UI accent — Place Order, TF chip, tool selection, focus. */
+  accent?: string;
+  accentForeground?: string;
   watermark?: boolean;
   watermarkText?: string;
 }
@@ -67,6 +70,7 @@ function fullDark(p: PaletteOpts): Partial<ChartAppearance> {
   const axisPct = p.axisPct ?? 48;
   const xPct = p.crosshairPct ?? 40;
   const chrome = p.chromeBg ?? p.bg;
+  const accent = p.accent ?? '#6366f1';
 
   return {
     seriesType: p.seriesType ?? 'candle',
@@ -123,6 +127,8 @@ function fullDark(p: PaletteOpts): Partial<ChartAppearance> {
     toolbarBg: chrome,
     chromeText: withOpacity('#ffffff', 78),
     chromeBorder: withOpacity('#ffffff', 10),
+    accent,
+    accentForeground: p.accentForeground ?? null,
   };
 }
 
@@ -141,6 +147,7 @@ function fullLight(p: PaletteOpts): Partial<ChartAppearance> {
   const axisPct = p.axisPct ?? 55;
   const xPct = p.crosshairPct ?? 42;
   const chrome = p.chromeBg ?? p.bg;
+  const accent = p.accent ?? '#2563eb';
 
   return {
     seriesType: p.seriesType ?? 'candle',
@@ -197,11 +204,13 @@ function fullLight(p: PaletteOpts): Partial<ChartAppearance> {
     toolbarBg: chrome,
     chromeText: withOpacity('#0a0a0a', 80),
     chromeBorder: withOpacity('#000000', 12),
+    accent,
+    accentForeground: p.accentForeground ?? null,
   };
 }
 
 /**
- * Full chart style templates — colors, series, grid, volume, scales, chrome.
+ * Full chart style templates — candles, grid, volume, chrome, button/selection accent.
  * Apply via {@link applyChartStyleTemplate}.
  */
 export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
@@ -209,7 +218,7 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
   {
     id: 'color-mix',
     name: 'Color Mix',
-    description: 'Teal × coral on deep navy — balanced, high-contrast mix',
+    description: 'Teal × coral — indigo buttons & selection',
     category: 'mix',
     theme: 'dark',
     preview: ['#0b1220', '#2dd4bf', '#fb7185', '#6366f1'],
@@ -218,6 +227,7 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
       bull: '#2dd4bf',
       bear: '#fb7185',
       chromeBg: '#0a101c',
+      accent: '#6366f1',
       gridPct: 8,
       showVolume: true,
       volumeOpacity: 0.4,
@@ -228,7 +238,7 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
   {
     id: 'aurora',
     name: 'Aurora',
-    description: 'Violet × cyan glow on near-black',
+    description: 'Violet × cyan — pink accent UI',
     category: 'mix',
     theme: 'dark',
     preview: ['#0a0a12', '#a78bfa', '#22d3ee', '#f472b6'],
@@ -239,6 +249,7 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
       wickUp: '#67e8f9',
       wickDown: '#c4b5fd',
       chromeBg: '#08080f',
+      accent: '#f472b6',
       gridPct: 6,
       showVolume: true,
       volumeOpacity: 0.38,
@@ -249,10 +260,10 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
   {
     id: 'ember',
     name: 'Ember',
-    description: 'Amber × slate fire on charcoal',
+    description: 'Amber × slate — warm orange accent',
     category: 'mix',
     theme: 'dark',
-    preview: ['#12100e', '#f59e0b', '#78716c', '#ef4444'],
+    preview: ['#12100e', '#f59e0b', '#78716c', '#ea580c'],
     patch: fullDark({
       bg: '#12100e',
       bull: '#f59e0b',
@@ -260,6 +271,7 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
       wickUp: '#fbbf24',
       wickDown: '#a8a29e',
       chromeBg: '#0f0d0b',
+      accent: '#ea580c',
       showVolume: true,
       volumeOpacity: 0.42,
       watermark: true,
@@ -268,15 +280,16 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
   {
     id: 'mint-rose',
     name: 'Mint Rose',
-    description: 'Soft mint ups, rose downs — clean mix',
+    description: 'Mint × rose — emerald accent UI',
     category: 'mix',
     theme: 'dark',
-    preview: ['#0c1412', '#6ee7b7', '#fb7185', '#94a3b8'],
+    preview: ['#0c1412', '#6ee7b7', '#fb7185', '#10b981'],
     patch: fullDark({
       bg: '#0c1412',
       bull: '#6ee7b7',
       bear: '#fb7185',
       chromeBg: '#0a1210',
+      accent: '#10b981',
       showVolume: true,
       volumeOpacity: 0.36,
       gridStyle: 'dotted',
@@ -287,16 +300,17 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
   {
     id: 'classic',
     name: 'Classic',
-    description: 'TradingView-style green / red on dark',
+    description: 'TV green / red — classic blue accent',
     category: 'classic',
     theme: 'dark',
-    preview: ['#131722', '#089981', '#F23645'],
+    preview: ['#131722', '#089981', '#F23645', '#2962FF'],
     patch: fullDark({
       bg: '#131722',
       bull: '#089981',
       bear: '#F23645',
       showBorder: true,
       chromeBg: '#131722',
+      accent: '#2962FF',
       showVolume: true,
       volumeOpacity: 0.4,
       gridPct: 6,
@@ -305,15 +319,16 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
   {
     id: 'classic-light',
     name: 'Classic Light',
-    description: 'Green / red on paper white',
+    description: 'Paper white — TV blue buttons',
     category: 'classic',
     theme: 'light',
-    preview: ['#ffffff', '#089981', '#F23645'],
+    preview: ['#ffffff', '#089981', '#F23645', '#2962FF'],
     patch: fullLight({
       bg: '#ffffff',
       bull: '#089981',
       bear: '#F23645',
       chromeBg: '#f8f9fb',
+      accent: '#2962FF',
       showVolume: true,
       volumeOpacity: 0.28,
       gridPct: 7,
@@ -324,10 +339,10 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
   {
     id: 'sapphire',
     name: 'Sapphire',
-    description: 'Ice blue vs ash on pure black',
+    description: 'Ice blue candles — steel accent',
     category: 'dark',
     theme: 'dark',
-    preview: ['#080808', '#d3ddf4', '#787b86'],
+    preview: ['#080808', '#d3ddf4', '#787b86', '#94a3b8'],
     patch: fullDark({
       bg: '#080808',
       bull: '#d3ddf4',
@@ -335,16 +350,18 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
       bear: '#787b86',
       bearPct: 71,
       chromeBg: '#080808',
+      accent: '#94a3b8',
+      accentForeground: '#0a0a0a',
       showVolume: true,
     }),
   },
   {
     id: 'obsidian',
     name: 'Obsidian',
-    description: 'Blood red vs charcoal',
+    description: 'Blood red candles — crimson accent',
     category: 'dark',
     theme: 'dark',
-    preview: ['#080808', '#c90111', '#474747'],
+    preview: ['#080808', '#c90111', '#474747', '#dc2626'],
     patch: fullDark({
       bg: '#080808',
       bull: '#c90111',
@@ -352,16 +369,17 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
       bear: '#474747',
       bearPct: 53,
       chromeBg: '#080808',
+      accent: '#dc2626',
       showVolume: true,
     }),
   },
   {
     id: 'zenith',
     name: 'Zenith',
-    description: 'Royal blue vs lavender haze',
+    description: 'Royal blue candles — matching accent',
     category: 'dark',
     theme: 'dark',
-    preview: ['#080808', '#5778d3', '#bcc7ed'],
+    preview: ['#080808', '#5778d3', '#bcc7ed', '#5778d3'],
     patch: fullDark({
       bg: '#080808',
       bull: '#5778d3',
@@ -369,6 +387,7 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
       bear: '#bcc7ed',
       bearPct: 71,
       chromeBg: '#080808',
+      accent: '#5778d3',
       showVolume: true,
     }),
   },
@@ -377,10 +396,10 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
   {
     id: 'pearl',
     name: 'Pearl',
-    description: 'Cool aqua on soft steel',
+    description: 'Cool aqua — cyan accent UI',
     category: 'light',
     theme: 'light',
-    preview: ['#b7bbc3', '#aaced4', '#5b6372'],
+    preview: ['#b7bbc3', '#aaced4', '#5b6372', '#0e7490'],
     patch: fullLight({
       bg: '#b7bbc3',
       bull: '#aaced4',
@@ -388,16 +407,17 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
       bear: '#5b6372',
       bearPct: 83,
       chromeBg: '#c4c7ce',
+      accent: '#0e7490',
       showVolume: true,
     }),
   },
   {
     id: 'olive',
     name: 'Olive',
-    description: 'Muted teal vs slate',
+    description: 'Muted teal — forest accent',
     category: 'light',
     theme: 'light',
-    preview: ['#b7bbc3', '#6c898d', '#5b6372'],
+    preview: ['#b7bbc3', '#6c898d', '#5b6372', '#3f6212'],
     patch: fullLight({
       bg: '#b7bbc3',
       bull: '#6c898d',
@@ -405,16 +425,17 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
       bear: '#5b6372',
       bearPct: 83,
       chromeBg: '#c4c7ce',
+      accent: '#3f6212',
       showVolume: true,
     }),
   },
   {
     id: 'willow',
     name: 'Willow',
-    description: 'Silver ups, deep teal downs',
+    description: 'Deep teal downs — teal accent',
     category: 'light',
     theme: 'light',
-    preview: ['#b7bac1', '#8b8f93', '#054244'],
+    preview: ['#b7bac1', '#8b8f93', '#054244', '#0f766e'],
     patch: fullLight({
       bg: '#b7bac1',
       bull: '#8b8f93',
@@ -422,16 +443,17 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
       bear: '#054244',
       bearPct: 83,
       chromeBg: '#c3c5cb',
+      accent: '#0f766e',
       showVolume: true,
     }),
   },
   {
     id: 'marine',
     name: 'Marine',
-    description: 'Mist blue vs navy',
+    description: 'Navy downs — deep blue accent',
     category: 'light',
     theme: 'light',
-    preview: ['#b7bbc3', '#aeb4c9', '#0e347d'],
+    preview: ['#b7bbc3', '#aeb4c9', '#0e347d', '#1d4ed8'],
     patch: fullLight({
       bg: '#b7bbc3',
       bull: '#aeb4c9',
@@ -439,16 +461,17 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
       bear: '#0e347d',
       bearPct: 83,
       chromeBg: '#c4c7ce',
+      accent: '#1d4ed8',
       showVolume: true,
     }),
   },
   {
     id: 'blue-ash',
     name: 'Blue Ash',
-    description: 'Steel blue vs ash gray',
+    description: 'Steel blue — slate accent',
     category: 'light',
     theme: 'light',
-    preview: ['#b7bbc3', '#7889a1', '#5b6372'],
+    preview: ['#b7bbc3', '#7889a1', '#5b6372', '#475569'],
     patch: fullLight({
       bg: '#b7bbc3',
       bull: '#7889a1',
@@ -456,6 +479,7 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
       bear: '#5b6372',
       bearPct: 83,
       chromeBg: '#c4c7ce',
+      accent: '#475569',
       showVolume: true,
     }),
   },
@@ -464,10 +488,10 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
   {
     id: 'hollow-night',
     name: 'Hollow Night',
-    description: 'Hollow candles, dotted grid, volume on',
+    description: 'Hollow candles — teal accent UI',
     category: 'dark',
     theme: 'dark',
-    preview: ['#0e1116', '#26a69a', '#ef5350'],
+    preview: ['#0e1116', '#26a69a', '#ef5350', '#26a69a'],
     patch: fullDark({
       bg: '#0e1116',
       bull: '#26a69a',
@@ -475,6 +499,7 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
       hollow: true,
       showBorder: true,
       chromeBg: '#0e1116',
+      accent: '#26a69a',
       gridStyle: 'dotted',
       showVolume: true,
       volumeOpacity: 0.45,
@@ -483,10 +508,10 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
   {
     id: 'line-pulse',
     name: 'Line Pulse',
-    description: 'Line series with Color Mix palette',
+    description: 'Line series — indigo accent UI',
     category: 'mix',
     theme: 'dark',
-    preview: ['#0b1220', '#2dd4bf', '#6366f1'],
+    preview: ['#0b1220', '#2dd4bf', '#fb7185', '#6366f1'],
     patch: fullDark({
       bg: '#0b1220',
       bull: '#2dd4bf',
@@ -494,6 +519,7 @@ export const CHART_STYLE_TEMPLATES: readonly ChartStyleTemplate[] = [
       seriesType: 'line',
       lineColor: '#2dd4bf',
       chromeBg: '#0a101c',
+      accent: '#6366f1',
       showVolume: true,
       gridStyle: 'dotted',
     }),

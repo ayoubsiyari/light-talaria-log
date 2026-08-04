@@ -79,6 +79,8 @@ export interface UseChartOptions {
   drawingToolActive?: boolean;
   /** Brush / highlighter — press-drag stroke instead of pan. */
   freehandStrokeEnabled?: boolean;
+  /** Zoom tool — press-drag marquee region zoom. */
+  marqueeZoomEnabled?: boolean;
   /** Global drawings lock — disables move/resize interact. */
   drawingsLocked?: boolean;
   onChartPoint?: (point: CrosshairPoint, hit: HitResult | null) => void;
@@ -185,6 +187,7 @@ export function useChart(
       !optionsRef.current.drawingToolActive && !optionsRef.current.drawingsLocked;
     instance.setDrawingInteractEnabled(interactEnabled);
     instance.setFreehandStrokeEnabled(optionsRef.current.freehandStrokeEnabled === true);
+    instance.setMarqueeZoomEnabled(optionsRef.current.marqueeZoomEnabled === true);
 
     const unsubMove = instance.onCrosshairMove((point) => {
       optionsRef.current.onCrosshairMove?.(point);
@@ -530,6 +533,12 @@ export function useChart(
     if (!instance) return;
     instance.setFreehandStrokeEnabled(options.freehandStrokeEnabled === true);
   }, [options.freehandStrokeEnabled]);
+
+  useEffect(() => {
+    const instance = instanceRef.current;
+    if (!instance) return;
+    instance.setMarqueeZoomEnabled(options.marqueeZoomEnabled === true);
+  }, [options.marqueeZoomEnabled]);
 
   const rangeFrom = options.initialRange?.fromIndex;
   const rangeTo = options.initialRange?.toIndex;

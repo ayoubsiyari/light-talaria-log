@@ -56,6 +56,7 @@ export interface ChartPaneProps {
   onReattachFollow?: () => void;
   drawingToolActive: boolean;
   freehandStrokeEnabled?: boolean;
+  marqueeZoomEnabled?: boolean;
   drawingsLocked?: boolean;
   onChartPoint: (point: CrosshairPoint, hit: HitResult | null) => void;
   onCrosshairSample?: (point: CrosshairPoint | null) => void;
@@ -115,6 +116,7 @@ export function ChartPane({
   onReattachFollow,
   drawingToolActive,
   freehandStrokeEnabled = false,
+  marqueeZoomEnabled = false,
   drawingsLocked = false,
   onChartPoint,
   onCrosshairSample,
@@ -247,6 +249,7 @@ export function ChartPane({
         replayCursorTime={replayCursorTime}
         drawingToolActive={drawingToolActive}
         freehandStrokeEnabled={freehandStrokeEnabled}
+        marqueeZoomEnabled={marqueeZoomEnabled}
         drawingsLocked={drawingsLocked}
         onChartPoint={onChartPoint}
         onUserGesture={onUserGesture}

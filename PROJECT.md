@@ -771,6 +771,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | **D1 done:** magnet off/weak/strong, Shift H/V/45°, per-TF Visibility tab + paint/hit filter | **go D2** (specialty hit-test) |
 | 2026-08-04 | **D2 done:** specialty hit-test (rays/fib/channel/rect/position); cursor by grab; brush press-drag | **go D3** (Tier 1 full function) |
 | 2026-08-04 | **D3 done:** Tier 1 full function — measure stats, position RR/P&L/sizing, rect edges, text tab+bbox, brush handles | **go D4** (object tree + chrome) |
+| 2026-08-04 | **D4 done:** object tree, remove-all menu, zoom marquee, Alt-drag clone | **go D5** (Tier 2 polish) |
 | 2026-08-04 | Fix multi-chart replay stall: non-blocking server top-up + ≤1 chunk per fetch (was awaiting hours of 1m mid-play) | Multi layout → Play through cache edge |
 | 2026-08-04 | IDB sliding-window GC for remote chunks (max 8/series) + Datasets “Clear chart cache”; local CSV untouched | Long Play → IDB stays small; Clear cache frees disk |
 | 2026-08-04 | Power Jump plan P1–P3 in PROJECT.md; **P1 Done:** journal View on chart → `#/chart/:id?t=&trade=` seek + highlight | Verify trade → chart; then **go Step P2** |
@@ -944,12 +945,12 @@ Fib extension, path, note, flag, anchored VWAP.
 
 #### D4 — Object tree + chrome
 **Goal:** Manage drawings without hunting on chart.  
-**Status:** Pending.  
+**Status:** Done (2026-08-04).  
 **Deliverables:**
-- [ ] Object tree panel (Hero UI): list, visibility toggle, lock, delete, select → focus drawing
-- [ ] Bulk delete drawings (toolbar remove menu — drawings only first)
-- [ ] Zoom marquee tool (real region zoom) or hide the dead button until ready
-- [ ] Alt/Option+drag clone
+- [x] Object tree panel (Hero UI): list, visibility toggle, lock, delete, select → focus drawing
+- [x] Bulk delete drawings (toolbar remove menu — drawings only first)
+- [x] Zoom marquee tool (real region zoom) — drag region to set time + price window
+- [x] Alt/Option+drag clone (body drag; desktop)
 **Done when:** Hidden drawing can be unhidden only via tree; marquee zoom works or is removed from UI.
 
 #### D5 — Tier 2 polish

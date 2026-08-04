@@ -2,6 +2,7 @@ import { indexAtOrBeforeBars } from '@/data/timeframeAgg';
 import { applyShiftConstrainIfNeeded } from '@/drawings/constrain';
 import {
   createDraftDrawing,
+  createDrawing,
   type Drawing,
   type DrawingPoint,
 } from '@/drawings/drawingStore';
@@ -60,7 +61,12 @@ import {
   type RenderLayout,
 } from './renderer';
 import { yToPaneValue } from './series/drawIndicatorPane';
-import { computePriceScale, yToPrice, type PriceScale } from './scales';
+import {
+  computePriceScale,
+  xToIndex,
+  yToPrice,
+  type PriceScale,
+} from './scales';
 import type { SyncCrosshair } from './sync/chartSyncStore';
 import type {
   ChartViewOptions,
@@ -233,6 +239,8 @@ export interface ChartInstance {
    * instead of panning — if no drawing was hit.
    */
   setFreehandStrokeEnabled: (enabled: boolean) => void;
+  /** When true, plot press-drag draws a zoom marquee (after freehand miss). */
+  setMarqueeZoomEnabled: (enabled: boolean) => void;
   onDrawingsChange: (cb: DrawingsChangeListener) => () => void;
   onDrawingSelect: (cb: DrawingSelectListener) => () => void;
   onFreehandStroke: (cb: FreehandStrokeListener) => () => void;
@@ -316,6 +324,9 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   let drawingInteractEnabled = true;
   /** Brush / highlighter press-drag (on while freehand tool is active). */
   let freehandStrokeEnabled = false;
+  /** Zoom tool marquee press-drag. */
+  let marqueeZoomEnabled = false;
+  let marquee: { x0: number; y0: number; x1: number; y1: number } | null = null;
   let drawingDrag: DrawingDragState | null = null;
   let chartOrders: readonly ChartOrder[] = [];
   let selectedOrderId: string | null = null;
@@ -614,6 +625,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     orders: chartOrders,
     selectedOrderId,
     backtestResult,
+    marquee,
   });
 
   const schedulePaint = () => {
@@ -867,8 +879,9 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       if (orderHit) return 'ns-resize';
       const hit = hitDrawingAt(x, y);
       if (!hit) {
-        // Brush tool: show system crosshair so press-drag feels intentional
-        return freehandStrokeEnabled ? 'crosshair' : null;
+        // Brush / zoom marquee: show system crosshair so press-drag feels intentional
+        if (freehandStrokeEnabled || marqueeZoomEnabled) return 'crosshair';
+        return null;
       }
       const d = drawings.find((dr) => dr.id === hit.drawingId);
       if (!d) return null;
@@ -907,7 +920,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       if (!freehandStrokeEnabled) return;
       emitFreehandStroke('end', resolveFreehandPoint(x, y));
     },
-    beginDrawingDrag: (x, y) => {
+    beginDrawingDrag: (x, y, opts) => {
       // Order levels claim before drawings — drag must not reconcile React (§8.2).
       const orderHit = hitTestOrderLevel(y, chartOrders, layout.plot, resolvePriceScale());
       if (orderHit) {
@@ -937,10 +950,30 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       }
       const hit = hitDrawingAt(x, y);
       if (!hit) return false;
-      const d = drawings.find((dr) => dr.id === hit.drawingId);
+      let d = drawings.find((dr) => dr.id === hit.drawingId);
       if (!d || d.locked) return false;
       const logical = mediaToLogical(x, y);
       if (!logical) return false;
+
+      // Alt/Option + body drag → clone, then move the clone (TV-like).
+      if (opts?.altKey && hit.handleIndex == null) {
+        const clone = createDrawing(
+          d.type,
+          d.points.map((p) => ({ ...p })),
+          {
+            text: d.text,
+            name: d.name,
+            style: { ...d.style },
+            meta: d.meta ? { ...d.meta } : undefined,
+            visible: d.visible !== false,
+            visibleOnTfs: d.visibleOnTfs,
+            locked: false,
+          },
+        );
+        drawings = [...drawings, clone];
+        d = clone;
+      }
+
       const cursor = cursorForDrawingHit(
         hit,
         d,
@@ -964,6 +997,69 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       for (const cb of drawingSelectListeners) cb(d.id);
       markDirty();
       return true;
+    },
+    beginMarqueeZoom: (x, y) => {
+      if (!marqueeZoomEnabled) return false;
+      marquee = { x0: x, y0: y, x1: x, y1: y };
+      markOverlayDirty();
+      return true;
+    },
+    moveMarqueeZoom: (x, y) => {
+      if (!marquee) return;
+      marquee = { ...marquee, x1: x, y1: y };
+      markOverlayDirty();
+    },
+    endMarqueeZoom: (x, y) => {
+      if (!marquee) return;
+      const x0 = marquee.x0;
+      const y0 = marquee.y0;
+      marquee = null;
+      markOverlayDirty();
+
+      const plot = layout.plot;
+      const left = Math.max(plot.left, Math.min(x0, x));
+      const right = Math.min(plot.left + plot.width, Math.max(x0, x));
+      const top = Math.max(plot.top, Math.min(y0, y));
+      const bottom = Math.min(plot.top + plot.height, Math.max(y0, y));
+      if (right - left < 12 || bottom - top < 12) return;
+
+      notifyUserGesture();
+      const i0 = xToIndex(left, range, plot);
+      const i1 = xToIndex(right, range, plot);
+      let fromIndex = Math.min(i0, i1);
+      let toIndex = Math.max(i0, i1);
+      let span = toIndex - fromIndex;
+      if (span < MIN_VISIBLE) {
+        const mid = (fromIndex + toIndex) / 2;
+        fromIndex = mid - MIN_VISIBLE / 2;
+        toIndex = mid + MIN_VISIBLE / 2;
+        span = MIN_VISIBLE;
+      }
+      if (span > MAX_VISIBLE) {
+        const mid = (fromIndex + toIndex) / 2;
+        fromIndex = mid - MAX_VISIBLE / 2;
+        toIndex = mid + MAX_VISIBLE / 2;
+      }
+      setVisibleRangeInternal(
+        clampNavRange({ fromIndex, toIndex }, bars.length),
+        true,
+      );
+
+      const scale = resolvePriceScale();
+      const pTop = yToPrice(top, scale, plot);
+      const pBot = yToPrice(bottom, scale, plot);
+      let min = Math.min(pTop, pBot);
+      let max = Math.max(pTop, pBot);
+      if (!(max > min)) {
+        const pad = Math.abs(scale.max - scale.min) * 0.05 || 1;
+        min -= pad;
+        max += pad;
+      }
+      priceScaleMode = 'manual';
+      manualPriceScale = { min, max };
+      invalidateScaleCache();
+      updateCrosshairFromHover();
+      markSceneDirty();
     },
     moveDrawingDrag: (x, y) => {
       if (orderLevelDragging && orderDragCtx && levelDrag.active) {
@@ -1524,6 +1620,14 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       freehandStrokeEnabled = enabled;
     },
 
+    setMarqueeZoomEnabled(enabled) {
+      marqueeZoomEnabled = enabled;
+      if (!enabled && marquee) {
+        marquee = null;
+        markOverlayDirty();
+      }
+    },
+
     onDrawingsChange(cb) {
       drawingsChangeListeners.add(cb);
       return () => {
@@ -1571,6 +1675,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       orderLevelCommitListeners.clear();
       drawingDrag = null;
       freehandStrokeEnabled = false;
+      marqueeZoomEnabled = false;
+      marquee = null;
       orderLevelDragging = false;
       cancelLevelDrag();
       bars = [];

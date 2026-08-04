@@ -42,6 +42,7 @@ interface ChartGridProps {
   onReattachFollow?: () => void;
   drawingToolActive: boolean;
   freehandStrokeEnabled?: boolean;
+  marqueeZoomEnabled?: boolean;
   drawingsLocked?: boolean;
   onChartPoint: (point: CrosshairPoint, hit: HitResult | null) => void;
   onCrosshairSample?: (point: CrosshairPoint | null) => void;
@@ -107,6 +108,7 @@ export function ChartGrid({
   onReattachFollow,
   drawingToolActive,
   freehandStrokeEnabled = false,
+  marqueeZoomEnabled = false,
   drawingsLocked = false,
   onChartPoint,
   onCrosshairSample,
@@ -203,6 +205,7 @@ export function ChartGrid({
               onReattachFollow={onReattachFollow}
               drawingToolActive={drawingToolActive}
               freehandStrokeEnabled={freehandStrokeEnabled}
+              marqueeZoomEnabled={marqueeZoomEnabled}
               drawingsLocked={drawingsLocked}
               onChartPoint={onChartPoint}
               onCrosshairSample={onCrosshairSample}

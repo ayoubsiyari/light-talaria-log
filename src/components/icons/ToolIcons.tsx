@@ -248,6 +248,16 @@ export function IconEyeOff({ className = base }: IconProps) {
   );
 }
 
+/** Object tree — stacked list rows. */
+export function IconObjectTree({ className = base }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path {...S} d="M5 7h18M5 14h18M5 21h12" />
+      <circle cx="22" cy="21" r="1.5" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
 export function IconChannel({ className = base }: IconProps) {
   return (
     <Svg className={className}>

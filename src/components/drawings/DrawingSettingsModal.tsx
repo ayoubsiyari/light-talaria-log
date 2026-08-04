@@ -586,7 +586,7 @@ export function DrawingSettingsModal({
             </div>
             <p className="text-xs text-muted">
               Globally hidden drawings stay saved. Re-select via Object tree
-              (coming) or show again here.
+              (toolbar list icon) or show again here.
             </p>
           </>
         )}

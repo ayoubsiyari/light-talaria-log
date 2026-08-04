@@ -178,6 +178,8 @@ export interface PaintState {
   selectedOrderId?: string | null;
   /** Strategy backtest markers / equity (outside engine). */
   backtestResult?: BacktestResult | null;
+  /** Zoom marquee rubber-band in media coords. */
+  marquee?: { x0: number; y0: number; x1: number; y1: number } | null;
 }
 
 /**
@@ -360,6 +362,7 @@ export function paintOverlayFrame(
     orders,
     selectedOrderId,
     backtestResult,
+    marquee,
   } = state;
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -406,6 +409,24 @@ export function paintOverlayFrame(
       false,
       null,
     );
+  }
+
+  if (marquee) {
+    const left = Math.min(marquee.x0, marquee.x1);
+    const top = Math.min(marquee.y0, marquee.y1);
+    const w = Math.abs(marquee.x1 - marquee.x0);
+    const h = Math.abs(marquee.y1 - marquee.y0);
+    ctx.save();
+    ctx.fillStyle = colors.accent;
+    ctx.globalAlpha = 0.12;
+    ctx.fillRect(left, top, w, h);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = colors.accent;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(left + 0.5, top + 0.5, Math.max(0, w - 1), Math.max(0, h - 1));
+    ctx.setLineDash([]);
+    ctx.restore();
   }
 
   if (crosshair && options.crosshairMode !== 'hidden') {

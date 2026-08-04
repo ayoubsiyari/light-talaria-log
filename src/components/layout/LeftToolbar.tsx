@@ -12,6 +12,7 @@ import {
   IconLock,
   IconMagnet,
   IconMeasure,
+  IconObjectTree,
   IconPattern,
   IconPitchfork,
   IconShapes,
@@ -99,7 +100,11 @@ const TOOLBAR_GROUPS: {
 interface LeftToolbarProps {
   activeTool: ChartToolId;
   onToolChange: (tool: ChartToolId) => void;
+  /** Open object tree panel. */
+  onOpenObjectTree?: () => void;
+  /** Remove all drawings (after confirm in toolbar menu). */
   onClearDrawings?: () => void;
+  drawingCount?: number;
   magnetMode: MagnetMode;
   onMagnetModeChange: (v: MagnetMode) => void;
   stayInDrawingMode: boolean;
@@ -113,7 +118,9 @@ interface LeftToolbarProps {
 export function LeftToolbar({
   activeTool,
   onToolChange,
+  onOpenObjectTree,
   onClearDrawings,
+  drawingCount = 0,
   magnetMode,
   onMagnetModeChange,
   stayInDrawingMode,
@@ -124,22 +131,27 @@ export function LeftToolbar({
   onDrawingsHiddenChange,
 }: LeftToolbarProps) {
   const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [removeMenuOpen, setRemoveMenuOpen] = useState(false);
   const [menuTop, setMenuTop] = useState(0);
   const [lastByCategory, setLastByCategory] = useState<Record<string, DrawingToolId>>(() => ({
     ...CATEGORY_DEFAULT_TOOL,
   }));
   const rootRef = useRef<HTMLElement>(null);
   const groupRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const removeBtnRef = useRef<HTMLButtonElement>(null);
 
   // pointerdown + capture: chart canvas preventDefault() suppresses mousedown
   useEffect(() => {
-    if (!openGroup) return;
+    if (!openGroup && !removeMenuOpen) return;
     const onDoc = (e: PointerEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpenGroup(null);
+      if (!rootRef.current?.contains(e.target as Node)) {
+        setOpenGroup(null);
+        setRemoveMenuOpen(false);
+      }
     };
     document.addEventListener('pointerdown', onDoc, true);
     return () => document.removeEventListener('pointerdown', onDoc, true);
-  }, [openGroup]);
+  }, [openGroup, removeMenuOpen]);
 
   // Align flyout with the open group button (outside scroll clip).
   useLayoutEffect(() => {
@@ -267,11 +279,12 @@ export function LeftToolbar({
 
         <button
           type="button"
-          title="Zoom"
+          title="Zoom marquee — drag a region to zoom"
           aria-pressed={activeTool === 'zoom'}
           onClick={() => {
             onToolChange('zoom');
             setOpenGroup(null);
+            setRemoveMenuOpen(false);
           }}
           className={toolBtn(activeTool === 'zoom')}
         >
@@ -280,6 +293,24 @@ export function LeftToolbar({
 
         <div className="flex-1 min-h-2" />
 
+        <button
+          type="button"
+          title="Object tree"
+          aria-label="Object tree"
+          onClick={() => {
+            onOpenObjectTree?.();
+            setOpenGroup(null);
+            setRemoveMenuOpen(false);
+          }}
+          className={toolBtn(false)}
+        >
+          <IconObjectTree />
+          {drawingCount > 0 && (
+            <span className="absolute bottom-0.5 right-0.5 min-w-[10px] text-[8px] font-semibold leading-none text-accent">
+              {drawingCount > 99 ? '99+' : drawingCount}
+            </span>
+          )}
+        </button>
         <button
           type="button"
           title={`${magnetModeLabel(magnetMode)} (click to cycle)`}
@@ -328,14 +359,42 @@ export function LeftToolbar({
           {drawingsHidden ? <IconEyeOff /> : <IconEye />}
         </button>
         <button
+          ref={removeBtnRef}
           type="button"
-          title="Clear drawings"
-          onClick={onClearDrawings}
-          className={toolBtn(false) + ' hover:text-danger'}
+          title="Remove drawings"
+          aria-expanded={removeMenuOpen}
+          onClick={() => {
+            setRemoveMenuOpen((v) => !v);
+            setOpenGroup(null);
+          }}
+          className={toolBtn(removeMenuOpen) + ' hover:text-danger'}
         >
           <IconTrash />
         </button>
       </div>
+
+      {removeMenuOpen && (
+        <div className="absolute left-full bottom-2 z-50 ml-1 w-[min(14rem,calc(100vw-4rem))] rounded-lg border border-[color:var(--tv-panel-line)] bg-surface shadow-[0_2px_8px_rgba(0,0,0,0.14)] py-1">
+          <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted">
+            Remove
+          </p>
+          <button
+            type="button"
+            disabled={drawingCount === 0 || !onClearDrawings}
+            onClick={() => {
+              onClearDrawings?.();
+              setRemoveMenuOpen(false);
+            }}
+            className="w-full flex items-center gap-2 px-3 min-h-11 text-left text-[13px] text-danger hover:bg-background/80 disabled:opacity-40 disabled:pointer-events-none"
+          >
+            <IconTrash className="w-4 h-4 shrink-0" />
+            <span>
+              Remove all drawings
+              {drawingCount > 0 ? ` (${drawingCount})` : ''}
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* Flyout outside the scroll pane so it is never clipped */}
       {openGroup && openCategories.length > 0 && (

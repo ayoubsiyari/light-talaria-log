@@ -14,6 +14,7 @@ import {
 import { DatasetsPage } from '@/components/dataset/DatasetsPage';
 import { DrawingFloatingToolbar } from '@/components/drawings/DrawingFloatingToolbar';
 import { DrawingSettingsModal } from '@/components/drawings/DrawingSettingsModal';
+import { ObjectTreePanel } from '@/components/drawings/ObjectTreePanel';
 import { ChartContextMenu, type ChartContextMenuState } from '@/components/chart/ChartContextMenu';
 import { ChartSettingsModal } from '@/components/chart/ChartSettingsModal';
 import { AnalyticsDashboard } from '@/components/analytics/AnalyticsDashboard';
@@ -255,6 +256,7 @@ export default function App() {
   const [stayInDrawingMode, setStayInDrawingMode] = useState(false);
   const [drawingsLocked, setDrawingsLocked] = useState(false);
   const [drawingsHidden, setDrawingsHidden] = useState(false);
+  const [objectTreeOpen, setObjectTreeOpen] = useState(false);
   const [replayTick, setReplayTick] = useState(0);
   const freehandActiveRef = useRef(false);
   /** Mirror of draftPoints for press-drag end (React state may lag a frame). */
@@ -2209,7 +2211,38 @@ export default function App() {
     setDraftPoints([]);
     setSelectedDrawingId(null);
     setSettingsOpen(false);
+    setObjectTreeOpen(false);
   };
+
+  const patchDrawingById = useCallback(
+    (id: string, patch: Partial<Drawing>) => {
+      setDrawings((prev) => {
+        const next = prev.map((d) => (d.id === id ? { ...d, ...patch } : d));
+        if (session && catalog) {
+          saveDrawings(`${session.id}:${catalog.datasetId}`, next);
+        }
+        return next;
+      });
+    },
+    [session, catalog],
+  );
+
+  const deleteDrawingById = useCallback(
+    (id: string) => {
+      setDrawings((prev) => {
+        const cur = prev.find((d) => d.id === id);
+        if (cur?.locked) return prev;
+        const next = prev.filter((d) => d.id !== id);
+        if (session && catalog) {
+          saveDrawings(`${session.id}:${catalog.datasetId}`, next);
+        }
+        return next;
+      });
+      setSelectedDrawingId((cur) => (cur === id ? null : cur));
+      setSettingsOpen(false);
+    },
+    [session, catalog],
+  );
 
   const patchSelectedDrawing = useCallback(
     (patch: Partial<Drawing>) => {
@@ -2747,7 +2780,9 @@ export default function App() {
         <LeftToolbar
           activeTool={activeTool}
           onToolChange={handleToolChange}
+          onOpenObjectTree={() => setObjectTreeOpen(true)}
           onClearDrawings={clearDrawings}
+          drawingCount={drawings.length}
           magnetMode={magnetMode}
           onMagnetModeChange={setMagnetMode}
           stayInDrawingMode={stayInDrawingMode}
@@ -2868,6 +2903,7 @@ export default function App() {
                 isDrawingTool(activeTool) &&
                 getTool(activeTool).points.kind === 'freehand'
               }
+              marqueeZoomEnabled={activeTool === 'zoom'}
               drawingsLocked={drawingsLocked}
               onChartPoint={handleChartPoint}
               onFreehandStroke={handleFreehandStroke}
@@ -2912,6 +2948,31 @@ export default function App() {
               }}
             />
           )}
+
+          <ObjectTreePanel
+            open={objectTreeOpen}
+            onClose={() => setObjectTreeOpen(false)}
+            drawings={drawings}
+            selectedId={selectedDrawingId}
+            onSelect={(id) => {
+              setSelectedDrawingId(id);
+              setSettingsOpen(false);
+              // Selecting a hidden drawing keeps it hidden — unhide via eye.
+              setActiveTool('cursor');
+            }}
+            onToggleVisible={(id) => {
+              const d = drawings.find((x) => x.id === id);
+              if (!d) return;
+              patchDrawingById(id, { visible: d.visible === false });
+            }}
+            onToggleLock={(id) => {
+              const d = drawings.find((x) => x.id === id);
+              if (!d) return;
+              patchDrawingById(id, { locked: !d.locked });
+            }}
+            onDelete={deleteDrawingById}
+            onDeleteAll={clearDrawings}
+          />
 
           {chartContextMenu && (
             <ChartContextMenu

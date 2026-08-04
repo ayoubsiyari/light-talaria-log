@@ -26,8 +26,13 @@ export interface InteractionCallbacks {
   getDrawingCursor?: (x: number, y: number) => string | null;
   /**
    * Start move/resize on a drawing. Return true to claim the pointer (no chart pan).
+   * `altKey` — Alt/Option+drag clones the drawing then moves the clone.
    */
-  beginDrawingDrag?: (x: number, y: number) => boolean;
+  beginDrawingDrag?: (
+    x: number,
+    y: number,
+    opts?: { altKey?: boolean },
+  ) => boolean;
   /** Pointer moved while a drawing drag is active. */
   moveDrawingDrag?: (x: number, y: number) => void;
   /** End drawing drag. */
@@ -39,6 +44,13 @@ export interface InteractionCallbacks {
   beginFreehandStroke?: (x: number, y: number) => boolean;
   moveFreehandStroke?: (x: number, y: number) => void;
   endFreehandStroke?: (x: number, y: number) => void;
+  /**
+   * Zoom marquee press-drag. Return true to claim pointer (no pan).
+   * Tried after freehand miss, before pan.
+   */
+  beginMarqueeZoom?: (x: number, y: number) => boolean;
+  moveMarqueeZoom?: (x: number, y: number) => void;
+  endMarqueeZoom?: (x: number, y: number) => void;
   /** Cursor while dragging a drawing (optional override). */
   getDrawingDragCursor?: () => string | null;
   /** Screen (client) coords for context menus. */
@@ -63,6 +75,7 @@ type DragMode =
   | 'priceZoom'
   | 'drawing'
   | 'freehand'
+  | 'marquee'
   | 'pinch'
   | null;
 
@@ -234,6 +247,10 @@ export function attachInteraction(
       canvas.style.cursor = 'crosshair';
       return;
     }
+    if (dragMode === 'marquee') {
+      canvas.style.cursor = 'crosshair';
+      return;
+    }
     if (dragMode === 'pinch') {
       canvas.style.cursor = 'grabbing';
       return;
@@ -333,10 +350,16 @@ export function attachInteraction(
       dragMode = 'priceZoom';
     } else if (zone === 'timeAxis') {
       dragMode = 'timeZoom';
-    } else if (zone === 'plot' && callbacks.beginDrawingDrag?.(x, y)) {
+    } else if (
+      zone === 'plot' &&
+      callbacks.beginDrawingDrag?.(x, y, { altKey: e.altKey })
+    ) {
       dragMode = 'drawing';
     } else if (zone === 'plot' && callbacks.beginFreehandStroke?.(x, y)) {
       dragMode = 'freehand';
+      cancelLongPress();
+    } else if (zone === 'plot' && callbacks.beginMarqueeZoom?.(x, y)) {
+      dragMode = 'marquee';
       cancelLongPress();
     } else {
       dragMode = 'pan';
@@ -395,6 +418,13 @@ export function attachInteraction(
       callbacks.onHover(x, y);
       if (Math.hypot(dx, dy) >= 1) drawingMoved = true;
       callbacks.moveFreehandStroke?.(x, y);
+      setCursorForZone(zone, x, y);
+      return;
+    }
+
+    if (dragMode === 'marquee') {
+      if (Math.hypot(dx, dy) >= 1) drawingMoved = true;
+      callbacks.moveMarqueeZoom?.(x, y);
       setCursorForZone(zone, x, y);
       return;
     }
@@ -518,6 +548,13 @@ export function attachInteraction(
 
     if (wasMode === 'freehand') {
       callbacks.endFreehandStroke?.(x, y);
+      setCursorForZone(zone, x, y);
+      if (zone === 'plot') callbacks.onHover(x, y);
+      return;
+    }
+
+    if (wasMode === 'marquee') {
+      callbacks.endMarqueeZoom?.(x, y);
       setCursorForZone(zone, x, y);
       if (zone === 'plot') callbacks.onHover(x, y);
       return;

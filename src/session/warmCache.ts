@@ -8,6 +8,9 @@
  *    and kicks async fill (epoch-guarded). Never returns a finer TF.
  * 5. Replay fill-ahead uses a compact forward-biased window (not a larger budget).
  */
+import { timeframeSeconds } from '@/data/timeframeAgg';
+import { getDataset } from '@/datasets/datasetStore';
+import { ensureRemoteTimeCoverage } from '@/datasets/ingestRemoteChunks';
 import { loadViewportAroundTime } from '@/datasets/seriesViewport';
 import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
 import type { ChartBar } from '@/types/bar';
@@ -155,6 +158,23 @@ export class WarmCache {
         MAX_BARS_IN_MEMORY,
         Math.max(64, opts?.windowBars ?? MAX_BARS_IN_MEMORY),
       );
+
+      // Remote datasets: top up IDB from server around the anchor (TV-style).
+      const entry = getDataset(datasetId);
+      if (!entry || entry.source === 'remote') {
+        const half = windowBars * timeframeSeconds(tf);
+        try {
+          await ensureRemoteTimeCoverage(
+            datasetId,
+            tf,
+            anchorTime - Math.floor(half * 0.35),
+            anchorTime + Math.floor(half * 0.85),
+          );
+        } catch {
+          // Offline / gap — fall through to whatever is already in IDB.
+        }
+      }
+
       const vp = await loadViewportAroundTime(
         datasetId,
         tf,

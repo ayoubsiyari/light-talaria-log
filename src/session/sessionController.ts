@@ -109,11 +109,16 @@ export function createSessionController() {
         playing: false,
       };
 
-      // Prefetch all TFs for each dataset around cursor.
+      // Prefetch only base + open pane TFs (other TFs load lazily on switch).
       const datasets = new Set(Object.values(args.panes).map((p) => p.datasetId));
+      const tfs = new Set<Timeframe>([args.baseTf]);
+      for (const p of Object.values(args.panes)) {
+        tfs.add(p.tf);
+        if (p.selectedTf) tfs.add(p.selectedTf);
+      }
       await Promise.all(
         [...datasets].map((ds) =>
-          warmCache.prefetchAll(ds, args.availableTfs, args.cursorTime, span),
+          warmCache.prefetchAll(ds, [...tfs], args.cursorTime, span),
         ),
       );
 

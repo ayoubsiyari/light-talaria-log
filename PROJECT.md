@@ -709,6 +709,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | Trade collect enrichment: MFE/MAE, stop/R/costs/exitReason/riskPct/entry bars on POSITION_CLOSED → journal → analytics | Place+SL → Play → Analytics shows R, SL, commission |
 | 2026-08-04 | Server publish: Dukascopy → IDB → PUT meta/series/chunks to `/api/v1`; Datasets auto-publish + Save to server; Import from API on other browsers | Download → confirm Import list → open in 2nd browser |
 | 2026-08-04 | Server-first sessions: Create Session lists remote catalog; fetch chunks by date on Start (`ensureSessionDataFromServer`); range IDB meta fix | Publish from Datasets → new session with dates → chart loads |
+| 2026-08-04 | TV-style remote load: viewport (~2 chunks) on Start; contiguous IDB meta; server top-up on pan/replay; fix empty replay after clear-cache | Short session → Play; pan left loads more from server |
 
 ---
 

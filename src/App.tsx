@@ -49,10 +49,14 @@ import type { HitResult } from '@/drawings/hitTest';
 import { magnetSnap } from '@/drawings/magnet';
 import { getTool, TOOLS, type DrawingToolId } from '@/drawings/toolRegistry';
 import { ensureDatasetIngested } from '@/datasets/ingestDataset';
-import { ensureSessionDataFromServer } from '@/datasets/ingestRemoteChunks';
+import {
+  ensureRemoteTimeCoverage,
+  ensureSessionDataFromServer,
+} from '@/datasets/ingestRemoteChunks';
 import { getDataset, registerRemoteDataset } from '@/datasets/datasetStore';
 import { getRemoteDataset } from '@/datasets/remoteApi';
 import { resolveBaseDatasetsForSession } from '@/datasets/resolveBaseDataset';
+import { getSeriesMeta, openDb } from '@/data/idbStore';
 import {
   clearBacktestResult,
   getBacktestState,
@@ -83,6 +87,7 @@ import {
   loadViewportForTimeRange,
   paneNeedsViewportPrefetch,
   timeRangeFromVisible,
+  timeToLogicalIndex,
 } from '@/datasets/seriesViewport';
 import { pickLodTimeframe } from '@/datasets/zoomLod';
 import { useCsvImport } from '@/hooks/useCsvImport';
@@ -323,7 +328,7 @@ export default function App() {
           bars: v.bars,
           range: takeSessionRange ? v.range : old.range,
           windowFrom: old?.windowFrom ?? 0,
-          totalBars: old?.totalBars ?? v.bars.length,
+          totalBars: Math.max(old?.totalBars ?? 0, v.bars.length),
           pair: v.pair as PairSymbol,
           datasetId: v.datasetId,
         });
@@ -609,6 +614,15 @@ export default function App() {
           if (!needsFetch[i]) return p; // keep buffer + identity — no React churn
 
           const loadTf = lodTfs[i]!;
+          const ds = getDataset(p.datasetId);
+          if (!ds || ds.source === 'remote') {
+            try {
+              await ensureRemoteTimeCoverage(p.datasetId, loadTf, fromTime, toTime);
+            } catch {
+              // keep prior window if server top-up fails
+            }
+          }
+
           const vp = await loadViewportForTimeRange(
             p.datasetId,
             loadTf,
@@ -1052,9 +1066,12 @@ export default function App() {
               dataset.id,
               fresh.startDate,
               fresh.endDate,
-              (p) => {
-                // Session fetch reports 0–100; chart loader expects 0–1.
-                setIngestPct(base + (p.percent / 100) * slice);
+              {
+                openTf: fresh.timeframe,
+                onProgress: (p) => {
+                  // Session fetch reports 0–100; chart loader expects 0–1.
+                  setIngestPct(base + (p.percent / 100) * slice);
+                },
               },
             );
           } else {
@@ -1124,6 +1141,27 @@ export default function App() {
           );
         }
 
+        // Propagate real series length so edge-prefetch / pan can fire.
+        let windowFrom = 0;
+        let totalBars = v0.bars.length;
+        try {
+          const db = await openDb();
+          const meta = await getSeriesMeta(db, primary.datasetId, v0.timeframe);
+          if (meta && meta.rowCount > 0) {
+            totalBars = meta.rowCount;
+            const firstT = v0.bars[0]?.time;
+            if (firstT != null) {
+              windowFrom = await timeToLogicalIndex(
+                primary.datasetId,
+                v0.timeframe,
+                firstT,
+              );
+            }
+          }
+        } catch {
+          // keep defaults
+        }
+
         const nextPanes: ChartPaneState[] = [
           {
             id: 'pane-0',
@@ -1131,8 +1169,8 @@ export default function App() {
             selectedTf: v0.selectedTf,
             bars: v0.bars,
             range: v0.range,
-            windowFrom: 0,
-            totalBars: v0.bars.length,
+            windowFrom,
+            totalBars,
             pair: primary.pair,
             datasetId: primary.datasetId,
           },
@@ -1469,7 +1507,8 @@ export default function App() {
             range: v.range,
             timeframe: v.timeframe,
             selectedTf: v.selectedTf,
-            totalBars: v.bars.length,
+            // Keep series length ≥ buffer so pan/replay edge-prefetch can fire.
+            totalBars: Math.max(p.totalBars || 0, v.bars.length),
           };
         });
         panesRef.current = settled;
@@ -2182,14 +2221,18 @@ export default function App() {
     );
   }
 
-  // Refresh restore: #/chart/:id before session state is hydrated.
+  // Refresh restore / session open: #/chart/:id before chart chrome is ready.
   if (view === 'chart' && (!session || loadStatus === 'loading')) {
+    const fetchLabel =
+      session != null
+        ? `Fetching ${session.legs.map((l) => l.pair).join(' + ')} ${session.startDate} → ${session.endDate}… ${Math.round(ingestPct * 100)}%`
+        : 'Restoring chart session…';
     return (
       <div className="min-h-dvh bg-background text-foreground flex flex-col items-center justify-center gap-3 px-4">
         <p className="text-sm text-muted text-center">
           {loadStatus === 'error'
             ? (loadError ?? 'Failed to restore chart session')
-            : 'Restoring chart session…'}
+            : fetchLabel}
         </p>
         {loadStatus === 'error' && (
           <Button

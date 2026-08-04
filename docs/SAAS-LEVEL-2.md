@@ -48,7 +48,7 @@ Browser after import:
 
 1. **Ingest (admin / job)** — CSV/feed → pack 28-byte bars → upload chunks to S3 → write `datasets` + `dataset_chunks` rows.
 2. **Publish from Datasets** — Dukascopy download → IDB chunks → `PUT /datasets/:id` + series + chunk binaries → `data/chunks/datasets/…` (shared server store).
-3. **Create Session (server-first)** — list remote catalog → user picks pair + dates → on Start, fetch only chunks for that range into IndexedDB (`ensureSessionDataFromServer`). No pre-import required.
+3. **Create Session (server-first)** — list remote catalog → user picks pair + dates → on Start, fetch a small viewport (~2 chunks, base + open TF) into IndexedDB; pan/replay tops up from the server. No pre-import / full-history pull.
 4. **Optional warm cache** — Datasets “Warm cache” pulls full TFs early; same IDB path.
 5. **Chart** — session open → load ≤2500 bars from IDB → pan prefetch / LOD → paint.
 6. **Backtest** — interactive: client Worker; heavy: `POST /jobs/backtest` → Redis worker → persist `backtest_runs` + `trades`.

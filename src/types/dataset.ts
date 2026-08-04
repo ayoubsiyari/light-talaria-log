@@ -16,6 +16,8 @@ export interface DownloadedDataset {
   rowCount: number;
   source: DatasetSource;
   createdAt: number;
+  /** Set when chunks were published to `/api/v1` (shared across browsers). */
+  serverSyncedAt?: number;
 }
 
 export interface DownloadDatasetInput {

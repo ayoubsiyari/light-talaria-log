@@ -51,6 +51,16 @@ export function getDataset(id: string): DownloadedDataset | null {
   return readAll().find((d) => d.id === id) ?? null;
 }
 
+/** Mark a local catalog row as published to the shared server store. */
+export function markDatasetServerSynced(id: string): void {
+  const all = readAll();
+  const idx = all.findIndex((d) => d.id === id);
+  if (idx < 0) return;
+  const row = all[idx]!;
+  all[idx] = { ...row, serverSyncedAt: Date.now() };
+  writeAll(all);
+}
+
 export function validateDownloadDates(startDate: string, endDate: string): string | null {
   if (!startDate || !endDate) return 'Start and end dates are required.';
   if (startDate > endDate) return 'Start date must be on or before end date.';
@@ -248,6 +258,8 @@ export async function downloadAndStoreDataset(
     rowCount,
     source: 'dukascopy',
     createdAt: existing?.createdAt ?? Date.now(),
+    // CSV changed — must re-publish before other browsers see updates.
+    serverSyncedAt: undefined,
   };
 
   const db = await openDb();

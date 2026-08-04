@@ -16,6 +16,7 @@ import {
   HARD_MAX_CHUNKED_ESTIMATED_ROWS,
   MAX_DOWNLOAD_SPAN_DAYS,
 } from '@/datasets/ingestLimits';
+import { publishDatasetToServer } from '@/datasets/publishDataset';
 import {
   fetchHealth,
   fetchMe,
@@ -77,6 +78,7 @@ export function DatasetsPage({
   const [authPassword, setAuthPassword] = useState('admin12345');
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [publishingId, setPublishingId] = useState<string | null>(null);
 
   const refresh = () => setDatasets(listDatasets());
 
@@ -177,14 +179,57 @@ export function DatasetsPage({
       });
       refresh();
       setStatus(
-        `Saved ${dataset.rowCount.toLocaleString()} bars · ${datasetLabel(dataset)}` +
-          (yearChunks.length > 1 ? ` · ${yearChunks.length} years` : ''),
+        `Saved locally · ${dataset.rowCount.toLocaleString()} bars — publishing to server…`,
       );
+      try {
+        const pub = await publishDatasetToServer(dataset.id, (p) => {
+          setStatus(`${p.detail} (${p.percent}%)`);
+        });
+        refresh();
+        loadRemote();
+        setStatus(
+          `On server · ${dataset.rowCount.toLocaleString()} bars · ${pub.chunkCount} chunks · ${datasetLabel(dataset)}` +
+            (yearChunks.length > 1 ? ` · ${yearChunks.length} years` : '') +
+            ' — other browsers: Import from API',
+        );
+      } catch (pubErr) {
+        refresh();
+        setStatus(
+          `Saved locally only · ${dataset.rowCount.toLocaleString()} bars · ${datasetLabel(dataset)}` +
+            (yearChunks.length > 1 ? ` · ${yearChunks.length} years` : ''),
+        );
+        setError(
+          pubErr instanceof Error
+            ? `Server save failed: ${pubErr.message}. Use “Save to server” below, or keep using this browser’s local copy.`
+            : 'Server save failed. Data is still in this browser.',
+        );
+      }
     } catch (err) {
       setStatus(null);
       setError(err instanceof Error ? err.message : 'Download failed');
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handlePublish = async (id: string) => {
+    setPublishingId(id);
+    setError(null);
+    setStatus('Publishing to server…');
+    try {
+      const pub = await publishDatasetToServer(id, (p) => {
+        setStatus(`${p.detail} (${p.percent}%)`);
+      });
+      refresh();
+      loadRemote();
+      setStatus(
+        `On server · ${pub.chunkCount} chunks · ${pub.timeframes.join(', ')} — other browsers: Import from API`,
+      );
+    } catch (err) {
+      setStatus(null);
+      setError(err instanceof Error ? err.message : 'Publish failed');
+    } finally {
+      setPublishingId(null);
     }
   };
 
@@ -221,7 +266,7 @@ export function DatasetsPage({
         <AppPageHeader
           current="datasets"
           title="Datasets"
-          description="Download OHLC history from Dukascopy or import shared datasets from the API. Saved datasets appear on the session page."
+          description="Downloads stay in this browser until saved to the server. After publish, other browsers import via Import from API (no re-download from Dukascopy)."
           onGoHome={onGoHome}
           onGoSessions={onGoSessions}
           onGoDatasets={() => undefined}
@@ -614,12 +659,38 @@ export function DatasetsPage({
                     <p className="text-sm font-medium truncate">{datasetLabel(d)}</p>
                     <p className="text-xs text-muted tabular-nums">
                       {d.rowCount.toLocaleString()} bars · {d.source}
+                      {d.serverSyncedAt
+                        ? ' · on server'
+                        : d.source === 'dukascopy'
+                          ? ' · this browser only'
+                          : ''}
                     </p>
                   </div>
+                  {d.source !== 'remote' && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="min-h-11"
+                      isDisabled={
+                        downloading ||
+                        publishingId != null ||
+                        remoteStatus === 'error'
+                      }
+                      onPress={() => void handlePublish(d.id)}
+                      aria-label={`Save ${datasetLabel(d)} to server`}
+                    >
+                      {publishingId === d.id
+                        ? 'Saving…'
+                        : d.serverSyncedAt
+                          ? 'Re-save to server'
+                          : 'Save to server'}
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
                     className="min-h-11"
+                    isDisabled={publishingId != null || downloading}
                     onPress={() => handleDelete(d.id)}
                   >
                     Delete

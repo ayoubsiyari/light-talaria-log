@@ -234,6 +234,36 @@ export function readChunkBinary(
   return fs.readFileSync(p);
 }
 
+/** Write / overwrite a published dataset on disk (shared across browsers via Import). */
+export function writeDiskDatasetMeta(meta: DiskDatasetMeta): void {
+  ensureChunkStore();
+  const dir = datasetDir(meta.id);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(datasetMetaPath(meta.id), JSON.stringify(meta, null, 2));
+}
+
+export function writeDiskSeriesMeta(meta: DiskSeriesMeta): void {
+  ensureChunkStore();
+  const dir = path.join(datasetDir(meta.datasetId), meta.timeframe);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    seriesMetaPath(meta.datasetId, meta.timeframe),
+    JSON.stringify(meta, null, 2),
+  );
+}
+
+export function writeDiskChunkBinary(
+  datasetId: string,
+  tf: string,
+  chunkIndex: number,
+  buffer: Buffer,
+): void {
+  ensureChunkStore();
+  const dir = path.join(datasetDir(datasetId), tf);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(chunkFilePath(datasetId, tf, chunkIndex), buffer);
+}
+
 /** Chunks overlapping [fromTime, toTime] (unix seconds). Omitting bounds returns all. */
 export function chunksForTimeRange(
   datasetId: string,

@@ -144,3 +144,76 @@ export async function getRemoteJob(id: string): Promise<RemoteJob> {
   const body = await apiJson<{ job: RemoteJob }>(`/jobs/${encodeURIComponent(id)}`);
   return body.job;
 }
+
+/** Publish / overwrite dataset catalog meta on the shared server store. */
+export async function putRemoteDatasetMeta(
+  id: string,
+  meta: RemoteDatasetMeta,
+): Promise<RemoteDatasetMeta> {
+  const body = await apiJson<{ dataset: RemoteDatasetMeta }>(
+    `/datasets/${encodeURIComponent(id)}`,
+    { method: 'PUT', body: JSON.stringify(meta) },
+  );
+  return body.dataset;
+}
+
+/** Publish series meta for one timeframe. */
+export async function putRemoteSeriesMeta(
+  datasetId: string,
+  timeframe: string,
+  series: {
+    rowCount: number;
+    timeStart: number;
+    timeEnd: number;
+    chunkIds: string[];
+    chunkStarts: number[];
+    chunkTimeStarts: number[];
+    chunkTimeEnds: number[];
+  },
+): Promise<void> {
+  await apiJson(
+    `/datasets/${encodeURIComponent(datasetId)}/series/${encodeURIComponent(timeframe)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({
+        datasetId,
+        timeframe,
+        rowCount: series.rowCount,
+        timeStart: series.timeStart,
+        timeEnd: series.timeEnd,
+        chunkIds: series.chunkIds,
+        chunkStarts: series.chunkStarts,
+        chunkTimeStarts: series.chunkTimeStarts,
+        chunkTimeEnds: series.chunkTimeEnds,
+      }),
+    },
+  );
+}
+
+/** Upload one packed OHLCV chunk binary. */
+export async function putRemoteChunkBinary(
+  datasetId: string,
+  timeframe: string,
+  chunkIndex: number,
+  buffer: ArrayBuffer,
+): Promise<void> {
+  const res = await fetch(
+    `${REMOTE_API_BASE}/datasets/${encodeURIComponent(datasetId)}/chunks/${encodeURIComponent(timeframe)}/${chunkIndex}`,
+    {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: buffer,
+    },
+  );
+  if (!res.ok) {
+    let msg = `Chunk upload failed (${res.status})`;
+    try {
+      const j = (await res.json()) as { error?: string };
+      if (typeof j.error === 'string') msg = j.error;
+    } catch {
+      // ignore
+    }
+    throw new Error(msg);
+  }
+}

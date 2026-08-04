@@ -10,6 +10,11 @@ import {
   getDiskDataset,
   listDiskDatasets,
   readChunkBinary,
+  writeDiskChunkBinary,
+  writeDiskDatasetMeta,
+  writeDiskSeriesMeta,
+  type DiskDatasetMeta,
+  type DiskSeriesMeta,
 } from './chunkStore';
 import { enqueueJob, getJob } from './jobQueue';
 
@@ -55,6 +60,15 @@ function readJsonBody(req: Connect.IncomingMessage): Promise<unknown> {
         reject(err);
       }
     });
+    req.on('error', reject);
+  });
+}
+
+function readBinaryBody(req: Connect.IncomingMessage): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (c: Buffer) => chunks.push(c));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
 }
@@ -207,6 +221,105 @@ async function handleApi(
         chunkTimeEnds: result.series.chunkTimeEnds,
         chunks: result.chunks,
       },
+    });
+    return;
+  }
+
+  // PUT /api/v1/datasets/:id — publish / overwrite dataset meta (shared server store)
+  if (method === 'PUT' && datasetMatch) {
+    const id = decodeURIComponent(datasetMatch[1]!);
+    let body: Partial<DiskDatasetMeta>;
+    try {
+      body = (await readJsonBody(req)) as Partial<DiskDatasetMeta>;
+    } catch {
+      sendJson(res, 400, { error: 'Invalid JSON body' });
+      return;
+    }
+    if (!body.symbol || !body.baseTimeframe || !body.name) {
+      sendJson(res, 400, { error: 'symbol, baseTimeframe, and name are required' });
+      return;
+    }
+    const meta: DiskDatasetMeta = {
+      id,
+      symbol: String(body.symbol),
+      baseTimeframe: String(body.baseTimeframe),
+      name: String(body.name),
+      visibility:
+        body.visibility === 'private' || body.visibility === 'shared'
+          ? body.visibility
+          : 'public_read',
+      status: 'ready',
+      timeStart: Number(body.timeStart) || 0,
+      timeEnd: Number(body.timeEnd) || 0,
+      rowCounts: (body.rowCounts as Record<string, number>) ?? {},
+      timeframes: Array.isArray(body.timeframes)
+        ? body.timeframes.map(String)
+        : [String(body.baseTimeframe)],
+      ownerUserId: user.id,
+    };
+    writeDiskDatasetMeta(meta);
+    sendJson(res, 200, { dataset: meta });
+    return;
+  }
+
+  // PUT /api/v1/datasets/:id/series/:tf — publish series meta for one TF
+  const seriesPutMatch = pathname.match(
+    /^\/api\/v1\/datasets\/([^/]+)\/series\/([^/]+)$/,
+  );
+  if (method === 'PUT' && seriesPutMatch) {
+    const id = decodeURIComponent(seriesPutMatch[1]!);
+    const tf = decodeURIComponent(seriesPutMatch[2]!);
+    let body: Partial<DiskSeriesMeta>;
+    try {
+      body = (await readJsonBody(req)) as Partial<DiskSeriesMeta>;
+    } catch {
+      sendJson(res, 400, { error: 'Invalid JSON body' });
+      return;
+    }
+    if (!Array.isArray(body.chunkIds) || body.chunkIds.length === 0) {
+      sendJson(res, 400, { error: 'series meta with chunkIds is required' });
+      return;
+    }
+    const series: DiskSeriesMeta = {
+      datasetId: id,
+      timeframe: tf,
+      rowCount: Number(body.rowCount) || 0,
+      timeStart: Number(body.timeStart) || 0,
+      timeEnd: Number(body.timeEnd) || 0,
+      chunkIds: body.chunkIds.map(String),
+      chunkStarts: (body.chunkStarts as number[]) ?? [],
+      chunkTimeStarts: (body.chunkTimeStarts as number[]) ?? [],
+      chunkTimeEnds: (body.chunkTimeEnds as number[]) ?? [],
+    };
+    writeDiskSeriesMeta(series);
+    sendJson(res, 200, { series });
+    return;
+  }
+
+  // PUT /api/v1/datasets/:id/chunks/:tf/:n — raw packed OHLCV binary
+  const chunkPutMatch = pathname.match(
+    /^\/api\/v1\/datasets\/([^/]+)\/chunks\/([^/]+)\/(\d+)$/,
+  );
+  if (method === 'PUT' && chunkPutMatch) {
+    const id = decodeURIComponent(chunkPutMatch[1]!);
+    const tf = decodeURIComponent(chunkPutMatch[2]!);
+    const chunkIndex = Number(chunkPutMatch[3]);
+    if (!Number.isFinite(chunkIndex) || chunkIndex < 0) {
+      sendJson(res, 400, { error: 'Invalid chunk index' });
+      return;
+    }
+    const buf = await readBinaryBody(req);
+    if (buf.byteLength === 0) {
+      sendJson(res, 400, { error: 'Empty chunk body' });
+      return;
+    }
+    writeDiskChunkBinary(id, tf, chunkIndex, buf);
+    sendJson(res, 200, {
+      ok: true,
+      datasetId: id,
+      timeframe: tf,
+      chunkIndex,
+      bytes: buf.byteLength,
     });
     return;
   }

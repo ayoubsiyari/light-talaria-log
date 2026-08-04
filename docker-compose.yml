@@ -61,13 +61,13 @@ services:
       context: ./services/api
       dockerfile: Dockerfile
     restart: unless-stopped
+    # MinIO is optional (STORAGE_DRIVER=disk | s3). Do not hard-depend on it —
+    # VPS disk mode profiles minio off; S3 mode still starts minio alongside.
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
-        condition: service_started
     environment:
       API_PORT: 8787
       API_HOST: 0.0.0.0

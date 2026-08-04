@@ -19,12 +19,6 @@ services:
       - '127.0.0.1:6379:6379'
 
   api:
-    # Disk mode — do not require MinIO (base compose depends_on minio).
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     environment:
       API_PORT: 8787
       API_HOST: 0.0.0.0

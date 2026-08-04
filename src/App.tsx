@@ -306,6 +306,15 @@ export default function App() {
   const viewportReloadEnabledRef = useRef(false);
   const lastReplayCursorRef = useRef<number | null>(null);
   /**
+   * Mirror of replay.playing for edge detection. Must stay in sync even while
+   * viewport reload is disabled (teardown/load pause) or the next Play looks stuck.
+   */
+  const wasPlayingRef = useRef(false);
+  /** Invalidates overlapping loadSessionData (Start/Resume race). */
+  const loadSessionGenRef = useRef(0);
+  /** Bumps when sessionRef is replaced so subscribe rebinds to the live controller. */
+  const [sessionCtrlGen, setSessionCtrlGen] = useState(0);
+  /**
    * Legacy replay buffers — retained as a safety net for pan LOD path until
    * applyTimeWindowToPanes is fully session-owned. Reveal/TF paths use session.
    */
@@ -1080,6 +1089,11 @@ export default function App() {
    * IDB caches around the cursor so every pair can extendReveal immediately.
    */
   const armReplayPlay = useCallback(async () => {
+    // Never start the clock on a half-loaded chart (wasPlayingRef desync / empty play).
+    if (!viewportReloadEnabledRef.current) return;
+    const s0 = sessionRef.current.get();
+    if (!s0 || panesRef.current.length === 0) return;
+
     detachedPanesRef.current.clear();
     cameraDetachedRef.current = false;
     setCameraDetached(false);
@@ -1090,10 +1104,7 @@ export default function App() {
 
     const s = sessionRef.current.get();
     const list = panesRef.current;
-    if (!s || list.length === 0) {
-      replayRef.current.play();
-      return;
-    }
+    if (!s || list.length === 0) return;
 
     const cfgs: Record<
       string,
@@ -1224,15 +1235,20 @@ export default function App() {
       next: BacktestSession,
       focus?: { time: number; tradeId?: string | null },
     ) => {
+      const loadGen = ++loadSessionGenRef.current;
       viewportReloadEnabledRef.current = false;
+      wasPlayingRef.current = false;
       lastReplayCursorRef.current = null;
       lastProgressSaveRef.current = 0;
       replayBufferRef.current.clear();
       cameraDetachedRef.current = false;
       setCameraDetached(false);
+      // Pause before gate stays false so subscribe can still sync wasPlayingRef;
+      // we also reset the mirror above in case a prior notify was swallowed.
       replayRef.current.pause();
       sessionRef.current.dispose();
       sessionRef.current = createSessionController();
+      setSessionCtrlGen((n) => n + 1);
 
       // Prefer disk copy so reopen after exit picks up last saved cursor.
       const fresh = getSession(next.id) ?? next;
@@ -1309,7 +1325,9 @@ export default function App() {
             });
           }
           seriesList.push({ pair: leg.pair, datasetId: cat.datasetId, catalog: cat });
+          if (loadGen !== loadSessionGenRef.current) return;
         }
+        if (loadGen !== loadSessionGenRef.current) return;
         seriesRef.current = seriesList;
         const primary = seriesList[0]!;
         setCatalog(primary.catalog);
@@ -1345,6 +1363,7 @@ export default function App() {
         replayRef.current.seek(resumeCursor, { silent: true });
         lastReplayCursorRef.current = resumeCursor;
 
+        if (loadGen !== loadSessionGenRef.current) return;
         await sessionRef.current.configure({
           baseTf,
           bounds: { start: timeStart, end: timeEnd },
@@ -1362,6 +1381,7 @@ export default function App() {
           revealMode: 'replay',
           span: resumeSpan,
         });
+        if (loadGen !== loadSessionGenRef.current) return;
 
         const views = sessionRef.current.getViews();
         const v0 = views['pane-0'];
@@ -1405,6 +1425,7 @@ export default function App() {
             datasetId: primary.datasetId,
           },
         ];
+        if (loadGen !== loadSessionGenRef.current) return;
         replayBufferRef.current.set('pane-0', v0.bars);
 
         panesRef.current = nextPanes;
@@ -1441,16 +1462,20 @@ export default function App() {
         clearChartFocusHash(fresh.id);
 
         queueMicrotask(() => {
+          if (loadGen !== loadSessionGenRef.current) return;
           const tr = timeRangeFromVisible(nextPanes[0]!.bars, nextPanes[0]!.range);
           if (tr) syncStoreRef.current?.setTimeRange(tr, 'session-load');
           viewportReloadEnabledRef.current = true;
+          wasPlayingRef.current = false;
           if (journalFocus != null) {
             // Ensure viewport/follow settle on the journal entry time after chrome mounts.
             applyJournalFocus(journalFocus);
           }
         });
       } catch (err) {
+        if (loadGen !== loadSessionGenRef.current) return;
         viewportReloadEnabledRef.current = false;
+        wasPlayingRef.current = false;
         seriesRef.current = [];
         setLoadStatus('error');
         setLoadError(err instanceof Error ? err.message : 'Failed to load dataset');
@@ -1511,6 +1536,7 @@ export default function App() {
 
   // Session async fills (warm-cache miss) → push views when epoch commits.
   // Bars only — never re-apply a shared camera to every pane (sync-off independence).
+  // Rebind when the controller instance is replaced (same session id on Resume).
   useEffect(() => {
     return sessionRef.current.subscribe(() => {
       if (!viewportReloadEnabledRef.current) return;
@@ -1519,16 +1545,19 @@ export default function App() {
       commitSessionViews();
       syncEnginesFromSession({ applyCamera: false });
     });
-  }, [commitSessionViews, syncEnginesFromSession, catalog?.datasetId, session?.id]);
+  }, [
+    commitSessionViews,
+    syncEnginesFromSession,
+    catalog?.datasetId,
+    session?.id,
+    sessionCtrlGen,
+  ]);
 
   // Replay: cursor → engines. React only on discrete play/pause/seek/speed edges.
-  const wasPlayingRef = useRef(false);
   const lastSpeedRef = useRef(replayRef.current.get().speed);
   useEffect(() => {
     const ctrl = replayRef.current;
     return ctrl.subscribe((rs) => {
-      if (!catalog || !viewportReloadEnabledRef.current) return;
-
       const playEdge = rs.playing !== wasPlayingRef.current;
       const cursorChanged = lastReplayCursorRef.current !== rs.cursorTime;
       const speedChanged = rs.speed !== lastSpeedRef.current;
@@ -1536,9 +1565,18 @@ export default function App() {
       // (Play/Pause icon, speed slider) stays stale while the controller moved on.
       if (!playEdge && !cursorChanged && !speedChanged) return;
 
-      lastReplayCursorRef.current = rs.cursorTime;
-      wasPlayingRef.current = rs.playing;
+      // Always mirror play/pause/speed — even while viewport is gated (teardown/load).
+      // Swallowing pause left wasPlayingRef=true so the next session's Play was a no-op.
       lastSpeedRef.current = rs.speed;
+      wasPlayingRef.current = rs.playing;
+      if (playEdge || speedChanged) setReplayTick((n) => n + 1);
+
+      if (!catalog || !viewportReloadEnabledRef.current) {
+        if (cursorChanged) lastReplayCursorRef.current = rs.cursorTime;
+        return;
+      }
+
+      lastReplayCursorRef.current = rs.cursorTime;
 
       if (rs.playing && rs.cursorTime <= rs.startTime + 1) {
         cameraDetachedRef.current = false;
@@ -1547,7 +1585,6 @@ export default function App() {
 
       if (rs.playing) {
         // React only on play edge or speed change — not every cursor tick.
-        if (playEdge || speedChanged) setReplayTick((n) => n + 1);
         if (cursorChanged || playEdge) {
           applyReplayReveal(rs.cursorTime, { playEdge });
           if (cursorChanged) persistReplayProgress(false);
@@ -1573,7 +1610,6 @@ export default function App() {
         });
       }
 
-      setReplayTick((n) => n + 1);
       applyReplayReveal(rs.cursorTime);
       // Pause / seek / step — always flush progress so exit/reopen resumes here.
       if (playEdge || cursorChanged) persistReplayProgress(true);
@@ -2328,10 +2364,12 @@ export default function App() {
     // Flush before disabling viewport — resume cursor on next open.
     persistReplayProgress(true);
     viewportReloadEnabledRef.current = false;
+    wasPlayingRef.current = false;
     sessionIdRef.current = null;
     replayBufferRef.current.clear();
     sessionRef.current.dispose();
     sessionRef.current = createSessionController();
+    setSessionCtrlGen((n) => n + 1);
     replayRef.current.pause();
     if (import.meta.env.DEV) {
       // charts/observers release async as ChartPane unmounts; defer assert a frame

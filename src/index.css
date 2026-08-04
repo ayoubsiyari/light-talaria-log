@@ -5,9 +5,69 @@
  * Theme: Hero UI tokens via `.dark` / `[data-theme]` on <html>.
  * Default dark; toggle persists in localStorage (`fast-chart.theme`).
  * Landing + app pages share the same Hero surfaces (no separate marketing palette).
+ *
+ * Dark brand: true black panels + dark blue accent (overrides Hero default gray).
  */
 
 @layer base {
+  /*
+   * Dark palette — black (not gray) + dark blue.
+   * Loaded after @heroui/styles so these win for `.dark` / data-theme=dark.
+   */
+  .dark,
+  [data-theme='dark'] {
+    /* Pure / near-black with a faint blue undertone (not slate gray) */
+    --background: #000000;
+    --foreground: #f4f6fb;
+
+    --surface: #05070d;
+    --surface-foreground: var(--foreground);
+    --surface-secondary: #0a0e18;
+    --surface-secondary-foreground: var(--foreground);
+    --surface-tertiary: #0e1422;
+    --surface-tertiary-foreground: var(--foreground);
+
+    --overlay: #080b14;
+    --overlay-foreground: var(--foreground);
+
+    --muted: #8b95a8;
+
+    --default: #121826;
+    --default-foreground: var(--foreground);
+
+    /* Dark blue accent */
+    --accent: #1e3a8a;
+    --accent-foreground: #f8fafc;
+
+    --field-background: #05070d;
+    --field-foreground: var(--foreground);
+    --field-placeholder: var(--muted);
+    --field-border: #1a2236;
+
+    --border: #1a2236;
+    --separator: #141b2c;
+    --focus: var(--accent);
+    --link: #93c5fd;
+
+    --segment: #121826;
+    --segment-foreground: var(--foreground);
+
+    --backdrop: rgba(0, 0, 0, 0.72);
+
+    --surface-hover: color-mix(in oklab, var(--surface) 88%, var(--accent) 12%);
+    --background-secondary: #05070d;
+    --background-tertiary: #0a0e18;
+    --accent-hover: #2563eb;
+    --accent-soft: color-mix(in oklab, var(--accent) 22%, transparent);
+    --accent-soft-foreground: #bfdbfe;
+    --accent-soft-hover: color-mix(in oklab, var(--accent) 32%, transparent);
+
+    --chrome-topbar: var(--surface);
+    --chrome-bottombar: var(--surface);
+    --chrome-toolbar: var(--surface);
+    --tv-panel-line: #1a2236;
+  }
+
   html,
   body,
   #root {

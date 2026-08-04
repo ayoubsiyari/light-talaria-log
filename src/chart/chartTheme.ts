@@ -85,14 +85,14 @@ function isDarkTheme(): boolean {
 /** Read Hero UI tokens + appearance overrides from :root / .dark */
 export function getChartColors(): ChartColors {
   const dark = isDarkTheme();
-  const themeBg = cssVar('--background', dark ? '#0a0a0f' : '#f4f4f5');
-  const themeGrid = cssVar('--border', dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)');
+  const themeBg = cssVar('--background', dark ? '#000000' : '#f4f4f5');
+  const themeGrid = cssVar('--border', dark ? 'rgba(30,58,138,0.35)' : 'rgba(0,0,0,0.08)');
   const up = cssVar('--success', '#17c964');
   const down = cssVar('--danger', '#f31260');
   const upBody = cssVar('--chart-up-body', up);
   const downBody = cssVar('--chart-down-body', down);
-  const text = cssVar('--foreground', dark ? '#ecedee' : '#18181b');
-  const muted = cssVar('--muted', dark ? '#71717a' : '#71717a');
+  const text = cssVar('--foreground', dark ? '#f4f6fb' : '#18181b');
+  const muted = cssVar('--muted', dark ? '#8b95a8' : '#71717a');
   const lastStyle = cssVar('--chart-last-price-style', 'dashed');
   const lastPriceLineStyle: LastPriceLineStyle =
     lastStyle === 'solid' || lastStyle === 'dotted' || lastStyle === 'dashed'
@@ -138,9 +138,9 @@ export function getChartColors(): ChartColors {
     watermarkColor: cssVar('--chart-watermark-color', muted),
     watermarkOpacity: Math.min(1, Math.max(0, cssNumber('--chart-watermark-opacity', 0.12))),
     watermarkFontSize: Math.min(120, Math.max(16, cssNumber('--chart-watermark-size', 48))),
-    accent: cssVar('--accent', '#006fee'),
-    handleFill: cssVar('--surface', dark ? '#18181b' : '#ffffff'),
-    labelBg: dark ? 'rgba(19,23,34,0.88)' : 'rgba(255,255,255,0.92)',
+    accent: cssVar('--accent', '#1e3a8a'),
+    handleFill: cssVar('--surface', dark ? '#05070d' : '#ffffff'),
+    labelBg: dark ? 'rgba(5,7,13,0.92)' : 'rgba(255,255,255,0.92)',
     onSolid: '#ffffff',
   };
 }

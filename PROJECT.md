@@ -785,7 +785,9 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | **V8b Phase 1–3:** embed `src/v8b/TalariaV8b.jsx` (reactflow + scoreEngine stub); Go App → full V8b shell; Start/Resume → chart bridge; page modules for strategy/dashboard/sessions/profile | Smoke: Create Session + Strategy Builder + Dashboard; Exit chart → V8b |
 | 2026-08-04 | Unhost V8b: Hero AppShell only (`#/app/*` → real pages); Backtest/Journal/Dashboard analytics use live data; V8b reference-only; no duplicate routes | Smoke: Go App → Dashboard/Backtest without V8b chunk |
 | 2026-08-04 | V8b layout parity in Hero UI: nav Dashboard/Trades/Backtest/Strategies/Resources/Profile; sessions cards+modal; ReactFlow strategy builder; real data | Smoke: New Session modal · Build Strategy · Trades tab |
+| 2026-08-04 | Dark theme: true black surfaces + dark blue accent (`#1e3a8a`) across Hero tokens + chart fallbacks | Hard-refresh; confirm pages/chart not gray |
 | 2026-08-04 | Fix multi-chart sync-off jump: silent setCamera; TF/symbol rederive one pane only; commit keeps sibling bars | 2×2 sync off → change one TF — others stay put |
+| 2026-08-04 | Fix replay stuck after Exit→new session: always sync wasPlayingRef; load gen; no Play on empty chart | Exit while playing → Start → Play advances |
 
 ---
 

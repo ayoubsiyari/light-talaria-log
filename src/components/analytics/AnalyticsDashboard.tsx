@@ -32,6 +32,8 @@ interface Props {
   sessionId?: string | null;
   onClose?: () => void;
   onOpenJournal?: () => void;
+  /** When false, hide demo fixture controls (Dashboard shell). Default true for chart overlay. */
+  allowDemo?: boolean;
 }
 
 export function AnalyticsDashboard({
@@ -39,6 +41,7 @@ export function AnalyticsDashboard({
   sessionId,
   onClose,
   onOpenJournal,
+  allowDemo = true,
 }: Props) {
   const [filter, setFilter] = useState<FilterState>(EMPTY_FILTER);
   const [store, setStore] = useState<TradeStore | null>(null);
@@ -69,7 +72,12 @@ export function AnalyticsDashboard({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    if (!allowDemo && source === 'demo') setSource('journal');
+  }, [allowDemo, source]);
+
+  useEffect(() => {
     if (source === 'demo') {
+      if (!allowDemo) return;
       const trades = generateSyntheticTrades({ n: 5_000, seed: 7 });
       setStore(buildTradeStore(trades, { initialBalance: 10_000 }));
       return;
@@ -89,7 +97,7 @@ export function AnalyticsDashboard({
         initialBalance: view.startBalance,
       }),
     );
-  }, [source, liveJournal, sessionId]);
+  }, [source, liveJournal, sessionId, allowDemo]);
 
   useEffect(() => {
     if (!store) {
@@ -212,17 +220,20 @@ export function AnalyticsDashboard({
     return (
       <div className="p-4 space-y-3">
         <p className="text-sm text-muted">
-          No closed replay trades yet. Place orders and let them close, or load a demo
-          sample.
+          {allowDemo
+            ? 'No closed replay trades yet. Place orders and let them close, or load a demo sample.'
+            : 'No closed trades yet. Open a backtest, place orders, then return here.'}
         </p>
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="primary"
-            className="min-h-11"
-            onPress={() => setSource('demo')}
-          >
-            Load 5k demo trades
-          </Button>
+          {allowDemo && (
+            <Button
+              variant="primary"
+              className="min-h-11"
+              onPress={() => setSource('demo')}
+            >
+              Load 5k demo trades
+            </Button>
+          )}
           {onOpenJournal && (
             <Button variant="secondary" className="min-h-11" onPress={onOpenJournal}>
               Open Journal
@@ -248,22 +259,26 @@ export function AnalyticsDashboard({
           {busy ? ' · computing…' : ''}
         </span>
         <div className="flex flex-wrap gap-1 ml-auto">
-          <Button
-            size="sm"
-            variant={source === 'journal' ? 'primary' : 'ghost'}
-            className="min-h-11 sm:min-h-8"
-            onPress={() => setSource('journal')}
-          >
-            Journal
-          </Button>
-          <Button
-            size="sm"
-            variant={source === 'demo' ? 'primary' : 'ghost'}
-            className="min-h-11 sm:min-h-8"
-            onPress={() => setSource('demo')}
-          >
-            Demo 5k
-          </Button>
+          {allowDemo && (
+            <>
+              <Button
+                size="sm"
+                variant={source === 'journal' ? 'primary' : 'ghost'}
+                className="min-h-11 sm:min-h-8"
+                onPress={() => setSource('journal')}
+              >
+                Journal
+              </Button>
+              <Button
+                size="sm"
+                variant={source === 'demo' ? 'primary' : 'ghost'}
+                className="min-h-11 sm:min-h-8"
+                onPress={() => setSource('demo')}
+              >
+                Demo 5k
+              </Button>
+            </>
+          )}
           <Button
             size="sm"
             variant="ghost"

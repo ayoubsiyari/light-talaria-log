@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from 'react';
 import { Alert, Button, toast } from '@heroui/react';
 import {
@@ -77,7 +78,7 @@ import {
   subscribeBacktest,
 } from '@/backtest/backtestStore';
 import { cancelBacktest, runBacktest } from '@/backtest/runBacktestWorker';
-import { saveJournalResult } from '@/journal/journalStore';
+import { getJournalRun, saveJournalResult } from '@/journal/journalStore';
 import {
   DEFAULT_BACKTEST_PARAMS,
   type BacktestParams,
@@ -126,8 +127,12 @@ import {
   type AppTab,
   type AppView,
 } from '@/navigation/appRoute';
-import { TalariaV8bHost } from '@/components/v8b/TalariaV8bHost';
-
+import { AppShell } from '@/components/shell/AppShell';
+import { ProfilePage } from '@/components/shell/ProfilePage';
+import { DashboardPage } from '@/components/dashboard/DashboardPage';
+import { StrategyPage } from '@/components/strategy/StrategyPage';
+import { CreateSessionPage } from '@/components/session/CreateSessionPage';
+import { JournalPage } from '@/components/journal/JournalPage';
 /** Throttle localStorage writes while replay is playing. */
 const REPLAY_PROGRESS_SAVE_MS = 2500;
 
@@ -2707,20 +2712,133 @@ export default function App() {
     );
   }
 
-  // Phase 1–2: TalariaV8b is the product shell (sessions / create / strategy / dashboard).
-  // Chart workspace stays on view === 'chart'.
+  // Single Hero AppShell — one page per tab (no V8b host, no duplicate paths).
   if (view === 'app' || !session) {
+    const openChartFromJournal = (
+      id: string,
+      focus?: {
+        time: number;
+        tradeId?: string | null;
+        runId?: string | null;
+      },
+    ) => {
+      if (focus?.runId) {
+        const run = getJournalRun(focus.runId);
+        if (run) {
+          setBacktestResult(run.result, null);
+          setBacktestParams({
+            ...run.result.params,
+            sma: { ...run.result.params.sma },
+            donchian: { ...run.result.params.donchian },
+            costs: { ...run.result.params.costs },
+          });
+        }
+      }
+      if (focus) pendingJournalFocusRef.current = focus;
+      if (focus) {
+        const hash = formatAppRoute({
+          view: 'chart',
+          appTab: null,
+          sessionId: id,
+          focusTime: focus.time,
+          focusTradeId: focus.tradeId ?? null,
+        });
+        if (window.location.hash !== hash) {
+          suppressHashRef.current = true;
+          window.history.replaceState(
+            null,
+            '',
+            `${window.location.pathname}${window.location.search}${hash}`,
+          );
+          queueMicrotask(() => {
+            suppressHashRef.current = false;
+          });
+        }
+      }
+      if (session && session.id === id && panesRef.current.length > 0) {
+        setJournalSessionId(null);
+        setView('chart');
+        if (focus) {
+          applyJournalFocus(focus);
+          clearChartFocusHash(id);
+        }
+        pendingJournalFocusRef.current = null;
+        return;
+      }
+      const s = getSession(id);
+      if (s) void loadSessionData(s, focus);
+    };
+
+    let shellBody: ReactNode;
+    switch (appTab) {
+      case 'dashboard':
+        shellBody = (
+          <DashboardPage
+            liveJournal={orderBridgeRef.current?.getJournal() ?? null}
+            onGoBacktest={() => goAppTab('backtest')}
+            onGoJournal={() => goAppTab('journal')}
+            onGoStrategy={() => goAppTab('strategy')}
+          />
+        );
+        break;
+      case 'backtest':
+        shellBody = (
+          <CreateSessionPage
+            embedded
+            onStart={(s) => void loadSessionData(s)}
+            onGoDatasets={() => setView('datasets')}
+            onGoJournal={(sessionId) => goAppTab('journal', sessionId ?? null)}
+            onGoHome={() => setView('landing')}
+          />
+        );
+        break;
+      case 'journal':
+        shellBody = (
+          <JournalPage
+            embedded
+            initialSessionId={journalSessionId}
+            liveJournal={orderBridgeRef.current?.getJournal() ?? null}
+            canReturnToChart={
+              !!session && session.id === (journalSessionId ?? session.id)
+            }
+            onGoHome={() => {
+              setJournalSessionId(null);
+              if (session) teardownChartSession();
+              setView('landing');
+            }}
+            onGoDatasets={() => {
+              setJournalSessionId(null);
+              if (session) teardownChartSession();
+              setView('datasets');
+            }}
+            onGoSessions={() => goAppTab('backtest')}
+            onOpenChart={openChartFromJournal}
+          />
+        );
+        break;
+      case 'strategy':
+        shellBody = <StrategyPage onGoBacktest={() => goAppTab('backtest')} />;
+        break;
+      case 'profile':
+        shellBody = <ProfilePage />;
+        break;
+      default:
+        shellBody = null;
+    }
+
     return (
-      <TalariaV8bHost
-        appTab={appTab}
-        onAppTabChange={(tab) => goAppTab(tab)}
-        onLaunchChart={(s) => void loadSessionData(s)}
-        onGoDatasets={() => setView('datasets')}
+      <AppShell
+        tab={appTab}
+        onTabChange={(tab) =>
+          goAppTab(tab, tab === 'journal' ? journalSessionId : null)
+        }
         onGoHome={() => {
           if (session) teardownChartSession();
           setView('landing');
         }}
-      />
+      >
+        {shellBody}
+      </AppShell>
     );
   }
 

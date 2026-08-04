@@ -1,32 +1,26 @@
-import { Card } from '@heroui/react';
+import type { BacktestSession } from '@/types/session';
+import { TalariaV8bHost } from '@/components/v8b/TalariaV8bHost';
+
+interface StrategyPageProps {
+  onLaunchChart: (session: BacktestSession) => void;
+  onGoDatasets?: () => void;
+  onTabChange?: (tab: 'strategy' | 'backtest' | 'dashboard' | 'journal' | 'profile') => void;
+}
 
 /**
- * Placeholder — Strategy Builder (ReactFlow) comes later.
- * Do not port TalariaV8b canvas here.
+ * Phase 3 module: Strategy bank + Strategy Builder (ReactFlow wizard inside V8b).
  */
-export function StrategyPage() {
+export function StrategyPage({
+  onLaunchChart,
+  onGoDatasets,
+  onTabChange,
+}: StrategyPageProps) {
   return (
-    <div className="min-h-full bg-background text-foreground">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6">
-        <header className="space-y-1.5">
-          <p className="text-xs uppercase tracking-[0.2em] text-muted">Builder</p>
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Strategy</h1>
-          <p className="text-sm text-muted max-w-xl">
-            Visual strategy building will live here. For now, run SMA / Donchian backtests from a
-            chart session.
-          </p>
-        </header>
-
-        <Card className="bg-surface border border-border">
-          <Card.Content className="px-6 py-10 text-center space-y-2">
-            <p className="text-sm font-medium">Coming soon</p>
-            <p className="text-sm text-muted max-w-md mx-auto">
-              Strategy canvas and rule builder are planned for a later phase — not ported from the
-              legacy V8b monolith.
-            </p>
-          </Card.Content>
-        </Card>
-      </div>
-    </div>
+    <TalariaV8bHost
+      appTab="strategy"
+      onAppTabChange={onTabChange}
+      onLaunchChart={onLaunchChart}
+      onGoDatasets={onGoDatasets}
+    />
   );
 }

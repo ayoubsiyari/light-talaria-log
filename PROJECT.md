@@ -782,6 +782,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | API production hardening: CDN URLs, Cache-Control/ETag, Redis rate limits, chunk paging, download quota, security headers (`docs/API-PRODUCTION.md`) | Set `CDN_PUBLIC_BASE` in deploy; `saas:migrate` |
 | 2026-08-04 | VPS SaaS path: Docker Postgres/Redis/API (disk chunks), text dataset ids, import disk catalog, preview proxies `/api/v1` | Hard-refresh :4173; Create Session lists FirstRate |
 | 2026-08-04 | Hero UI AppShell: `#/app/*` tabs (Dashboard/Backtest/Journal/Strategy/Profile); marketing Go App → dashboard; reuse CreateSession+Journal; chart unchanged | Smoke: shell tabs + Start → chart + journal at ~390px |
+| 2026-08-04 | **V8b Phase 1–3:** embed `src/v8b/TalariaV8b.jsx` (reactflow + scoreEngine stub); Go App → full V8b shell; Start/Resume → chart bridge; page modules for strategy/dashboard/sessions/profile | Smoke: Create Session + Strategy Builder + Dashboard; Exit chart → V8b |
 
 ---
 

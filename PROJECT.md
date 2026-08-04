@@ -708,6 +708,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | Analytics dashboard v1: columnar store, worker metrics (88), canvas charts subset, virtual list, honesty gating; report in `docs/ANALYTICS-REPORT.md` | Bottom Analytics tab; Demo 5k; `npm run test:analytics` / `bench:analytics` |
 | 2026-08-04 | Trade collect enrichment: MFE/MAE, stop/R/costs/exitReason/riskPct/entry bars on POSITION_CLOSED → journal → analytics | Place+SL → Play → Analytics shows R, SL, commission |
 | 2026-08-04 | Server publish: Dukascopy → IDB → PUT meta/series/chunks to `/api/v1`; Datasets auto-publish + Save to server; Import from API on other browsers | Download → confirm Import list → open in 2nd browser |
+| 2026-08-04 | Server-first sessions: Create Session lists remote catalog; fetch chunks by date on Start (`ensureSessionDataFromServer`); range IDB meta fix | Publish from Datasets → new session with dates → chart loads |
 
 ---
 

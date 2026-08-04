@@ -3,8 +3,8 @@
  * Fetches chunk binaries by range and writes them with the same `putChunk` /
  * `putSeriesMeta` used by local CSV ingest. Does not replace viewport loader.
  *
- * Datasets UI imports via `ingestRemoteDatasetAllTfs`. Local Dukascopy/CSV
- * Create Session path is unchanged.
+ * Create Session fetches by date via `ensureSessionDataFromServer`.
+ * Datasets UI may still warm-cache via `ingestRemoteDatasetAllTfs`.
  */
 import {
   getChunk,
@@ -16,8 +16,11 @@ import {
 } from '@/data/idbStore';
 import { registerRemoteDataset } from '@/datasets/datasetStore';
 import { fetchChunkBinary, fetchRemoteChunks, getRemoteDataset } from '@/datasets/remoteApi';
+import type { RemoteChunkRef } from '@/types/remoteApi';
 import type { SeriesCatalog, SeriesMeta } from '@/types/series';
 import type { Timeframe } from '@/types/ui';
+
+const BYTES_PER_BAR = 28;
 
 export interface IngestRemoteOptions {
   /** Unix seconds; omit for full series on that TF. */
@@ -31,6 +34,15 @@ export interface IngestRemoteAllProgress {
   timeframe: Timeframe;
   index: number;
   total: number;
+}
+
+export interface SessionFetchProgress {
+  datasetId: string;
+  timeframe: Timeframe;
+  index: number;
+  total: number;
+  percent: number;
+  detail: string;
 }
 
 /** True when series meta + first chunk exist for this TF. */
@@ -54,6 +66,82 @@ function remoteTimeframes(remote: {
     ? remote.timeframes
     : [remote.baseTimeframe || '1m'];
   return listed as Timeframe[];
+}
+
+function dateToUnix(date: string, endOfDay: boolean): number {
+  const iso = endOfDay ? `${date}T23:59:59Z` : `${date}T00:00:00Z`;
+  return Math.floor(Date.parse(iso) / 1000);
+}
+
+function barsFromBytes(bytes: number): number {
+  if (!Number.isFinite(bytes) || bytes <= 0) return 0;
+  return Math.floor(bytes / BYTES_PER_BAR);
+}
+
+interface ChunkSlice {
+  chunkId: string;
+  logicalStart: number;
+  timeStart: number;
+  timeEnd: number;
+  bytes: number;
+}
+
+function metaFromChunkSlices(
+  datasetId: string,
+  timeframe: Timeframe,
+  slices: ChunkSlice[],
+): SeriesMeta {
+  const ordered = [...slices].sort((a, b) => a.logicalStart - b.logicalStart);
+  const rowCount = ordered.reduce((n, s) => n + barsFromBytes(s.bytes), 0);
+  return {
+    datasetId,
+    timeframe,
+    rowCount,
+    timeStart: ordered[0]?.timeStart ?? 0,
+    timeEnd: ordered[ordered.length - 1]?.timeEnd ?? 0,
+    chunkIds: ordered.map((s) => s.chunkId),
+    chunkStarts: ordered.map((s) => s.logicalStart),
+    chunkTimeStarts: ordered.map((s) => s.timeStart),
+    chunkTimeEnds: ordered.map((s) => s.timeEnd),
+  };
+}
+
+/** Merge existing IDB meta with newly fetched range chunks (by chunkId). */
+async function buildRangeSeriesMeta(
+  db: IDBDatabase,
+  datasetId: string,
+  timeframe: Timeframe,
+  fetched: RemoteChunkRef[],
+): Promise<SeriesMeta> {
+  const byId = new Map<string, ChunkSlice>();
+  const existing = await getSeriesMeta(db, datasetId, timeframe);
+  if (existing) {
+    for (let i = 0; i < existing.chunkIds.length; i++) {
+      const chunkId = existing.chunkIds[i]!;
+      const buf = await getChunk(db, chunkId);
+      byId.set(chunkId, {
+        chunkId,
+        logicalStart: existing.chunkStarts[i] ?? i * 5000,
+        timeStart: existing.chunkTimeStarts[i] ?? 0,
+        timeEnd: existing.chunkTimeEnds[i] ?? 0,
+        bytes: buf?.byteLength ?? 0,
+      });
+    }
+  }
+  for (const ref of fetched) {
+    byId.set(ref.chunkId, {
+      chunkId: ref.chunkId,
+      logicalStart: ref.logicalStart,
+      timeStart: ref.timeStart,
+      timeEnd: ref.timeEnd,
+      bytes: ref.bytes,
+    });
+  }
+  const slices = [...byId.values()];
+  if (slices.length === 0) {
+    throw new Error('No server chunks for this date range.');
+  }
+  return metaFromChunkSlices(datasetId, timeframe, slices);
 }
 
 async function catalogFromIdb(
@@ -88,6 +176,7 @@ async function catalogFromIdb(
     baseTf,
     timeframes: available,
     rowCounts,
+    // Prefer full server bounds for session clamping; IDB may be a date slice.
     timeStart: remote.timeStart || timeStart,
     timeEnd: remote.timeEnd || timeEnd,
   };
@@ -95,7 +184,8 @@ async function catalogFromIdb(
 
 /**
  * Pull remote chunks for one TF into IndexedDB and store SeriesMeta.
- * Returns a lightweight catalog handle (no bars in React state).
+ * When fromTime/toTime are set, meta lists only present chunks (merged with
+ * any already-cached chunk ids) so the viewport never points at missing bins.
  */
 export async function ingestRemoteChunksToIdb(
   datasetId: string,
@@ -103,6 +193,7 @@ export async function ingestRemoteChunksToIdb(
   opts: IngestRemoteOptions = {},
 ): Promise<SeriesCatalog> {
   const skipExisting = opts.skipExisting !== false;
+  const ranged = opts.fromTime != null || opts.toTime != null;
   const remote = await getRemoteDataset(datasetId);
   const chunksRes = await fetchRemoteChunks({
     datasetId,
@@ -112,19 +203,22 @@ export async function ingestRemoteChunksToIdb(
   });
 
   const sm = chunksRes.seriesMeta;
-  const meta: SeriesMeta = {
-    datasetId,
-    timeframe,
-    rowCount: sm.rowCount,
-    timeStart: sm.timeStart,
-    timeEnd: sm.timeEnd,
-    chunkIds: sm.chunkIds,
-    chunkStarts: sm.chunkStarts,
-    chunkTimeStarts: sm.chunkTimeStarts,
-    chunkTimeEnds: sm.chunkTimeEnds,
-  };
-
   const db = await openDb();
+
+  const meta: SeriesMeta = ranged
+    ? await buildRangeSeriesMeta(db, datasetId, timeframe, sm.chunks)
+    : {
+        datasetId,
+        timeframe,
+        rowCount: sm.rowCount,
+        timeStart: sm.timeStart,
+        timeEnd: sm.timeEnd,
+        chunkIds: sm.chunkIds,
+        chunkStarts: sm.chunkStarts,
+        chunkTimeStarts: sm.chunkTimeStarts,
+        chunkTimeEnds: sm.chunkTimeEnds,
+      };
+
   await putSeriesMeta(db, meta);
 
   for (const ref of sm.chunks) {
@@ -157,10 +251,61 @@ export async function ingestRemoteChunksToIdb(
 }
 
 /**
+ * Fetch server chunks covering [startDate, endDate] for every TF on the
+ * remote dataset, register local catalog, return SeriesCatalog.
+ * Used when the user starts/opens a session — no pre-import required.
+ */
+export async function ensureSessionDataFromServer(
+  datasetId: string,
+  startDate: string,
+  endDate: string,
+  onProgress?: (p: SessionFetchProgress) => void,
+): Promise<SeriesCatalog> {
+  const fromTime = dateToUnix(startDate, false);
+  const toTime = dateToUnix(endDate, true);
+  if (!Number.isFinite(fromTime) || !Number.isFinite(toTime) || fromTime > toTime) {
+    throw new Error('Invalid session date range for server fetch.');
+  }
+
+  const remote = await getRemoteDataset(datasetId);
+  if (remote.status === 'failed') {
+    throw new Error(`Server dataset ${remote.name} is marked failed.`);
+  }
+  const tfs = remoteTimeframes(remote);
+  if (tfs.length === 0) {
+    throw new Error('Server dataset has no timeframes.');
+  }
+
+  for (let i = 0; i < tfs.length; i++) {
+    const tf = tfs[i]!;
+    onProgress?.({
+      datasetId,
+      timeframe: tf,
+      index: i,
+      total: tfs.length,
+      percent: Math.round((i / tfs.length) * 100),
+      detail: `Fetching ${remote.symbol} ${tf} (${startDate} → ${endDate})…`,
+    });
+    await ingestRemoteChunksToIdb(datasetId, tf, { fromTime, toTime });
+  }
+
+  onProgress?.({
+    datasetId,
+    timeframe: tfs[tfs.length - 1]!,
+    index: tfs.length - 1,
+    total: tfs.length,
+    percent: 100,
+    detail: `Fetched ${remote.symbol} for session dates`,
+  });
+
+  registerRemoteDataset(remote);
+  return catalogFromIdb(datasetId, remote, tfs);
+}
+
+/**
  * Ingest every TF listed on the remote dataset (skips TFs already healthy in
  * IDB), then register a local catalog entry (`source: 'remote'`).
- * Safe to call again after the server gains new timeframes (e.g. only 1m was
- * imported earlier).
+ * Optional warm-cache from Datasets UI — Create Session uses date fetch instead.
  */
 export async function ingestRemoteDatasetAllTfs(
   datasetId: string,

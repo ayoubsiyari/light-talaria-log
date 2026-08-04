@@ -83,9 +83,28 @@ export function remoteSymbolToPair(symbol: string): PairSymbol {
   throw new Error(`Unsupported remote symbol: ${symbol}`);
 }
 
-function unixToIsoDate(sec: number): string {
+export function unixToIsoDate(sec: number): string {
   if (!Number.isFinite(sec) || sec <= 0) return '1970-01-01';
   return new Date(sec * 1000).toISOString().slice(0, 10);
+}
+
+/** Map remote API meta → local catalog shape (does not write storage). */
+export function remoteToDownloadedStub(remote: RemoteDatasetMeta): DownloadedDataset {
+  const timeframe = (remote.baseTimeframe as Timeframe) || '1m';
+  const rowCount =
+    remote.rowCounts?.[timeframe] ??
+    Object.values(remote.rowCounts ?? {})[0] ??
+    0;
+  return {
+    id: remote.id,
+    pair: remoteSymbolToPair(remote.symbol),
+    timeframe,
+    startDate: unixToIsoDate(remote.timeStart),
+    endDate: unixToIsoDate(remote.timeEnd),
+    rowCount,
+    source: 'remote',
+    createdAt: 0,
+  };
 }
 
 /**

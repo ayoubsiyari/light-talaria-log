@@ -1,7 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button, Card, Label } from '@heroui/react';
 import { AppPageHeader } from '@/components/layout/AppPageNav';
-import { listDatasets } from '@/datasets/datasetStore';
+import {
+  registerRemoteDataset,
+  remoteToDownloadedStub,
+} from '@/datasets/datasetStore';
+import { fetchHealth, listRemoteDatasets } from '@/datasets/remoteApi';
 import {
   clampDate,
   commonTimeframes,
@@ -17,6 +21,8 @@ import {
   listSessions,
   validateSessionDates,
 } from '@/sessions/sessionStore';
+import type { DownloadedDataset } from '@/types/dataset';
+import type { RemoteDatasetMeta } from '@/types/remoteApi';
 import type { BacktestSession, PairSymbol, SessionLeg } from '@/types/session';
 import type { Timeframe } from '@/types/ui';
 
@@ -42,27 +48,77 @@ function layoutHint(n: number): string {
   return '4-chart grid';
 }
 
+function remotesToDatasets(remotes: RemoteDatasetMeta[]): DownloadedDataset[] {
+  const out: DownloadedDataset[] = [];
+  for (const r of remotes) {
+    if (r.status === 'failed') continue;
+    try {
+      out.push(remoteToDownloadedStub(r));
+    } catch {
+      // Unsupported symbol — skip
+    }
+  }
+  return out;
+}
+
 export function CreateSessionPage({
   onStart,
   onGoDatasets,
   onGoJournal,
   onGoHome,
 }: CreateSessionPageProps) {
-  const [datasets] = useState(() => listDatasets());
+  const [remoteStatus, setRemoteStatus] = useState<'loading' | 'ready' | 'error'>(
+    'loading',
+  );
+  const [remoteError, setRemoteError] = useState<string | null>(null);
+  const [remotes, setRemotes] = useState<RemoteDatasetMeta[]>([]);
+  const [datasets, setDatasets] = useState<DownloadedDataset[]>([]);
+
+  const loadServer = () => {
+    setRemoteStatus('loading');
+    setRemoteError(null);
+    void (async () => {
+      try {
+        await fetchHealth();
+        const list = await listRemoteDatasets();
+        setRemotes(list);
+        setDatasets(remotesToDatasets(list));
+        setRemoteStatus('ready');
+      } catch (err) {
+        setRemotes([]);
+        setDatasets([]);
+        setRemoteStatus('error');
+        setRemoteError(
+          err instanceof Error
+            ? err.message
+            : 'Server API unreachable. Use npm run dev and publish data from Datasets.',
+        );
+      }
+    })();
+  };
+
+  useEffect(() => {
+    loadServer();
+  }, []);
+
   const pairs = useMemo(() => uniquePairs(datasets), [datasets]);
 
-  const [selectedPairs, setSelectedPairs] = useState<PairSymbol[]>(() =>
-    pairs[0] ? [pairs[0]] : [],
-  );
+  const [selectedPairs, setSelectedPairs] = useState<PairSymbol[]>([]);
+
+  // Seed selection when server catalog first loads
+  useEffect(() => {
+    if (selectedPairs.length === 0 && pairs[0]) {
+      setSelectedPairs([pairs[0]]);
+    }
+  }, [pairs, selectedPairs.length]);
 
   const availableTfs = useMemo(
     () => commonTimeframes(datasets, selectedPairs),
     [datasets, selectedPairs],
   );
 
-  const [timeframe, setTimeframe] = useState<Timeframe | ''>(() => availableTfs[0] ?? '');
+  const [timeframe, setTimeframe] = useState<Timeframe | ''>('');
 
-  // Keep timeframe valid when pair selection changes
   const effectiveTf: Timeframe | '' = useMemo(() => {
     if (timeframe && availableTfs.includes(timeframe)) return timeframe;
     return availableTfs[0] ?? '';
@@ -79,7 +135,6 @@ export function CreateSessionPage({
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  // Sync dates into overlap bounds whenever overlap changes
   const boundStart = overlap
     ? clampDate(startDate || overlap.startDate, overlap.startDate, overlap.endDate)
     : '';
@@ -96,10 +151,10 @@ export function CreateSessionPage({
   const togglePair = (pair: PairSymbol) => {
     setSelectedPairs((prev) => {
       if (prev.includes(pair)) {
-        if (prev.length === 1) return prev; // keep at least one
+        if (prev.length === 1) return prev;
         return prev.filter((p) => p !== pair);
       }
-      if (prev.length >= 4) return prev; // max 4 panes
+      if (prev.length >= 4) return prev;
       return [...prev, pair];
     });
     setError(null);
@@ -114,6 +169,7 @@ export function CreateSessionPage({
   }, [effectiveTf, selectedPairs]);
 
   const canCreate =
+    remoteStatus === 'ready' &&
     selectedPairs.length > 0 &&
     !!effectiveTf &&
     !!overlap &&
@@ -123,7 +179,7 @@ export function CreateSessionPage({
 
   const handleCreate = () => {
     if (!effectiveTf || !overlap || !sessionStart || !sessionEnd) {
-      setError('Select pairs with overlapping downloaded dates.');
+      setError('Select pairs with overlapping server coverage.');
       return;
     }
     const dateErr = validateSessionDates(sessionStart, sessionEnd);
@@ -142,9 +198,24 @@ export function CreateSessionPage({
         sessionEnd,
       );
       if (!ds) {
-        setError(`No dataset covers ${sessionStart} → ${sessionEnd} for ${pair}.`);
+        setError(`No server dataset covers ${sessionStart} → ${sessionEnd} for ${pair}.`);
         return;
       }
+      // Catalog stub only — chunks fetch when the chart opens.
+      const full = remotes.find((r) => r.id === ds.id);
+      if (full) registerRemoteDataset(full);
+      else registerRemoteDataset({
+        id: ds.id,
+        symbol: ds.pair,
+        baseTimeframe: ds.timeframe,
+        name: `${ds.pair} ${ds.timeframe}`,
+        visibility: 'public_read',
+        status: 'ready',
+        timeStart: Math.floor(Date.parse(`${ds.startDate}T00:00:00Z`) / 1000),
+        timeEnd: Math.floor(Date.parse(`${ds.endDate}T23:59:59Z`) / 1000),
+        rowCounts: { [ds.timeframe]: ds.rowCount },
+        timeframes: [ds.timeframe],
+      });
       legs.push({ pair, datasetId: ds.id });
     }
 
@@ -166,7 +237,7 @@ export function CreateSessionPage({
         <AppPageHeader
           current="sessions"
           title="Backtest session"
-          description="Select one or more pairs from your downloads. Session dates are limited to the overlap shared by every selected pair. Prefer 1m data — the chart aggregates higher timeframes."
+          description="Pick pairs and dates from server datasets. Bars are fetched when you start — no pre-download in this browser."
           onGoHome={onGoHome}
           onGoSessions={() => undefined}
           onGoDatasets={onGoDatasets}
@@ -175,22 +246,56 @@ export function CreateSessionPage({
 
         <Card className="bg-surface border border-border">
           <Card.Header className="px-6 pt-6 pb-2">
-            <Card.Title className="text-lg">New session</Card.Title>
-            <Card.Description className="text-muted text-sm">
-              Only downloaded pairs appear here. Dates = overlap across your selection.
-            </Card.Description>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <Card.Title className="text-lg">New session</Card.Title>
+                <Card.Description className="text-muted text-sm">
+                  Server catalog only. Publish history from Datasets; this page fetches by your
+                  date range on Start.
+                </Card.Description>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="min-h-11 shrink-0"
+                onPress={loadServer}
+                isDisabled={remoteStatus === 'loading'}
+              >
+                {remoteStatus === 'loading' ? 'Loading…' : 'Refresh'}
+              </Button>
+            </div>
           </Card.Header>
           <Card.Content className="px-6 pb-6 space-y-4">
-            {datasets.length === 0 ? (
+            {remoteStatus === 'loading' && (
+              <p className="text-sm text-muted" role="status">
+                Loading server datasets…
+              </p>
+            )}
+
+            {remoteStatus === 'error' && (
               <div className="space-y-3 py-2">
-                <p className="text-sm text-muted">
-                  No datasets yet. Download OHLC from Dukascopy first.
+                <p className="text-sm text-danger" role="alert">
+                  {remoteError ?? 'Server API unreachable.'}
                 </p>
-                <Button variant="primary" onPress={onGoDatasets}>
+                <Button variant="primary" className="min-h-11" onPress={onGoDatasets}>
                   Go to Datasets
                 </Button>
               </div>
-            ) : (
+            )}
+
+            {remoteStatus === 'ready' && datasets.length === 0 && (
+              <div className="space-y-3 py-2">
+                <p className="text-sm text-muted">
+                  No datasets on the server yet. Download from Dukascopy and save to the server
+                  on the Datasets page.
+                </p>
+                <Button variant="primary" className="min-h-11" onPress={onGoDatasets}>
+                  Go to Datasets
+                </Button>
+              </div>
+            )}
+
+            {remoteStatus === 'ready' && datasets.length > 0 && (
               <>
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted">Session name</Label>
@@ -255,8 +360,7 @@ export function CreateSessionPage({
                   </select>
                   {selectedPairs.length > 1 && availableTfs.length === 0 && (
                     <p className="text-xs text-danger">
-                      Selected pairs share no common timeframe. Download matching TFs or deselect
-                      a pair.
+                      Selected pairs share no common timeframe on the server.
                     </p>
                   )}
                 </div>
@@ -291,18 +395,18 @@ export function CreateSessionPage({
 
                 {overlap ? (
                   <p className="text-xs text-muted">
-                    Overlap available:{' '}
+                    Server coverage:{' '}
                     <span className="text-foreground tabular-nums">
                       {overlap.startDate} → {overlap.endDate}
                     </span>
                     {selectedPairs.length > 1
                       ? ` · shared by ${selectedPairs.join(', ')}`
                       : null}
+                    . Chunks load when you start.
                   </p>
                 ) : selectedPairs.length > 0 && effectiveTf ? (
                   <p className="text-sm text-danger" role="alert">
-                    No overlapping dates for the selected pairs at {effectiveTf}. Download a
-                    matching range or pick different pairs.
+                    No overlapping server dates for the selected pairs at {effectiveTf}.
                   </p>
                 ) : null}
 
@@ -313,7 +417,12 @@ export function CreateSessionPage({
                 )}
 
                 <div className="flex items-center gap-3 pt-2">
-                  <Button variant="primary" onPress={handleCreate} isDisabled={!canCreate}>
+                  <Button
+                    variant="primary"
+                    className="min-h-11"
+                    onPress={handleCreate}
+                    isDisabled={!canCreate}
+                  >
                     Start session
                   </Button>
                 </div>

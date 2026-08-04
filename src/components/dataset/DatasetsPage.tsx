@@ -266,7 +266,7 @@ export function DatasetsPage({
         <AppPageHeader
           current="datasets"
           title="Datasets"
-          description="Downloads stay in this browser until saved to the server. After publish, other browsers import via Import from API (no re-download from Dukascopy)."
+          description="Download Dukascopy history and save it to the server. Users create sessions with dates — the chart then fetches only that range (no pre-import required)."
           onGoHome={onGoHome}
           onGoSessions={onGoSessions}
           onGoDatasets={() => undefined}
@@ -281,7 +281,7 @@ export function DatasetsPage({
                   {datasets.length} dataset{datasets.length === 1 ? '' : 's'} ready
                 </p>
                 <p className="text-xs text-muted mt-0.5">
-                  Create a backtest session with your downloaded pairs.
+                  After save-to-server, create a session — users fetch by date on Start.
                 </p>
               </div>
               <Button
@@ -551,10 +551,10 @@ export function DatasetsPage({
           <Card.Header className="px-6 pt-6 pb-2">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 space-y-1">
-                <Card.Title className="text-lg">Import from API</Card.Title>
+                <Card.Title className="text-lg">Warm cache (optional)</Card.Title>
                 <Card.Description className="text-muted text-sm">
-                  Shared datasets via <code className="text-xs">/api/v1</code>. Pulls all
-                  available timeframes into IndexedDB (no full series in React state).
+                  Optional full pull into this browser. Not required — Create Session fetches
+                  by date from the server when you start.
                 </Card.Description>
               </div>
               <Button

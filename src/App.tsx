@@ -49,6 +49,9 @@ import type { HitResult } from '@/drawings/hitTest';
 import { magnetSnap } from '@/drawings/magnet';
 import { getTool, TOOLS, type DrawingToolId } from '@/drawings/toolRegistry';
 import { ensureDatasetIngested } from '@/datasets/ingestDataset';
+import { ensureSessionDataFromServer } from '@/datasets/ingestRemoteChunks';
+import { getDataset, registerRemoteDataset } from '@/datasets/datasetStore';
+import { getRemoteDataset } from '@/datasets/remoteApi';
 import { resolveBaseDatasetsForSession } from '@/datasets/resolveBaseDataset';
 import {
   clearBacktestResult,
@@ -1019,16 +1022,47 @@ export default function App() {
       setDraftPoints([]);
 
       try {
+        // Rehydrate catalog stubs from server when localStorage was cleared.
+        for (const leg of fresh.legs) {
+          if (!getDataset(leg.datasetId)) {
+            try {
+              registerRemoteDataset(await getRemoteDataset(leg.datasetId));
+            } catch {
+              // Local-only dataset or API down — resolve may still find CSV rows.
+            }
+          }
+        }
+
         const resolved = resolveBaseDatasetsForSession(fresh);
-        if (resolved.length === 0) throw new Error('No dataset found for this session.');
+        if (resolved.length === 0) {
+          throw new Error(
+            'No dataset found for this session. Publish it from Datasets, then create a new session.',
+          );
+        }
 
         const seriesList: PaneSeries[] = [];
         for (let i = 0; i < resolved.length; i++) {
           const { leg, dataset } = resolved[i]!;
-          const cat = await ensureDatasetIngested(dataset.id, dataset.timeframe, (p) => {
-            const base = i / resolved.length;
-            setIngestPct(base + p.percent / resolved.length);
-          });
+          const base = i / resolved.length;
+          const slice = 1 / resolved.length;
+
+          let cat;
+          if (dataset.source === 'remote') {
+            cat = await ensureSessionDataFromServer(
+              dataset.id,
+              fresh.startDate,
+              fresh.endDate,
+              (p) => {
+                // Session fetch reports 0–100; chart loader expects 0–1.
+                setIngestPct(base + (p.percent / 100) * slice);
+              },
+            );
+          } else {
+            cat = await ensureDatasetIngested(dataset.id, dataset.timeframe, (p) => {
+              // CSV ingest reports 0–1.
+              setIngestPct(base + p.percent * slice);
+            });
+          }
           seriesList.push({ pair: leg.pair, datasetId: cat.datasetId, catalog: cat });
         }
         seriesRef.current = seriesList;
@@ -2254,9 +2288,10 @@ export default function App() {
         <div className="flex-1 min-w-0 min-h-0 flex flex-row relative bg-background">
           <div className="flex-1 min-w-0 min-h-0 flex flex-col relative">
           {loadStatus === 'loading' && (
-            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-background/80 gap-2">
+            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-background/80 gap-2 px-4 text-center">
               <p className="text-sm text-muted">
-                Ingesting {session.legs.map((l) => l.pair).join(' + ')} into IndexedDB…{' '}
+                Fetching {session.legs.map((l) => l.pair).join(' + ')}{' '}
+                {session.startDate} → {session.endDate} from server…{' '}
                 {Math.round(ingestPct * 100)}%
               </p>
             </div>

@@ -395,6 +395,16 @@ export async function ensureRemoteTimeCoverage(
     const pad = tfSec * 2;
     const maxBars = Math.max(500, Math.min(CHUNK_SIZE, opts.maxBars ?? CHUNK_SIZE));
     const maxSpan = tfSec * maxBars;
+    // Weekend / holiday gaps often exceed one fill window — expand like session open.
+    const expandPad = Math.max(tfSec * CHUNK_SIZE, 24 * 60 * 60);
+
+    let remoteEnd = 0;
+    try {
+      const remote = await getRemoteDataset(datasetId);
+      remoteEnd = remote.timeEnd || 0;
+    } catch {
+      // Offline / unknown — still try the range below.
+    }
 
     if (
       meta &&
@@ -403,6 +413,11 @@ export async function ensureRemoteTimeCoverage(
       meta.timeEnd >= toTime - pad
     ) {
       return false;
+    }
+
+    // Already at (or past) server tip — stop hammering during play.
+    if (remoteEnd > 0 && meta && meta.timeEnd >= remoteEnd - pad) {
+      if (toTime > meta.timeEnd) return false;
     }
 
     let fetchFrom = fromTime;
@@ -425,13 +440,27 @@ export async function ensureRemoteTimeCoverage(
 
     if (fetchTo <= fetchFrom) return false;
 
-    await ingestRemoteChunksToIdb(datasetId, timeframe, {
-      fromTime: fetchFrom,
-      toTime: fetchTo,
-    });
-    // Keep IDB bounded after each top-up (anchor = end of requested window).
-    scheduleRemoteChunkGc(datasetId, timeframe, fetchTo);
-    return true;
+    let hardCap = Math.max(toTime, fetchTo + expandPad * 4);
+    if (remoteEnd > 0) hardCap = Math.min(hardCap, remoteEnd);
+
+    let attemptFrom = fetchFrom;
+    let attemptTo = fetchTo;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      try {
+        await ingestRemoteChunksToIdb(datasetId, timeframe, {
+          fromTime: attemptFrom,
+          toTime: attemptTo,
+        });
+        // Keep IDB bounded after each top-up (anchor = end of requested window).
+        scheduleRemoteChunkGc(datasetId, timeframe, attemptTo);
+        return true;
+      } catch {
+        const nextTo = Math.min(hardCap, attemptTo + expandPad);
+        if (nextTo <= attemptTo) return false;
+        attemptTo = nextTo;
+      }
+    }
+    return false;
   })().finally(() => {
     remoteCoverageInflight.delete(inflightKey);
   });

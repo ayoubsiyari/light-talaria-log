@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button } from '@heroui/react';
+import { Alert, Button, toast } from '@heroui/react';
 import {
   createChartSyncStore,
   getAppearance,
@@ -784,6 +784,14 @@ export default function App() {
 
       if (playing) {
         sessionRef.current.setCursorTime(cursorTime, { follow, react: false });
+
+        // Skip weekend / holiday dead air once the next session is cached.
+        const gapJump = sessionRef.current.suggestGapJump();
+        if (gapJump != null && gapJump > cursorTime) {
+          replayRef.current.seek(gapJump, { keepPlaying: true });
+          return;
+        }
+
         // Step order engine on every base bar the cursor passes (§4.1).
         stepOrderEngineRef.current(cursorTime);
         const views = sessionRef.current.getViews();
@@ -1493,6 +1501,24 @@ export default function App() {
           if (cursorChanged) persistReplayProgress(false);
         }
         return;
+      }
+
+      // Session calendar end (Play reached endDate) — soft Hero toast.
+      if (
+        playEdge &&
+        !rs.playing &&
+        rs.endTime > rs.startTime &&
+        rs.cursorTime >= rs.endTime - 1
+      ) {
+        const sess = sessionIdRef.current
+          ? getSession(sessionIdRef.current)
+          : null;
+        toast.info('Backtest period finished', {
+          description: sess
+            ? `${sess.startDate} → ${sess.endDate}`
+            : 'Reached the session end date.',
+          timeout: 5500,
+        });
       }
 
       setReplayTick((n) => n + 1);

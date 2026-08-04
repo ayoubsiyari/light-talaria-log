@@ -361,6 +361,34 @@ export function createSessionController() {
       await rederiveAsync(paneIds);
       notify();
     },
+
+    /**
+     * When the wall-clock cursor walks a weekend/holiday gap but warm-cache
+     * already has the next session bar, jump the clock forward (keep playing).
+     */
+    suggestGapJump(): number | null {
+      if (!state || state.revealMode !== 'replay') return null;
+      const gapSec = Math.max(
+        6 * 60 * 60,
+        timeframeSeconds(state.baseTf) * 200,
+      );
+      for (const id of Object.keys(state.panes)) {
+        const cfg = state.panes[id];
+        const view = views[id];
+        if (!cfg || !view || view.bars.length === 0) continue;
+        const last = view.bars[view.bars.length - 1]!.time;
+        if (state.cursorTime - last < gapSec) continue;
+        const raw = warmCache.peek(cfg.datasetId, cfg.tf);
+        if (!raw || raw.length === 0) continue;
+        let next = raw.find((b) => b.time >= state!.cursorTime);
+        if (!next) next = raw.find((b) => b.time > last);
+        if (next && next.time > state.cursorTime) {
+          return next.time;
+        }
+      }
+      return null;
+    },
+
   };
 }
 

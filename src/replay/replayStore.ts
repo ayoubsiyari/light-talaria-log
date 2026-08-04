@@ -30,7 +30,7 @@ export interface ReplayController {
   toggle(): void;
   step(deltaBars: number): void;
   setSpeed(speed: number): void;
-  seek(time: number, opts?: { silent?: boolean }): void;
+  seek(time: number, opts?: { silent?: boolean; keepPlaying?: boolean }): void;
   dispose(): void;
 }
 
@@ -256,13 +256,23 @@ export function createReplayController(): ReplayController {
         Math.max(state.startTime, snapToBar(time, period, state.startTime)),
       );
       const wasPlaying = state.playing;
+      const keepPlaying = opts?.keepPlaying === true && wasPlaying;
       if (cursorTime === state.cursorTime && !wasPlaying) {
         if (!opts?.silent) notify();
         return;
       }
-      stopRaf();
-      state = { ...state, cursorTime, playing: false };
+      if (cursorTime === state.cursorTime && keepPlaying) {
+        return;
+      }
+      if (!keepPlaying) stopRaf();
+      state = { ...state, cursorTime, playing: keepPlaying };
       if (!opts?.silent) notify();
+      if (keepPlaying && !raf) {
+        lastTs = 0;
+        barCarryMs = 0;
+        ledgerAcquire('rafLoops');
+        raf = requestAnimationFrame(tick);
+      }
     },
     dispose() {
       stopRaf();

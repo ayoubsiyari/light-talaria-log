@@ -128,7 +128,8 @@ export function defaultSpecForSymbol(symbol: string): InstrumentSpec {
     minLot: 0.01,
     maxLot: 100,
     lotStep: 0.01,
-    stopLevel: pipSize * 5,
+    /** Min distance from bid/ask for pending limits/stops (1 pip — TV-like, placeable on last price). */
+    stopLevel: pipSize,
     typicalSpread: jpy ? 0.02 : xau ? 0.3 : 0.00015,
     baseSlippage: 0,
     slippagePerAtr: 0,

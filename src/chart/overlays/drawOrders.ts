@@ -207,11 +207,12 @@ export function hitTestOrderLevel(
   for (let i = orders.length - 1; i >= 0; i--) {
     const o = orders[i]!;
     const levels: { kind: OrderLineKind; price: number }[] = [];
+    // Prefer SL/TP over entry when coincident (TV: drag brackets off the order line).
+    if (o.stopLoss != null) levels.push({ kind: 'sl', price: o.stopLoss });
+    if (o.takeProfit != null) levels.push({ kind: 'tp', price: o.takeProfit });
     if (o.entry != null && !o.entryLocked) {
       levels.push({ kind: 'entry', price: o.entry });
     }
-    if (o.stopLoss != null) levels.push({ kind: 'sl', price: o.stopLoss });
-    if (o.takeProfit != null) levels.push({ kind: 'tp', price: o.takeProfit });
     for (const lv of levels) {
       const py = priceToY(lv.price, scale, plot);
       if (Math.abs(y - py) <= hitPx) {

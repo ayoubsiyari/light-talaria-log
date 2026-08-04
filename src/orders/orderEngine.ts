@@ -134,17 +134,30 @@ function validateSubmit(
   if (o.type === 'LIMIT' && level != null) {
     if (o.side === 'BUY' && level > ask) return 'LIMIT_WRONG_SIDE';
     if (o.side === 'SELL' && level < bid) return 'LIMIT_WRONG_SIDE';
-    const mid = (bid + ask) / 2;
-    if (Math.abs(level - mid) < spec.stopLevel) return 'TOO_CLOSE_TO_MARKET';
+    // Freeze distance from the near side of the spread (not mid) so last-price limits work.
+    if (spec.stopLevel > 0) {
+      if (o.side === 'BUY' && ask - level < spec.stopLevel - 1e-12) {
+        return 'TOO_CLOSE_TO_MARKET';
+      }
+      if (o.side === 'SELL' && level - bid < spec.stopLevel - 1e-12) {
+        return 'TOO_CLOSE_TO_MARKET';
+      }
+    }
   }
 
   if ((o.type === 'STOP' || o.type === 'STOP_LIMIT' || o.type === 'TRAILING_STOP') && level != null) {
     // STOP uses price as stop level
-    const stopLevel = o.type === 'STOP_LIMIT' ? (stopPx ?? level) : level;
-    if (o.side === 'BUY' && stopLevel < ask) return 'STOP_WRONG_SIDE';
-    if (o.side === 'SELL' && stopLevel > bid) return 'STOP_WRONG_SIDE';
-    const mid = (bid + ask) / 2;
-    if (Math.abs(stopLevel - mid) < spec.stopLevel) return 'TOO_CLOSE_TO_MARKET';
+    const stopLvl = o.type === 'STOP_LIMIT' ? (stopPx ?? level) : level;
+    if (o.side === 'BUY' && stopLvl < ask) return 'STOP_WRONG_SIDE';
+    if (o.side === 'SELL' && stopLvl > bid) return 'STOP_WRONG_SIDE';
+    if (spec.stopLevel > 0) {
+      if (o.side === 'BUY' && stopLvl - ask < spec.stopLevel - 1e-12) {
+        return 'TOO_CLOSE_TO_MARKET';
+      }
+      if (o.side === 'SELL' && bid - stopLvl < spec.stopLevel - 1e-12) {
+        return 'TOO_CLOSE_TO_MARKET';
+      }
+    }
   }
 
   if (o.stopLoss != null && o.takeProfit != null && level != null) {

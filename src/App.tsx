@@ -16,6 +16,7 @@ import { DrawingFloatingToolbar } from '@/components/drawings/DrawingFloatingToo
 import { DrawingSettingsModal } from '@/components/drawings/DrawingSettingsModal';
 import { ChartContextMenu, type ChartContextMenuState } from '@/components/chart/ChartContextMenu';
 import { ChartSettingsModal } from '@/components/chart/ChartSettingsModal';
+import { AnalyticsDashboard } from '@/components/analytics/AnalyticsDashboard';
 import { JournalPage } from '@/components/journal/JournalPage';
 import { BottomBar } from '@/components/layout/BottomBar';
 import { ChartGrid } from '@/components/layout/ChartGrid';
@@ -1852,7 +1853,7 @@ export default function App() {
     setView('sessions');
   };
 
-  const handleOpenJournal = (sessionId?: string | null) => {
+  const openJournalView = (sessionId?: string | null) => {
     const id = sessionId ?? session?.id ?? null;
     // Soft navigate: pause replay but keep session in memory so "Back to chart"
     // does not force a full re-ingest. Explicit Exit / Sessions still teardowns.
@@ -2116,6 +2117,7 @@ export default function App() {
     return (
       <JournalPage
         initialSessionId={journalSessionId}
+        liveJournal={orderBridgeRef.current?.getJournal() ?? null}
         canReturnToChart={!!session && session.id === (journalSessionId ?? session.id)}
         onGoHome={() => {
           setJournalSessionId(null);
@@ -2452,7 +2454,16 @@ export default function App() {
         </div>
       </div>
 
-      {loadStatus === 'ready' && tradeChromeExpanded && (
+      {loadStatus === 'ready' && tradeChromeExpanded && activeTab === 'analytics' && (
+        <div className="shrink-0 border-t border-border h-[min(55vh,520px)] min-h-[280px]">
+          <AnalyticsDashboard
+            liveJournal={orderBridgeRef.current?.getJournal() ?? null}
+            sessionId={session.id}
+            onOpenJournal={() => openJournalView(session.id)}
+          />
+        </div>
+      )}
+      {loadStatus === 'ready' && tradeChromeExpanded && activeTab !== 'analytics' && (
         <TradeDock
           key={orderEngineTick}
           activeTab={activeTab}
@@ -2500,11 +2511,8 @@ export default function App() {
       <BottomBar
         activeTab={activeTab}
         onTabChange={(tab) => {
-          if (tab === 'analytics') {
-            handleOpenJournal(session.id);
-            return;
-          }
           setActiveTab(tab);
+          if (tab === 'analytics') setTradeChromeExpanded(true);
         }}
         expanded={tradeChromeExpanded}
         onExpandedChange={(next) => {

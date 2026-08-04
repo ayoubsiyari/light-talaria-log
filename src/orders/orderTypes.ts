@@ -82,7 +82,12 @@ export interface Order {
   positionId?: PositionId;
   /** True for protective SL/TP attached to a position. */
   role?: 'entry' | 'stopLoss' | 'takeProfit' | 'stop';
+  /** Optional setup labels — schema only until ticket UI ships. */
+  tags?: string[];
 }
+
+/** Why a position fully closed — persisted on POSITION_CLOSED for analytics. */
+export type TradeExitReason = 'TP' | 'SL' | 'MANUAL' | 'STOP_OUT' | 'TRAILING';
 
 export interface Position {
   id: PositionId;
@@ -92,6 +97,8 @@ export interface Position {
   entryPrice: number;
   /** Frozen at first entry for R-multiples (§5.5). */
   initialStopPrice: number | null;
+  /** Frozen at first entry from takeProfit — never updated. */
+  initialTargetPrice: number | null;
   openedAt: number;
   updatedAt: number;
   swapAccruedAccount: number;
@@ -100,6 +107,19 @@ export interface Position {
   entryCommissionAccount: number;
   ambiguousFill?: boolean;
   pnlApproximate?: boolean;
+  /**
+   * Max favorable / adverse excursion prices while open.
+   * Init = entry; updated each bar in stepEngine.
+   */
+  mfePrice: number;
+  maePrice: number;
+  /** Risk as fraction of equity at open (null if no stop). */
+  riskPct: number | null;
+  /** Setup labels (may be empty). */
+  tags: string[];
+  /** Fill-bar extremes for entry-efficiency metric; null if unknown. */
+  entryBarHigh: number | null;
+  entryBarLow: number | null;
 }
 
 export interface AccountState {

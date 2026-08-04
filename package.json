@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test:session": "node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/session/__tests__/tfSwitch.property.test.ts",
     "test:orders": "node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/orders/__tests__/*.test.ts",
+    "test:analytics": "node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/analytics/__tests__/*.test.ts",
+    "bench:analytics": "node --experimental-strip-types --import ./scripts/register-alias.mjs ./scripts/bench-analytics.mjs",
     "check:orders-determinism": "node ./scripts/check-orders-determinism.mjs",
     "saas:up": "docker compose up -d postgres redis minio createbuckets",
     "saas:down": "docker compose down",

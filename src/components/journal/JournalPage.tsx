@@ -1,19 +1,22 @@
 import { useMemo, useState } from 'react';
 import { Button, Card } from '@heroui/react';
 import { AppPageHeader } from '@/components/layout/AppPageNav';
-import { computeJournalStats } from '@/journal/journalStats';
+import type { OrderJournal } from '@/orders/journal';
 import {
-  deleteJournalEntry,
-  getJournalEntry,
-  listJournalEntries,
-  type JournalEntry,
-} from '@/journal/journalStore';
-import type { BacktestTrade, EquityPoint } from '@/types/backtest';
+  clearOrderJournal,
+  computeOrderJournalStats,
+  getOrderJournalView,
+  listOrderJournalViews,
+  type OrderJournalView,
+  type OrderTrade,
+} from '@/orders/tradeJournal';
 import { getSession } from '@/sessions/sessionStore';
 
 interface JournalPageProps {
-  /** Prefer this session's entry when opening. */
+  /** Prefer this session when opening. */
   initialSessionId?: string | null;
+  /** Live in-memory journal from the open chart session (may be ahead of localStorage). */
+  liveJournal?: OrderJournal | null;
   onGoSessions: () => void;
   onGoHome?: () => void;
   onGoDatasets?: () => void;
@@ -33,15 +36,21 @@ function formatPct(n: number, digits = 2): string {
   return `${sign}${n.toFixed(digits)}%`;
 }
 
-function formatPnl(n: number): string {
+function formatMoney(n: number, currency: string): string {
   const sign = n >= 0 ? '+' : '';
-  return `${sign}${n.toFixed(5)}`;
+  return `${sign}${n.toFixed(2)} ${currency}`;
 }
 
-function EquitySparkline({ equity }: { equity: readonly EquityPoint[] }) {
+function EquitySparkline({
+  equity,
+}: {
+  equity: readonly { time: number; equity: number }[];
+}) {
   if (equity.length < 2) {
     return (
-      <p className="text-xs text-muted py-6 text-center">Not enough equity samples for a curve.</p>
+      <p className="text-xs text-muted py-6 text-center">
+        Not enough closed trades for an equity curve.
+      </p>
     );
   }
 
@@ -65,7 +74,7 @@ function EquitySparkline({ equity }: { equity: readonly EquityPoint[] }) {
   return (
     <svg
       viewBox={`0 0 ${w} ${h}`}
-      className="w-full h-[72px] text-success"
+      className="w-full h-[72px]"
       role="img"
       aria-label="Equity curve"
     >
@@ -104,9 +113,17 @@ function StatCell({
   );
 }
 
-function TradeRow({ trade }: { trade: BacktestTrade }) {
-  const win = trade.pnl > 0;
-  const flat = trade.pnl === 0;
+function TradeRow({
+  trade,
+  currency,
+  digits,
+}: {
+  trade: OrderTrade;
+  currency: string;
+  digits: number;
+}) {
+  const win = trade.pnlAccount > 0;
+  const flat = trade.pnlAccount === 0;
   return (
     <li className="rounded-lg border border-border bg-surface px-3 py-3 sm:px-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -115,12 +132,16 @@ function TradeRow({ trade }: { trade: BacktestTrade }) {
             <span className={trade.side === 'buy' ? 'text-success' : 'text-danger'}>
               {trade.side.toUpperCase()}
             </span>
+            <span className="text-muted font-normal ml-2 text-xs">{trade.symbol}</span>
             <span className="text-muted font-normal ml-2 text-xs tabular-nums">
-              {formatTime(trade.entryTime)} → {formatTime(trade.exitTime)}
+              {trade.size} lots
             </span>
           </p>
           <p className="text-xs text-muted tabular-nums mt-1">
-            {trade.entryPrice.toFixed(5)} → {trade.exitPrice.toFixed(5)}
+            {formatTime(trade.entryTime)} → {formatTime(trade.exitTime)}
+          </p>
+          <p className="text-xs text-muted tabular-nums mt-0.5">
+            {trade.entryPrice.toFixed(digits)} → {trade.exitPrice.toFixed(digits)}
           </p>
         </div>
         <div className="text-right shrink-0">
@@ -130,46 +151,68 @@ function TradeRow({ trade }: { trade: BacktestTrade }) {
               flat ? 'text-muted' : win ? 'text-success' : 'text-danger',
             ].join(' ')}
           >
-            {formatPnl(trade.pnl)}
+            {formatMoney(trade.pnlAccount, currency)}
           </p>
-          <p className="text-xs text-muted tabular-nums">{formatPct(trade.pnlPct * 100)}</p>
+          <p className="text-[11px] text-muted tabular-nums mt-0.5">
+            {trade.exitReason}
+            {trade.rMultiple != null ? ` · ${trade.rMultiple.toFixed(2)}R` : ''}
+          </p>
         </div>
       </div>
     </li>
   );
 }
 
+function digitsForSymbol(symbol: string): number {
+  const s = symbol.replace('/', '').toUpperCase();
+  if (s.includes('JPY')) return 3;
+  if (s.startsWith('XAU')) return 2;
+  return 5;
+}
+
 export function JournalPage({
   initialSessionId = null,
+  liveJournal = null,
   onGoSessions,
   onGoHome,
   onGoDatasets,
   onOpenChart,
   canReturnToChart = false,
 }: JournalPageProps) {
-  const [entries, setEntries] = useState(() => listJournalEntries());
+  const [tick, setTick] = useState(0);
+  const views = useMemo(
+    () => listOrderJournalViews(liveJournal),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tick forces refresh from storage
+    [liveJournal, tick],
+  );
+
   const [selectedId, setSelectedId] = useState<string | null>(() => {
-    if (initialSessionId && getJournalEntry(initialSessionId)) return initialSessionId;
-    return listJournalEntries()[0]?.sessionId ?? null;
+    if (initialSessionId && getOrderJournalView(initialSessionId, liveJournal)) {
+      return initialSessionId;
+    }
+    return listOrderJournalViews(liveJournal)[0]?.sessionId ?? initialSessionId ?? null;
   });
 
-  const selected: JournalEntry | null = useMemo(() => {
+  const selected: OrderJournalView | null = useMemo(() => {
     if (!selectedId) return null;
-    return entries.find((e) => e.sessionId === selectedId) ?? null;
-  }, [entries, selectedId]);
+    return (
+      views.find((v) => v.sessionId === selectedId) ??
+      getOrderJournalView(selectedId, liveJournal)
+    );
+  }, [views, selectedId, liveJournal]);
 
   const stats = useMemo(
-    () => (selected ? computeJournalStats(selected.result) : null),
+    () => (selected ? computeOrderJournalStats(selected) : null),
     [selected],
   );
 
-  const refresh = () => setEntries(listJournalEntries());
+  const refresh = () => setTick((n) => n + 1);
 
   const handleClear = () => {
     if (!selectedId) return;
-    deleteJournalEntry(selectedId);
-    const next = listJournalEntries();
-    setEntries(next);
+    clearOrderJournal(selectedId);
+    const next = listOrderJournalViews(liveJournal?.sessionId === selectedId ? null : liveJournal);
+    setTick((n) => n + 1);
     setSelectedId(next[0]?.sessionId ?? null);
   };
 
@@ -182,24 +225,28 @@ export function JournalPage({
   const canOpenChart =
     !!selectedId && !!onOpenChart && (canReturnToChart || sessionAlive);
 
+  const digits = selected ? digitsForSymbol(selected.symbol) : 5;
+  const ccy = selected?.accountCurrency ?? 'USD';
+
   return (
     <div className="min-h-full bg-background text-foreground overflow-auto">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6">
         <AppPageHeader
           current="journal"
           title="Journal"
-          description="Review the latest backtest trades and equity for a session. No OHLC history is loaded here."
+          description="Your Place Order / replay fills for each session — not strategy backtests."
           onGoHome={onGoHome}
           onGoSessions={onGoSessions}
           onGoDatasets={onGoDatasets ?? onGoSessions}
           onGoJournal={undefined}
         />
 
-        {entries.length === 0 ? (
+        {views.length === 0 ? (
           <Card className="bg-surface border border-border">
             <Card.Content className="px-6 py-10 space-y-4 text-center">
               <p className="text-sm text-muted">
-                No backtest results yet. Open a session, run Backtest, then return here.
+                No closed trades yet. Open a session, place orders, let them fill / hit SL·TP,
+                then return here.
               </p>
               <Button variant="primary" className="min-h-11" onPress={onGoSessions}>
                 Back to sessions
@@ -218,9 +265,9 @@ export function JournalPage({
                 value={selectedId ?? ''}
                 onChange={(e) => setSelectedId(e.target.value || null)}
               >
-                {entries.map((e) => (
-                  <option key={e.sessionId} value={e.sessionId}>
-                    {e.sessionName} · {e.result.trades.length} trades
+                {views.map((v) => (
+                  <option key={v.sessionId} value={v.sessionId}>
+                    {v.sessionName} · {v.trades.length} trades
                   </option>
                 ))}
               </select>
@@ -240,7 +287,7 @@ export function JournalPage({
                     </Button>
                   ) : (
                     <p className="text-xs text-muted min-h-11 flex items-center">
-                      Session deleted — result kept. Clear to remove.
+                      Session deleted — journal kept. Clear to remove.
                     </p>
                   )}
                   <Button
@@ -249,7 +296,7 @@ export function JournalPage({
                     className="min-h-11 sm:min-h-8"
                     onPress={handleClear}
                   >
-                    Clear result
+                    Clear journal
                   </Button>
                   <Button
                     variant="ghost"
@@ -265,9 +312,8 @@ export function JournalPage({
                   <Card.Header className="px-4 sm:px-6 pt-5 pb-2">
                     <Card.Title className="text-lg">Stats</Card.Title>
                     <Card.Description className="text-muted text-sm">
-                      {selected.result.timeframe} · SMA cross ·{' '}
-                      {selected.result.barCount.toLocaleString()} bars
-                      {selected.result.truncated ? ' · capped' : ''}
+                      {selected.symbol} · replay orders · start {selected.startBalance.toFixed(2)}{' '}
+                      {ccy}
                     </Card.Description>
                   </Card.Header>
                   <Card.Content className="px-4 sm:px-6 pb-5 space-y-4">
@@ -283,29 +329,29 @@ export function JournalPage({
                       />
                       <StatCell
                         label="Net P&L"
-                        value={formatPnl(stats.netPnl)}
+                        value={formatMoney(stats.netPnl, ccy)}
                         tone={
                           stats.netPnl > 0 ? 'success' : stats.netPnl < 0 ? 'danger' : null
                         }
                       />
                       <StatCell
-                        label="Equity"
-                        value={stats.finalEquity.toFixed(4)}
+                        label="Balance"
+                        value={`${stats.finalBalance.toFixed(2)} ${ccy}`}
                         tone={
-                          stats.equityReturnPct > 0
+                          stats.returnPct > 0
                             ? 'success'
-                            : stats.equityReturnPct < 0
+                            : stats.returnPct < 0
                               ? 'danger'
                               : null
                         }
                       />
                       <StatCell
                         label="Return"
-                        value={formatPct(stats.equityReturnPct)}
+                        value={formatPct(stats.returnPct)}
                         tone={
-                          stats.equityReturnPct > 0
+                          stats.returnPct > 0
                             ? 'success'
-                            : stats.equityReturnPct < 0
+                            : stats.returnPct < 0
                               ? 'danger'
                               : null
                         }
@@ -320,26 +366,32 @@ export function JournalPage({
                         Equity summary
                       </p>
                       <p className="text-xs text-muted tabular-nums mb-2">
-                        Min {stats.minEquity.toFixed(4)} · Max {stats.maxEquity.toFixed(4)} ·{' '}
-                        {selected.result.equity.length} samples
+                        Min {stats.minEquity.toFixed(2)} · Max {stats.maxEquity.toFixed(2)} ·{' '}
+                        {selected.equity.length} samples
                       </p>
-                      <EquitySparkline equity={selected.result.equity} />
+                      <EquitySparkline equity={selected.equity} />
                     </div>
                   </Card.Content>
                 </Card>
 
                 <section className="space-y-3">
                   <h2 className="text-sm font-medium text-muted uppercase tracking-wide">
-                    Trades ({selected.result.trades.length})
+                    Closed trades ({selected.trades.length})
                   </h2>
-                  {selected.result.trades.length === 0 ? (
+                  {selected.trades.length === 0 ? (
                     <p className="text-sm text-muted">
-                      Backtest finished with no closed trades.
+                      Orders were placed but none have closed yet (wait for fill + SL/TP or
+                      close).
                     </p>
                   ) : (
                     <ul className="space-y-2">
-                      {selected.result.trades.map((t) => (
-                        <TradeRow key={t.id} trade={t} />
+                      {selected.trades.map((t) => (
+                        <TradeRow
+                          key={t.id}
+                          trade={t}
+                          currency={ccy}
+                          digits={digits}
+                        />
                       ))}
                     </ul>
                   )}

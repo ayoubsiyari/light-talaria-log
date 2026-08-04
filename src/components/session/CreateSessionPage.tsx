@@ -9,7 +9,8 @@ import {
   overlapCoverage,
   pickDatasetForRange,
 } from '@/sessions/sessionOverlap';
-import { deleteJournalEntry, getJournalEntry } from '@/journal/journalStore';
+import { deleteJournalEntry } from '@/journal/journalStore';
+import { clearOrderJournal, getOrderJournalView } from '@/orders/tradeJournal';
 import {
   createSession,
   deleteSession,
@@ -349,7 +350,7 @@ export function CreateSessionPage({
                   >
                     Open
                   </Button>
-                  {onGoJournal && getJournalEntry(s.id) && (
+                  {onGoJournal && getOrderJournalView(s.id) && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -366,6 +367,7 @@ export function CreateSessionPage({
                     onPress={() => {
                       deleteSession(s.id);
                       deleteJournalEntry(s.id);
+                      clearOrderJournal(s.id);
                       refreshSessions();
                     }}
                   >

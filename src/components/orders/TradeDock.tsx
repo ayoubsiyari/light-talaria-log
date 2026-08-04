@@ -1,5 +1,6 @@
 import { Button } from '@heroui/react';
 import type { InstrumentSpec } from '@/orders/instrumentSpec';
+import { unrealizedPnL } from '@/orders/pnl';
 import type { Order, OrderEngineState, Position } from '@/orders/orderTypes';
 import { isTerminal } from '@/orders/orderTypes';
 import type { BottomTabId } from '@/types/ui';
@@ -20,16 +21,19 @@ function fmt(n: number, digits = 2): string {
   return n.toFixed(digits);
 }
 
-function unrealized(
+/** Unrealized P&L in account currency (same math as equity / bottom-bar P&L). */
+function unrealizedAccount(
   pos: Position,
   bid: number,
   ask: number,
   spec: InstrumentSpec | null,
+  accountCurrency: string,
 ): number {
-  if (!spec) return 0;
-  const mark = pos.side === 'BUY' ? bid : ask;
-  const dir = pos.side === 'BUY' ? 1 : -1;
-  return (mark - pos.entryPrice) * dir * pos.size * spec.contractSize;
+  if (!spec || bid <= 0) return 0;
+  return unrealizedPnL(pos.side, pos.entryPrice, bid, ask, pos.size, spec, {
+    accountCurrency,
+    instrumentPrice: bid,
+  }).amount;
 }
 
 /**
@@ -123,7 +127,13 @@ export function TradeDock({
                 const tp = working.find(
                   (o) => o.positionId === p.id && o.role === 'takeProfit',
                 );
-                const upnl = unrealized(p, bid, ask, spec);
+                const upnl = unrealizedAccount(
+                  p,
+                  bid,
+                  ask,
+                  spec,
+                  state?.account.currency ?? 'USD',
+                );
                 return (
                   <tr
                     key={p.id}

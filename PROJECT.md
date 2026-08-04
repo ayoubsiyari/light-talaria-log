@@ -681,6 +681,8 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | Live LIMIT/STOP helper while dragging entry (`inferPendingType` + drag readout / line label) | Drag draft entry above/below ask |
 | 2026-08-04 | Clarify freeze-level reject; entry defaults on last price; SL/TP sit on entry until drag/pips (TV) | Open ticket → drag SL/TP off entry |
 | 2026-08-04 | Fix Play wiping orders: no fill on bars ≤ createdAt; anchor lastStepped on submit; keep pending market on chart | Set Market → Play → levels stay until SL/TP |
+| 2026-08-04 | TradeDock row P&L uses account-ccy `unrealizedPnL` (USDJPY was showing raw JPY) | Open USDJPY position — row ≈ bottom P&L |
+| 2026-08-04 | Journal page shows Place Order / replay closed trades (order event journal), not SMA backtest | Place → close via SL/TP → Journal |
 | 2026-08-03 | Chart style templates in settings (Sapphire, Obsidian, Zenith, Pearl, Olive, Willow, Marine, Blue Ash) | Optional FVG/IFVG zone colors later |
 | 2026-08-03 | Fix multi-pane 1m replay stall: forward warm-cache bias, fill-ahead chain, rAF harden, tip re-anchor | Verify 4-pane 21× long run |
 | 2026-08-03 | Memory-safe replay runway: compact ~900-bar forward fills, MAX_ENTRIES=16 + ~3.6MB byte cap, pin active panes | Heap check on 4-pane 21× |
@@ -703,6 +705,8 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | “Talaria Log” brand watermark only on primary (first) pane in multi-chart | Verify 2×2 layout |
 | 2026-08-04 | Nav path close-the-loop: TopBar Sessions/Exit + Backtest→journal; honest landing; shared AppPageNav; Datasets Create session CTA; soft #/404 | Manual: Exit chart, run BT → Journal, unknown hash |
 | 2026-08-04 | Landing + chrome fully on Hero UI (removed `--m-*` marketing palette); ThemeToggle/logo use Hero Button | Hard-refresh landing — tokens follow dark/light |
+| 2026-08-04 | Analytics dashboard v1: columnar store, worker metrics (88), canvas charts subset, virtual list, honesty gating; report in `docs/ANALYTICS-REPORT.md` | Bottom Analytics tab; Demo 5k; `npm run test:analytics` / `bench:analytics` |
+| 2026-08-04 | Trade collect enrichment: MFE/MAE, stop/R/costs/exitReason/riskPct/entry bars on POSITION_CLOSED → journal → analytics | Place+SL → Play → Analytics shows R, SL, commission |
 
 ---
 

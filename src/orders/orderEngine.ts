@@ -30,6 +30,7 @@ import {
   grossPnL,
   notionalQty,
   quoteToAccountRate,
+  rMultiple,
   swapPointsToAccount,
   unrealizedPnL,
   type FxRateContext,
@@ -46,6 +47,7 @@ import type {
   Position,
   PositionId,
   RejectReason,
+  TradeExitReason,
 } from './orderTypes';
 import { isTerminal } from './orderTypes';
 import type { ChartBar } from '@/types/bar';
@@ -330,6 +332,37 @@ function newPositionId(state: OrderEngineState): PositionId {
   return `pos-${state.seq + 1}`;
 }
 
+function exitReasonFromOrder(
+  order: Order,
+  override?: TradeExitReason,
+): TradeExitReason {
+  if (override) return override;
+  // Type first — trailing brackets often also carry role stopLoss.
+  if (order.type === 'TRAILING_STOP') return 'TRAILING';
+  if (order.role === 'takeProfit') return 'TP';
+  if (order.role === 'stopLoss') return 'SL';
+  return 'MANUAL';
+}
+
+/** Risk as fraction of equity at open; null when no usable stop. */
+function riskPctAtOpen(
+  state: OrderEngineState,
+  entryPrice: number,
+  stopPrice: number | null,
+  lots: number,
+  spec: InstrumentSpec,
+  ctx: MarketContext,
+): number | null {
+  if (stopPrice == null || !Number.isFinite(stopPrice)) return null;
+  const stopDistance = Math.abs(entryPrice - stopPrice);
+  if (stopDistance < spec.tickSize * 0.5) return null;
+  const equity = Math.max(state.account.equity, state.account.balance, 1e-9);
+  const conv = quoteToAccountRate(spec, fxCtx(state, entryPrice, ctx));
+  const riskAccount = stopDistance * notionalQty(lots, spec) * conv.rate;
+  if (!(riskAccount > 0)) return null;
+  return riskAccount / equity;
+}
+
 function applyFillToPosition(
   state: OrderEngineState,
   order: Order,
@@ -339,6 +372,7 @@ function applyFillToPosition(
   ctx: MarketContext,
   ambiguous: boolean,
   events: EngineEvent[],
+  opts?: { bar?: ChartBar; exitReason?: TradeExitReason },
 ): OrderEngineState {
   let next = state;
   const symbol = order.symbol || state.symbol;
@@ -357,10 +391,11 @@ function applyFillToPosition(
         ctx,
         ambiguous,
         events,
+        opts?.exitReason,
       );
     }
     if (existing && existing.side === order.side) {
-      // Add to position — weighted average entry
+      // Add to position — weighted average entry; freeze stop/target/MFE from first entry
       const total = existing.size + order.size;
       const entry =
         (existing.entryPrice * existing.size + fillPrice * order.size) / total;
@@ -395,6 +430,10 @@ function applyFillToPosition(
     notionalAccount,
     next.account.currency,
   );
+  const initialStop = order.stopLoss ?? null;
+  const initialTarget = order.takeProfit ?? null;
+  const riskPct = riskPctAtOpen(next, fillPrice, initialStop, order.size, spec, ctx);
+  const bar = opts?.bar;
 
   const pos: Position = {
     id: posId,
@@ -402,7 +441,8 @@ function applyFillToPosition(
     side: order.side,
     size: order.size,
     entryPrice: fillPrice,
-    initialStopPrice: order.stopLoss ?? null,
+    initialStopPrice: initialStop,
+    initialTargetPrice: initialTarget,
     openedAt: cursorTime,
     updatedAt: cursorTime,
     swapAccruedAccount: 0,
@@ -410,6 +450,12 @@ function applyFillToPosition(
     entryCommissionAccount: entryComm.amount,
     ambiguousFill: ambiguous,
     pnlApproximate: conv.approximate,
+    mfePrice: fillPrice,
+    maePrice: fillPrice,
+    riskPct,
+    tags: order.tags ? [...order.tags] : [],
+    entryBarHigh: bar != null ? bar.high : null,
+    entryBarLow: bar != null ? bar.low : null,
   };
 
   next = {
@@ -425,6 +471,15 @@ function applyFillToPosition(
     side: pos.side,
     size: pos.size,
     entryPrice: pos.entryPrice,
+    initialStopPrice: pos.initialStopPrice,
+    initialTargetPrice: pos.initialTargetPrice,
+    entryCommissionAccount: pos.entryCommissionAccount,
+    pnlApproximate: !!pos.pnlApproximate,
+    ambiguousFill: !!pos.ambiguousFill,
+    riskPct: pos.riskPct,
+    tags: pos.tags,
+    entryBarHigh: pos.entryBarHigh,
+    entryBarLow: pos.entryBarLow,
   });
   next = markOrderFilled(next, order, fillPrice, cursorTime, ambiguous, events);
 
@@ -510,18 +565,13 @@ function closeOrReducePosition(
   ctx: MarketContext,
   ambiguous: boolean,
   events: EngineEvent[],
+  exitReasonOverride?: TradeExitReason,
 ): OrderEngineState {
   let next = state;
   const closeSize = Math.min(pos.size, order.size);
-  const g = grossPnL(
-    pos.side,
-    pos.entryPrice,
-    fillPrice,
-    closeSize,
-    spec,
-    fxCtx(next, fillPrice, ctx),
-  );
-  const conv = quoteToAccountRate(spec, fxCtx(next, fillPrice, ctx));
+  const fx = fxCtx(next, fillPrice, ctx);
+  const g = grossPnL(pos.side, pos.entryPrice, fillPrice, closeSize, spec, fx);
+  const conv = quoteToAccountRate(spec, fx);
   const exitNotional =
     notionalQty(closeSize, spec) *
     (spec.quoteCurrency.toUpperCase() === next.account.currency.toUpperCase()
@@ -535,8 +585,20 @@ function closeOrReducePosition(
   );
   const entryCommShare = pos.entryCommissionAccount * (closeSize / pos.size);
   const swapShare = pos.swapAccruedAccount * (closeSize / pos.size);
-  const net =
-    g.grossAccount.amount - entryCommShare - exitComm.amount - swapShare;
+  const commissionAccount = entryCommShare + exitComm.amount;
+  const net = g.grossAccount.amount - commissionAccount - swapShare;
+  const pnlApproximate =
+    !!pos.pnlApproximate || g.grossAccount.approximate || conv.approximate;
+  const exitReason = exitReasonFromOrder(order, exitReasonOverride);
+  const rMult = rMultiple(
+    net,
+    pos.side,
+    pos.entryPrice,
+    pos.initialStopPrice,
+    closeSize,
+    spec,
+    fxCtx(next, pos.entryPrice, ctx),
+  );
 
   const remaining = roundLot(pos.size - closeSize, spec.lotStep);
   // Credit realized gross − exit commission − swap share. Entry commission was
@@ -555,10 +617,27 @@ function closeOrReducePosition(
     };
     next = pushEvent(events, next, cursorTime, 'POSITION_CLOSED', {
       positionId: pos.id,
+      side: pos.side,
+      openedAt: pos.openedAt,
+      entryPrice: pos.entryPrice,
       fillPrice,
       size: closeSize,
+      initialStopPrice: pos.initialStopPrice,
+      initialTargetPrice: pos.initialTargetPrice,
+      mfePrice: pos.mfePrice,
+      maePrice: pos.maePrice,
+      grossPnLAccount: g.grossAccount.amount,
+      commissionAccount,
+      swapAccount: swapShare,
       netPnLAccount: net,
-      ambiguous,
+      rMultiple: rMult,
+      exitReason,
+      ambiguous: ambiguous || !!pos.ambiguousFill,
+      pnlApproximate,
+      riskPct: pos.riskPct,
+      tags: pos.tags,
+      entryBarHigh: pos.entryBarHigh,
+      entryBarLow: pos.entryBarLow,
     });
     next = cancelPositionOrders(next, pos.id, cursorTime, events);
   } else {
@@ -570,6 +649,7 @@ function closeOrReducePosition(
       swapAccruedAccount: pos.swapAccruedAccount - swapShare,
       realizedPnLAccount: pos.realizedPnLAccount + net,
       ambiguousFill: pos.ambiguousFill || ambiguous,
+      pnlApproximate: pos.pnlApproximate || pnlApproximate,
     };
     next = {
       ...next,
@@ -587,6 +667,35 @@ function closeOrReducePosition(
   }
 
   return markOrderFilled(next, order, fillPrice, cursorTime, ambiguous, events);
+}
+
+/** Update MFE/MAE from bar OHLC — O(open positions), no allocations. */
+function updateExcursions(state: OrderEngineState, bar: ChartBar): OrderEngineState {
+  const ids = Object.keys(state.positions);
+  if (ids.length === 0) return state;
+  let changed = false;
+  let positions = state.positions;
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i]!;
+    const p = positions[id]!;
+    let mfe = p.mfePrice;
+    let mae = p.maePrice;
+    if (p.side === 'BUY') {
+      if (bar.high > mfe) mfe = bar.high;
+      if (bar.low < mae) mae = bar.low;
+    } else {
+      if (bar.low < mfe) mfe = bar.low;
+      if (bar.high > mae) mae = bar.high;
+    }
+    if (mfe !== p.mfePrice || mae !== p.maePrice) {
+      if (!changed) {
+        positions = { ...positions };
+        changed = true;
+      }
+      positions[id] = { ...p, mfePrice: mfe, maePrice: mae, updatedAt: bar.time };
+    }
+  }
+  return changed ? { ...state, positions } : state;
 }
 
 function cancelPositionOrders(
@@ -899,6 +1008,7 @@ function applyStopOut(
       ctx,
       false,
       events,
+      { bar, exitReason: 'STOP_OUT' },
     );
     next = pushEvent(events, next, bar.time, 'STOP_OUT', {
       positionId: victim.id,
@@ -963,6 +1073,9 @@ export function stepEngine(
     bar.time - state.lastBarTime > (/* base period unknown here */ 60 * 1.5);
   void isGap;
 
+  // Excursion tracking before fills so the close bar's OHLC is included.
+  next = updateExcursions(next, bar);
+
   // Snapshot working ids — fills may mutate the list
   const working = [...next.workingIds];
 
@@ -1006,6 +1119,7 @@ export function stepEngine(
           ctx,
           amb.ambiguous,
           events,
+          { bar },
         );
         continue;
       }
@@ -1019,6 +1133,7 @@ export function stepEngine(
           ctx,
           false,
           events,
+          { bar },
         );
         continue;
       }
@@ -1060,7 +1175,17 @@ export function stepEngine(
       const fr = evaluateFill(kind, 0, bar, spread, spec);
       if (fr.triggered && fr.fillPrice != null) {
         const px = applySlippage(order.side, fr.fillPrice, false, spec, vol);
-        next = applyFillToPosition(next, order, px, cursorTime, spec, ctx, false, events);
+        next = applyFillToPosition(
+          next,
+          order,
+          px,
+          cursorTime,
+          spec,
+          ctx,
+          false,
+          events,
+          { bar },
+        );
       }
       continue;
     }
@@ -1093,6 +1218,7 @@ export function stepEngine(
             ctx,
             false,
             events,
+            { bar },
           );
         }
       }
@@ -1106,9 +1232,22 @@ export function stepEngine(
       const isLimit =
         order.type === 'LIMIT' || order.role === 'takeProfit';
       const px = applySlippage(order.side, fr.fillPrice, isLimit, spec, vol);
-      next = applyFillToPosition(next, order, px, cursorTime, spec, ctx, false, events);
+      next = applyFillToPosition(
+        next,
+        order,
+        px,
+        cursorTime,
+        spec,
+        ctx,
+        false,
+        events,
+        { bar },
+      );
     }
   }
+
+  // Newly opened positions on this bar also pick up the bar's OHLC range.
+  next = updateExcursions(next, bar);
 
   // Trailing ratchet AFTER trigger evaluation (§4.8)
   next = updateTrailingStops(next, bar, spec);

@@ -1,0 +1,16 @@
+# Local developer port publishes (optional).
+# npm run saas:up → docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+services:
+  postgres:
+    ports:
+      - '5432:5432'
+  redis:
+    ports:
+      - '6379:6379'
+  minio:
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+  api:
+    ports:
+      - '8787:8787'

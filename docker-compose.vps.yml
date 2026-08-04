@@ -1,22 +1,12 @@
-# VPS override: Postgres + Redis + API on disk storage (keeps existing data/chunks).
-# Usage on server:
-#   docker compose -f docker-compose.yml -f docker-compose.vps.yml up -d postgres redis api
-#
-# SPA stays on vite preview :4173 and proxies /api/v1 → 127.0.0.1:8787
+# VPS: Postgres + Redis + API on disk storage (keeps existing data/chunks).
+# DB/Redis stay on the Docker network only (no host :5432 conflict).
+# SPA on vite preview :4173 proxies /api/v1 → 127.0.0.1:8787
 
 services:
   minio:
     profiles: ['s3']
   createbuckets:
     profiles: ['s3']
-
-  postgres:
-    ports:
-      - '127.0.0.1:5432:5432'
-
-  redis:
-    ports:
-      - '127.0.0.1:6379:6379'
 
   api:
     environment:

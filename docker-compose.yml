@@ -8,8 +8,7 @@ services:
       POSTGRES_USER: talaria
       POSTGRES_PASSWORD: talaria
       POSTGRES_DB: talaria
-    ports:
-      - '5432:5432'
+    # Host ports: see docker-compose.dev.yml / docker-compose.vps.yml
     volumes:
       - talaria_pg:/var/lib/postgresql/data
     healthcheck:
@@ -21,8 +20,6 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    ports:
-      - '6379:6379'
     volumes:
       - talaria_redis:/data
     healthcheck:
@@ -38,9 +35,6 @@ services:
     environment:
       MINIO_ROOT_USER: talaria
       MINIO_ROOT_PASSWORD: talaria-secret
-    ports:
-      - '9000:9000'
-      - '9001:9001'
     volumes:
       - talaria_minio:/data
   createbuckets:
@@ -95,8 +89,6 @@ services:
       SEED_ADMIN_EMAIL: admin@localhost
       SEED_ADMIN_PASSWORD: admin12345
       SEED_DEMO: 'true'
-    ports:
-      - '8787:8787'
     volumes:
       - ./data/chunks:/app/data/chunks
 

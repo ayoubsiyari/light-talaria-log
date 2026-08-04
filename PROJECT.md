@@ -704,6 +704,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | Templates drive `--accent` too (Place Order, TF chip, tool selection); Layout tab Accent picker | Switch Ember → orange buttons |
 | 2026-08-04 | “Talaria Log” brand watermark only on primary (first) pane in multi-chart | Verify 2×2 layout |
 | 2026-08-04 | Replay play rate = finest pane TF (not focused); multi-TF 1m/5m/1h/4h run at 1m | Play on 2×2 mixed TFs |
+| 2026-08-04 | Fix flaky multi-pair TF switch: invalidate/cancel LOD + merge identity; per-pane TF list | Switch TF after pan on 2×2 |
 | 2026-08-04 | Nav path close-the-loop: TopBar Sessions/Exit + Backtest→journal; honest landing; shared AppPageNav; Datasets Create session CTA; soft #/404 | Manual: Exit chart, run BT → Journal, unknown hash |
 | 2026-08-04 | Landing + chrome fully on Hero UI (removed `--m-*` marketing palette); ThemeToggle/logo use Hero Button | Hard-refresh landing — tokens follow dark/light |
 | 2026-08-04 | Analytics dashboard v1: columnar store, worker metrics (88), canvas charts subset, virtual list, honesty gating; report in `docs/ANALYTICS-REPORT.md` | Bottom Analytics tab; Demo 5k; `npm run test:analytics` / `bench:analytics` |
@@ -712,6 +713,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | Server-first sessions: Create Session lists remote catalog; fetch chunks by date on Start (`ensureSessionDataFromServer`); range IDB meta fix | Publish from Datasets → new session with dates → chart loads |
 | 2026-08-04 | TV-style remote load: viewport (~2 chunks) on Start; contiguous IDB meta; server top-up on pan/replay; fix empty replay after clear-cache | Short session → Play; pan left loads more from server |
 | 2026-08-04 | Fix multi-chart replay stall: non-blocking server top-up + ≤1 chunk per fetch (was awaiting hours of 1m mid-play) | Multi layout → Play through cache edge |
+| 2026-08-04 | IDB sliding-window GC for remote chunks (max 8/series) + Datasets “Clear chart cache”; local CSV untouched | Long Play → IDB stays small; Clear cache frees disk |
 
 ---
 

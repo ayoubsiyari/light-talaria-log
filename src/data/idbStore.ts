@@ -53,6 +53,45 @@ export async function getChunk(db: IDBDatabase, chunkId: string): Promise<ArrayB
   });
 }
 
+export async function deleteChunk(db: IDBDatabase, chunkId: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE_CHUNKS, 'readwrite');
+    tx.objectStore(IDB_STORE_CHUNKS).delete(chunkId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/** Wipe every packed bar chunk (keeps CSV blobs + catalog outside IDB). */
+export async function clearAllChunks(db: IDBDatabase): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE_CHUNKS, 'readwrite');
+    tx.objectStore(IDB_STORE_CHUNKS).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/**
+ * Remove series meta rows (`datasetId:tf`). Keeps legacy singleton key `dataset` if present.
+ */
+export async function clearAllSeriesMeta(db: IDBDatabase): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE_META, 'readwrite');
+    const store = tx.objectStore(IDB_STORE_META);
+    const req = store.openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) return;
+      const key = String(cursor.key);
+      if (key.includes(':')) cursor.delete();
+      cursor.continue();
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
 export async function putSeriesMeta(db: IDBDatabase, meta: SeriesMeta): Promise<void> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(IDB_STORE_META, 'readwrite');

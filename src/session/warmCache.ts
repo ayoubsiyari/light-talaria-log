@@ -10,6 +10,7 @@
  */
 import { timeframeSeconds } from '@/data/timeframeAgg';
 import { getDataset } from '@/datasets/datasetStore';
+import { scheduleRemoteChunkGc } from '@/datasets/idbChunkGc';
 import { ensureRemoteTimeCoverage } from '@/datasets/ingestRemoteChunks';
 import { loadViewportAroundTime } from '@/datasets/seriesViewport';
 import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
@@ -188,6 +189,8 @@ export class WarmCache {
             maxBars: Math.min(CHUNK_SIZE, Math.max(500, windowBars)),
           })
             .then((fetched) => {
+              // Sliding window: drop far-behind chunks after a successful top-up.
+              scheduleRemoteChunkGc(datasetId, tf, anchorTime);
               if (!fetched) return;
               // Refresh cache from the new IDB bytes (non-blocking for prior callers).
               void this.fill(datasetId, tf, anchorTime, span, opts);
@@ -195,6 +198,9 @@ export class WarmCache {
             .catch(() => {
               // Offline / gap — keep playing on whatever is already cached.
             });
+        } else {
+          // Still GC when over budget even if tip has runway.
+          scheduleRemoteChunkGc(datasetId, tf, anchorTime);
         }
       }
 

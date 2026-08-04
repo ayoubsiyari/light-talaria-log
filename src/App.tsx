@@ -262,6 +262,8 @@ export default function App() {
   const replayBufferRef = useRef<Map<string, ChartBar[]>>(new Map());
   /** Invalidates in-flight pan/zoom IDB window refills (edge prefetch). */
   const prefetchGenRef = useRef(0);
+  /** Cancel pending pan/zoom LOD debounce (TF/symbol switch must win). */
+  const lodReloadCancelRef = useRef<(() => void) | null>(null);
   /** User pan/zoom during play detaches camera follow (stops fighting the drag). */
   const [cameraDetached, setCameraDetached] = useState(false);
   const cameraDetachedRef = useRef(false);
@@ -426,12 +428,32 @@ export default function App() {
     [catalog?.timeEnd],
   );
 
-  const availableTimeframes = useMemo(() => {
-    if (seriesRef.current.length > 0) return intersectTimeframes(seriesRef.current);
-    return catalog?.timeframes ?? [];
-  }, [catalog?.datasetId, catalog?.timeframes, panes.length]);
-
   const activePane = panes.find((p) => p.id === activePaneId) ?? panes[0] ?? null;
+
+  /**
+   * TF picker list: active pane’s catalog when interval sync is off;
+   * intersection of all pairs when syncing intervals across the layout.
+   */
+  const availableTimeframes = useMemo(() => {
+    const list = seriesRef.current;
+    if (layoutSync.interval && list.length > 1) {
+      return intersectTimeframes(list);
+    }
+    const s =
+      (activePane &&
+        (list.find((x) => x.datasetId === activePane.datasetId) ??
+          list.find((x) => x.pair === activePane.pair))) ||
+      null;
+    return s?.catalog.timeframes ?? catalog?.timeframes ?? [];
+  }, [
+    layoutSync.interval,
+    activePane?.datasetId,
+    activePane?.pair,
+    catalog?.datasetId,
+    catalog?.timeframes,
+    panes.length,
+    session?.id,
+  ]);
   /** Active pane symbol only (TV-style pill) — switch via SymbolPicker. */
   const topSymbol = activePane?.pair ?? session?.pair ?? '';
   const symbolOptions = session?.legs.map((l) => ({ pair: l.pair })) ?? [];
@@ -668,17 +690,35 @@ export default function App() {
 
       if (gen !== prefetchGenRef.current) return; // stale prefetch / LOD
       if (!viewportReloadEnabledRef.current) return;
-      const tfChanged = updated.some(
+
+      // Merge against latest identity — a TF/symbol switch may have won mid-await.
+      // Never stomp selectedTf / dataset / pair from a pre-switch snapshot.
+      const latest = panesRef.current;
+      const merged = updated.map((p, i) => {
+        const snap = current[i]!;
+        const now = latest.find((x) => x.id === p.id);
+        if (!now) return p;
+        if (
+          now.selectedTf !== snap.selectedTf ||
+          now.datasetId !== snap.datasetId ||
+          now.pair !== snap.pair
+        ) {
+          return now;
+        }
+        return p;
+      });
+
+      const tfChanged = merged.some(
         (p, i) => p.timeframe !== current[i]!.timeframe,
       );
-      panesRef.current = updated;
-      setPanes(updated);
+      panesRef.current = merged;
+      setPanes(merged);
       // Keep session pane TFs in sync when zoom LOD mutates effective timeframe.
       // No rederive — React already holds the LOD-loaded bars.
       const sess = sessionRef.current.get();
       if (sess) {
         const nextCfgs = { ...sess.panes };
-        for (const p of updated) {
+        for (const p of merged) {
           const prev = nextCfgs[p.id];
           if (!prev) continue;
           nextCfgs[p.id] = {
@@ -689,7 +729,7 @@ export default function App() {
         }
         sessionRef.current.syncPaneConfigs(nextCfgs);
       }
-      if (tfChanged) syncReplayClockTf(updated);
+      if (tfChanged) syncReplayClockTf(merged);
     },
     [catalog, paneFromViewport, seriesForPane, syncReplayClockTf],
   );
@@ -1363,13 +1403,15 @@ export default function App() {
       },
       LOD_DEBOUNCE_MS,
     );
+    lodReloadCancelRef.current = reload.cancel;
 
-    return syncStore.subscribe((state) => {
+    const unsub = syncStore.subscribe((state) => {
       if (!state.timeRange) return;
       if (
         state.origin === 'replay' ||
         state.origin === 'session-load' ||
-        state.origin === 'tf-switch'
+        state.origin === 'tf-switch' ||
+        state.origin === 'symbol-switch'
       ) {
         return;
       }
@@ -1395,6 +1437,12 @@ export default function App() {
         state.origin,
       );
     });
+
+    return () => {
+      reload.cancel();
+      lodReloadCancelRef.current = null;
+      unsub();
+    };
   }, [catalog, syncStore, applyTimeWindowToPanes]);
 
   /** After placing a drawing: select it; open Text settings for text tools. */
@@ -1449,6 +1497,8 @@ export default function App() {
   const handleLayoutChange = (layout: ChartLayout) => {
     setChartLayout(layout);
     if (!catalog || seriesRef.current.length === 0) return;
+    lodReloadCancelRef.current?.();
+    prefetchGenRef.current += 1;
     const count = paneCountForLayout(layout);
     const sessNow = sessionRef.current.get();
     // Multi-pane must load around the replay cursor — catalog.timeEnd seeds the
@@ -1575,6 +1625,19 @@ export default function App() {
       }
       if (!sessionRef.current.get()) return;
 
+      const paneSeries = seriesForPane(existing);
+      if (
+        paneSeries &&
+        paneSeries.catalog.timeframes.length > 0 &&
+        !paneSeries.catalog.timeframes.includes(tf)
+      ) {
+        return;
+      }
+
+      // Drop in-flight / pending pan-LOD so it cannot overwrite this TF switch.
+      lodReloadCancelRef.current?.();
+      prefetchGenRef.current += 1;
+
       const syncAll = layoutSyncRef.current.interval;
       const targets = syncAll
         ? panesRef.current.map((p) => p.id)
@@ -1617,6 +1680,7 @@ export default function App() {
       captureLiveCamera,
       commitSessionViews,
       markPanesLoading,
+      seriesForPane,
       syncEnginesFromSession,
       syncReplayClockTf,
     ],
@@ -1639,6 +1703,10 @@ export default function App() {
       }
       if (!sessionRef.current.get()) return;
 
+      // Drop in-flight / pending pan-LOD so it cannot overwrite this symbol switch.
+      lodReloadCancelRef.current?.();
+      prefetchGenRef.current += 1;
+
       const syncAll = layoutSyncRef.current.symbol;
       const targets = syncAll
         ? panesRef.current.map((p) => p.id)
@@ -1648,10 +1716,11 @@ export default function App() {
       cameraPreserveRef.current = camera;
       sessionRef.current.setCamera(camera.anchorTime, camera.span);
 
-      const tfs =
-        seriesRef.current.length > 0
+      const tfs = layoutSyncRef.current.interval
+        ? seriesRef.current.length > 0
           ? intersectTimeframes(seriesRef.current)
-          : (catalog.timeframes ?? [existing.selectedTf]);
+          : (catalog.timeframes ?? [existing.selectedTf])
+        : (series.catalog.timeframes ?? [existing.selectedTf]);
 
       setActivePaneId(paneId);
       sessionRef.current.setActivePane(paneId);

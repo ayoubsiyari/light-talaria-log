@@ -16,6 +16,7 @@ import {
   HARD_MAX_CHUNKED_ESTIMATED_ROWS,
   MAX_DOWNLOAD_SPAN_DAYS,
 } from '@/datasets/ingestLimits';
+import { clearChartBarCache } from '@/datasets/idbChunkGc';
 import { publishDatasetToServer } from '@/datasets/publishDataset';
 import {
   fetchHealth,
@@ -25,6 +26,7 @@ import {
   logoutRemote,
   registerRemote,
 } from '@/datasets/remoteApi';
+import { warmCache } from '@/session/warmCache';
 import {
   PAIR_OPTIONS,
   TIMEFRAME_OPTIONS,
@@ -79,8 +81,29 @@ export function DatasetsPage({
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [clearingCache, setClearingCache] = useState(false);
 
   const refresh = () => setDatasets(listDatasets());
+
+  const handleClearChartCache = () => {
+    const ok = window.confirm(
+      'Clear chart bar cache in this browser?\n\n' +
+        'Removes IndexedDB candle chunks (keeps server data + dataset list). ' +
+        'Next session will re-fetch a small window from the server.',
+    );
+    if (!ok) return;
+    setClearingCache(true);
+    setError(null);
+    void clearChartBarCache()
+      .then(() => {
+        warmCache.clear();
+        setStatus('Chart bar cache cleared. Server datasets are unchanged.');
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : 'Could not clear cache');
+      })
+      .finally(() => setClearingCache(false));
+  };
 
   const loadRemote = () => {
     setRemoteStatus('loading');
@@ -639,6 +662,26 @@ export function DatasetsPage({
                 {remoteError}
               </p>
             )}
+          </Card.Content>
+        </Card>
+
+        <Card className="bg-surface border border-border">
+          <Card.Header className="px-6 pt-6 pb-2">
+            <Card.Title className="text-lg">Browser cache</Card.Title>
+            <Card.Description className="text-muted text-sm">
+              Long replay keeps only a sliding window of chunks in IndexedDB (~8 per
+              series). Use this if you want to free disk immediately.
+            </Card.Description>
+          </Card.Header>
+          <Card.Content className="px-6 pb-6">
+            <Button
+              variant="secondary"
+              className="min-h-11"
+              isDisabled={clearingCache || downloading || publishingId != null}
+              onPress={handleClearChartCache}
+            >
+              {clearingCache ? 'Clearing…' : 'Clear chart cache'}
+            </Button>
           </Card.Content>
         </Card>
 

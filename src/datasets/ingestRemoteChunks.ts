@@ -13,6 +13,7 @@ import {
 } from '@/data/idbStore';
 import { timeframeSeconds } from '@/data/timeframeAgg';
 import { getDataset, registerRemoteDataset } from '@/datasets/datasetStore';
+import { scheduleRemoteChunkGc } from '@/datasets/idbChunkGc';
 import { fetchChunkBinary, fetchRemoteChunks, getRemoteDataset } from '@/datasets/remoteApi';
 import type { RemoteChunkRef, RemoteDatasetMeta } from '@/types/remoteApi';
 import type { SeriesCatalog, SeriesMeta } from '@/types/series';
@@ -383,6 +384,8 @@ export async function ensureRemoteTimeCoverage(
       fromTime: fetchFrom,
       toTime: fetchTo,
     });
+    // Keep IDB bounded after each top-up (anchor = end of requested window).
+    scheduleRemoteChunkGc(datasetId, timeframe, fetchTo);
     return true;
   })().finally(() => {
     remoteCoverageInflight.delete(inflightKey);

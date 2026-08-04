@@ -8,13 +8,20 @@ interface Props {
   store: TradeStore;
   indices: Uint32Array;
   onRowClick?: (tradeIndex: number) => void;
+  /** Highlight + scroll this store index into view. */
+  focusIndex?: number | null;
 }
 
 /**
  * Virtualized trade list — fixed row height, index sort only (§5).
  * Scroll position is rAF-throttled (≤1 React commit per frame).
  */
-export function TradeListVirtual({ store, indices, onRowClick }: Props) {
+export function TradeListVirtual({
+  store,
+  indices,
+  onRowClick,
+  focusIndex = null,
+}: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const scrollTopRef = useRef(0);
   const rafRef = useRef(0);
@@ -44,6 +51,28 @@ export function TradeListVirtual({ store, indices, onRowClick }: Props) {
     });
     return idx;
   }, [indices, store, sortKey, sortDir]);
+
+  // Scroll focused trade into view when it changes.
+  useEffect(() => {
+    if (focusIndex == null || !scroller.current) return;
+    let row = -1;
+    for (let r = 0; r < sorted.length; r++) {
+      if (sorted[r] === focusIndex) {
+        row = r;
+        break;
+      }
+    }
+    if (row < 0) return;
+    const top = row * ROW_H;
+    const el = scroller.current;
+    const viewTop = el.scrollTop;
+    const viewBot = viewTop + el.clientHeight;
+    if (top < viewTop || top + ROW_H > viewBot) {
+      el.scrollTop = Math.max(0, top - el.clientHeight / 3);
+      scrollTopRef.current = el.scrollTop;
+      setScrollTop(el.scrollTop);
+    }
+  }, [focusIndex, sorted]);
 
   const total = sorted.length;
   const start = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
@@ -87,7 +116,7 @@ export function TradeListVirtual({ store, indices, onRowClick }: Props) {
       </div>
       <div
         ref={scroller}
-        className="relative overflow-y-auto flex-1 min-h-[200px] max-h-[40vh]"
+        className="relative overflow-y-auto flex-1 min-h-[200px] max-h-[min(60vh,520px)]"
         onScroll={onScroll}
       >
         <div style={{ height: total * ROW_H, position: 'relative' }}>
@@ -95,12 +124,16 @@ export function TradeListVirtual({ store, indices, onRowClick }: Props) {
             const row = start + k;
             const i = sorted[row]!;
             const pnl = store.netPnl[i]!;
+            const focused = focusIndex === i;
             return (
               <div
                 key={store.ids[i]}
                 role={onRowClick ? 'button' : undefined}
                 tabIndex={onRowClick ? 0 : undefined}
-                className="absolute left-0 right-0 flex items-center gap-2 px-2 text-[12px] font-mono border-b border-border/30 min-h-11"
+                className={[
+                  'absolute left-0 right-0 flex items-center gap-2 px-2 text-[12px] font-mono border-b border-border/30 min-h-11',
+                  focused ? 'bg-accent/20 ring-1 ring-inset ring-accent/50' : 'hover:bg-surface-secondary/60',
+                ].join(' ')}
                 style={{
                   height: ROW_H,
                   transform: `translateY(${row * ROW_H}px)`,

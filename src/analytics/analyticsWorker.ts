@@ -34,6 +34,7 @@ export type WorkerResponse =
         session: { label: string; n: number; wins: number; netPnl: number }[];
         symbol: { label: string; n: number; wins: number; netPnl: number }[];
         exitReason: { label: string; n: number }[];
+        month: { key: string; n: number; wins: number; netPnl: number }[];
       };
       /** Downsampled chart payloads (main thread never scans 100k). */
       charts: {
@@ -41,9 +42,18 @@ export type WorkerResponse =
         maeR: Float64Array;
         mfeR: Float64Array;
         outcome: Uint8Array;
+        /** Store index per scatter sample (click-through). */
+        scatterTradeIndex: Uint32Array;
         cumR: Float64Array;
-        netPnl: Float64Array;
         rollingWr: Float64Array;
+        /** Store index per cum-R / rolling path sample. */
+        pathTradeIndex: Uint32Array;
+        netPnl: Float64Array;
+        holdWinSec: Float64Array;
+        holdLossSec: Float64Array;
+        /** Signed streak run lengths (win +, loss −), chronological. */
+        streakRuns: Int16Array;
+        streaks: { maxWin: number; maxLoss: number; current: number };
         longPnl: number;
         shortPnl: number;
         longN: number;
@@ -107,12 +117,17 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
     const maeR: number[] = [];
     const mfeR: number[] = [];
     const outcome: number[] = [];
+    const scatterTradeIndex: number[] = [];
     const netPnlSample: number[] = [];
+    const holdWin: number[] = [];
+    const holdLoss: number[] = [];
     // Full chronological path for cum-R / rolling WR (cap length).
     const pathCap = Math.min(acc.selectedIndex.length, 4_000);
     const pathStep = Math.max(1, Math.floor(acc.selectedIndex.length / Math.max(1, pathCap)));
     const cumR: number[] = [];
     const rollingWr: number[] = [];
+    const pathTradeIndex: number[] = [];
+    const streakRuns: number[] = [];
     let runR = 0;
     const winWindow: number[] = [];
     const ROLL = 20;
@@ -120,10 +135,13 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
     let shortPnl = 0;
     let longN = 0;
     let shortN = 0;
+    let streakSign = 0;
+    let streakLen = 0;
 
     for (let k = 0; k < acc.selectedIndex.length; k++) {
       const i = acc.selectedIndex[k]!;
       const pnl = msg.store.netPnl[i]!;
+      const dur = Math.max(0, msg.store.closeTime[i]! - msg.store.openTime[i]!);
       if (msg.store.side[i] === 1) {
         shortPnl += pnl;
         shortN++;
@@ -131,11 +149,28 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
         longPnl += pnl;
         longN++;
       }
+      if (pnl > 0) holdWin.push(dur);
+      else if (pnl < 0) holdLoss.push(dur);
+
+      // Streak runs
+      const sign = pnl > 0 ? 1 : pnl < 0 ? -1 : 0;
+      if (sign === 0) {
+        /* breakeven — ignore for streak */
+      } else if (sign === streakSign) {
+        streakLen++;
+      } else {
+        if (streakSign !== 0 && streakLen > 0) {
+          streakRuns.push(streakSign * streakLen);
+        }
+        streakSign = sign;
+        streakLen = 1;
+      }
 
       if (k % pathStep === 0) {
         const r = msg.store.rMultiple[i]!;
         if (Number.isFinite(r)) runR += r;
         cumR.push(runR);
+        pathTradeIndex.push(i);
         winWindow.push(pnl > 0 ? 1 : 0);
         if (winWindow.length > ROLL) winWindow.shift();
         const wr =
@@ -155,16 +190,43 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
       maeR.push(Math.max(0, (dir * (entry - msg.store.mae[i]!)) / risk));
       mfeR.push(Math.max(0, (dir * (msg.store.mfe[i]! - entry)) / risk));
       outcome.push(pnl > 0 ? 1 : 0);
+      scatterTradeIndex.push(i);
     }
+    if (streakSign !== 0 && streakLen > 0) {
+      streakRuns.push(streakSign * streakLen);
+    }
+
+    // Cap hold samples for transfer size
+    const holdCap = 4_000;
+    const holdWinSec = Float64Array.from(
+      holdWin.length > holdCap
+        ? holdWin.filter((_, i) => i % Math.ceil(holdWin.length / holdCap) === 0)
+        : holdWin,
+    );
+    const holdLossSec = Float64Array.from(
+      holdLoss.length > holdCap
+        ? holdLoss.filter((_, i) => i % Math.ceil(holdLoss.length / holdCap) === 0)
+        : holdLoss,
+    );
 
     const charts = {
       rValues: Float64Array.from(rVals),
       maeR: Float64Array.from(maeR),
       mfeR: Float64Array.from(mfeR),
       outcome: Uint8Array.from(outcome),
+      scatterTradeIndex: Uint32Array.from(scatterTradeIndex),
       cumR: Float64Array.from(cumR),
-      netPnl: Float64Array.from(netPnlSample),
       rollingWr: Float64Array.from(rollingWr),
+      pathTradeIndex: Uint32Array.from(pathTradeIndex),
+      netPnl: Float64Array.from(netPnlSample),
+      holdWinSec,
+      holdLossSec,
+      streakRuns: Int16Array.from(streakRuns.map((v) => Math.max(-32767, Math.min(32767, v)))),
+      streaks: {
+        maxWin: acc.streaks.maxWin,
+        maxLoss: acc.streaks.maxLoss,
+        current: acc.streaks.current,
+      },
       longPnl,
       shortPnl,
       longN,
@@ -181,6 +243,15 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
       }))
       .sort((a, b) => Math.abs(b.netPnl) - Math.abs(a.netPnl))
       .slice(0, 8);
+
+    const monthBuckets = [...acc.buckets.month.entries()]
+      .map(([key, b]) => ({
+        key,
+        n: b.n,
+        wins: b.wins,
+        netPnl: b.netPnl,
+      }))
+      .sort((a, b) => (a.key < b.key ? -1 : 1));
 
     const res: WorkerResponse = {
       type: 'result',
@@ -211,6 +282,7 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
           label,
           n: acc.counts.exitReason[i] ?? 0,
         })),
+        month: monthBuckets,
       },
       charts,
       ambiguousPct,
@@ -225,9 +297,14 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
       charts.maeR.buffer,
       charts.mfeR.buffer,
       charts.outcome.buffer,
+      charts.scatterTradeIndex.buffer,
       charts.cumR.buffer,
-      charts.netPnl.buffer,
       charts.rollingWr.buffer,
+      charts.pathTradeIndex.buffer,
+      charts.netPnl.buffer,
+      charts.holdWinSec.buffer,
+      charts.holdLossSec.buffer,
+      charts.streakRuns.buffer,
     ]);
   } catch (err) {
     const res: WorkerResponse = {

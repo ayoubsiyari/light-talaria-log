@@ -148,12 +148,22 @@ export function AppShell({ tab, onTabChange, onGoHome, children }: AppShellProps
           </div>
         )}
 
-        {/* Desktop header strip */}
-        <div className="hidden sm:flex shrink-0 h-10 items-center justify-end gap-2 px-3 border-b border-[color:var(--tv-panel-line)] bg-surface">
-          <ThemeToggle compact />
-        </div>
+        {/* Desktop header strip — hide on Dashboard for full-bleed analytics */}
+        {tab !== 'dashboard' && (
+          <div className="hidden sm:flex shrink-0 h-10 items-center justify-end gap-2 px-3 border-b border-[color:var(--tv-panel-line)] bg-surface">
+            <ThemeToggle compact />
+          </div>
+        )}
 
-        <main className="flex-1 min-h-0 overflow-auto">{children}</main>
+        <main
+          className={[
+            'flex-1 min-h-0',
+            // Dashboard is a full-bleed no-scroll analytics board.
+            tab === 'dashboard' ? 'overflow-hidden' : 'overflow-auto',
+          ].join(' ')}
+        >
+          {children}
+        </main>
       </div>
     </div>
   );

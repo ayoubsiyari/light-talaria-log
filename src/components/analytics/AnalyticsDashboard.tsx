@@ -1,6 +1,19 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Button, Card } from '@heroui/react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
+import { Button } from '@heroui/react';
 import { METRIC_CATALOG } from '@/analytics/catalog';
+import {
+  runChartAnimation,
+  scaleByProgress,
+  sliceByProgress,
+} from '@/analytics/charts/animateDraw';
 import { drawEquityChart, drawUnderwater } from '@/analytics/charts/drawEquity';
 import {
   drawBars,
@@ -34,8 +47,9 @@ interface Props {
   sessionId?: string | null;
   onClose?: () => void;
   onOpenJournal?: () => void;
-  /** When false, hide demo fixture controls (Dashboard shell). Default true for chart overlay. */
   allowDemo?: boolean;
+  /** Full-bleed board: no page scroll, dense animated grid. */
+  immersive?: boolean;
 }
 
 type ChartPack = {
@@ -65,7 +79,7 @@ type BucketPack = {
 };
 
 /**
- * Chart-first analytics dashboard. Numbers are secondary; visuals carry the story.
+ * Chart-first analytics. Immersive mode = full width, no scroll, animated reveal.
  */
 export function AnalyticsDashboard({
   liveJournal,
@@ -73,6 +87,7 @@ export function AnalyticsDashboard({
   onClose,
   onOpenJournal,
   allowDemo = true,
+  immersive = false,
 }: Props) {
   const [filter, setFilter] = useState<FilterState>(EMPTY_FILTER);
   const [store, setStore] = useState<TradeStore | null>(null);
@@ -89,7 +104,9 @@ export function AnalyticsDashboard({
   const [busy, setBusy] = useState(false);
   const [source, setSource] = useState<'journal' | 'demo'>('journal');
   const [showNumbers, setShowNumbers] = useState(false);
+  const [showTrades, setShowTrades] = useState(false);
 
+  const boardRef = useRef<HTMLDivElement>(null);
   const equityRef = useRef<HTMLCanvasElement>(null);
   const ddRef = useRef<HTMLCanvasElement>(null);
   const cumRRef = useRef<HTMLCanvasElement>(null);
@@ -194,74 +211,102 @@ export function AnalyticsDashboard({
 
   useEffect(() => () => terminateAnalyticsWorker(), []);
 
-  // Paint all canvases when data arrives (and on resize).
+  // Animated paint + resize (instant at progress=1).
   useEffect(() => {
-    const paint = () => {
-      if (equity && equityRef.current) {
-        drawEquityChart(equityRef.current, equity.t, equity.e, equity.dd);
+    if (!equity || !charts || !buckets) return;
+
+    const paintAt = (progress: number) => {
+      const eT = sliceByProgress(equity.t, progress);
+      const eE = sliceByProgress(equity.e, progress);
+      const eDd = sliceByProgress(equity.dd, progress);
+      if (equityRef.current) drawEquityChart(equityRef.current, eT, eE, eDd);
+      if (ddRef.current) drawUnderwater(ddRef.current, eDd);
+      if (cumRRef.current) {
+        drawLineSeries(cumRRef.current, sliceByProgress(charts.cumR, progress));
       }
-      if (equity && ddRef.current) drawUnderwater(ddRef.current, equity.dd);
-      if (charts?.cumR && cumRRef.current) drawLineSeries(cumRRef.current, charts.cumR);
-      if (charts?.rollingWr && rollRef.current) {
-        drawRollingLine(rollRef.current, charts.rollingWr, 0.5);
+      if (rollRef.current) {
+        drawRollingLine(rollRef.current, sliceByProgress(charts.rollingWr, progress), 0.5);
       }
-      if (charts?.rValues && rHistRef.current) {
-        drawHistogram(rHistRef.current, charts.rValues, undefined, {
-          diverging: true,
-          bins: 40,
-        });
+      if (rHistRef.current) {
+        drawHistogram(
+          rHistRef.current,
+          progress < 1 ? scaleByProgress(charts.rValues, progress) : charts.rValues,
+          undefined,
+          { diverging: true, bins: 40 },
+        );
       }
-      if (charts?.netPnl && pnlHistRef.current) {
-        drawHistogram(pnlHistRef.current, charts.netPnl, undefined, {
-          diverging: true,
-          bins: 36,
-        });
+      if (pnlHistRef.current) {
+        drawHistogram(
+          pnlHistRef.current,
+          progress < 1 ? scaleByProgress(charts.netPnl, progress) : charts.netPnl,
+          undefined,
+          { diverging: true, bins: 36 },
+        );
       }
-      if (charts && scatterRef.current) {
-        drawScatter(scatterRef.current, charts.maeR, charts.mfeR, charts.outcome);
+      if (scatterRef.current) {
+        const n = Math.max(1, Math.ceil(charts.maeR.length * Math.max(0.02, progress)));
+        drawScatter(
+          scatterRef.current,
+          charts.maeR.subarray(0, n),
+          charts.mfeR.subarray(0, n),
+          charts.outcome.subarray(0, n),
+        );
       }
-      if (buckets && hourRef.current) {
+      if (hourRef.current) {
         drawBars(
           hourRef.current,
-          buckets.hour,
+          progress < 1 ? scaleByProgress(buckets.hour, progress) : buckets.hour,
           Array.from({ length: 24 }, (_, i) => (i % 3 === 0 ? String(i) : '')),
         );
       }
-      if (buckets && weekdayRef.current) {
-        drawBars(weekdayRef.current, buckets.weekday, [
-          'Su',
-          'Mo',
-          'Tu',
-          'We',
-          'Th',
-          'Fr',
-          'Sa',
-        ]);
+      if (weekdayRef.current) {
+        drawBars(
+          weekdayRef.current,
+          progress < 1 ? scaleByProgress(buckets.weekday, progress) : buckets.weekday,
+          ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'],
+        );
       }
-      if (buckets && sessionRef.current) {
-        drawBars(sessionRef.current, buckets.session, buckets.sessionLabels);
+      if (sessionRef.current) {
+        drawBars(
+          sessionRef.current,
+          progress < 1 ? scaleByProgress(buckets.session, progress) : buckets.session,
+          buckets.sessionLabels,
+        );
       }
-      if (buckets && symbolRef.current && buckets.symbolValues.length > 0) {
-        drawHBars(symbolRef.current, buckets.symbolValues, buckets.symbolLabels);
+      if (symbolRef.current && buckets.symbolValues.length > 0) {
+        drawHBars(
+          symbolRef.current,
+          progress < 1
+            ? scaleByProgress(buckets.symbolValues, progress)
+            : buckets.symbolValues,
+          buckets.symbolLabels,
+        );
       }
-      if (buckets && exitRef.current) {
-        drawHBars(exitRef.current, buckets.exitValues, buckets.exitLabels);
+      if (exitRef.current) {
+        drawHBars(
+          exitRef.current,
+          progress < 1 ? scaleByProgress(buckets.exitValues, progress) : buckets.exitValues,
+          buckets.exitLabels,
+        );
       }
-      if (buckets && sideRef.current) {
-        drawBars(sideRef.current, buckets.sideValues, [
-          `Long (${charts?.longN ?? 0})`,
-          `Short (${charts?.shortN ?? 0})`,
-        ]);
+      if (sideRef.current) {
+        drawBars(
+          sideRef.current,
+          progress < 1 ? scaleByProgress(buckets.sideValues, progress) : buckets.sideValues,
+          [`Long (${charts.longN})`, `Short (${charts.shortN})`],
+        );
       }
     };
-    paint();
-    const ro = new ResizeObserver(() => paint());
-    const root = equityRef.current?.parentElement?.parentElement;
-    if (root) ro.observe(root);
-    window.addEventListener('resize', paint);
+
+    const cancelAnim = runChartAnimation(paintAt, { durationMs: 1100 });
+    const onResize = () => paintAt(1);
+    const ro = new ResizeObserver(onResize);
+    if (boardRef.current) ro.observe(boardRef.current);
+    window.addEventListener('resize', onResize);
     return () => {
+      cancelAnim();
       ro.disconnect();
-      window.removeEventListener('resize', paint);
+      window.removeEventListener('resize', onResize);
     };
   }, [equity, charts, buckets]);
 
@@ -296,7 +341,7 @@ export function AnalyticsDashboard({
 
   if (!store) {
     return (
-      <div className="p-4 space-y-3">
+      <div className="p-4 space-y-3 h-full">
         <p className="text-sm text-muted">
           {allowDemo
             ? 'No closed replay trades yet. Place orders and let them close, or load a demo sample.'
@@ -304,11 +349,7 @@ export function AnalyticsDashboard({
         </p>
         <div className="flex flex-wrap gap-2">
           {allowDemo && (
-            <Button
-              variant="primary"
-              className="min-h-11"
-              onPress={() => setSource('demo')}
-            >
+            <Button variant="primary" className="min-h-11" onPress={() => setSource('demo')}>
               Load 5k demo trades
             </Button>
           )}
@@ -317,25 +358,25 @@ export function AnalyticsDashboard({
               Open Journal
             </Button>
           )}
-          {onClose && (
-            <Button variant="ghost" className="min-h-11" onPress={onClose}>
-              Close
-            </Button>
-          )}
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="flex flex-col min-h-0 h-full overflow-hidden bg-background">
-      <header className="shrink-0 flex flex-wrap items-center gap-2 px-3 py-2 border-b border-border">
-        <h2 className="text-sm font-semibold">Analytics</h2>
+  const toolbar = (
+    <>
+      <header className="shrink-0 flex flex-wrap items-center gap-2 px-2 sm:px-3 py-1.5 border-b border-border">
+        {!immersive && <h2 className="text-sm font-semibold">Analytics</h2>}
         <span className="text-[11px] text-muted tabular-nums">
           {store.n.toLocaleString()} trades
           {elapsed != null ? ` · ${elapsed.toFixed(0)} ms` : ''}
           {busy ? ' · computing…' : ''}
         </span>
+        {warnings[0] && (
+          <span className="text-[11px] text-danger truncate max-w-[40vw]" title={warnings[0]}>
+            {warnings[0]}
+          </span>
+        )}
         <div className="flex flex-wrap gap-1 ml-auto">
           {allowDemo && (
             <>
@@ -361,9 +402,23 @@ export function AnalyticsDashboard({
             size="sm"
             variant={showNumbers ? 'primary' : 'ghost'}
             className="min-h-11 sm:min-h-8"
-            onPress={() => setShowNumbers((v) => !v)}
+            onPress={() => {
+              setShowNumbers((v) => !v);
+              setShowTrades(false);
+            }}
           >
-            {showNumbers ? 'Hide numbers' : 'All numbers'}
+            Numbers
+          </Button>
+          <Button
+            size="sm"
+            variant={showTrades ? 'primary' : 'ghost'}
+            className="min-h-11 sm:min-h-8"
+            onPress={() => {
+              setShowTrades((v) => !v);
+              setShowNumbers(false);
+            }}
+          >
+            Trades
           </Button>
           <Button
             size="sm"
@@ -380,7 +435,7 @@ export function AnalyticsDashboard({
               className="min-h-11 sm:min-h-8"
               onPress={onOpenJournal}
             >
-              Trade log
+              Log
             </Button>
           )}
           {onClose && (
@@ -391,8 +446,8 @@ export function AnalyticsDashboard({
         </div>
       </header>
 
-      <div className="shrink-0 flex flex-wrap gap-2 px-3 py-2 border-b border-border text-[12px]">
-        <label className="flex items-center gap-1.5 min-h-11">
+      <div className="shrink-0 flex flex-wrap gap-3 px-2 sm:px-3 py-1 border-b border-border text-[12px]">
+        <label className="flex items-center gap-1.5 min-h-9">
           <input
             type="checkbox"
             checked={filter.sides.long}
@@ -405,7 +460,7 @@ export function AnalyticsDashboard({
           />
           Long
         </label>
-        <label className="flex items-center gap-1.5 min-h-11">
+        <label className="flex items-center gap-1.5 min-h-9">
           <input
             type="checkbox"
             checked={filter.sides.short}
@@ -418,7 +473,7 @@ export function AnalyticsDashboard({
           />
           Short
         </label>
-        <label className="flex items-center gap-1.5 min-h-11">
+        <label className="flex items-center gap-1.5 min-h-9">
           <input
             type="checkbox"
             checked={filter.hideAmbiguous}
@@ -429,130 +484,199 @@ export function AnalyticsDashboard({
           Hide ambiguous
         </label>
       </div>
+    </>
+  );
 
-      {warnings.length > 0 && (
-        <div className="px-3 py-2 text-[12px] text-danger border-b border-border space-y-1">
-          {warnings.map((w) => (
-            <p key={w}>{w}</p>
-          ))}
+  const kpiRow = (
+    <div
+      className={[
+        'grid gap-1.5 sm:gap-2',
+        immersive
+          ? 'grid-cols-3 sm:grid-cols-6 shrink-0 px-2 sm:px-3 pt-2'
+          : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6',
+      ].join(' ')}
+    >
+      <Kpi label="Net P&L" value={fmt(kpi.netPnl)} animate={immersive} />
+      <Kpi label="Win rate" value={fmt(kpi.winRate)} animate={immersive} />
+      <Kpi label="Expectancy R" value={fmt(kpi.expectancy)} animate={immersive} />
+      <Kpi label="Profit factor" value={fmt(kpi.profitFactor)} animate={immersive} />
+      <Kpi label="Max DD" value={fmt(kpi.maxDd)} animate={immersive} />
+      <Kpi label="SQN" value={fmt(kpi.sqn)} animate={immersive} />
+    </div>
+  );
+
+  const canvasFill = 'w-full h-full min-h-0 block';
+
+  const chartBoard = immersive ? (
+    <div
+      ref={boardRef}
+      className={[
+        'flex-1 min-h-0 min-w-0 px-2 sm:px-3 pb-2 pt-1.5',
+        'grid gap-1.5 sm:gap-2',
+        // Mobile: allow vertical scroll. Desktop: lock to viewport.
+        'overflow-y-auto sm:overflow-hidden',
+        'sm:grid-cols-4 sm:grid-rows-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.95fr)]',
+        '[perspective:1600px]',
+      ].join(' ')}
+    >
+      <ChartCard title="Equity curve" desc="Closed-trade balance" className="sm:col-span-2 sm:row-span-1 min-h-[160px] sm:min-h-0" tilt>
+        <canvas ref={equityRef} className={canvasFill} />
+      </ChartCard>
+      <ChartCard title="Drawdown" desc="Underwater %" className="min-h-[140px] sm:min-h-0" tilt>
+        <canvas ref={ddRef} className={canvasFill} />
+      </ChartCard>
+      <ChartCard title="Cumulative R" desc="Edge over time" className="min-h-[140px] sm:min-h-0" tilt>
+        <canvas ref={cumRRef} className={canvasFill} />
+      </ChartCard>
+
+      <ChartCard title="MFE / MAE" desc="Win green · Loss red" className="sm:col-span-2 min-h-[160px] sm:min-h-0" tilt>
+        <canvas ref={scatterRef} className={canvasFill} />
+      </ChartCard>
+      <ChartCard title="R distribution" desc="0R centerline" className="min-h-[140px] sm:min-h-0" tilt>
+        <canvas ref={rHistRef} className={canvasFill} />
+      </ChartCard>
+      <ChartCard title="P&L distribution" desc="Dollar outcomes" className="min-h-[140px] sm:min-h-0" tilt>
+        <canvas ref={pnlHistRef} className={canvasFill} />
+      </ChartCard>
+
+      <ChartCard title="Hour (UTC)" desc="Intraday edge" className="min-h-[120px] sm:min-h-0" tilt>
+        <canvas ref={hourRef} className={canvasFill} />
+      </ChartCard>
+      <ChartCard title="Weekday" desc="UTC" className="min-h-[120px] sm:min-h-0" tilt>
+        <canvas ref={weekdayRef} className={canvasFill} />
+      </ChartCard>
+      <ChartCard title="Session" desc="Asia · Lon · NY" className="min-h-[120px] sm:min-h-0" tilt>
+        <canvas ref={sessionRef} className={canvasFill} />
+      </ChartCard>
+      <ChartCard title="Long vs Short" desc="Net by side" className="min-h-[120px] sm:min-h-0" tilt>
+        <canvas ref={sideRef} className={canvasFill} />
+      </ChartCard>
+
+      <ChartCard title="By symbol" desc="Net P&L" className="min-h-[120px] sm:min-h-0" tilt>
+        <canvas ref={symbolRef} className={canvasFill} />
+      </ChartCard>
+      <ChartCard title="Exit reasons" desc="How trades closed" className="min-h-[120px] sm:min-h-0" tilt>
+        <canvas ref={exitRef} className={canvasFill} />
+      </ChartCard>
+      <ChartCard title="Rolling WR (20)" desc="50% baseline" className="min-h-[120px] sm:min-h-0" tilt>
+        <canvas ref={rollRef} className={canvasFill} />
+      </ChartCard>
+      <ChartCard title="Live filters" desc="Toggle Long / Short above" className="min-h-[120px] sm:min-h-0 hidden sm:flex" tilt>
+        <div className="h-full flex items-center justify-center text-xs text-muted px-3 text-center">
+          Charts re-animate when filters or data change
         </div>
-      )}
-
-      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-4">
-        {/* Compact KPI strip — glanceable, not the main story */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-          <Kpi label="Net P&L" value={fmt(kpi.netPnl)} hint={METRIC_CATALOG[0]?.formula} />
-          <Kpi label="Win rate" value={fmt(kpi.winRate)} hint={METRIC_CATALOG[14]?.formula} />
-          <Kpi label="Expectancy R" value={fmt(kpi.expectancy)} hint={METRIC_CATALOG[24]?.formula} />
-          <Kpi label="Profit factor" value={fmt(kpi.profitFactor)} hint={METRIC_CATALOG[3]?.formula} />
-          <Kpi label="Max DD" value={fmt(kpi.maxDd)} hint={METRIC_CATALOG[45]?.formula} />
-          <Kpi label="SQN" value={fmt(kpi.sqn)} hint={METRIC_CATALOG[27]?.formula} />
-        </div>
-
-        {/* Hero equity */}
-        <ChartCard
-          title="Equity curve"
-          desc="Closed-trade account balance over time (not mark-to-market)"
-          wide
-        >
-          <canvas ref={equityRef} className="w-full h-52 sm:h-64 block" />
+      </ChartCard>
+    </div>
+  ) : (
+    <div ref={boardRef} className="flex-1 min-h-0 overflow-y-auto p-3 space-y-4">
+      {kpiRow}
+      <ChartCard title="Equity curve" desc="Closed-trade account balance" wide>
+        <canvas ref={equityRef} className="w-full h-52 sm:h-64 block" />
+      </ChartCard>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <ChartCard title="Drawdown" desc="Underwater">
+          <canvas ref={ddRef} className="w-full h-44 block" />
         </ChartCard>
+        <ChartCard title="Cumulative R" desc="Edge over time">
+          <canvas ref={cumRRef} className="w-full h-44 block" />
+        </ChartCard>
+        <ChartCard title="Rolling win rate" desc="20-trade window">
+          <canvas ref={rollRef} className="w-full h-40 block" />
+        </ChartCard>
+        <ChartCard title="Long vs Short" desc="Net by side">
+          <canvas ref={sideRef} className="w-full h-40 block" />
+        </ChartCard>
+        <ChartCard title="R distribution" desc="Histogram">
+          <canvas ref={rHistRef} className="w-full h-44 block" />
+        </ChartCard>
+        <ChartCard title="P&L distribution" desc="Dollar outcomes">
+          <canvas ref={pnlHistRef} className="w-full h-44 block" />
+        </ChartCard>
+        <ChartCard title="MFE / MAE" desc="Scatter" wide>
+          <canvas ref={scatterRef} className="w-full h-56 block" />
+        </ChartCard>
+        <ChartCard title="Hour" desc="UTC">
+          <canvas ref={hourRef} className="w-full h-40 block" />
+        </ChartCard>
+        <ChartCard title="Weekday" desc="UTC">
+          <canvas ref={weekdayRef} className="w-full h-40 block" />
+        </ChartCard>
+        <ChartCard title="Session" desc="UTC">
+          <canvas ref={sessionRef} className="w-full h-40 block" />
+        </ChartCard>
+        <ChartCard title="By symbol" desc="Net P&L">
+          <canvas ref={symbolRef} className="w-full h-44 block" />
+        </ChartCard>
+        <ChartCard title="Exit reasons" desc="Counts">
+          <canvas ref={exitRef} className="w-full h-44 block" />
+        </ChartCard>
+      </div>
+    </div>
+  );
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <ChartCard title="Drawdown (underwater)" desc="How deep and how long below peak equity">
-            <canvas ref={ddRef} className="w-full h-44 block" />
-          </ChartCard>
-          <ChartCard title="Cumulative R" desc="Running sum of R-multiples — edge over time">
-            <canvas ref={cumRRef} className="w-full h-44 block" />
-          </ChartCard>
-          <ChartCard title="Rolling win rate (20)" desc="Dashed line = 50% coin-flip baseline">
-            <canvas ref={rollRef} className="w-full h-40 block" />
-          </ChartCard>
-          <ChartCard title="Long vs Short P&L" desc="Net result by side">
-            <canvas ref={sideRef} className="w-full h-40 block" />
-          </ChartCard>
-          <ChartCard title="R-multiple distribution" desc="Green = winners · Red = losers · line at 0R">
-            <canvas ref={rHistRef} className="w-full h-44 block" />
-          </ChartCard>
-          <ChartCard title="P&L distribution" desc="Dollar outcome histogram">
-            <canvas ref={pnlHistRef} className="w-full h-44 block" />
-          </ChartCard>
-          <ChartCard
-            title="MFE / MAE scatter"
-            desc="Each dot is a trade — winners green, losers red"
-            wide
-          >
-            <canvas ref={scatterRef} className="w-full h-56 block" />
-          </ChartCard>
-          <ChartCard title="Hour of day (UTC)" desc="When you make or lose money">
-            <canvas ref={hourRef} className="w-full h-40 block" />
-          </ChartCard>
-          <ChartCard title="Weekday (UTC)" desc="Day-of-week edge">
-            <canvas ref={weekdayRef} className="w-full h-40 block" />
-          </ChartCard>
-          <ChartCard title="Session (UTC)" desc="Asia / London / NY / Overlap">
-            <canvas ref={sessionRef} className="w-full h-40 block" />
-          </ChartCard>
-          <ChartCard title="By symbol" desc="Net P&L ranking">
-            <canvas
-              ref={symbolRef}
-              className="w-full block"
-              style={{ height: Math.max(140, (buckets?.symbolLabels.length ?? 1) * 28 + 40) }}
-            />
-          </ChartCard>
-          <ChartCard title="Exit reasons" desc="How trades actually closed">
-            <canvas ref={exitRef} className="w-full h-44 block" />
-          </ChartCard>
-        </div>
+  return (
+    <div className="relative flex flex-col min-h-0 h-full w-full overflow-hidden bg-background">
+      {toolbar}
+      {immersive && kpiRow}
+      {chartBoard}
 
-        {showNumbers &&
-          ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'].map((g) => {
-            const list = byGroup.get(g);
-            if (!list?.length) return null;
-            return (
-              <section key={g} className="space-y-2">
-                <h3 className="text-[11px] uppercase tracking-wide text-muted">
-                  Group {g} — numbers
-                </h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                  {list.map((m) => {
-                    const def = METRIC_CATALOG[m.id - 1];
-                    if (m.value == null && !m.infinite) {
-                      if (m.id >= 71 && m.id <= 74) return null;
-                      if (m.id === 80 || m.id === 83 || m.id === 84) {
+      {(showNumbers || showTrades) && (
+        <div className="absolute inset-0 z-20 flex flex-col bg-background/95 backdrop-blur-sm">
+          <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-border">
+            <p className="text-sm font-semibold">
+              {showNumbers ? 'All metrics' : 'Trade list'}
+            </p>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="min-h-11 sm:min-h-8"
+              onPress={() => {
+                setShowNumbers(false);
+                setShowTrades(false);
+              }}
+            >
+              Back to charts
+            </Button>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-4">
+            {showNumbers &&
+              ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'].map((g) => {
+                const list = byGroup.get(g);
+                if (!list?.length) return null;
+                return (
+                  <section key={g} className="space-y-2">
+                    <h3 className="text-[11px] uppercase tracking-wide text-muted">
+                      Group {g}
+                    </h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
+                      {list.map((m) => {
+                        const def = METRIC_CATALOG[m.id - 1];
+                        if (m.value == null && !m.infinite && m.id >= 71 && m.id <= 74) {
+                          return null;
+                        }
                         return (
                           <MetricTile
                             key={m.id}
                             label={def?.label ?? m.key}
-                            value="—"
+                            value={m.infinite ? '—' : fmt(m)}
                             n={m.n}
-                            low
-                            title={def?.formula ?? ''}
+                            low={m.lowSample}
+                            title={`${def?.formula ?? ''}\nmin N=${m.minSampleSize}`}
                           />
                         );
-                      }
-                    }
-                    return (
-                      <MetricTile
-                        key={m.id}
-                        label={def?.label ?? m.key}
-                        value={m.infinite ? '—' : fmt(m)}
-                        n={m.n}
-                        low={m.lowSample}
-                        title={`${def?.formula ?? ''}\nmin N=${m.minSampleSize}`}
-                      />
-                    );
-                  })}
-                </div>
-              </section>
-            );
-          })}
-
-        <section className="space-y-2 min-h-[240px] flex flex-col">
-          <h3 className="text-[11px] uppercase tracking-wide text-muted">Trade list</h3>
-          <TradeListVirtual store={store} indices={indices} />
-        </section>
-      </div>
+                      })}
+                    </div>
+                  </section>
+                );
+              })}
+            {showTrades && (
+              <div className="min-h-[320px] flex flex-col">
+                <TradeListVirtual store={store} indices={indices} />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -562,44 +686,79 @@ function ChartCard({
   desc,
   children,
   wide,
+  className = '',
+  tilt = false,
 }: {
   title: string;
   desc: string;
   children: ReactNode;
   wide?: boolean;
+  className?: string;
+  tilt?: boolean;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [style, setStyle] = useState<CSSProperties>({});
+
+  const onMove = (e: ReactPointerEvent) => {
+    if (!tilt || !ref.current) return;
+    if (window.matchMedia('(hover: none)').matches) return;
+    const r = ref.current.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - 0.5;
+    const py = (e.clientY - r.top) / r.height - 0.5;
+    setStyle({
+      transform: `rotateX(${(-py * 7).toFixed(2)}deg) rotateY(${(px * 9).toFixed(2)}deg) translateZ(0)`,
+      transition: 'transform 80ms linear',
+    });
+  };
+
+  const onLeave = () => {
+    setStyle({
+      transform: 'rotateX(0deg) rotateY(0deg)',
+      transition: 'transform 280ms cubic-bezier(0.22, 1, 0.36, 1)',
+    });
+  };
+
   return (
-    <Card
+    <div
+      ref={ref}
       className={[
-        'bg-surface border border-border',
+        'min-h-0 min-w-0 flex flex-col rounded-xl border border-border',
+        'bg-surface/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)]',
+        'origin-center will-change-transform',
         wide ? 'lg:col-span-2' : '',
+        className,
       ].join(' ')}
+      style={tilt ? style : undefined}
+      onPointerMove={tilt ? onMove : undefined}
+      onPointerLeave={tilt ? onLeave : undefined}
     >
-      <Card.Header className="px-3 pt-3 pb-1">
-        <Card.Title className="text-sm">{title}</Card.Title>
-        <Card.Description className="text-[11px] text-muted">{desc}</Card.Description>
-      </Card.Header>
-      <Card.Content className="px-2 pb-3">{children}</Card.Content>
-    </Card>
+      <div className="shrink-0 px-2.5 pt-2 pb-0.5">
+        <p className="text-[12px] font-semibold leading-tight">{title}</p>
+        <p className="text-[10px] text-muted truncate">{desc}</p>
+      </div>
+      <div className="flex-1 min-h-0 px-1.5 pb-1.5">{children}</div>
+    </div>
   );
 }
 
 function Kpi({
   label,
   value,
-  hint,
+  animate,
 }: {
   label: string;
   value: string;
-  hint?: string;
+  animate?: boolean;
 }) {
   return (
     <div
-      className="rounded-lg border border-border bg-surface px-3 py-2.5"
-      title={hint}
+      className={[
+        'rounded-lg border border-border bg-surface px-2.5 py-2',
+        animate ? 'animate-[analyticsKpiIn_0.55s_cubic-bezier(0.22,1,0.36,1)_both]' : '',
+      ].join(' ')}
     >
-      <p className="text-[10px] text-muted uppercase tracking-wide">{label}</p>
-      <p className="text-base sm:text-lg font-semibold tabular-nums mt-0.5">{value}</p>
+      <p className="text-[9px] sm:text-[10px] text-muted uppercase tracking-wide">{label}</p>
+      <p className="text-sm sm:text-base font-semibold tabular-nums mt-0.5">{value}</p>
     </div>
   );
 }

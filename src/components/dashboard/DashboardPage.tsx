@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Card } from '@heroui/react';
+import { Button } from '@heroui/react';
 import { ensureExampleAnalyticsSession } from '@/analytics/exampleSession';
 import { AnalyticsDashboard } from '@/components/analytics/AnalyticsDashboard';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { listJournalEntries } from '@/journal/journalStore';
 import type { OrderJournal } from '@/orders/journal';
 import { listOrderJournalViews } from '@/orders/tradeJournal';
@@ -16,8 +17,7 @@ interface DashboardPageProps {
 }
 
 /**
- * App home — counts + the full Analytics dashboard (88 metrics / charts).
- * Seeds an example 200-trade journal on first visit so the UI is populated.
+ * Full-viewport Dashboard — analytics board fills the shell (no page scroll).
  */
 export function DashboardPage({
   liveJournal = null,
@@ -47,76 +47,73 @@ export function DashboardPage({
   }, [liveJournal, dataTick]);
 
   return (
-    <div className="min-h-full bg-background text-foreground">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-8">
-        <header className="space-y-1.5">
-          <p className="text-xs uppercase tracking-[0.2em] text-muted">Overview</p>
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted max-w-2xl">
-            Includes an example session with 200 closed trades (R, MFE/MAE, stops, costs) so
-            analytics charts and metrics render immediately.
+    <div className="h-full min-h-0 w-full flex flex-col overflow-hidden bg-background text-foreground">
+      <header
+        className={[
+          'shrink-0 flex flex-wrap items-center gap-x-3 gap-y-2',
+          'px-3 sm:px-4 py-2 border-b border-border',
+          'bg-surface/80 backdrop-blur-sm',
+          'pt-[max(0.5rem,env(safe-area-inset-top))]',
+        ].join(' ')}
+      >
+        <div className="min-w-0">
+          <h1 className="text-base sm:text-lg font-semibold tracking-tight leading-tight">
+            Analytics
+          </h1>
+          <p className="text-[11px] text-muted tabular-nums truncate">
+            {stats.closedTrades} trades · {stats.sessions} sessions ·{' '}
+            {stats.strategies} strategies
           </p>
-        </header>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard label="Sessions" value={stats.sessions} />
-          <StatCard label="Strategies" value={stats.strategies} />
-          <StatCard label="Backtest runs" value={stats.backtestRuns} />
-          <StatCard label="Closed trades" value={stats.closedTrades} />
         </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Button variant="primary" className="min-h-11" onPress={onGoBacktest}>
+        <div className="flex flex-wrap gap-1.5 ml-auto">
+          <Button
+            size="sm"
+            variant="primary"
+            className="min-h-11 sm:min-h-9"
+            onPress={onGoBacktest}
+          >
             New backtest
           </Button>
-          <Button variant="secondary" className="min-h-11" onPress={onGoTrades}>
-            Open trades
+          <Button
+            size="sm"
+            variant="secondary"
+            className="min-h-11 sm:min-h-9"
+            onPress={onGoTrades}
+          >
+            Trades
           </Button>
-          <Button variant="ghost" className="min-h-11" onPress={onGoStrategy}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="min-h-11 sm:min-h-9"
+            onPress={onGoStrategy}
+          >
             Strategies
           </Button>
           <Button
+            size="sm"
             variant="ghost"
-            className="min-h-11"
+            className="min-h-11 sm:min-h-9"
             onPress={() => {
               ensureExampleAnalyticsSession({ force: true });
               setDataTick((n) => n + 1);
             }}
           >
-            Reset example 200
+            Reset example
           </Button>
+          <ThemeToggle compact />
         </div>
+      </header>
 
-        <section className="space-y-3">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight">Analytics</h2>
-              <p className="text-xs text-muted mt-0.5">
-                Full metric catalog, equity / R charts, and trade list
-              </p>
-            </div>
-          </div>
-          <div className="rounded-lg border border-border bg-surface overflow-hidden min-h-[min(75vh,800px)] h-[min(85vh,1100px)]">
-            <AnalyticsDashboard
-              key={dataTick}
-              liveJournal={liveJournal}
-              allowDemo
-              onOpenJournal={onGoTrades}
-            />
-          </div>
-        </section>
+      <div className="flex-1 min-h-0 min-w-0 w-full">
+        <AnalyticsDashboard
+          key={dataTick}
+          liveJournal={liveJournal}
+          allowDemo
+          immersive
+          onOpenJournal={onGoTrades}
+        />
       </div>
     </div>
-  );
-}
-
-function StatCard({ label, value }: { label: string; value: number }) {
-  return (
-    <Card className="bg-surface border border-border">
-      <Card.Content className="px-4 py-3 space-y-1">
-        <p className="text-[10px] text-muted uppercase tracking-wide">{label}</p>
-        <p className="text-2xl font-semibold tabular-nums">{value}</p>
-      </Card.Content>
-    </Card>
   );
 }

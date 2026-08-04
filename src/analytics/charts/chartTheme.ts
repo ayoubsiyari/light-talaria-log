@@ -50,6 +50,7 @@ export function readAnalyticsChartTheme(): AnalyticsChartTheme {
 export function prepCanvas(
   canvas: HTMLCanvasElement,
   fallbackH = 180,
+  opts?: { pad?: number },
 ): { ctx: CanvasRenderingContext2D; w: number; h: number; pad: number } | null {
   const dpr = Math.min(2.5, window.devicePixelRatio || 1);
   const w = Math.max(40, canvas.clientWidth || 320);
@@ -61,7 +62,9 @@ export function prepCanvas(
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
   ctx.imageSmoothingEnabled = true;
-  return { ctx, w, h, pad: 28 };
+  // Compact pad on short canvases so immersive grids stay readable.
+  const autoPad = h < 140 ? 18 : h < 180 ? 22 : 28;
+  return { ctx, w, h, pad: opts?.pad ?? autoPad };
 }
 
 export function drawGrid(

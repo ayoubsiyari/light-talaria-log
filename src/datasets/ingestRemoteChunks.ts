@@ -17,7 +17,7 @@ import { fetchChunkBinary, fetchRemoteChunks, getRemoteDataset } from '@/dataset
 import type { RemoteChunkRef, RemoteDatasetMeta } from '@/types/remoteApi';
 import type { SeriesCatalog, SeriesMeta } from '@/types/series';
 import type { Timeframe } from '@/types/ui';
-import { CHUNK_SIZE, MAX_BARS_IN_MEMORY } from '@/utils/constants';
+import { CHUNK_SIZE } from '@/utils/constants';
 
 const BYTES_PER_BAR = 28;
 
@@ -308,15 +308,27 @@ export async function ingestRemoteChunksToIdb(
   };
 }
 
+export interface RemoteCoverageOpts {
+  /**
+   * Cap how many bars of runway to pull in one request (default = 1 chunk).
+   * Keeps replay/multi-pane from stalling on multi-hour downloads.
+   */
+  maxBars?: number;
+}
+
+/** One in-flight top-up per dataset×TF — multi-pane play shares the same fetch. */
+const remoteCoverageInflight = new Map<string, Promise<boolean>>();
+
 /**
  * If this dataset is remote and IDB does not cover [fromTime, toTime], fetch
- * the missing gap from the server and merge into IndexedDB.
+ * a small gap from the server (≤ maxBars) and merge into IndexedDB.
  */
 export async function ensureRemoteTimeCoverage(
   datasetId: string,
   timeframe: Timeframe,
   fromTime: number,
   toTime: number,
+  opts: RemoteCoverageOpts = {},
 ): Promise<boolean> {
   if (!(Number.isFinite(fromTime) && Number.isFinite(toTime)) || fromTime > toTime) {
     return false;
@@ -326,42 +338,58 @@ export async function ensureRemoteTimeCoverage(
   // Unknown catalog: still try server (session may have cleared localStorage).
   if (entry && entry.source !== 'remote') return false;
 
-  const db = await openDb();
-  const meta = await getSeriesMeta(db, datasetId, timeframe);
-  const pad = timeframeSeconds(timeframe) * 2;
+  const inflightKey = `${datasetId}|${timeframe}`;
+  const existing = remoteCoverageInflight.get(inflightKey);
+  if (existing) return existing;
 
-  if (
-    meta &&
-    meta.rowCount > 0 &&
-    meta.timeStart <= fromTime + pad &&
-    meta.timeEnd >= toTime - pad
-  ) {
-    return false;
-  }
+  const work = (async (): Promise<boolean> => {
+    const db = await openDb();
+    const meta = await getSeriesMeta(db, datasetId, timeframe);
+    const tfSec = timeframeSeconds(timeframe);
+    const pad = tfSec * 2;
+    const maxBars = Math.max(500, Math.min(CHUNK_SIZE, opts.maxBars ?? CHUNK_SIZE));
+    const maxSpan = tfSec * maxBars;
 
-  let fetchFrom = fromTime;
-  let fetchTo = toTime;
-  if (meta && meta.rowCount > 0) {
-    if (toTime > meta.timeEnd) {
-      fetchFrom = Math.max(fromTime, meta.timeEnd - pad);
-      fetchTo = toTime;
-    } else if (fromTime < meta.timeStart) {
-      fetchFrom = fromTime;
-      fetchTo = Math.min(toTime, meta.timeStart + pad);
-    } else {
-      // Interior hole unlikely with contiguous merge; refetch whole window.
-      fetchFrom = fromTime;
-      fetchTo = toTime;
+    if (
+      meta &&
+      meta.rowCount > 0 &&
+      meta.timeStart <= fromTime + pad &&
+      meta.timeEnd >= toTime - pad
+    ) {
+      return false;
     }
-  }
 
-  const tfSec = timeframeSeconds(timeframe);
-  const windowPad = tfSec * Math.min(CHUNK_SIZE, MAX_BARS_IN_MEMORY);
-  await ingestRemoteChunksToIdb(datasetId, timeframe, {
-    fromTime: fetchFrom - Math.floor(windowPad * 0.05),
-    toTime: fetchTo + Math.floor(windowPad * 0.15),
+    let fetchFrom = fromTime;
+    let fetchTo = toTime;
+    if (meta && meta.rowCount > 0) {
+      if (toTime > meta.timeEnd) {
+        // Only pull the next runway ahead of what we already have.
+        fetchFrom = meta.timeEnd - pad;
+        fetchTo = Math.min(toTime, meta.timeEnd + maxSpan);
+      } else if (fromTime < meta.timeStart) {
+        fetchTo = meta.timeStart + pad;
+        fetchFrom = Math.max(fromTime, meta.timeStart - maxSpan);
+      } else {
+        fetchFrom = fromTime;
+        fetchTo = Math.min(toTime, fromTime + maxSpan);
+      }
+    } else {
+      fetchTo = Math.min(toTime, fromTime + maxSpan);
+    }
+
+    if (fetchTo <= fetchFrom) return false;
+
+    await ingestRemoteChunksToIdb(datasetId, timeframe, {
+      fromTime: fetchFrom,
+      toTime: fetchTo,
+    });
+    return true;
+  })().finally(() => {
+    remoteCoverageInflight.delete(inflightKey);
   });
-  return true;
+
+  remoteCoverageInflight.set(inflightKey, work);
+  return work;
 }
 
 /**

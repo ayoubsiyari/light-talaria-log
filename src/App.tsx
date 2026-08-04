@@ -33,6 +33,7 @@ import { getChart } from '@/chart';
 type LiveCamera = { anchorTime: number; span: number; tipRatio: number };
 import {
   canAggregateFrom,
+  smallestTimeframe,
   timeframeSeconds,
 } from '@/data/timeframeAgg';
 import { createSessionController } from '@/session';
@@ -101,6 +102,7 @@ import { paneCountForLayout } from '@/types/pane';
 import type { BottomTabId, ChartLayout, ChartToolId, Timeframe } from '@/types/ui';
 import { debounce } from '@/utils/debounce';
 import {
+  CHUNK_SIZE,
   LOD_DEBOUNCE_MS,
   MAX_BACKTEST_BARS,
   MAX_BARS_IN_MEMORY,
@@ -556,19 +558,20 @@ export default function App() {
   );
 
   /**
-   * Clock grid = dataset base TF; advance rate = focused pane's selected TF.
-   * Changing another pane's interval must not alter step semantics for others.
+   * Clock grid = dataset base TF.
+   * Advance rate = finest (smallest) pane TF among all charts — e.g. 1m/5m/1h/4h
+   * → play at 1m speed so every pane stays in sync, not the focused pane’s TF.
    */
   const syncReplayClockTf = useCallback((paneList?: readonly ChartPaneState[]) => {
     const list = paneList ?? panesRef.current;
     const base = catalog?.baseTf ?? '1m';
     replayRef.current.setBaseTf(base);
-    const focused =
-      list.find((p) => p.id === activePaneId) ?? list[0] ?? null;
-    if (focused) {
-      replayRef.current.setRateTf(focused.selectedTf ?? focused.timeframe);
-    }
-  }, [activePaneId, catalog?.baseTf]);
+    if (list.length === 0) return;
+    const rate = smallestTimeframe(
+      list.map((p) => p.selectedTf ?? p.timeframe),
+    );
+    replayRef.current.setRateTf(rate);
+  }, [catalog?.baseTf]);
 
   /**
    * Pan/zoom IDB refill + zoom LOD:
@@ -615,20 +618,36 @@ export default function App() {
 
           const loadTf = lodTfs[i]!;
           const ds = getDataset(p.datasetId);
-          if (!ds || ds.source === 'remote') {
-            try {
-              await ensureRemoteTimeCoverage(p.datasetId, loadTf, fromTime, toTime);
-            } catch {
-              // keep prior window if server top-up fails
-            }
-          }
-
-          const vp = await loadViewportForTimeRange(
+          // Pan: try IDB first; small server top-up only if the window is empty/short.
+          let vp = await loadViewportForTimeRange(
             p.datasetId,
             loadTf,
             fromTime,
             toTime,
           );
+          if (
+            (!ds || ds.source === 'remote') &&
+            (vp.bars.length === 0 ||
+              (vp.bars[vp.bars.length - 1]!.time < toTime - 60))
+          ) {
+            try {
+              await ensureRemoteTimeCoverage(
+                p.datasetId,
+                loadTf,
+                fromTime,
+                toTime,
+                { maxBars: CHUNK_SIZE },
+              );
+              vp = await loadViewportForTimeRange(
+                p.datasetId,
+                loadTf,
+                fromTime,
+                toTime,
+              );
+            } catch {
+              // keep prior window if server top-up fails
+            }
+          }
           if (vp.bars.length === 0) return p; // keep previous window
           // Remap camera from the same wall-clock window (fractional) so buffer
           // reloads / LOD switches don't snap; keep prior range if remap is degenerate.
@@ -950,6 +969,8 @@ export default function App() {
     detachedPanesRef.current.clear();
     cameraDetachedRef.current = false;
     setCameraDetached(false);
+    // Lock play rate to finest pane TF before the first tick.
+    syncReplayClockTf();
 
     const s = sessionRef.current.get();
     const list = panesRef.current;
@@ -1007,7 +1028,7 @@ export default function App() {
       }
     }
     replayRef.current.play();
-  }, [commitSessionViews, syncEnginesFromSession]);
+  }, [commitSessionViews, syncEnginesFromSession, syncReplayClockTf]);
 
   const loadSessionData = useCallback(
     async (next: BacktestSession) => {

@@ -6,7 +6,7 @@ export type ReplayListener = (state: ReplayState) => void;
 
 export interface ReplayState {
   playing: boolean;
-  /** Bars per second at the *rate* TF (focused pane). */
+  /** Bars per second at the *rate* TF (finest pane TF in multi-chart). */
   speed: number;
   cursorTime: number;
   startTime: number;
@@ -21,7 +21,7 @@ export interface ReplayController {
   configure(startTime: number, endTime: number, windowSec: number): void;
   /** Clock grid — always dataset base TF (usually 1m). */
   setBaseTf(tf: Timeframe): void;
-  /** Advance-rate TF — focused pane; converts speed into clock steps. */
+  /** Advance-rate TF — finest pane TF; converts speed into clock steps. */
   setRateTf(tf: Timeframe): void;
   /** @deprecated use setBaseTf / setRateTf — kept for call-site migration */
   setActiveTf(tf: Timeframe): void;

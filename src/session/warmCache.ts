@@ -15,7 +15,7 @@ import { loadViewportAroundTime } from '@/datasets/seriesViewport';
 import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
 import type { ChartBar } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
-import { MAX_BARS_IN_MEMORY } from '@/utils/constants';
+import { CHUNK_SIZE, MAX_BARS_IN_MEMORY } from '@/utils/constants';
 
 type CacheKey = string;
 
@@ -159,22 +159,7 @@ export class WarmCache {
         Math.max(64, opts?.windowBars ?? MAX_BARS_IN_MEMORY),
       );
 
-      // Remote datasets: top up IDB from server around the anchor (TV-style).
-      const entry = getDataset(datasetId);
-      if (!entry || entry.source === 'remote') {
-        const half = windowBars * timeframeSeconds(tf);
-        try {
-          await ensureRemoteTimeCoverage(
-            datasetId,
-            tf,
-            anchorTime - Math.floor(half * 0.35),
-            anchorTime + Math.floor(half * 0.85),
-          );
-        } catch {
-          // Offline / gap — fall through to whatever is already in IDB.
-        }
-      }
-
+      // Always serve IDB first — never block replay/multi-pane on network.
       const vp = await loadViewportAroundTime(
         datasetId,
         tf,
@@ -188,6 +173,31 @@ export class WarmCache {
       if (this.epochs.get(k) !== epoch) return this.store.get(k)?.bars ?? [];
       const bars = vp.bars as ChartBar[];
       this.writeEntry(k, { bars, anchorTime, loadedAt: Date.now(), touchedAt: Date.now() });
+
+      // Background top-up: one chunk ahead when tip is short (play keeps moving).
+      const entry = getDataset(datasetId);
+      if (!entry || entry.source === 'remote') {
+        const tfSec = timeframeSeconds(tf);
+        const tip = bars.length > 0 ? bars[bars.length - 1]!.time : null;
+        const needAheadTo = anchorTime + Math.floor(windowBars * 0.55 * tfSec);
+        const tipShort = tip == null || tip < needAheadTo - tfSec * 30;
+        if (tipShort) {
+          const fetchFrom = tip ?? anchorTime;
+          const fetchTo = needAheadTo;
+          void ensureRemoteTimeCoverage(datasetId, tf, fetchFrom, fetchTo, {
+            maxBars: Math.min(CHUNK_SIZE, Math.max(500, windowBars)),
+          })
+            .then((fetched) => {
+              if (!fetched) return;
+              // Refresh cache from the new IDB bytes (non-blocking for prior callers).
+              void this.fill(datasetId, tf, anchorTime, span, opts);
+            })
+            .catch(() => {
+              // Offline / gap — keep playing on whatever is already cached.
+            });
+        }
+      }
+
       return bars;
     } finally {
       if (this.inflight.get(k) === epoch) this.inflight.delete(k);

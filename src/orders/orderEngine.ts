@@ -971,10 +971,22 @@ export function stepEngine(
   for (const pos of positions) {
     const sl = working
       .map((id) => next.orders[id])
-      .find((o) => o && o.positionId === pos.id && o.role === 'stopLoss');
+      .find(
+        (o) =>
+          o &&
+          o.positionId === pos.id &&
+          o.role === 'stopLoss' &&
+          bar.time > o.createdAt,
+      );
     const tp = working
       .map((id) => next.orders[id])
-      .find((o) => o && o.positionId === pos.id && o.role === 'takeProfit');
+      .find(
+        (o) =>
+          o &&
+          o.positionId === pos.id &&
+          o.role === 'takeProfit' &&
+          bar.time > o.createdAt,
+      );
     if (sl?.price != null && tp?.price != null) {
       const amb = resolveAmbiguousProtective({
         side: pos.side,
@@ -1017,6 +1029,10 @@ export function stepEngine(
   for (const id of [...next.workingIds]) {
     const order = next.orders[id];
     if (!order || isTerminal(order.status)) continue;
+
+    // Never evaluate on/before the submit bar — market fills at *next* open (§4.3).
+    // Also prevents Play from replaying history and filling a fresh order on bar 0.
+    if (bar.time <= order.createdAt) continue;
 
     // Skip protective already handled above if filled
     if (order.role === 'stopLoss' || order.role === 'takeProfit') {

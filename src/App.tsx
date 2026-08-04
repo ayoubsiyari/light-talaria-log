@@ -776,6 +776,8 @@ export default function App() {
   }, []);
 
   const lastOrderChromeAtRef = useRef(0);
+  const selectedOrderIdRef = useRef(selectedOrderId);
+  selectedOrderIdRef.current = selectedOrderId;
   stepOrderEngineRef.current = (cursorTime: number) => {
     const bridge = orderBridgeRef.current;
     const sess = sessionRef.current.get();
@@ -796,10 +798,10 @@ export default function App() {
       return out;
     });
     // Always refresh chart projection — levels stay until SL/TP close, P&L marks each bar.
-    // Draft ticket is React-driven while paused; play disables the ticket.
     const chartOrders = bridge.toChartOrders(sessionIdRef.current ?? '');
+    const sel = selectedOrderIdRef.current;
     for (const pane of panesRef.current) {
-      getChart(pane.id)?.setOrders(chartOrders, selectedOrderId);
+      getChart(pane.id)?.setOrders(chartOrders, sel);
     }
     if (!replayRef.current.get().playing) {
       syncOrdersFromBridge();
@@ -975,6 +977,16 @@ export default function App() {
       const chart = getChart(pane.id);
       if (!chart) continue;
       chart.setReplayFollow(true);
+    }
+    // Push current book before the first play tick so levels don't flash empty
+    // while replayFollow blocks React → setOrders.
+    const bridge = orderBridgeRef.current;
+    if (bridge) {
+      const chartOrders = bridge.toChartOrders(sessionIdRef.current ?? '');
+      const sel = selectedOrderIdRef.current;
+      for (const pane of panesRef.current) {
+        getChart(pane.id)?.setOrders(chartOrders, sel);
+      }
     }
     replayRef.current.play();
   }, [commitSessionViews, syncEnginesFromSession]);

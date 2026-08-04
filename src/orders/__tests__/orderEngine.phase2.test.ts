@@ -62,6 +62,56 @@ describe('Phase 2 — market fills at next bar open', () => {
     assert.ok(pos);
     assert.ok(Math.abs(pos!.entryPrice - (1.101 + 0.0002)) < spec.tickSize);
   });
+
+  it('market submitted at T ignores history bars ≤ T (Play must not fill on bar 0)', () => {
+    let state = createInitialState({
+      symbol: 'EURUSD',
+      accountCurrency: 'USD',
+      balance: 10_000,
+      leverage: 100,
+      sessionId: 'test-mkt-hist',
+    });
+    state = reduceCommand(
+      state,
+      {
+        type: 'SUBMIT',
+        cursorTime: 300,
+        bid: 1.1,
+        ask: 1.1002,
+        order: {
+          id: 'm-hist',
+          symbol: 'EURUSD',
+          side: 'BUY',
+          type: 'MARKET',
+          size: 0.1,
+          tif: 'GTC',
+          createdAt: 300,
+        },
+      },
+      spec,
+    ).state;
+
+    // Simulate a bad Play feed that re-walks history before the submit bar
+    for (const t of [60, 120, 180, 240, 300] as const) {
+      state = stepEngine(
+        state,
+        bar(t, 1.09, 1.11, 1.08, 1.1),
+        spec,
+        ctx,
+      ).state;
+      assert.equal(
+        state.orders['m-hist']?.status,
+        'WORKING',
+        `must still be working after bar ${t}`,
+      );
+      assert.equal(Object.keys(state.positions).length, 0);
+    }
+
+    // First bar strictly after submit fills
+    state = stepEngine(state, bar(360, 1.101, 1.102, 1.1, 1.1015), spec, ctx).state;
+    assert.equal(state.orders['m-hist']?.status, 'FILLED');
+    assert.equal(Object.keys(state.positions).length, 1);
+  });
 });
 
 describe('Phase 2 — limit fill', () => {

@@ -151,6 +151,14 @@ export function createOrderSessionBridge(input: {
       }
       const result = reduceCommand(state, { type: 'SUBMIT', ...cmd }, spec);
       state = result.state;
+      // Anchor the step cursor at submit time so Play cannot re-feed history
+      // before this bar (which would fill a market on the first dataset bar).
+      if (
+        lastSteppedTime == null ||
+        cmd.cursorTime > lastSteppedTime
+      ) {
+        lastSteppedTime = cmd.cursorTime;
+      }
       commit(result.events);
       return result.events;
     },
@@ -244,21 +252,13 @@ export function createOrderSessionBridge(input: {
         const o = state.orders[id];
         if (!o || o.role === 'stopLoss' || o.role === 'takeProfit') continue;
         if (o.type !== 'MARKET' && o.price == null) continue;
-        if (
-          o.type === 'MARKET' &&
-          o.stopLoss == null &&
-          o.takeProfit == null
-        ) {
-          continue;
-        }
         const isMarket = o.type === 'MARKET';
+        // Pending market: keep on last price line until fill (matches ticket default).
         const expectedEntry = isMarket
-          ? o.side === 'BUY'
-            ? ask > 0
+          ? bid > 0
+            ? bid
+            : ask > 0
               ? ask
-              : null
-            : bid > 0
-              ? bid
               : null
           : (o.price ?? null);
         out.push({

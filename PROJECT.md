@@ -680,6 +680,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | Fix SL-on-bid (pips not ticks), USDJPY margin UI, reject keeps ticket; drag entry → LIMIT/STOP; pending market shows entry | Place / drag / Set → levels survive Play |
 | 2026-08-04 | Live LIMIT/STOP helper while dragging entry (`inferPendingType` + drag readout / line label) | Drag draft entry above/below ask |
 | 2026-08-04 | Clarify freeze-level reject; entry defaults on last price; SL/TP sit on entry until drag/pips (TV) | Open ticket → drag SL/TP off entry |
+| 2026-08-04 | Fix Play wiping orders: no fill on bars ≤ createdAt; anchor lastStepped on submit; keep pending market on chart | Set Market → Play → levels stay until SL/TP |
 | 2026-08-03 | Chart style templates in settings (Sapphire, Obsidian, Zenith, Pearl, Olive, Willow, Marine, Blue Ash) | Optional FVG/IFVG zone colors later |
 | 2026-08-03 | Fix multi-pane 1m replay stall: forward warm-cache bias, fill-ahead chain, rAF harden, tip re-anchor | Verify 4-pane 21× long run |
 | 2026-08-03 | Memory-safe replay runway: compact ~900-bar forward fills, MAX_ENTRIES=16 + ~3.6MB byte cap, pin active panes | Heap check on 4-pane 21× |

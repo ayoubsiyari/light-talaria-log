@@ -33,6 +33,7 @@ import { MarketingHome } from '@/components/landing/MarketingHome';
 import { NotFoundPage } from '@/components/NotFoundPage';
 import { getSession, updateSessionProgress } from '@/sessions/sessionStore';
 import { LoadingProgress } from '@/components/LoadingProgress';
+import { ChartLoadingScreen } from '@/components/ChartLoadingScreen';
 import { PerfOverlay } from '@/components/perf/PerfOverlay';
 import { getChart } from '@/chart';
 /** Per-switch camera preserve: tip candle screen fraction + bar-count zoom. */
@@ -2736,30 +2737,15 @@ export default function App() {
 
   // Refresh restore / session open: #/chart/:id before chart chrome is ready.
   if (view === 'chart' && (!session || loadStatus === 'loading')) {
-    const fetchLabel =
-      session != null
-        ? `Fetching ${session.legs.map((l) => l.pair).join(' + ')} ${session.startDate} → ${session.endDate}… ${Math.round(ingestPct * 100)}%`
-        : 'Restoring chart session…';
     return (
-      <div className="min-h-dvh bg-background text-foreground flex flex-col items-center justify-center gap-3 px-4">
-        <p className="text-sm text-muted text-center">
-          {loadStatus === 'error'
-            ? (loadError ?? 'Failed to restore chart session')
-            : fetchLabel}
-        </p>
-        {loadStatus === 'error' && (
-          <Button
-            variant="secondary"
-            className="min-h-11"
-            onPress={() => {
-              teardownChartSession();
-              goAppTab('backtest');
-            }}
-          >
-            Back to backtest
-          </Button>
-        )}
-      </div>
+      <ChartLoadingScreen
+        progress={ingestPct}
+        error={loadStatus === 'error' ? (loadError ?? 'Failed to restore chart session') : null}
+        onBack={() => {
+          teardownChartSession();
+          goAppTab('backtest');
+        }}
+      />
     );
   }
 
@@ -2968,12 +2954,8 @@ export default function App() {
         <div className="flex-1 min-w-0 min-h-0 flex flex-row relative bg-background">
           <div className="flex-1 min-w-0 min-h-0 flex flex-col relative">
           {loadStatus === 'loading' && (
-            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-background/80 gap-2 px-4 text-center">
-              <p className="text-sm text-muted">
-                Fetching {session.legs.map((l) => l.pair).join(' + ')}{' '}
-                {session.startDate} → {session.endDate} from server…{' '}
-                {Math.round(ingestPct * 100)}%
-              </p>
+            <div className="absolute inset-0 z-30 bg-background">
+              <ChartLoadingScreen progress={ingestPct} />
             </div>
           )}
 

@@ -32,9 +32,15 @@ export interface InteractionCallbacks {
   moveDrawingDrag?: (x: number, y: number) => void;
   /** End drawing drag. */
   endDrawingDrag?: () => void;
+  /**
+   * Brush / highlighter press-drag. Return true to claim pointer (no pan).
+   * Tried after drawing-drag miss, before pan.
+   */
+  beginFreehandStroke?: (x: number, y: number) => boolean;
+  moveFreehandStroke?: (x: number, y: number) => void;
+  endFreehandStroke?: (x: number, y: number) => void;
   /** Cursor while dragging a drawing (optional override). */
   getDrawingDragCursor?: () => string | null;
-  /** Right-click / long-press on the canvas (media coords). */
   /** Screen (client) coords for context menus. */
   onContextMenu?: (clientX: number, clientY: number) => void;
 }
@@ -51,7 +57,14 @@ const LONG_PRESS_MS = 500;
 const LONG_PRESS_MOVE_PX = 10;
 const PAN_ARM_PX = 3;
 
-type DragMode = 'pan' | 'timeZoom' | 'priceZoom' | 'drawing' | 'pinch' | null;
+type DragMode =
+  | 'pan'
+  | 'timeZoom'
+  | 'priceZoom'
+  | 'drawing'
+  | 'freehand'
+  | 'pinch'
+  | null;
 
 interface Ptr {
   id: number;
@@ -217,6 +230,10 @@ export function attachInteraction(
         'grabbing';
       return;
     }
+    if (dragMode === 'freehand') {
+      canvas.style.cursor = 'crosshair';
+      return;
+    }
     if (dragMode === 'pinch') {
       canvas.style.cursor = 'grabbing';
       return;
@@ -318,6 +335,9 @@ export function attachInteraction(
       dragMode = 'timeZoom';
     } else if (zone === 'plot' && callbacks.beginDrawingDrag?.(x, y)) {
       dragMode = 'drawing';
+    } else if (zone === 'plot' && callbacks.beginFreehandStroke?.(x, y)) {
+      dragMode = 'freehand';
+      cancelLongPress();
     } else {
       dragMode = 'pan';
       // Long-press settings only on plot (not axes / drawing handles)
@@ -367,6 +387,14 @@ export function attachInteraction(
       callbacks.onHover(x, y);
       if (Math.hypot(dx, dy) >= 1) drawingMoved = true;
       callbacks.moveDrawingDrag?.(x, y);
+      setCursorForZone(zone, x, y);
+      return;
+    }
+
+    if (dragMode === 'freehand') {
+      callbacks.onHover(x, y);
+      if (Math.hypot(dx, dy) >= 1) drawingMoved = true;
+      callbacks.moveFreehandStroke?.(x, y);
       setCursorForZone(zone, x, y);
       return;
     }
@@ -483,6 +511,13 @@ export function attachInteraction(
       if (!wasDrawingMoved) {
         callbacks.onPlotClick?.(x, y);
       }
+      setCursorForZone(zone, x, y);
+      if (zone === 'plot') callbacks.onHover(x, y);
+      return;
+    }
+
+    if (wasMode === 'freehand') {
+      callbacks.endFreehandStroke?.(x, y);
       setCursorForZone(zone, x, y);
       if (zone === 'plot') callbacks.onHover(x, y);
       return;

@@ -769,6 +769,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | Multi-TF play: keep base-TF clock lookback covering coarsest open bucket so 1h/4h/1D tip updates tick-by-tick | Play 1m+1h+1D — higher TF forms live |
 | 2026-08-04 | Drawings audit + plan D1–D6 in PROJECT.md (Tier 1 full function first; no niche TV catalog) | Approve **go D1** |
 | 2026-08-04 | **D1 done:** magnet off/weak/strong, Shift H/V/45°, per-TF Visibility tab + paint/hit filter | **go D2** (specialty hit-test) |
+| 2026-08-04 | **D2 done:** specialty hit-test (rays/fib/channel/rect/position); cursor by grab; brush press-drag | **go D3** (Tier 1 full function) |
 | 2026-08-04 | Fix multi-chart replay stall: non-blocking server top-up + ≤1 chunk per fetch (was awaiting hours of 1m mid-play) | Multi layout → Play through cache edge |
 | 2026-08-04 | IDB sliding-window GC for remote chunks (max 8/series) + Datasets “Clear chart cache”; local CSV untouched | Long Play → IDB stays small; Clear cache frees disk |
 | 2026-08-04 | Power Jump plan P1–P3 in PROJECT.md; **P1 Done:** journal View on chart → `#/chart/:id?t=&trade=` seek + highlight | Verify trade → chart; then **go Step P2** |
@@ -920,11 +921,11 @@ Fib extension, path, note, flag, anchored VWAP.
 
 #### D2 — Specialty hit-test + edit feel
 **Goal:** What you paint is what you grab.  
-**Status:** Pending.  
+**Status:** Done (2026-08-04).  
 **Deliverables:**
-- [ ] Hit paths for: hline/vline/cross (done-ish) + **extended rays**, fib level lines, parallel channel sides, rectangle edges, position RR boxes
-- [ ] Cursor feedback matches grab target
-- [ ] Brush: press-drag stroke (TV-like), not click-move-click
+- [x] Hit paths for: hline/vline/cross (done-ish) + **extended rays**, fib level lines, parallel channel sides, rectangle edges, position RR boxes
+- [x] Cursor feedback matches grab target
+- [x] Brush: press-drag stroke (TV-like), not click-move-click
 **Done when:** Fib retracement and channel selectable by clicking a level/side, not only anchors.
 
 #### D3 — Tier 1 tools to “full function”

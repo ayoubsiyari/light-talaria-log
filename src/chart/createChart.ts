@@ -96,6 +96,11 @@ export type UserGestureListener = () => void;
 export type ContextMenuListener = (x: number, y: number) => void;
 export type DrawingsChangeListener = (drawings: readonly Drawing[]) => void;
 export type DrawingSelectListener = (drawingId: string) => void;
+export type FreehandStrokePhase = 'start' | 'move' | 'end';
+export type FreehandStrokeListener = (
+  phase: FreehandStrokePhase,
+  point: DrawingPoint | null,
+) => void;
 
 interface DrawingDragState {
   id: string;
@@ -217,8 +222,14 @@ export interface ChartInstance {
   hitTestDrawingsAt: (x: number, y: number) => HitResult | null;
   /** When false, hover/drag on drawings is disabled (placing tool / global lock). */
   setDrawingInteractEnabled: (enabled: boolean) => void;
+  /**
+   * When true, plot press-drag starts a freehand stroke (brush/highlighter)
+   * instead of panning — if no drawing was hit.
+   */
+  setFreehandStrokeEnabled: (enabled: boolean) => void;
   onDrawingsChange: (cb: DrawingsChangeListener) => () => void;
   onDrawingSelect: (cb: DrawingSelectListener) => () => void;
+  onFreehandStroke: (cb: FreehandStrokeListener) => () => void;
   destroy: () => void;
 }
 
@@ -297,6 +308,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   let replayFollow = false;
   /** Cursor/move/resize on drawings (off while placing a tool or when locked). */
   let drawingInteractEnabled = true;
+  /** Brush / highlighter press-drag (on while freehand tool is active). */
+  let freehandStrokeEnabled = false;
   let drawingDrag: DrawingDragState | null = null;
   let chartOrders: readonly ChartOrder[] = [];
   let selectedOrderId: string | null = null;
@@ -335,6 +348,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   const contextMenuListeners = new Set<ContextMenuListener>();
   const drawingsChangeListeners = new Set<DrawingsChangeListener>();
   const drawingSelectListeners = new Set<DrawingSelectListener>();
+  const freehandStrokeListeners = new Set<FreehandStrokeListener>();
   let unsubAppearance: (() => void) | null = null;
 
   const invalidateScaleCache = () => {
@@ -772,6 +786,16 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     return { time: free.time, price: free.price };
   };
 
+  const resolveFreehandPoint = (x: number, y: number): DrawingPoint | null => {
+    const logical = mediaToLogical(x, y);
+    if (!logical) return null;
+    return magnetSnap(logical, bars, drawingMagnetMode);
+  };
+
+  const emitFreehandStroke = (phase: FreehandStrokePhase, point: DrawingPoint | null) => {
+    for (const cb of freehandStrokeListeners) cb(phase, point);
+  };
+
   const hitDrawingAt = (x: number, y: number): HitResult | null => hitDrawingCached(x, y);
 
   const emitDrawingsChange = (next: readonly Drawing[]) => {
@@ -836,7 +860,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       // Entry / SL / TP are all draggable (draft + live)
       if (orderHit) return 'ns-resize';
       const hit = hitDrawingAt(x, y);
-      if (!hit) return null;
+      if (!hit) {
+        // Brush tool: show system crosshair so press-drag feels intentional
+        return freehandStrokeEnabled ? 'crosshair' : null;
+      }
       const d = drawings.find((dr) => dr.id === hit.drawingId);
       if (!d) return null;
       return cursorForDrawingHit(hit, d, bars, range, layout.plot, resolvePriceScale(), {
@@ -845,6 +872,35 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     },
     getDrawingDragCursor: () =>
       orderLevelDragging ? 'ns-resize' : (drawingDrag?.cursor ?? null),
+    beginFreehandStroke: (x, y) => {
+      if (!freehandStrokeEnabled) return false;
+      // Prefer select over stroke when pressing an existing drawing (plot click).
+      if (!drawingsHidden && drawings.length > 0) {
+        const existing = hitTestDrawings(
+          x,
+          y,
+          drawings,
+          bars,
+          range,
+          layout.plot,
+          resolvePriceScale(),
+          paneTimeframe,
+        );
+        if (existing) return false;
+      }
+      const pt = resolveFreehandPoint(x, y);
+      if (!pt) return false;
+      emitFreehandStroke('start', pt);
+      return true;
+    },
+    moveFreehandStroke: (x, y) => {
+      if (!freehandStrokeEnabled) return;
+      emitFreehandStroke('move', resolveFreehandPoint(x, y));
+    },
+    endFreehandStroke: (x, y) => {
+      if (!freehandStrokeEnabled) return;
+      emitFreehandStroke('end', resolveFreehandPoint(x, y));
+    },
     beginDrawingDrag: (x, y) => {
       // Order levels claim before drawings — drag must not reconcile React (§8.2).
       const orderHit = hitTestOrderLevel(y, chartOrders, layout.plot, resolvePriceScale());
@@ -1424,6 +1480,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       if (!enabled) drawingDrag = null;
     },
 
+    setFreehandStrokeEnabled(enabled) {
+      freehandStrokeEnabled = enabled;
+    },
+
     onDrawingsChange(cb) {
       drawingsChangeListeners.add(cb);
       return () => {
@@ -1435,6 +1495,13 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       drawingSelectListeners.add(cb);
       return () => {
         drawingSelectListeners.delete(cb);
+      };
+    },
+
+    onFreehandStroke(cb) {
+      freehandStrokeListeners.add(cb);
+      return () => {
+        freehandStrokeListeners.delete(cb);
       };
     },
 
@@ -1460,8 +1527,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       contextMenuListeners.clear();
       drawingsChangeListeners.clear();
       drawingSelectListeners.clear();
+      freehandStrokeListeners.clear();
       orderLevelCommitListeners.clear();
       drawingDrag = null;
+      freehandStrokeEnabled = false;
       orderLevelDragging = false;
       cancelLevelDrag();
       bars = [];

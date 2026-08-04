@@ -15,7 +15,7 @@ import { ChartContainer } from '@/components/ChartContainer';
 import { LoadingDots } from '@/components/layout/LoadingDots';
 import { OverlayIndicators } from '@/components/layout/OverlayIndicators';
 import { VolumeIndicator } from '@/components/layout/VolumeIndicator';
-import type { Drawing } from '@/drawings/drawingStore';
+import type { Drawing, DrawingPoint } from '@/drawings/drawingStore';
 import type { HitResult } from '@/drawings/hitTest';
 import type { MagnetMode } from '@/drawings/magnet';
 import type { ChartBar, VisibleRange } from '@/types/bar';
@@ -55,12 +55,17 @@ export interface ChartPaneProps {
   showFollowControl?: boolean;
   onReattachFollow?: () => void;
   drawingToolActive: boolean;
+  freehandStrokeEnabled?: boolean;
   drawingsLocked?: boolean;
   onChartPoint: (point: CrosshairPoint, hit: HitResult | null) => void;
   onCrosshairSample?: (point: CrosshairPoint | null) => void;
   onUserGesture?: () => void;
   onDrawingsChange?: (drawings: readonly Drawing[]) => void;
   onDrawingSelect?: (drawingId: string) => void;
+  onFreehandStroke?: (
+    phase: 'start' | 'move' | 'end',
+    point: DrawingPoint | null,
+  ) => void;
   orders?: readonly ChartOrder[];
   selectedOrderId?: string | null;
   onOrderSelect?: (orderId: string | null) => void;
@@ -109,12 +114,14 @@ export function ChartPane({
   showFollowControl = false,
   onReattachFollow,
   drawingToolActive,
+  freehandStrokeEnabled = false,
   drawingsLocked = false,
   onChartPoint,
   onCrosshairSample,
   onUserGesture,
   onDrawingsChange,
   onDrawingSelect,
+  onFreehandStroke,
   orders = [],
   selectedOrderId = null,
   onOrderSelect,
@@ -239,11 +246,13 @@ export function ChartPane({
         drawingShiftHeld={drawingShiftHeld}
         replayCursorTime={replayCursorTime}
         drawingToolActive={drawingToolActive}
+        freehandStrokeEnabled={freehandStrokeEnabled}
         drawingsLocked={drawingsLocked}
         onChartPoint={onChartPoint}
         onUserGesture={onUserGesture}
         onDrawingsChange={onDrawingsChange}
         onDrawingSelect={onDrawingSelect}
+        onFreehandStroke={onFreehandStroke}
         orders={orders}
         selectedOrderId={selectedOrderId}
         onOrderSelect={onOrderSelect}

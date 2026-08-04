@@ -20,7 +20,7 @@ import {
   visibleRangeFromTimeWindow,
 } from '@/data/timeframeAgg';
 import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
-import type { Drawing } from '@/drawings/drawingStore';
+import type { Drawing, DrawingPoint } from '@/drawings/drawingStore';
 import type { HitResult } from '@/drawings/hitTest';
 import type { MagnetMode } from '@/drawings/magnet';
 import type { Timeframe } from '@/types/ui';
@@ -77,6 +77,8 @@ export interface UseChartOptions {
   replayFollow?: boolean;
   /** Cursor or drawing tool — clicks always reported. */
   drawingToolActive?: boolean;
+  /** Brush / highlighter — press-drag stroke instead of pan. */
+  freehandStrokeEnabled?: boolean;
   /** Global drawings lock — disables move/resize interact. */
   drawingsLocked?: boolean;
   onChartPoint?: (point: CrosshairPoint, hit: HitResult | null) => void;
@@ -86,6 +88,11 @@ export interface UseChartOptions {
   onDrawingsChange?: (drawings: readonly Drawing[]) => void;
   /** Engine started interacting with a drawing (select it). */
   onDrawingSelect?: (drawingId: string) => void;
+  /** Brush / highlighter press-drag phases. */
+  onFreehandStroke?: (
+    phase: 'start' | 'move' | 'end',
+    point: DrawingPoint | null,
+  ) => void;
   /** Layout sync: mirror crosshair across panes. */
   syncCrosshair?: boolean;
   /** Layout sync: mirror visible time window across panes. */
@@ -177,6 +184,7 @@ export function useChart(
     const interactEnabled =
       !optionsRef.current.drawingToolActive && !optionsRef.current.drawingsLocked;
     instance.setDrawingInteractEnabled(interactEnabled);
+    instance.setFreehandStrokeEnabled(optionsRef.current.freehandStrokeEnabled === true);
 
     const unsubMove = instance.onCrosshairMove((point) => {
       optionsRef.current.onCrosshairMove?.(point);
@@ -201,6 +209,10 @@ export function useChart(
 
     const unsubSelect = instance.onDrawingSelect((id) => {
       optionsRef.current.onDrawingSelect?.(id);
+    });
+
+    const unsubFreehand = instance.onFreehandStroke((phase, point) => {
+      optionsRef.current.onFreehandStroke?.(phase, point);
     });
 
     // Always attach when store exists (including single pane) so user pan
@@ -228,6 +240,7 @@ export function useChart(
       unsubGesture();
       unsubDrawings();
       unsubSelect();
+      unsubFreehand();
       unsubSync();
       ro.disconnect();
       ledgerRelease('observers');
@@ -511,6 +524,12 @@ export function useChart(
       !options.drawingToolActive && !options.drawingsLocked,
     );
   }, [options.drawingToolActive, options.drawingsLocked]);
+
+  useEffect(() => {
+    const instance = instanceRef.current;
+    if (!instance) return;
+    instance.setFreehandStrokeEnabled(options.freehandStrokeEnabled === true);
+  }, [options.freehandStrokeEnabled]);
 
   const rangeFrom = options.initialRange?.fromIndex;
   const rangeTo = options.initialRange?.toIndex;

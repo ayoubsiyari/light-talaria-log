@@ -18,14 +18,22 @@ export function placeDrawingPoint(
   const mode = def.points;
 
   if (mode.kind === 'freehand') {
-    const next = [...existing, point];
-    if (opts?.finishPolyline && next.length >= 2) {
+    // Press-drag finish: commit accumulated stroke (optionally tip-extend once).
+    if (opts?.finishPolyline) {
+      const last = existing[existing.length - 1];
+      const tipDup =
+        last &&
+        Math.abs(last.time - point.time) < 0.5 &&
+        Math.abs(last.price - point.price) < 1e-6;
+      const next = tipDup || existing.length === 0 ? existing : [...existing, point];
+      if (next.length < 2) return { status: 'ignore' };
       return {
         status: 'complete',
         drawing: createDrawing(tool, next, def.needsText ? { text: 'Note' } : undefined),
         points: [],
       };
     }
+    const next = [...existing, point];
     return {
       status: 'pending',
       points: next,

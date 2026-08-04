@@ -257,6 +257,9 @@ export default function App() {
   const [drawingsHidden, setDrawingsHidden] = useState(false);
   const [replayTick, setReplayTick] = useState(0);
   const freehandActiveRef = useRef(false);
+  /** Mirror of draftPoints for press-drag end (React state may lag a frame). */
+  const draftPointsRef = useRef<DrawingPoint[]>([]);
+  draftPointsRef.current = draftPoints;
   /** Coalesce freehand point appends to one React update per frame. */
   const freehandRafRef = useRef(0);
   const pendingFreehandRef = useRef<DrawingPoint | null>(null);
@@ -2004,23 +2007,8 @@ export default function App() {
       );
 
       const toolDef = getTool(activeTool);
-      if (toolDef.points.kind === 'freehand') {
-        if (!freehandActiveRef.current) {
-          freehandActiveRef.current = true;
-          setDraftPoints([snapped]);
-          return;
-        }
-        // Second click finishes freehand
-        const result = placeDrawingPoint(activeTool, draftPoints, snapped, {
-          finishPolyline: true,
-        });
-        freehandActiveRef.current = false;
-        if (result.status === 'complete') {
-          persistDrawings([...drawings, result.drawing]);
-          finishPlacedDrawing(result.drawing);
-        }
-        return;
-      }
+      // Brush / highlighter: press-drag via onFreehandStroke (not click-click).
+      if (toolDef.points.kind === 'freehand') return;
 
       if (toolDef.points.kind === 'polyline') {
         // Double-finish: if last point is very close, finish
@@ -2085,45 +2073,108 @@ export default function App() {
     };
   }, []);
 
-  // Freehand only — rubber-band preview is engine-owned (setPlacement + overlay paint).
-  const handleCrosshairForDrawings = useCallback(
-    (point: CrosshairPoint | null) => {
-      if (!point) return;
-      if (
-        !freehandActiveRef.current ||
-        !isDrawingTool(activeTool) ||
-        getTool(activeTool).points.kind !== 'freehand'
-      ) {
+  const appendFreehandPoint = useCallback((pt: DrawingPoint) => {
+    pendingFreehandRef.current = pt;
+    if (freehandRafRef.current !== 0) return;
+    freehandRafRef.current = requestAnimationFrame(() => {
+      freehandRafRef.current = 0;
+      const nextPt = pendingFreehandRef.current;
+      if (!nextPt) return;
+      setDraftPoints((prev) => {
+        const last = prev[prev.length - 1];
+        if (
+          last &&
+          Math.abs(last.time - nextPt.time) < 0.5 &&
+          Math.abs(last.price - nextPt.price) < 1e-6
+        ) {
+          return prev;
+        }
+        const next = [...prev, nextPt];
+        draftPointsRef.current = next;
+        return next;
+      });
+    });
+  }, []);
+
+  /** Brush / highlighter: press → drag → release (engine-owned stroke phases). */
+  const handleFreehandStroke = useCallback(
+    (phase: 'start' | 'move' | 'end', point: DrawingPoint | null) => {
+      if (!session || !catalog) return;
+      if (!isDrawingTool(activeTool) || getTool(activeTool).points.kind !== 'freehand') {
         return;
       }
 
-      const pane = panesRef.current.find((p) => p.id === activePaneId);
-      const bars = pane?.bars ?? [];
-      const freePt = magnetSnap(
-        { time: point.time, price: point.price },
-        bars,
-        magnetMode,
-      );
-      pendingFreehandRef.current = freePt;
-      if (freehandRafRef.current !== 0) return;
-      freehandRafRef.current = requestAnimationFrame(() => {
+      if (phase === 'start') {
+        if (!point) return;
+        freehandActiveRef.current = true;
+        draftPointsRef.current = [point];
+        setDraftPoints([point]);
+        return;
+      }
+
+      if (phase === 'move') {
+        if (!point || !freehandActiveRef.current) return;
+        appendFreehandPoint(point);
+        return;
+      }
+
+      // end
+      freehandActiveRef.current = false;
+      if (freehandRafRef.current !== 0) {
+        cancelAnimationFrame(freehandRafRef.current);
         freehandRafRef.current = 0;
-        const pt = pendingFreehandRef.current;
-        if (!pt) return;
-        setDraftPoints((prev) => {
-          const last = prev[prev.length - 1];
-          if (
-            last &&
-            Math.abs(last.time - pt.time) < 0.5 &&
-            Math.abs(last.price - pt.price) < 1e-6
-          ) {
-            return prev;
-          }
-          return [...prev, pt];
-        });
+      }
+      let pts = draftPointsRef.current;
+      if (pendingFreehandRef.current) {
+        const tip = pendingFreehandRef.current;
+        pendingFreehandRef.current = null;
+        const last = pts[pts.length - 1];
+        if (
+          !last ||
+          Math.abs(last.time - tip.time) >= 0.5 ||
+          Math.abs(last.price - tip.price) >= 1e-6
+        ) {
+          pts = [...pts, tip];
+        }
+      }
+      if (point) {
+        const last = pts[pts.length - 1];
+        if (
+          !last ||
+          Math.abs(last.time - point.time) >= 0.5 ||
+          Math.abs(last.price - point.price) >= 1e-6
+        ) {
+          pts = [...pts, point];
+        }
+      }
+      draftPointsRef.current = pts;
+
+      if (pts.length < 2) {
+        setDraftPoints([]);
+        draftPointsRef.current = [];
+        return;
+      }
+
+      const tip = pts[pts.length - 1]!;
+      const result = placeDrawingPoint(activeTool, pts, tip, {
+        finishPolyline: true,
       });
+      setDraftPoints([]);
+      draftPointsRef.current = [];
+      if (result.status === 'complete') {
+        persistDrawings([...drawings, result.drawing]);
+        finishPlacedDrawing(result.drawing);
+      }
     },
-    [activeTool, activePaneId, magnetMode],
+    [
+      activeTool,
+      appendFreehandPoint,
+      catalog,
+      drawings,
+      finishPlacedDrawing,
+      persistDrawings,
+      session,
+    ],
   );
 
   const handleToolChange = (tool: ChartToolId) => {
@@ -2813,9 +2864,13 @@ export default function App() {
                 }
               }}
               drawingToolActive={isDrawingTool(activeTool)}
+              freehandStrokeEnabled={
+                isDrawingTool(activeTool) &&
+                getTool(activeTool).points.kind === 'freehand'
+              }
               drawingsLocked={drawingsLocked}
               onChartPoint={handleChartPoint}
-              onCrosshairSample={handleCrosshairForDrawings}
+              onFreehandStroke={handleFreehandStroke}
               onDrawingsChange={handleEngineDrawingsChange}
               onDrawingSelect={handleEngineDrawingSelect}
               onUserGesture={(paneId) => {

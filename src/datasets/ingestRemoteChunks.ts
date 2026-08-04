@@ -11,7 +11,8 @@ import {
   putChunk,
   putSeriesMeta,
 } from '@/data/idbStore';
-import { timeframeSeconds } from '@/data/timeframeAgg';
+import { isSecondTimeframe, timeframeSeconds } from '@/data/timeframeAgg';
+import { withDerivedTimeframes } from '@/datasets/derivedTimeframes';
 import { getDataset, registerRemoteDataset } from '@/datasets/datasetStore';
 import { scheduleRemoteChunkGc } from '@/datasets/idbChunkGc';
 import { fetchChunkBinary, fetchRemoteChunks, getRemoteDataset } from '@/datasets/remoteApi';
@@ -19,6 +20,11 @@ import type { RemoteChunkRef, RemoteDatasetMeta } from '@/types/remoteApi';
 import type { SeriesCatalog, SeriesMeta } from '@/types/series';
 import type { Timeframe } from '@/types/ui';
 import { CHUNK_SIZE } from '@/utils/constants';
+
+/** Second TFs are synthesized client-side — always fetch/store 1m instead. */
+function storageTimeframe(tf: Timeframe): Timeframe {
+  return isSecondTimeframe(tf) ? '1m' : tf;
+}
 
 const BYTES_PER_BAR = 28;
 
@@ -243,7 +249,7 @@ function catalogForSession(
   const timeframes = [
     ...new Set<Timeframe>([...serverTfs, ...idbTfs, baseTf]),
   ];
-  return {
+  return withDerivedTimeframes({
     datasetId,
     baseTf,
     timeframes,
@@ -251,7 +257,7 @@ function catalogForSession(
     // Session clock uses the user's date window (clamped), not only the first IDB slice.
     timeStart: sessionTimeStart,
     timeEnd: sessionTimeEnd,
-  };
+  });
 }
 
 /**
@@ -384,14 +390,17 @@ export async function ensureRemoteTimeCoverage(
   // Unknown catalog: still try server (session may have cleared localStorage).
   if (entry && entry.source !== 'remote') return false;
 
-  const inflightKey = `${datasetId}|${timeframe}`;
+  // Synthetic seconds are built from 1m — top up the source series only.
+  const storageTf = storageTimeframe(timeframe);
+
+  const inflightKey = `${datasetId}|${storageTf}`;
   const existing = remoteCoverageInflight.get(inflightKey);
   if (existing) return existing;
 
   const work = (async (): Promise<boolean> => {
     const db = await openDb();
-    const meta = await getSeriesMeta(db, datasetId, timeframe);
-    const tfSec = timeframeSeconds(timeframe);
+    const meta = await getSeriesMeta(db, datasetId, storageTf);
+    const tfSec = timeframeSeconds(storageTf);
     const pad = tfSec * 2;
     const maxBars = Math.max(500, Math.min(CHUNK_SIZE, opts.maxBars ?? CHUNK_SIZE));
     const maxSpan = tfSec * maxBars;
@@ -447,12 +456,12 @@ export async function ensureRemoteTimeCoverage(
     let attemptTo = fetchTo;
     for (let attempt = 0; attempt < 8; attempt++) {
       try {
-        await ingestRemoteChunksToIdb(datasetId, timeframe, {
+        await ingestRemoteChunksToIdb(datasetId, storageTf, {
           fromTime: attemptFrom,
           toTime: attemptTo,
         });
         // Keep IDB bounded after each top-up (anchor = end of requested window).
-        scheduleRemoteChunkGc(datasetId, timeframe, attemptTo);
+        scheduleRemoteChunkGc(datasetId, storageTf, attemptTo);
         return true;
       } catch {
         const nextTo = Math.min(hardCap, attemptTo + expandPad);
@@ -492,7 +501,10 @@ export async function ensureSessionDataFromServer(
   }
 
   const baseTf = (remote.baseTimeframe as Timeframe) || '1m';
-  const openTf = opts.openTf && opts.openTf !== baseTf ? opts.openTf : baseTf;
+  // Second TFs are client-synthesized from 1m — never request them from the server.
+  const openRaw =
+    opts.openTf && opts.openTf !== baseTf ? opts.openTf : baseTf;
+  const openTf = storageTimeframe(openRaw);
   const tfsToFetch: Timeframe[] = openTf === baseTf ? [baseTf] : [baseTf, openTf];
 
   const remoteStart = remote.timeStart || sessionFrom;
@@ -636,12 +648,12 @@ export async function ingestRemoteDatasetAllTfs(
   if (available.length === 0) {
     throw new Error('Remote dataset has no timeframes in IndexedDB.');
   }
-  return {
+  return withDerivedTimeframes({
     datasetId,
     baseTf,
     timeframes: available,
     rowCounts,
     timeStart: remote.timeStart || timeStart,
     timeEnd: remote.timeEnd || timeEnd,
-  };
+  });
 }

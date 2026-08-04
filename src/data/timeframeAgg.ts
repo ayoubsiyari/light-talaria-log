@@ -3,9 +3,46 @@ import type { Timeframe } from '@/types/ui';
 import { MAX_BARS_IN_MEMORY, VISIBLE_BARS_TARGET } from '@/utils/constants';
 import { createBarStore, toChartBars, type BinaryBarStore } from './binaryBar';
 
+/** Finest → coarsest order used by LOD / pickers. */
+export const ALL_TIMEFRAMES_ORDERED: readonly Timeframe[] = [
+  '1s',
+  '5s',
+  '10s',
+  '15s',
+  '30s',
+  '45s',
+  '1m',
+  '5m',
+  '15m',
+  '1h',
+  '4h',
+  '1D',
+];
+
+const SECOND_TFS: readonly Timeframe[] = [
+  '1s',
+  '5s',
+  '10s',
+  '15s',
+  '30s',
+  '45s',
+];
+
 /** Bar period in seconds for each UI timeframe. */
 export function timeframeSeconds(tf: Timeframe): number {
   switch (tf) {
+    case '1s':
+      return 1;
+    case '5s':
+      return 5;
+    case '10s':
+      return 10;
+    case '15s':
+      return 15;
+    case '30s':
+      return 30;
+    case '45s':
+      return 45;
     case '1m':
       return 60;
     case '5m':
@@ -21,14 +58,36 @@ export function timeframeSeconds(tf: Timeframe): number {
   }
 }
 
+export function isKnownTimeframe(tf: string): tf is Timeframe {
+  return (ALL_TIMEFRAMES_ORDERED as readonly string[]).includes(tf);
+}
+
+export function isSecondTimeframe(tf: string): boolean {
+  return (SECOND_TFS as readonly string[]).includes(tf);
+}
+
 export function canAggregateFrom(baseTf: Timeframe, targetTf: Timeframe): boolean {
   return timeframeSeconds(targetTf) >= timeframeSeconds(baseTf);
 }
 
-/** Timeframes that can be built from a base series (same or coarser). */
+/**
+ * True when target can be served from base — including synthetic seconds from 1m.
+ */
+export function canDeriveFrom(baseTf: Timeframe, targetTf: Timeframe): boolean {
+  if (canAggregateFrom(baseTf, targetTf)) return true;
+  return isSecondTimeframe(targetTf) && timeframeSeconds(baseTf) === 60;
+}
+
+/** Timeframes that can be built from a base series at ingest (same or coarser). */
 export function aggregatableTimeframes(baseTf: Timeframe): Timeframe[] {
   const all: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D'];
   return all.filter((tf) => canAggregateFrom(baseTf, tf));
+}
+
+/** Second TFs advertised when a 1m series exists (on-demand synthesis). */
+export function synthesizableSecondTimeframes(baseTf: Timeframe): Timeframe[] {
+  if (timeframeSeconds(baseTf) !== 60) return [];
+  return [...SECOND_TFS];
 }
 
 export function bucketStart(timeSec: number, periodSec: number): number {
@@ -49,6 +108,11 @@ export function smallestTimeframe(tfs: readonly Timeframe[]): Timeframe {
     }
   }
   return best;
+}
+
+/** Sort timeframes finest → coarsest. */
+export function sortTimeframes(tfs: readonly Timeframe[]): Timeframe[] {
+  return [...tfs].sort((a, b) => timeframeSeconds(a) - timeframeSeconds(b));
 }
 
 /**

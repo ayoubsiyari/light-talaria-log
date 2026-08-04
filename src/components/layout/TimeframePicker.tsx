@@ -1,11 +1,18 @@
 import { Popover } from '@heroui/react';
+import { ALL_TIMEFRAMES_ORDERED } from '@/data/timeframeAgg';
 import { usePinnedTimeframes } from '@/hooks/usePinnedTimeframes';
 import type { Timeframe } from '@/types/ui';
 
 /** All intervals offered in the pin menu (toolbar shows favorites only). */
-export const ALL_TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D'];
+export const ALL_TIMEFRAMES: Timeframe[] = [...ALL_TIMEFRAMES_ORDERED];
 
 const TF_LABELS: Record<Timeframe, string> = {
+  '1s': '1 second',
+  '5s': '5 seconds',
+  '10s': '10 seconds',
+  '15s': '15 seconds',
+  '30s': '30 seconds',
+  '45s': '45 seconds',
   '1m': '1 minute',
   '5m': '5 minutes',
   '15m': '15 minutes',
@@ -56,7 +63,7 @@ export function TimeframePicker({
               title={
                 enabled
                   ? TF_LABELS[tf]
-                  : `${tf} needs a finer base (download 1m)`
+                  : `${tf} needs a 1m base dataset`
               }
               onClick={() => {
                 if (enabled) onTimeframeChange(tf);

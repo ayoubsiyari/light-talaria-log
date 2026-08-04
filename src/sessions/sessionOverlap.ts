@@ -23,7 +23,20 @@ export function commonTimeframes(
 }
 
 function tfRank(tf: Timeframe): number {
-  const order: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D'];
+  const order: Timeframe[] = [
+    '1s',
+    '5s',
+    '10s',
+    '15s',
+    '30s',
+    '45s',
+    '1m',
+    '5m',
+    '15m',
+    '1h',
+    '4h',
+    '1D',
+  ];
   const i = order.indexOf(tf);
   return i === -1 ? 99 : i;
 }

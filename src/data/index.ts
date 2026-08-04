@@ -22,15 +22,29 @@ export {
 export {
   aggregateBars,
   aggregatableTimeframes,
+  ALL_TIMEFRAMES_ORDERED,
   anchorTimeFromRange,
   bucketStart,
   canAggregateFrom,
+  canDeriveFrom,
   indexAtOrBeforeBars,
+  isKnownTimeframe,
+  isSecondTimeframe,
   logicalIndexAtTime,
   smallestTimeframe,
+  sortTimeframes,
+  synthesizableSecondTimeframes,
   timeAtLogicalIndex,
   timeRangeFromVisible,
   timeframeSeconds,
   viewportAroundTime,
   visibleRangeFromTimeWindow,
 } from './timeframeAgg';
+export {
+  estimatedSyntheticRowCount,
+  expandMinuteTo1s,
+  SECOND_TIMEFRAMES,
+  synthesize1sFromMinutes,
+  synthesizeFromMinutes,
+} from './synthesizeSeconds';
+export { getStoreInTimeRange } from './idbStore';

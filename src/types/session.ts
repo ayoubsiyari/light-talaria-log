@@ -26,7 +26,24 @@ export const PAIR_OPTIONS: { id: PairSymbol; label: string }[] = [
   { id: 'XAU/USD', label: 'XAU/USD (Gold)' },
 ];
 
+/** Chart / session ticker intervals (includes synthetic seconds from 1m). */
 export const TIMEFRAME_OPTIONS: { id: Timeframe; label: string }[] = [
+  { id: '1s', label: '1 Second' },
+  { id: '5s', label: '5 Seconds' },
+  { id: '10s', label: '10 Seconds' },
+  { id: '15s', label: '15 Seconds' },
+  { id: '30s', label: '30 Seconds' },
+  { id: '45s', label: '45 Seconds' },
+  { id: '1m', label: '1 Minute' },
+  { id: '5m', label: '5 Minutes' },
+  { id: '15m', label: '15 Minutes' },
+  { id: '1h', label: '1 Hour' },
+  { id: '4h', label: '4 Hours' },
+  { id: '1D', label: '1 Day' },
+];
+
+/** Downloadable Dukascopy / server intervals (no synthetic seconds). */
+export const DOWNLOAD_TIMEFRAME_OPTIONS: { id: Timeframe; label: string }[] = [
   { id: '1m', label: '1 Minute' },
   { id: '5m', label: '5 Minutes' },
   { id: '15m', label: '15 Minutes' },

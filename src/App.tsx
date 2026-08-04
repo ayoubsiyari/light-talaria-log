@@ -39,7 +39,7 @@ import { getChart } from '@/chart';
 /** Per-switch camera preserve: tip candle screen fraction + bar-count zoom. */
 type LiveCamera = { anchorTime: number; span: number; tipRatio: number };
 import {
-  canAggregateFrom,
+  canDeriveFrom,
   smallestTimeframe,
   timeframeSeconds,
 } from '@/data/timeframeAgg';
@@ -615,7 +615,7 @@ export default function App() {
       if (!series) return null;
       const cat = series.catalog;
       const floor = selectedTf ?? tf;
-      if (!canAggregateFrom(cat.baseTf, floor) && floor !== cat.baseTf) return null;
+      if (!canDeriveFrom(cat.baseTf, floor) && floor !== cat.baseTf) return null;
       const sync = syncStoreRef.current?.get().timeRange;
       const available = cat.timeframes;
       let loadTf = floor;
@@ -1869,12 +1869,12 @@ export default function App() {
       if (!sessionRef.current.get()) return;
 
       const paneSeries = seriesForPane(existing);
-      // Allow switch when catalog omits a TF that can still be served (remote agg).
+      // Allow switch when catalog omits a TF that can still be served (agg / synth).
       if (
         paneSeries &&
         paneSeries.catalog.timeframes.length > 0 &&
         !paneSeries.catalog.timeframes.includes(tf) &&
-        !canAggregateFrom(paneSeries.catalog.baseTf, tf)
+        !canDeriveFrom(paneSeries.catalog.baseTf, tf)
       ) {
         return;
       }

@@ -1,6 +1,18 @@
 import type { DrawingToolId, ToolCategoryId } from '@/drawings/toolRegistry';
 
-export type Timeframe = '1m' | '5m' | '15m' | '1h' | '4h' | '1D';
+export type Timeframe =
+  | '1s'
+  | '5s'
+  | '10s'
+  | '15s'
+  | '30s'
+  | '45s'
+  | '1m'
+  | '5m'
+  | '15m'
+  | '1h'
+  | '4h'
+  | '1D';
 
 /**
  * Multi-chart layouts (TradingView-style).

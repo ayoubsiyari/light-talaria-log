@@ -724,7 +724,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-03 | TF/ticker switch: await fill before paint; never blank last candles on cache miss | Switch 1m↔1D and pairs mid-replay |
 | 2026-08-03 | Legend 3-dot loader beside symbol while TF/ticker warms | — |
 | 2026-08-02 | Level-2 SaaS full: `docs/SAAS-LEVEL-2.md`, Docker (PG/Redis/MinIO), Fastify API, auth, jobs, Datasets login | `npm run saas:up` → migrate/seed/api → `saas:dev` |
-| 2026-08-02 | Order system Phases 1–7: pure engine, §4.3 fills, margin/swap, journal determinism, drag overlay, order UI — `docs/ORDER-SYSTEM-REPORT.md` | Measure drag Profiler/p95; journal rebuild on reload |
+| 2026-08-02 | Order system Phases 1–7: pure engine, §4.3 fills, margin/swap, journal determinism, drag overlay, order UI — `docs/ORDER-SYSTEM-REPORT.md` | Measure drag Profiler/p95 |
 | 2026-08-02 | TV-style order UX: floating ticket, bottom TradeDock tabs, draft+live SL/TP chart levels | Place Order → drag SL/TP on chart |
 | 2026-08-02 | Order ticket docks (chart shrinks → price axis visible); default Market @ live bid/ask; drag draft entry/SL/TP → ticket | Place Order → drag levels |
 | 2026-08-03 | Open levels persist until SL/TP; live unrealized P&L on entry chip + BottomBar during replay | Place → Play → watch P&L / levels to hit |
@@ -842,6 +842,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-05 | Brand play pills (`--brand` logo blue) + quieter corner ambient wash | Open Sessions — play matches logo blue |
 | 2026-08-05 | Sessions UI: drop duplicate header Create/Refresh; accent play buttons; stronger shell ambient wash | Open Sessions — play pills + glow |
 | 2026-08-05 | Shell polish: neutral CTAs (no dark-blue fill); soft blue corner/side ambient wash | Open Sessions — buttons + glow background |
+| 2026-08-05 | Order persistence: command log + `rebuildTo` on load/seek-back; `ensureOrderBars` for IDB coverage — no wipe on rewind | Place → Play → Exit/reopen; scrub back — book restores |
 
 ---
 

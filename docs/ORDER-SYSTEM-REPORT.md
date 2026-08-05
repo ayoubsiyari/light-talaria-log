@@ -31,10 +31,10 @@
    `OrderSessionBridge.advanceTo` → `stepEngine` (`src/orders/sessionBridge.ts`). App calls it from `applyReplayReveal` via `stepOrderEngineRef` on every cursor update (`src/App.tsx`). Bars come from `warmCache.peek(datasetId, baseTf)` filtered to `(lastStepped, cursorTime]` with an explicit `bar.time > cursorTime` drop guard. Fast-forward: replay notifies once per coalesced advance; bridge walks **all** intervening base bars in that window (no skip). Scrub forward: same. Scrub backward: engine reset (below).
 
 5. **Open positions on backward seek?**  
-   **Reset engine + clear journal** (`onSeekBackward` in `sessionBridge.ts`; wired in App seek handler). Recommended over “forbid seek” for UX, and over snapshot-restore until snapshots exist. Documented limitation: open trades do not survive a rewind.
+   **Rebuild from command log** (`onSeekBackward` → `rebuildTo` in `sessionBridge.ts`). Truncates commands/entries with `cursorTime > t`, then replays commands + bars to the new cursor. History ≤ t is kept; the open book matches that point in time.
 
 6. **Where does account state persist?**  
-   Event journal in `localStorage` key `talaria.orderJournal.v1:{sessionId}` (`journal.ts`). Engine state itself is in-memory for the session; journal survives reload but **v1 does not auto-rebuild positions from the journal on reopen** (deferred — see §9).
+   Event journal + **command log** in `localStorage` key `orderJournal.v1:{sessionId}` (`journal.ts`, scoped). Engine state is in-memory; on session load App hydrates the journal and calls `rebuildTo(cursor)` so open positions/working orders are restored.
 
 7. **Do indicator/backtest workers need order state?**  
    **No.** Workers must not see order state (lookahead risk). Orders stay on the main-thread pure engine driven by the session clock.
@@ -111,8 +111,8 @@ Design controls: overlay-only dirty during drag; no React on move; engine emits 
 
 1. **Hedging mode** — types allow it; runtime paths are netting-first. Full hedging lifecycle deferred.
 2. **Partial fills** — not implemented (all-or-nothing default).
-3. **Journal rebuild on session reload** — persist events, but reopen starts a fresh engine (balance bootstrap), does not replay the log automatically.
-4. **Backward seek** — hard reset rather than snapshot replay (correctness-preserving, journal truncated).
+3. **Journal rebuild on session reload** — **Done.** Command log + `rebuildTo` on load (legacy journals without `commands[]` keep analytics entries but cannot restore the open book).
+4. **Backward seek** — **Done.** Rebuilds via command log + bars (no full wipe).
 5. **Shift+snap to swings** — not implemented in v1 drag.
 6. **IOC/FOK/DAY expiry** — TIF stored; DAY session-close expiry not fully wired (TODO on `sessionCloseUtc`).
 7. **Companion briefs** `TF-SWITCH-REFACTOR-BRIEF.md` / `PERF-MEMORY-GUARDRAILS.md` were not in-repo; followed this work order + `docs/TF-REFACTOR-REPORT.md`.
@@ -123,20 +123,21 @@ Design controls: overlay-only dirty during drag; no React on move; engine emits 
 
 ## 9. Deferred findings and remaining risks
 
-1. **High — no auto journal replay on reload.** Users lose in-session trades across refresh unless rebuild is added.
-2. **High — warmCache window may not cover long seeks.** `advanceTo` only sees bars currently in the warm window; a large forward scrub can miss bars until cache fills. Mitigation: ensure `topUpCaches` / fill-ahead covers the gap, or stream from IDB in the bridge.
+1. ~~**High — no auto journal replay on reload.**~~ **Fixed** — `commands[]` + `rebuildTo` on session load / backward seek (`ensureOrderBars` preloads IDB coverage).
+2. ~~**High — warmCache window may not cover long seeks.**~~ **Mitigated** — App `onSeek` / load await `ensureOrderBars` before advance/rebuild; play still relies on fill-ahead (gap risk if fill-ahead lags remains Low).
 3. **Medium — stop-out fill uses current bar close bid/ask**, not a dedicated next-open market (acceptable for force-close; document vs live brokers).
 4. **Medium — margin estimate at submit** is approximate (base/quote heuristic); fill-time margin reject still possible.
 5. **Medium — R in history list** currently passes `netPnL=0` placeholder in the UI row (engine has full net on close events — UI should read closed-trade journal payloads).
 6. **Low — Float32 OHLC** still applies to all price math inputs from the dataset.
 7. **Low — drag Shift-snap / past-cursor drag clamp** incomplete.
+8. **Low — legacy journals** (no `commands[]`) cannot restore the open book after reload; closed-trade analytics from `entries` still work.
 
 ---
 
 ## 10. Open questions for the advisor
 
-1. Should backward seek **replay the journal + bars to the new cursor** (correct but expensive) instead of reset?
-2. Should account bootstrap (balance/leverage) be per-session UI settings, and should the journal rebuild on load become Phase 5.1?
+1. ~~Should backward seek replay the journal + bars?~~ **Done** (command-log rebuild).
+2. Should account bootstrap (balance/leverage) be per-session UI settings beyond `startingBalance`?
 3. Is adding an optional `spread` float32 to the 28-byte pack worth a coordinated format bump with the Float64 OHLC fix?
 4. Confirm stop-out should flatten at **same-bar mark** (current) vs **next-bar open**.
 5. For multi-pair layouts: one engine per symbol, or one netting book per account across symbols?

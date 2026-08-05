@@ -13,9 +13,12 @@ import {
   type InstrumentSpec,
 } from './instrumentSpec';
 import {
+  appendCommand,
   appendEvents,
   createJournal,
+  normalizeJournal,
   persistJournal,
+  truncateJournalTo,
   type OrderJournal,
 } from './journal';
 import {
@@ -65,8 +68,18 @@ export interface OrderSessionBridge {
   modify(
     cmd: Omit<EngineCommand & { type: 'MODIFY' }, 'type'>,
   ): EngineEvent[];
-  /** Backward seek: reset engine (positions cleared). See ORDER-SYSTEM-REPORT §11.5. */
-  onSeekBackward(cursorTime: number): void;
+  /**
+   * Replace in-memory journal with a persisted copy (e.g. session load).
+   * Does not rebuild engine state — call `rebuildTo` next.
+   */
+  hydrateJournal(stored: OrderJournal): void;
+  /**
+   * Reset engine from bootstrap and replay commands + bars up to cursorTime.
+   * Truncates journal past the cursor; regenerates event entries.
+   */
+  rebuildTo(cursorTime: number, getBars: SymbolBarProvider): void;
+  /** Backward seek: rebuild book to the new cursor (keeps history ≤ t). */
+  onSeekBackward(cursorTime: number, getBars: SymbolBarProvider): void;
   /** Chart overlay projection. */
   toChartOrders(sessionId: string): ChartOrder[];
   subscribe(cb: () => void): () => void;
@@ -144,6 +157,8 @@ export function createOrderSessionBridge(input: {
   const marketPreviewEntry = new Map<string, number>();
   let lastReject: string | null = null;
   const listeners = new Set<() => void>();
+  /** When true, advance/command paths do not persist or append commands. */
+  let replaying = false;
 
   const notify = () => {
     for (const cb of listeners) cb();
@@ -152,12 +167,19 @@ export function createOrderSessionBridge(input: {
   const commit = (events: EngineEvent[]) => {
     if (events.length === 0) return;
     journal = appendEvents(journal, events);
-    persistJournal(journal);
+    if (!replaying) {
+      persistJournal(journal);
+    }
     const rej = events.find((e) => e.type === 'ORDER_REJECTED');
     if (rej) {
       lastReject = String(rej.payload.reason ?? 'REJECTED');
     }
-    notify();
+    if (!replaying) notify();
+  };
+
+  const recordCommand = (command: EngineCommand) => {
+    if (replaying) return;
+    journal = appendCommand(journal, command);
   };
 
   const defaultCtx = (partial?: Partial<MarketContext>): MarketContext => ({
@@ -181,6 +203,245 @@ export function createOrderSessionBridge(input: {
     return null;
   };
 
+  const resetEngineFromBootstrap = () => {
+    state = createInitialState({
+      symbol: journal.bootstrap.symbol || primaryKey,
+      accountCurrency: journal.bootstrap.accountCurrency,
+      balance: journal.bootstrap.balance,
+      leverage: journal.bootstrap.leverage,
+      sessionId: input.sessionId,
+      mode: journal.bootstrap.mode,
+    });
+    lastSteppedTime = null;
+    marks.clear();
+    marketPreviewEntry.clear();
+    lastReject = null;
+  };
+
+  const advanceToInner = (
+    cursorTime: number,
+    getBars: SymbolBarProvider,
+    ctxPartial?: Partial<MarketContext>,
+  ): EngineEvent[] => {
+    const from = lastSteppedTime ?? Number.NEGATIVE_INFINITY;
+    if (cursorTime <= from) return [];
+
+    const exposure = collectExposureSymbols(state);
+    const clockKey = primaryKey;
+    // Always walk the primary clock so lastStepped advances even when flat.
+    const stepKeys = new Set<string>([clockKey, ...exposure]);
+
+    const series = new Map<string, ChartBar[]>();
+    const timeSet = new Set<number>();
+    for (const key of stepKeys) {
+      const raw = getBars(key, from, cursorTime);
+      const copy: ChartBar[] = [];
+      for (const bar of raw) {
+        if (bar.time <= from) continue;
+        if (bar.time > cursorTime) break;
+        copy.push({
+          time: bar.time,
+          open: bar.open,
+          high: bar.high,
+          low: bar.low,
+          close: bar.close,
+          volume: bar.volume,
+        });
+        timeSet.add(bar.time);
+      }
+      series.set(key, copy);
+    }
+
+    const times = [...timeSet].sort((a, b) => a - b);
+    const events: EngineEvent[] = [];
+    const multi = stepKeys.size > 1 || exposure.some((k) => k !== clockKey);
+
+    for (const t of times) {
+      for (const key of stepKeys) {
+        const bars = series.get(key) ?? [];
+        const bar = barAtTime(bars, t);
+        if (!bar) continue;
+        const spec = specFor(key);
+        const ctx = defaultCtx({
+          ...ctxPartial,
+          spread: spec.typicalSpread,
+        });
+        const stepped = stepEngine(state, bar, spec, ctx, {
+          onlySymbol: key,
+          deferAccount: multi,
+        });
+        state = stepped.state;
+        events.push(...stepped.events);
+        marks.set(key, {
+          bid: bar.close,
+          ask: bar.close + spec.typicalSpread,
+        });
+      }
+
+      if (multi) {
+        const refreshed = refreshAccountFromMarks(
+          state,
+          marks,
+          specFor,
+          defaultCtx(ctxPartial),
+        );
+        state = refreshed.state;
+      }
+      lastSteppedTime = t;
+    }
+
+    commit(events);
+    return events;
+  };
+
+  const applySubmit = (
+    cmd: Omit<EngineCommand & { type: 'SUBMIT' }, 'type'>,
+  ): EngineEvent[] => {
+    lastReject = null;
+    const orderSym = cmd.order.symbol || state.symbol;
+    const spec = specFor(orderSym);
+    const bid = cmd.bid > 0 ? cmd.bid : 0;
+    const ask = cmd.ask > 0 ? cmd.ask : bid > 0 ? bid + spec.typicalSpread : 0;
+    if (bid > 0) {
+      const key = instrumentSymbolKey(orderSym);
+      marks.set(key, { bid, ask });
+    }
+    // Freeze expected fill for chart: BUY→ask, SELL→bid (matches §4.3 side).
+    if (cmd.order.type === 'MARKET' && (bid > 0 || ask > 0)) {
+      const preview =
+        cmd.order.side === 'BUY'
+          ? ask > 0
+            ? ask
+            : bid
+          : bid > 0
+            ? bid
+            : ask;
+      if (preview > 0) marketPreviewEntry.set(cmd.order.id, preview);
+    }
+    const fullCmd: EngineCommand = {
+      type: 'SUBMIT',
+      ...cmd,
+      order: {
+        ...cmd.order,
+        symbol: instrumentSymbolKey(orderSym),
+      },
+    };
+    const result = reduceCommand(state, fullCmd, spec);
+    state = result.state;
+    // Drop preview if submit was rejected.
+    if (!state.workingIds.includes(cmd.order.id)) {
+      marketPreviewEntry.delete(cmd.order.id);
+    }
+    // Anchor the step cursor at submit time so Play cannot re-feed history
+    // before this bar (which would fill a market on the first dataset bar).
+    if (lastSteppedTime == null || cmd.cursorTime > lastSteppedTime) {
+      lastSteppedTime = cmd.cursorTime;
+    }
+    recordCommand(fullCmd);
+    commit(result.events);
+    return result.events;
+  };
+
+  const applyCancel = (orderId: string, cursorTime: number): EngineEvent[] => {
+    const order = state.orders[orderId];
+    const spec = specFor(order?.symbol ?? state.symbol);
+    const fullCmd: EngineCommand = { type: 'CANCEL', orderId, cursorTime };
+    const result = reduceCommand(state, fullCmd, spec);
+    state = result.state;
+    marketPreviewEntry.delete(orderId);
+    recordCommand(fullCmd);
+    commit(result.events);
+    return result.events;
+  };
+
+  const applyModify = (
+    cmd: Omit<EngineCommand & { type: 'MODIFY' }, 'type'>,
+  ): EngineEvent[] => {
+    lastReject = null;
+    const order = state.orders[cmd.orderId];
+    const spec = specFor(order?.symbol ?? state.symbol);
+    if (cmd.bid > 0 && order) {
+      const key = instrumentSymbolKey(order.symbol);
+      marks.set(key, {
+        bid: cmd.bid,
+        ask: cmd.ask > 0 ? cmd.ask : cmd.bid + spec.typicalSpread,
+      });
+    }
+    const fullCmd: EngineCommand = { type: 'MODIFY', ...cmd };
+    const result = reduceCommand(state, fullCmd, spec);
+    state = result.state;
+    recordCommand(fullCmd);
+    commit(result.events);
+    return result.events;
+  };
+
+  const rebuildTo = (cursorTime: number, getBars: SymbolBarProvider): void => {
+    const truncated = truncateJournalTo(normalizeJournal(journal), cursorTime);
+    const commands = truncated.commands.slice();
+    const bootstrap = truncated.bootstrap;
+
+    // Legacy journals (no command log): keep event entries for analytics, but
+    // the open book cannot be reconstructed — reset engine only.
+    if (commands.length === 0) {
+      journal = truncated;
+      resetEngineFromBootstrap();
+      persistJournal(journal);
+      notify();
+      return;
+    }
+
+    replaying = true;
+    try {
+      journal = {
+        sessionId: input.sessionId,
+        bootstrap,
+        commands: commands.slice(),
+        entries: [],
+      };
+      resetEngineFromBootstrap();
+
+      for (const cmd of commands) {
+        if (cmd.cursorTime > cursorTime) break;
+        advanceToInner(cmd.cursorTime, getBars);
+        if (cmd.type === 'SUBMIT') {
+          applySubmit({
+            cursorTime: cmd.cursorTime,
+            bid: cmd.bid,
+            ask: cmd.ask,
+            order: cmd.order,
+          });
+        } else if (cmd.type === 'CANCEL') {
+          applyCancel(cmd.orderId, cmd.cursorTime);
+        } else if (cmd.type === 'MODIFY') {
+          applyModify({
+            orderId: cmd.orderId,
+            cursorTime: cmd.cursorTime,
+            price: cmd.price,
+            stopPrice: cmd.stopPrice,
+            stopLoss: cmd.stopLoss,
+            takeProfit: cmd.takeProfit,
+            size: cmd.size,
+            trailDistance: cmd.trailDistance,
+            bid: cmd.bid,
+            ask: cmd.ask,
+          });
+        }
+      }
+      advanceToInner(cursorTime, getBars);
+
+      // Silent apply must not grow the command log — restore truncated list.
+      journal = {
+        ...journal,
+        commands,
+      };
+    } finally {
+      replaying = false;
+    }
+
+    persistJournal(journal);
+    notify();
+  };
+
   return {
     getState: () => state,
     getJournal: () => journal,
@@ -188,174 +449,39 @@ export function createOrderSessionBridge(input: {
     getLastReject: () => lastReject,
 
     advanceTo(cursorTime, getBars, ctxPartial) {
-      const from = lastSteppedTime ?? Number.NEGATIVE_INFINITY;
-      if (cursorTime <= from) return [];
-
-      const exposure = collectExposureSymbols(state);
-      const clockKey = primaryKey;
-      // Always walk the primary clock so lastStepped advances even when flat.
-      const stepKeys = new Set<string>([clockKey, ...exposure]);
-
-      const series = new Map<string, ChartBar[]>();
-      const timeSet = new Set<number>();
-      for (const key of stepKeys) {
-        const raw = getBars(key, from, cursorTime);
-        const copy: ChartBar[] = [];
-        for (const bar of raw) {
-          if (bar.time <= from) continue;
-          if (bar.time > cursorTime) break;
-          copy.push({
-            time: bar.time,
-            open: bar.open,
-            high: bar.high,
-            low: bar.low,
-            close: bar.close,
-            volume: bar.volume,
-          });
-          timeSet.add(bar.time);
-        }
-        series.set(key, copy);
-      }
-
-      const times = [...timeSet].sort((a, b) => a - b);
-      const events: EngineEvent[] = [];
-      const multi = stepKeys.size > 1 || exposure.some((k) => k !== clockKey);
-
-      for (const t of times) {
-        for (const key of stepKeys) {
-          const bars = series.get(key) ?? [];
-          const bar = barAtTime(bars, t);
-          if (!bar) continue;
-          const spec = specFor(key);
-          const ctx = defaultCtx({
-            ...ctxPartial,
-            spread: spec.typicalSpread,
-          });
-          const stepped = stepEngine(state, bar, spec, ctx, {
-            onlySymbol: key,
-            deferAccount: multi,
-          });
-          state = stepped.state;
-          events.push(...stepped.events);
-          marks.set(key, {
-            bid: bar.close,
-            ask: bar.close + spec.typicalSpread,
-          });
-        }
-
-        if (multi) {
-          const refreshed = refreshAccountFromMarks(
-            state,
-            marks,
-            specFor,
-            defaultCtx(ctxPartial),
-          );
-          state = refreshed.state;
-        }
-        lastSteppedTime = t;
-      }
-
-      commit(events);
-      return events;
+      return advanceToInner(cursorTime, getBars, ctxPartial);
     },
 
     submit(cmd) {
-      lastReject = null;
-      const orderSym = cmd.order.symbol || state.symbol;
-      const spec = specFor(orderSym);
-      const bid = cmd.bid > 0 ? cmd.bid : 0;
-      const ask = cmd.ask > 0 ? cmd.ask : bid > 0 ? bid + spec.typicalSpread : 0;
-      if (bid > 0) {
-        const key = instrumentSymbolKey(orderSym);
-        marks.set(key, { bid, ask });
-      }
-      // Freeze expected fill for chart: BUY→ask, SELL→bid (matches §4.3 side).
-      if (cmd.order.type === 'MARKET' && (bid > 0 || ask > 0)) {
-        const preview =
-          cmd.order.side === 'BUY'
-            ? ask > 0
-              ? ask
-              : bid
-            : bid > 0
-              ? bid
-              : ask;
-        if (preview > 0) marketPreviewEntry.set(cmd.order.id, preview);
-      }
-      const result = reduceCommand(
-        state,
-        {
-          type: 'SUBMIT',
-          ...cmd,
-          order: {
-            ...cmd.order,
-            symbol: instrumentSymbolKey(orderSym),
-          },
-        },
-        spec,
-      );
-      state = result.state;
-      // Drop preview if submit was rejected.
-      if (!state.workingIds.includes(cmd.order.id)) {
-        marketPreviewEntry.delete(cmd.order.id);
-      }
-      // Anchor the step cursor at submit time so Play cannot re-feed history
-      // before this bar (which would fill a market on the first dataset bar).
-      if (lastSteppedTime == null || cmd.cursorTime > lastSteppedTime) {
-        lastSteppedTime = cmd.cursorTime;
-      }
-      commit(result.events);
-      return result.events;
+      return applySubmit(cmd);
     },
 
     cancel(orderId, cursorTime) {
-      const order = state.orders[orderId];
-      const spec = specFor(order?.symbol ?? state.symbol);
-      const result = reduceCommand(
-        state,
-        { type: 'CANCEL', orderId, cursorTime },
-        spec,
-      );
-      state = result.state;
-      marketPreviewEntry.delete(orderId);
-      commit(result.events);
-      return result.events;
+      return applyCancel(orderId, cursorTime);
     },
 
     modify(cmd) {
-      lastReject = null;
-      const order = state.orders[cmd.orderId];
-      const spec = specFor(order?.symbol ?? state.symbol);
-      if (cmd.bid > 0 && order) {
-        const key = instrumentSymbolKey(order.symbol);
-        marks.set(key, {
-          bid: cmd.bid,
-          ask: cmd.ask > 0 ? cmd.ask : cmd.bid + spec.typicalSpread,
-        });
-      }
-      const result = reduceCommand(state, { type: 'MODIFY', ...cmd }, spec);
-      state = result.state;
-      commit(result.events);
-      return result.events;
+      return applyModify(cmd);
     },
 
-    onSeekBackward(cursorTime) {
-      // v1 policy: reset engine (forbid carrying open positions into the past).
-      state = createInitialState({
-        symbol: state.symbol,
-        accountCurrency: state.account.currency,
-        balance: journal.bootstrap.balance,
-        leverage: journal.bootstrap.leverage,
-        sessionId: input.sessionId,
-        mode: journal.bootstrap.mode,
-      });
-      lastSteppedTime = null;
-      marks.clear();
-      marketPreviewEntry.clear();
-      journal = createJournal(input.sessionId, journal.bootstrap);
-      persistJournal(journal);
-      lastReject = null;
-      void cursorTime;
-      notify();
+    hydrateJournal(stored) {
+      const normalized = normalizeJournal(stored);
+      if (normalized.sessionId !== input.sessionId) {
+        journal = {
+          ...normalized,
+          sessionId: input.sessionId,
+        };
+      } else {
+        journal = normalized;
+      }
+      // Prefer stored bootstrap balance/leverage for rebuild.
+      resetEngineFromBootstrap();
+    },
+
+    rebuildTo,
+
+    onSeekBackward(cursorTime, getBars) {
+      rebuildTo(cursorTime, getBars);
     },
 
     toChartOrders(sessionId) {

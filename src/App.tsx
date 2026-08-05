@@ -94,9 +94,12 @@ import { rulesFromStrategyNodes } from '@/strategy/riskFromGraph';
 import { getStrategy } from '@/strategy/strategyStore';
 import { isLogicKind } from '@/strategy/pieceRegistry';
 import { StrategyRunHud } from '@/components/strategy/StrategyRunHud';
+import { ensureOrderBars } from '@/orders/ensureOrderBars';
+import { loadJournal } from '@/orders/journal';
 import {
   createOrderSessionBridge,
   type OrderSessionBridge,
+  type SymbolBarProvider,
 } from '@/orders/sessionBridge';
 import { isTerminal } from '@/orders/orderTypes';
 import {
@@ -1018,6 +1021,75 @@ export default function App() {
     [],
   );
 
+  /** Resolve datasetId for an order-engine symbol key. */
+  const datasetIdForOrderSymbol = useCallback((symbol: string): string | null => {
+    const key = chartPairKey(symbol);
+    return (
+      seriesRef.current.find((s) => chartPairKey(s.pair) === key)?.datasetId ??
+      panesRef.current.find((p) => chartPairKey(p.pair) === key)?.datasetId ??
+      null
+    );
+  }, []);
+
+  /**
+   * Sync bar provider: prefer an explicit preload map (rebuild/seek), else warmCache.
+   */
+  const makeOrderBarProvider = useCallback(
+    (
+      baseTf: Timeframe,
+      cursorCap: number,
+      preload?: ReadonlyMap<string, readonly ChartBar[]>,
+    ): SymbolBarProvider => {
+      return (symbol, fromExclusive, toInclusive) => {
+        const ds = datasetIdForOrderSymbol(symbol);
+        if (!ds) return [];
+        const raw = preload?.get(ds) ?? warmCache.peek(ds, baseTf) ?? [];
+        const out: ChartBar[] = [];
+        for (const b of raw) {
+          if (b.time <= fromExclusive) continue;
+          if (b.time > toInclusive) break;
+          if (b.time > cursorCap) break;
+          out.push(b);
+        }
+        return out;
+      };
+    },
+    [datasetIdForOrderSymbol],
+  );
+
+  /** Load IDB bars for every session leg covering [fromTime, toTime]. */
+  const ensureAllOrderBars = useCallback(
+    async (
+      baseTf: Timeframe,
+      fromTime: number,
+      toTime: number,
+    ): Promise<Map<string, ChartBar[]>> => {
+      const map = new Map<string, ChartBar[]>();
+      const legs =
+        seriesRef.current.length > 0
+          ? seriesRef.current.map((s) => ({
+              datasetId: s.datasetId,
+            }))
+          : panesRef.current.map((p) => ({ datasetId: p.datasetId }));
+      const seen = new Set<string>();
+      await Promise.all(
+        legs.map(async ({ datasetId }) => {
+          if (!datasetId || seen.has(datasetId)) return;
+          seen.add(datasetId);
+          const bars = await ensureOrderBars(
+            datasetId,
+            baseTf,
+            fromTime,
+            toTime,
+          );
+          map.set(datasetId, bars);
+        }),
+      );
+      return map;
+    },
+    [],
+  );
+
   const lastOrderChromeAtRef = useRef(0);
   const selectedOrderIdRef = useRef(selectedOrderId);
   selectedOrderIdRef.current = selectedOrderId;
@@ -1026,24 +1098,10 @@ export default function App() {
     const sess = sessionRef.current.get();
     if (!bridge || !sess) return;
     // Multi-pair: each symbol steps on its own base-TF bars (not the viewed pane).
-    bridge.advanceTo(cursorTime, (symbol, fromExclusive, toInclusive) => {
-      const key = chartPairKey(symbol);
-      const series = seriesRef.current.find((s) => chartPairKey(s.pair) === key);
-      const ds =
-        series?.datasetId ??
-        panesRef.current.find((p) => chartPairKey(p.pair) === key)?.datasetId ??
-        null;
-      if (!ds) return [];
-      const raw = warmCache.peek(ds, sess.baseTf) ?? [];
-      const out: ChartBar[] = [];
-      for (const b of raw) {
-        if (b.time <= fromExclusive) continue;
-        if (b.time > toInclusive) break;
-        if (b.time > cursorTime) break;
-        out.push(b);
-      }
-      return out;
-    });
+    bridge.advanceTo(
+      cursorTime,
+      makeOrderBarProvider(sess.baseTf, cursorTime),
+    );
     // Always refresh chart projection — levels stay until SL/TP close, P&L marks each bar.
     const chartOrders = bridge.toChartOrders(sessionIdRef.current ?? '');
     pushOrdersToPanes(chartOrders, selectedOrderIdRef.current);
@@ -1582,22 +1640,46 @@ export default function App() {
 
         const key = `${fresh.id}:${primary.datasetId}`;
         setDrawings(loadDrawings(key));
-        orderBridgeRef.current = createOrderSessionBridge({
+        const startingBalance =
+          typeof fresh.startingBalance === 'number' &&
+          Number.isFinite(fresh.startingBalance) &&
+          fresh.startingBalance > 0
+            ? fresh.startingBalance
+            : 10_000;
+        const bridge = createOrderSessionBridge({
           sessionId: fresh.id,
           symbol: primary.pair,
           symbols: seriesList.map((s) => s.pair),
           accountCurrency: 'USD',
-          balance:
-            typeof fresh.startingBalance === 'number' &&
-            Number.isFinite(fresh.startingBalance) &&
-            fresh.startingBalance > 0
-              ? fresh.startingBalance
-              : 10_000,
+          balance: startingBalance,
         });
-        setOrders([]);
+        orderBridgeRef.current = bridge;
+
+        // Rebuild open book from persisted command log (if any).
+        const storedJournal = loadJournal(fresh.id);
+        if (storedJournal) {
+          bridge.hydrateJournal(storedJournal);
+          const cmds = storedJournal.commands;
+          if (cmds.length > 0) {
+            let fromT = resumeCursor;
+            for (const c of cmds) {
+              if (c.cursorTime < fromT) fromT = c.cursorTime;
+            }
+            const preload = await ensureAllOrderBars(baseTf, fromT, resumeCursor);
+            if (loadGen !== loadSessionGenRef.current) return;
+            bridge.rebuildTo(
+              resumeCursor,
+              makeOrderBarProvider(baseTf, resumeCursor, preload),
+            );
+          }
+        }
+
+        const chartOrders = bridge.toChartOrders(fresh.id);
+        setOrders(chartOrders);
         setSelectedOrderId(null);
-        setLastOrderReject(null);
+        setLastOrderReject(bridge.getLastReject());
         setOrderEngineTick((n) => n + 1);
+        pushOrdersToPanes(chartOrders, null);
 
         setLoadStatus('ready');
 
@@ -1634,7 +1716,13 @@ export default function App() {
         setLoadError(err instanceof Error ? err.message : 'Failed to load dataset');
       }
     },
-    [applyJournalFocus, clearChartFocusHash],
+    [
+      applyJournalFocus,
+      clearChartFocusHash,
+      ensureAllOrderBars,
+      makeOrderBarProvider,
+      pushOrdersToPanes,
+    ],
   );
 
   // Example analytics session (200 enriched closed trades) for Dashboard/Trades.
@@ -4200,14 +4288,38 @@ export default function App() {
         }}
         onSpeed={(s) => replayRef.current.setSpeed(s)}
         onSeek={(t) => {
-          // Scrub keeps camera detached; Play re-attaches
+          // Scrub keeps camera detached; Play re-attaches.
+          // Await bar coverage before seek so advanceTo/rebuild see a full window.
           const prev = replayRef.current.get().cursorTime;
-          if (t < prev) {
-            // Backward seek with open book: reset engine (report §11.5).
-            orderBridgeRef.current?.onSeekBackward(t);
-            syncOrdersFromBridge();
-          }
-          replayRef.current.seek(t);
+          const bridge = orderBridgeRef.current;
+          const sess = sessionRef.current.get();
+          void (async () => {
+            if (bridge && sess) {
+              if (t < prev) {
+                const journal = bridge.getJournal();
+                let fromT = t;
+                for (const c of journal.commands) {
+                  if (c.cursorTime < fromT) fromT = c.cursorTime;
+                }
+                const preload = await ensureAllOrderBars(sess.baseTf, fromT, t);
+                if (orderBridgeRef.current !== bridge) return;
+                bridge.onSeekBackward(
+                  t,
+                  makeOrderBarProvider(sess.baseTf, t, preload),
+                );
+                syncOrdersFromBridge();
+                pushOrdersToPanes(
+                  bridge.toChartOrders(sessionIdRef.current ?? ''),
+                  selectedOrderIdRef.current,
+                );
+              } else if (t > prev) {
+                const fromT = bridge.getState().lastBarTime ?? prev;
+                await ensureAllOrderBars(sess.baseTf, fromT, t);
+                if (orderBridgeRef.current !== bridge) return;
+              }
+            }
+            replayRef.current.seek(t);
+          })();
         }}
         balanceLabel={
           orderBridgeRef.current

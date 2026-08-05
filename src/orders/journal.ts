@@ -32,6 +32,11 @@ export interface JournalEntry {
 export interface OrderJournal {
   sessionId: string;
   entries: JournalEntry[];
+  /**
+   * User intents in session order — required to rebuild the in-memory book.
+   * Older journals may omit this field; normalizeJournal defaults to [].
+   */
+  commands: EngineCommand[];
   /** Snapshot of initial engine params for replay. */
   bootstrap: {
     symbol: string;
@@ -46,7 +51,18 @@ export function createJournal(
   sessionId: string,
   bootstrap: OrderJournal['bootstrap'],
 ): OrderJournal {
-  return { sessionId, entries: [], bootstrap };
+  return { sessionId, entries: [], commands: [], bootstrap };
+}
+
+/** Ensure loaded JSON has commands[] (legacy journals omit it). */
+export function normalizeJournal(raw: OrderJournal): OrderJournal {
+  return {
+    ...raw,
+    entries: Array.isArray(raw.entries) ? raw.entries : [],
+    commands: Array.isArray(raw.commands) ? raw.commands : [],
+    bootstrap: raw.bootstrap,
+    sessionId: raw.sessionId,
+  };
 }
 
 export function appendEvents(
@@ -68,18 +84,41 @@ export function appendEvents(
   return { ...journal, entries };
 }
 
+export function appendCommand(
+  journal: OrderJournal,
+  command: EngineCommand,
+): OrderJournal {
+  return { ...journal, commands: [...journal.commands, command] };
+}
+
+/**
+ * Keep commands + event entries with cursorTime ≤ target.
+ * Used by backward seek / rebuild so history past the new cursor is dropped.
+ */
+export function truncateJournalTo(
+  journal: OrderJournal,
+  cursorTime: number,
+): OrderJournal {
+  return {
+    ...journal,
+    commands: journal.commands.filter((c) => c.cursorTime <= cursorTime),
+    entries: journal.entries.filter((e) => e.cursorTime <= cursorTime),
+  };
+}
+
 export function persistJournal(
   journal: OrderJournal,
   opts?: PersistOpts,
 ): void {
+  const normalized = normalizeJournal(journal);
   try {
     localStorage.setItem(
-      orderJournalKey(journal.sessionId),
-      JSON.stringify(journal),
+      orderJournalKey(normalized.sessionId),
+      JSON.stringify(normalized),
     );
     if (!opts?.skipCloud) {
       void import('@/sync/cloudSync').then((m) =>
-        m.schedulePushOrderJournal(journal),
+        m.schedulePushOrderJournal(normalized),
       );
     }
   } catch {
@@ -90,12 +129,18 @@ export function persistJournal(
 export function loadJournal(sessionId: string): OrderJournal | null {
   try {
     const scoped = localStorage.getItem(orderJournalKey(sessionId));
-    if (scoped) return JSON.parse(scoped) as OrderJournal;
+    if (scoped) {
+      return normalizeJournal(JSON.parse(scoped) as OrderJournal);
+    }
     if (getStorageUserId()) return null;
     const legacy = localStorage.getItem(LEGACY_PREFIX + sessionId);
     if (legacy) {
-      localStorage.setItem(orderJournalKey(sessionId), legacy);
-      return JSON.parse(legacy) as OrderJournal;
+      const normalized = normalizeJournal(JSON.parse(legacy) as OrderJournal);
+      localStorage.setItem(
+        orderJournalKey(sessionId),
+        JSON.stringify(normalized),
+      );
+      return normalized;
     }
     return null;
   } catch {
@@ -112,6 +157,7 @@ export function clearJournal(sessionId: string, opts?: PersistOpts): void {
         m.schedulePushOrderJournal({
           sessionId,
           entries: [],
+          commands: [],
           bootstrap: {
             symbol: '',
             accountCurrency: 'USD',

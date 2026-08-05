@@ -159,7 +159,7 @@ export class WarmCache {
 
     try {
       // Default = full viewport budget (interactive pan). Replay fill-ahead
-      // passes a smaller windowBars + higher aheadRatio (runway without RAM growth).
+      // passes windowBars + modest aheadRatio (history behind tip + short runway).
       const windowBars = Math.min(
         MAX_BARS_IN_MEMORY,
         Math.max(64, opts?.windowBars ?? MAX_BARS_IN_MEMORY),

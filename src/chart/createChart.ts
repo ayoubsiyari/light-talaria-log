@@ -1,4 +1,8 @@
-import { indexAtOrBeforeBars } from '@/data/timeframeAgg';
+import {
+  indexAtOrBeforeBars,
+  timeRangeFromVisible,
+  visibleRangeFromTimeWindow,
+} from '@/data/timeframeAgg';
 import { applyShiftConstrainIfNeeded } from '@/drawings/constrain';
 import {
   createDraftDrawing,
@@ -1534,6 +1538,9 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         replayCursorTime != null && prevLen > 0
           ? indexAtOrBeforeBars(bars, replayCursorTime)
           : -1;
+      // Capture wall-clock window before buffer replace (sliding warm-cache).
+      const keepTime =
+        prevLen > 0 ? timeRangeFromVisible(bars, range) : null;
 
       // Grow/patch when the visible prefix is unchanged; otherwise full replace.
       const canAppend =
@@ -1583,10 +1590,24 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
           cursorTime != null && bars.length > 0
             ? indexAtOrBeforeBars(bars, cursorTime)
             : -1;
-        // New tip → scroll; full buffer replace (warm-cache slide) must also
-        // re-anchor or panes drift to different tip X positions.
         const didReplace = prevLen === 0 || nextLen < prevLen || !canAppend;
-        if (tip !== prevTip || didReplace) {
+        if (tip !== prevTip) {
+          // Tip advanced — keep live candle on the right.
+          centerOnReplayCursor(false);
+        } else if (didReplace && keepTime && bars.length > 0) {
+          // Warm-cache slide: remap by wall-clock so left history doesn't
+          // flash empty when bars[0] moves (right-anchor on a short tip window).
+          const mapped = visibleRangeFromTimeWindow(
+            bars,
+            keepTime.fromTime,
+            keepTime.toTime,
+          );
+          if (mapped.toIndex > mapped.fromIndex) {
+            setVisibleRangeInternal(mapped, false);
+          } else {
+            centerOnReplayCursor(false);
+          }
+        } else if (didReplace) {
           centerOnReplayCursor(false);
         }
       }

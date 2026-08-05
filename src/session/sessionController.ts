@@ -15,7 +15,11 @@ import type {
 import { warmCache, type WarmCacheFillOpts } from '@/session/warmCache';
 import type { ChartBar } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
-import { MAX_BARS_IN_MEMORY, REPLAY_VISIBLE_BARS } from '@/utils/constants';
+import {
+  BUFFER_BARS,
+  MAX_BARS_IN_MEMORY,
+  REPLAY_VISIBLE_BARS,
+} from '@/utils/constants';
 import { rangeRightAnchored } from '@/chart/rangeAnchor';
 
 export type SessionListener = (state: SessionState, views: Record<string, PaneView>) => void;
@@ -432,12 +436,22 @@ const fillAheadPending = new Map<
   { cursorTime: number; span: number; opts: WarmCacheFillOpts }
 >();
 
-/** Forward runway for the pane's own TF (compact — memory-safe at 21×). */
+/**
+ * Play fill window for the pane's own TF.
+ * Must keep enough bars *behind* the cursor so right-anchored follow
+ * (span + 10% pad) does not leave an empty left pad. Forward runway stays
+ * modest — higher-TF forming still uses {@link formingClockFillOpts}.
+ */
 function paneRunwayFillOpts(span: number): WarmCacheFillOpts {
-  return {
-    aheadRatio: 0.7,
-    windowBars: Math.min(900, Math.max(500, span * 6 + 200)),
-  };
+  const spanSafe = Math.max(1, span);
+  // History: visible span + buffer; runway: ~150–200 bars ahead.
+  const windowBars = Math.min(
+    MAX_BARS_IN_MEMORY,
+    Math.max(spanSafe + BUFFER_BARS + 200, spanSafe * 3 + 400, 900),
+  );
+  const aheadBars = Math.min(220, Math.max(120, spanSafe));
+  const aheadRatio = Math.min(0.2, aheadBars / windowBars);
+  return { aheadRatio, windowBars };
 }
 
 /**

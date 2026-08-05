@@ -2,9 +2,16 @@
  * Wires the pure order engine to the session clock.
  * Steps every base-TF bar the cursor passes — never skips, never reads warmCache
  * untruncated windows (caller supplies bars ≤ cursorTime one at a time).
+ *
+ * Multi-pair: each open symbol is stepped against its own bars + InstrumentSpec
+ * on the shared session clock.
  */
 
-import { defaultSpecForSymbol, type InstrumentSpec } from './instrumentSpec';
+import {
+  defaultSpecForSymbol,
+  instrumentSymbolKey,
+  type InstrumentSpec,
+} from './instrumentSpec';
 import {
   appendEvents,
   createJournal,
@@ -14,7 +21,9 @@ import {
 import {
   createInitialState,
   reduceCommand,
+  refreshAccountFromMarks,
   stepEngine,
+  type SymbolMark,
 } from './orderEngine';
 import type {
   EngineCommand,
@@ -26,15 +35,31 @@ import { unrealizedPnL } from './pnl';
 import type { ChartBar } from '@/types/bar';
 import type { ChartOrder } from '@/types/order';
 
+/** Bars for one symbol in (fromExclusive, toInclusive], ≤ cursor. */
+export type SymbolBarProvider = (
+  symbol: string,
+  fromTimeExclusive: number,
+  toTimeInclusive: number,
+) => ChartBar[];
+
+/** @deprecated Prefer SymbolBarProvider — kept for single-symbol call sites. */
 export type BarProvider = (fromTimeExclusive: number, toTimeInclusive: number) => ChartBar[];
 
 export interface OrderSessionBridge {
   getState(): OrderEngineState;
   getJournal(): OrderJournal;
-  getSpec(): InstrumentSpec;
+  /** Spec for a symbol (defaults to session primary). */
+  getSpec(symbol?: string): InstrumentSpec;
   getLastReject(): string | null;
-  /** Advance engine across every base bar in (lastStepped, cursorTime]. */
-  advanceTo(cursorTime: number, getBars: BarProvider, ctx?: Partial<MarketContext>): EngineEvent[];
+  /**
+   * Advance engine across every base bar in (lastStepped, cursorTime].
+   * `getBars(symbol, from, to)` must return that symbol's bars only.
+   */
+  advanceTo(
+    cursorTime: number,
+    getBars: SymbolBarProvider,
+    ctx?: Partial<MarketContext>,
+  ): EngineEvent[];
   submit(cmd: Omit<EngineCommand & { type: 'SUBMIT' }, 'type'>): EngineEvent[];
   cancel(orderId: string, cursorTime: number): EngineEvent[];
   modify(
@@ -47,20 +72,58 @@ export interface OrderSessionBridge {
   subscribe(cb: () => void): () => void;
 }
 
+function collectExposureSymbols(state: OrderEngineState): string[] {
+  const keys = new Set<string>();
+  for (const pos of Object.values(state.positions)) {
+    keys.add(instrumentSymbolKey(pos.symbol));
+  }
+  for (const id of state.workingIds) {
+    const o = state.orders[id];
+    if (o) keys.add(instrumentSymbolKey(o.symbol));
+  }
+  return [...keys];
+}
+
 export function createOrderSessionBridge(input: {
   sessionId: string;
   symbol: string;
+  /** All session legs — specs pre-seeded so any pair can trade. */
+  symbols?: readonly string[];
   accountCurrency?: string;
   balance?: number;
   leverage?: number;
   spec?: InstrumentSpec;
 }): OrderSessionBridge {
-  const spec = input.spec ?? defaultSpecForSymbol(input.symbol);
+  const primaryKey = instrumentSymbolKey(input.symbol);
+  const specs = new Map<string, InstrumentSpec>();
+  const seedSymbols = new Set<string>([
+    primaryKey,
+    ...(input.symbols ?? []).map(instrumentSymbolKey),
+  ]);
+  for (const key of seedSymbols) {
+    specs.set(
+      key,
+      key === primaryKey && input.spec
+        ? input.spec
+        : defaultSpecForSymbol(key),
+    );
+  }
+
+  const specFor = (symbol: string): InstrumentSpec => {
+    const key = instrumentSymbolKey(symbol);
+    let s = specs.get(key);
+    if (!s) {
+      s = defaultSpecForSymbol(key);
+      specs.set(key, s);
+    }
+    return s;
+  };
+
   let state = createInitialState({
-    symbol: input.symbol.replace('/', '').toUpperCase(),
+    symbol: primaryKey,
     accountCurrency: input.accountCurrency ?? 'USD',
     balance: input.balance ?? 10_000,
-    leverage: input.leverage ?? spec.leverage,
+    leverage: input.leverage ?? specFor(primaryKey).leverage,
     sessionId: input.sessionId,
   });
   let journal = createJournal(input.sessionId, {
@@ -71,9 +134,8 @@ export function createOrderSessionBridge(input: {
     mode: state.mode,
   });
   let lastSteppedTime: number | null = null;
-  /** Last mark used for equity / chart P&L (bid = bar.close). */
-  let lastBid = 0;
-  let lastAsk = 0;
+  /** Last mark per symbol (bid = bar.close). */
+  const marks = new Map<string, SymbolMark>();
   let lastReject: string | null = null;
   const listeners = new Set<() => void>();
 
@@ -93,70 +155,131 @@ export function createOrderSessionBridge(input: {
   };
 
   const defaultCtx = (partial?: Partial<MarketContext>): MarketContext => ({
-    spread: spec.typicalSpread,
+    spread: 0,
     accountCurrency: state.account.currency,
     marketOpen: true,
     ...partial,
   });
 
+  const barAtTime = (bars: readonly ChartBar[], t: number): ChartBar | null => {
+    // Bars are ascending; exact match on base TF clock.
+    let lo = 0;
+    let hi = bars.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const bt = bars[mid]!.time;
+      if (bt === t) return bars[mid]!;
+      if (bt < t) lo = mid + 1;
+      else hi = mid - 1;
+    }
+    return null;
+  };
+
   return {
     getState: () => state,
     getJournal: () => journal,
-    getSpec: () => spec,
+    getSpec: (symbol) => specFor(symbol ?? state.symbol),
     getLastReject: () => lastReject,
 
     advanceTo(cursorTime, getBars, ctxPartial) {
-      const ctx = defaultCtx(ctxPartial);
       const from = lastSteppedTime ?? Number.NEGATIVE_INFINITY;
       if (cursorTime <= from) return [];
 
-      const bars = getBars(from, cursorTime);
-      // Guard: never accept a bar ahead of cursor
-      const events: EngineEvent[] = [];
-      for (const bar of bars) {
-        if (bar.time <= from) continue;
-        if (bar.time > cursorTime) {
-          console.error(
-            '[orders] CRITICAL: bar.time > cursorTime handed to bridge — dropping',
-            bar.time,
-            cursorTime,
-          );
-          break;
+      const exposure = collectExposureSymbols(state);
+      const clockKey = primaryKey;
+      // Always walk the primary clock so lastStepped advances even when flat.
+      const stepKeys = new Set<string>([clockKey, ...exposure]);
+
+      const series = new Map<string, ChartBar[]>();
+      const timeSet = new Set<number>();
+      for (const key of stepKeys) {
+        const raw = getBars(key, from, cursorTime);
+        const copy: ChartBar[] = [];
+        for (const bar of raw) {
+          if (bar.time <= from) continue;
+          if (bar.time > cursorTime) break;
+          copy.push({
+            time: bar.time,
+            open: bar.open,
+            high: bar.high,
+            low: bar.low,
+            close: bar.close,
+            volume: bar.volume,
+          });
+          timeSet.add(bar.time);
         }
-        // Pass a shallow copy so DEV freeze cannot poison the provider's array
-        const copy: ChartBar = {
-          time: bar.time,
-          open: bar.open,
-          high: bar.high,
-          low: bar.low,
-          close: bar.close,
-          volume: bar.volume,
-        };
-        const stepped = stepEngine(state, copy, spec, ctx);
-        state = stepped.state;
-        events.push(...stepped.events);
-        lastSteppedTime = bar.time;
-        lastBid = copy.close;
-        lastAsk = copy.close + ctx.spread;
+        series.set(key, copy);
       }
+
+      const times = [...timeSet].sort((a, b) => a - b);
+      const events: EngineEvent[] = [];
+      const multi = stepKeys.size > 1 || exposure.some((k) => k !== clockKey);
+
+      for (const t of times) {
+        for (const key of stepKeys) {
+          const bars = series.get(key) ?? [];
+          const bar = barAtTime(bars, t);
+          if (!bar) continue;
+          const spec = specFor(key);
+          const ctx = defaultCtx({
+            ...ctxPartial,
+            spread: spec.typicalSpread,
+          });
+          const stepped = stepEngine(state, bar, spec, ctx, {
+            onlySymbol: key,
+            deferAccount: multi,
+          });
+          state = stepped.state;
+          events.push(...stepped.events);
+          marks.set(key, {
+            bid: bar.close,
+            ask: bar.close + spec.typicalSpread,
+          });
+        }
+
+        if (multi) {
+          const refreshed = refreshAccountFromMarks(
+            state,
+            marks,
+            specFor,
+            defaultCtx(ctxPartial),
+          );
+          state = refreshed.state;
+        }
+        lastSteppedTime = t;
+      }
+
       commit(events);
       return events;
     },
 
     submit(cmd) {
       lastReject = null;
+      const orderSym = cmd.order.symbol || state.symbol;
+      const spec = specFor(orderSym);
       if (cmd.bid > 0) {
-        lastBid = cmd.bid;
-        lastAsk = cmd.ask > 0 ? cmd.ask : cmd.bid + spec.typicalSpread;
+        const key = instrumentSymbolKey(orderSym);
+        marks.set(key, {
+          bid: cmd.bid,
+          ask: cmd.ask > 0 ? cmd.ask : cmd.bid + spec.typicalSpread,
+        });
       }
-      const result = reduceCommand(state, { type: 'SUBMIT', ...cmd }, spec);
+      const result = reduceCommand(
+        state,
+        {
+          type: 'SUBMIT',
+          ...cmd,
+          order: {
+            ...cmd.order,
+            symbol: instrumentSymbolKey(orderSym),
+          },
+        },
+        spec,
+      );
       state = result.state;
       // Anchor the step cursor at submit time so Play cannot re-feed history
       // before this bar (which would fill a market on the first dataset bar).
-      if (
-        lastSteppedTime == null ||
-        cmd.cursorTime > lastSteppedTime
-      ) {
+      if (lastSteppedTime == null || cmd.cursorTime > lastSteppedTime) {
         lastSteppedTime = cmd.cursorTime;
       }
       commit(result.events);
@@ -164,7 +287,13 @@ export function createOrderSessionBridge(input: {
     },
 
     cancel(orderId, cursorTime) {
-      const result = reduceCommand(state, { type: 'CANCEL', orderId, cursorTime }, spec);
+      const order = state.orders[orderId];
+      const spec = specFor(order?.symbol ?? state.symbol);
+      const result = reduceCommand(
+        state,
+        { type: 'CANCEL', orderId, cursorTime },
+        spec,
+      );
       state = result.state;
       commit(result.events);
       return result.events;
@@ -172,9 +301,14 @@ export function createOrderSessionBridge(input: {
 
     modify(cmd) {
       lastReject = null;
-      if (cmd.bid > 0) {
-        lastBid = cmd.bid;
-        lastAsk = cmd.ask > 0 ? cmd.ask : cmd.bid + spec.typicalSpread;
+      const order = state.orders[cmd.orderId];
+      const spec = specFor(order?.symbol ?? state.symbol);
+      if (cmd.bid > 0 && order) {
+        const key = instrumentSymbolKey(order.symbol);
+        marks.set(key, {
+          bid: cmd.bid,
+          ask: cmd.ask > 0 ? cmd.ask : cmd.bid + spec.typicalSpread,
+        });
       }
       const result = reduceCommand(state, { type: 'MODIFY', ...cmd }, spec);
       state = result.state;
@@ -193,8 +327,7 @@ export function createOrderSessionBridge(input: {
         mode: journal.bootstrap.mode,
       });
       lastSteppedTime = null;
-      lastBid = 0;
-      lastAsk = 0;
+      marks.clear();
       journal = createJournal(input.sessionId, journal.bootstrap);
       persistJournal(journal);
       lastReject = null;
@@ -204,8 +337,6 @@ export function createOrderSessionBridge(input: {
 
     toChartOrders(sessionId) {
       const out: ChartOrder[] = [];
-      const bid = lastBid;
-      const ask = lastAsk > 0 ? lastAsk : lastBid + spec.typicalSpread;
 
       // Open positions keep entry + protective levels until SL/TP (or close) fills.
       for (const pos of Object.values(state.positions)) {
@@ -217,6 +348,12 @@ export function createOrderSessionBridge(input: {
           if (o.role === 'stopLoss' && o.price != null) sl = o.price;
           if (o.role === 'takeProfit' && o.price != null) tp = o.price;
         }
+        const key = instrumentSymbolKey(pos.symbol);
+        const spec = specFor(pos.symbol);
+        const mark = marks.get(key);
+        const bid = mark?.bid ?? 0;
+        const ask =
+          mark?.ask && mark.ask > 0 ? mark.ask : bid + spec.typicalSpread;
         let uPnL: number | null = null;
         if (bid > 0) {
           uPnL = unrealizedPnL(
@@ -253,7 +390,12 @@ export function createOrderSessionBridge(input: {
         if (!o || o.role === 'stopLoss' || o.role === 'takeProfit') continue;
         if (o.type !== 'MARKET' && o.price == null) continue;
         const isMarket = o.type === 'MARKET';
-        // Pending market: keep on last price line until fill (matches ticket default).
+        const key = instrumentSymbolKey(o.symbol);
+        const spec = specFor(o.symbol);
+        const mark = marks.get(key);
+        const bid = mark?.bid ?? 0;
+        const ask =
+          mark?.ask && mark.ask > 0 ? mark.ask : bid + spec.typicalSpread;
         const expectedEntry = isMarket
           ? bid > 0
             ? bid
@@ -274,9 +416,9 @@ export function createOrderSessionBridge(input: {
           working: true,
           size: o.size,
           unrealizedPnL: null,
-          // Pending market: show expected fill, but don't treat as a draggable limit.
           entryLocked: isMarket,
         });
+        void spec;
       }
       return out;
     },

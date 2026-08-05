@@ -14,6 +14,7 @@ import {
   resolveSpread,
 } from './fillModel';
 import {
+  instrumentSymbolKey,
   isValidLot,
   pricesEqual,
   roundToTick,
@@ -670,14 +671,20 @@ function closeOrReducePosition(
 }
 
 /** Update MFE/MAE from bar OHLC — O(open positions), no allocations. */
-function updateExcursions(state: OrderEngineState, bar: ChartBar): OrderEngineState {
+function updateExcursions(
+  state: OrderEngineState,
+  bar: ChartBar,
+  onlySymbol?: string,
+): OrderEngineState {
   const ids = Object.keys(state.positions);
   if (ids.length === 0) return state;
+  const filterKey = onlySymbol ? instrumentSymbolKey(onlySymbol) : null;
   let changed = false;
   let positions = state.positions;
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i]!;
     const p = positions[id]!;
+    if (filterKey && instrumentSymbolKey(p.symbol) !== filterKey) continue;
     let mfe = p.mfePrice;
     let mae = p.maePrice;
     if (p.side === 'BUY') {
@@ -789,14 +796,17 @@ function updateTrailingStops(
   state: OrderEngineState,
   bar: ChartBar,
   spec: InstrumentSpec,
+  onlySymbol?: string,
 ): OrderEngineState {
   // Trigger was already evaluated this bar; ratchet water marks only after (§4.8).
   // Order.side is the close side: SELL trail protects a long; BUY trail protects a short.
+  const filterKey = onlySymbol ? instrumentSymbolKey(onlySymbol) : null;
   let orders = state.orders;
   let changed = false;
   for (const id of state.workingIds) {
     const o = orders[id];
     if (!o || o.type !== 'TRAILING_STOP' || o.trailDistance == null) continue;
+    if (filterKey && instrumentSymbolKey(o.symbol) !== filterKey) continue;
     if (o.side === 'SELL') {
       // Long protection: high-water ratchets up; stop level never decreases.
       const hw = Math.max(o.trailHighWater ?? bar.high, bar.high);
@@ -875,6 +885,57 @@ function refreshEquity(
   return { state: { ...state, account }, unrealizedById };
 }
 
+export interface SymbolMark {
+  bid: number;
+  ask: number;
+}
+
+/**
+ * Mark-to-market every open position with its own bid/ask + instrument spec
+ * (multi-pair sessions).
+ */
+export function refreshAccountFromMarks(
+  state: OrderEngineState,
+  marks: ReadonlyMap<string, SymbolMark>,
+  specFor: (symbol: string) => InstrumentSpec,
+  ctx: MarketContext,
+): { state: OrderEngineState; unrealizedById: Record<string, number> } {
+  let unreal = 0;
+  let used = 0;
+  const unrealizedById: Record<string, number> = {};
+  const positions = Object.values(state.positions);
+  for (const pos of positions) {
+    const key = instrumentSymbolKey(pos.symbol);
+    const mark = marks.get(key);
+    const spec = specFor(pos.symbol);
+    const bid = mark?.bid ?? 0;
+    const ask = mark?.ask && mark.ask > 0 ? mark.ask : bid + spec.typicalSpread;
+    if (bid > 0) {
+      const u = unrealizedPnL(
+        pos.side,
+        pos.entryPrice,
+        bid,
+        ask,
+        pos.size,
+        spec,
+        fxCtx(state, bid, ctx),
+      );
+      unrealizedById[pos.id] = u.amount;
+      unreal += u.amount;
+    } else {
+      unrealizedById[pos.id] = 0;
+    }
+    used += totalUsedMargin(
+      [pos],
+      spec,
+      fxCtx(state, bid > 0 ? bid : pos.entryPrice, ctx),
+      state.account.leverage,
+    );
+  }
+  const account = recomputeAccount(state.account, unreal, used);
+  return { state: { ...state, account }, unrealizedById };
+}
+
 /** Whole UTC days since Unix epoch — no Date object (determinism ban). */
 function utcDayIndex(unixSec: number): number {
   return Math.floor(unixSec / 86400);
@@ -900,6 +961,7 @@ function accrueSwapIfNeeded(
   spec: InstrumentSpec,
   ctx: MarketContext,
   events: EngineEvent[],
+  onlySymbol?: string,
 ): OrderEngineState {
   if (ctx.marketOpen === false) return state;
   const wd = utcWeekday(bar.time);
@@ -917,12 +979,14 @@ function accrueSwapIfNeeded(
     prevSod < spec.swapTimeUtc && sod >= spec.swapTimeUtc;
   if (!crossed) return state;
 
+  const filterKey = onlySymbol ? instrumentSymbolKey(onlySymbol) : null;
   const triple = wd === spec.tripleSwapWeekday;
   let next = state;
   const positions = { ...next.positions };
   let any = false;
   for (const id of Object.keys(positions)) {
     const pos = positions[id]!;
+    if (filterKey && instrumentSymbolKey(pos.symbol) !== filterKey) continue;
     const swap = swapPointsToAccount(
       pos.side,
       pos.size,
@@ -1033,6 +1097,19 @@ function evictTerminalOrders(state: OrderEngineState): OrderEngineState {
   return { ...state, orders };
 }
 
+export interface StepEngineOpts {
+  /**
+   * Only evaluate orders/positions for this symbol (multi-pair sessions).
+   * Normalized via instrumentSymbolKey.
+   */
+  onlySymbol?: string;
+  /**
+   * Skip equity / margin-call / stop-out — bridge refreshes after all
+   * symbols are stepped on the same clock tick.
+   */
+  deferAccount?: boolean;
+}
+
 /**
  * Called once per base-TF bar as the replay cursor advances.
  * `bar` is ALWAYS base TF and ALWAYS ≤ cursorTime.
@@ -1042,22 +1119,38 @@ export function stepEngine(
   bar: ChartBar,
   spec: InstrumentSpec,
   ctx: MarketContext,
+  opts?: StepEngineOpts,
 ): { state: OrderEngineState; events: EngineEvent[] } {
   const events: EngineEvent[] = [];
   const cursorTime = bar.time;
+  const onlySymbol = opts?.onlySymbol
+    ? instrumentSymbolKey(opts.onlySymbol)
+    : null;
+  const deferAccount = opts?.deferAccount === true;
+  const matchesSym = (sym: string) =>
+    !onlySymbol || instrumentSymbolKey(sym) === onlySymbol;
 
   // DEV no-lookahead asserts (§7.3)
   if (DEV) {
-    if (state.lastBarTime != null && bar.time <= state.lastBarTime) {
-      throw new Error(
-        `[orders] stepEngine bar.time ${bar.time} not strictly > last ${state.lastBarTime}`,
-      );
+    if (state.lastBarTime != null) {
+      // Multi-pair: several symbols share one clock tick (same bar.time).
+      const bad = onlySymbol
+        ? bar.time < state.lastBarTime
+        : bar.time <= state.lastBarTime;
+      if (bad) {
+        throw new Error(
+          `[orders] stepEngine bar.time ${bar.time} not strictly > last ${state.lastBarTime}`,
+        );
+      }
     }
     // Freeze bar in DEV so retained references are caught by mutation attempts
     Object.freeze(bar);
   }
 
-  let next: OrderEngineState = { ...state, lastBarTime: bar.time };
+  let next: OrderEngineState = {
+    ...state,
+    lastBarTime: Math.max(state.lastBarTime ?? 0, bar.time),
+  };
   const barSpread = (bar as ChartBar & { spread?: number }).spread;
   const spread =
     barSpread != null && Number.isFinite(barSpread)
@@ -1074,7 +1167,7 @@ export function stepEngine(
   void isGap;
 
   // Excursion tracking before fills so the close bar's OHLC is included.
-  next = updateExcursions(next, bar);
+  next = updateExcursions(next, bar, onlySymbol ?? undefined);
 
   // Snapshot working ids — fills may mutate the list
   const working = [...next.workingIds];
@@ -1082,6 +1175,7 @@ export function stepEngine(
   // Protective ambiguity: if a position has both SL and TP working, resolve jointly
   const positions = Object.values(next.positions);
   for (const pos of positions) {
+    if (!matchesSym(pos.symbol)) continue;
     const sl = working
       .map((id) => next.orders[id])
       .find(
@@ -1144,6 +1238,7 @@ export function stepEngine(
   for (const id of [...next.workingIds]) {
     const order = next.orders[id];
     if (!order || isTerminal(order.status)) continue;
+    if (!matchesSym(order.symbol || state.symbol)) continue;
 
     // Never evaluate on/before the submit bar — market fills at *next* open (§4.3).
     // Also prevents Play from replaying history and filling a fresh order on bar 0.
@@ -1247,36 +1342,42 @@ export function stepEngine(
   }
 
   // Newly opened positions on this bar also pick up the bar's OHLC range.
-  next = updateExcursions(next, bar);
+  next = updateExcursions(next, bar, onlySymbol ?? undefined);
 
   // Trailing ratchet AFTER trigger evaluation (§4.8)
-  next = updateTrailingStops(next, bar, spec);
+  next = updateTrailingStops(next, bar, spec, onlySymbol ?? undefined);
 
   // Swap before equity/stop-out so overnight charge can push margin level down.
-  next = accrueSwapIfNeeded(next, bar, state.lastBarTime, spec, ctx, events);
-
-  let refreshed = refreshEquity(next, bar, spread, spec, ctx);
-  next = refreshed.state;
-
-  if (isMarginCall(next.account, spec)) {
-    next = pushEvent(events, next, cursorTime, 'MARGIN_CALL', {
-      marginLevel: next.account.marginLevel,
-      equity: next.account.equity,
-      usedMargin: next.account.usedMargin,
-    });
+  // Multi-pair defer: bridge accrues once per tick after all symbols (avoids
+  // lastSwapUtcDay locking out sibling pairs on the same UTC day).
+  if (!onlySymbol) {
+    next = accrueSwapIfNeeded(next, bar, state.lastBarTime, spec, ctx, events);
   }
 
-  next = applyStopOut(
-    next,
-    bar,
-    spread,
-    spec,
-    ctx,
-    refreshed.unrealizedById,
-    events,
-  );
-  refreshed = refreshEquity(next, bar, spread, spec, ctx);
-  next = refreshed.state;
+  if (!deferAccount) {
+    let refreshed = refreshEquity(next, bar, spread, spec, ctx);
+    next = refreshed.state;
+
+    if (isMarginCall(next.account, spec)) {
+      next = pushEvent(events, next, cursorTime, 'MARGIN_CALL', {
+        marginLevel: next.account.marginLevel,
+        equity: next.account.equity,
+        usedMargin: next.account.usedMargin,
+      });
+    }
+
+    next = applyStopOut(
+      next,
+      bar,
+      spread,
+      spec,
+      ctx,
+      refreshed.unrealizedById,
+      events,
+    );
+    refreshed = refreshEquity(next, bar, spread, spec, ctx);
+    next = refreshed.state;
+  }
 
   next = evictTerminalOrders(next);
 

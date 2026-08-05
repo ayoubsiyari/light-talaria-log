@@ -110,6 +110,11 @@ export function parseSymbolCurrencies(symbol: string): {
   return { baseCurrency: 'XXX', quoteCurrency: 'XXX' };
 }
 
+/** Normalize `USD/JPY` / `USDJPY` / `usdjpy` for engine maps. */
+export function instrumentSymbolKey(symbol: string): string {
+  return symbol.replace(/\//g, '').toUpperCase();
+}
+
 export function defaultSpecForSymbol(symbol: string): InstrumentSpec {
   const { baseCurrency, quoteCurrency } = parseSymbolCurrencies(symbol);
   const jpy = quoteCurrency === 'JPY' || baseCurrency === 'JPY';
@@ -117,8 +122,9 @@ export function defaultSpecForSymbol(symbol: string): InstrumentSpec {
   const tickSize = xau ? 0.01 : jpy ? 0.001 : 0.00001;
   const pipSize = xau ? 0.1 : jpy ? 0.01 : 0.0001;
   const digits = xau ? 2 : jpy ? 3 : 5;
+  const key = instrumentSymbolKey(symbol);
   return {
-    symbol: symbol.replace('/', '').toUpperCase().slice(0, 6) || symbol,
+    symbol: key.slice(0, 6) || key,
     baseCurrency,
     quoteCurrency,
     contractSize: xau ? 100 : 100_000,

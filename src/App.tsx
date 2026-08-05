@@ -1023,21 +1023,15 @@ export default function App() {
     const bridge = orderBridgeRef.current;
     const sess = sessionRef.current.get();
     if (!bridge || !sess) return;
-    // Always step against the *trade* instrument's bars — not the chart you
-    // happen to be viewing (JPY position must not mark-to-market on GBP).
-    const tradeKey = chartPairKey(bridge.getState().symbol);
-    const tradeSeries = seriesRef.current.find(
-      (s) => chartPairKey(s.pair) === tradeKey,
-    );
-    const ds =
-      tradeSeries?.datasetId ??
-      panesRef.current.find((p) => chartPairKey(p.pair) === tradeKey)
-        ?.datasetId ??
-      sess.retainedDatasets[0] ??
-      panesRef.current.find((p) => p.id === activePaneId)?.datasetId ??
-      panesRef.current[0]?.datasetId;
-    if (!ds) return;
-    bridge.advanceTo(cursorTime, (fromExclusive, toInclusive) => {
+    // Multi-pair: each symbol steps on its own base-TF bars (not the viewed pane).
+    bridge.advanceTo(cursorTime, (symbol, fromExclusive, toInclusive) => {
+      const key = chartPairKey(symbol);
+      const series = seriesRef.current.find((s) => chartPairKey(s.pair) === key);
+      const ds =
+        series?.datasetId ??
+        panesRef.current.find((p) => chartPairKey(p.pair) === key)?.datasetId ??
+        null;
+      if (!ds) return [];
       const raw = warmCache.peek(ds, sess.baseTf) ?? [];
       const out: ChartBar[] = [];
       for (const b of raw) {
@@ -1068,7 +1062,6 @@ export default function App() {
   useEffect(() => {
     const bridge = orderBridgeRef.current;
     if (!bridge || loadStatus !== 'ready') return;
-    const spec = bridge.getSpec();
     const st = bridge.getState();
     const unsubs: Array<() => void> = [];
     for (const pane of panesRef.current) {
@@ -1076,6 +1069,7 @@ export default function App() {
       if (!chart?.setOrderDragContext) continue;
       const container = chart.canvas.parentElement;
       if (!container) continue;
+      const spec = bridge.getSpec(pane.pair);
       const last = pane.bars[pane.bars.length - 1];
       const bid = last?.close ?? 0;
       const ask = bid > 0 ? bid + spec.typicalSpread : 0;
@@ -1113,10 +1107,23 @@ export default function App() {
           const b = orderBridgeRef.current;
           if (!b) return;
           const cursorTime = replayRef.current.get().cursorTime;
-          const last = panesRef.current[0]?.bars.slice(-1)[0];
-          const bid = last?.close ?? hit.price;
-          const ask = bid + b.getSpec().typicalSpread;
           const state = b.getState();
+          const hitOrder =
+            state.orders[hit.orderId] ??
+            state.workingIds
+              .map((id) => state.orders[id])
+              .find((o) => o && o.positionId === hit.orderId);
+          const hitSym =
+            hitOrder?.symbol ??
+            state.positions[hit.orderId]?.symbol ??
+            pane.pair;
+          const paneForSym =
+            panesRef.current.find(
+              (p) => chartPairKey(p.pair) === chartPairKey(hitSym),
+            ) ?? pane;
+          const last = paneForSym.bars[paneForSym.bars.length - 1];
+          const bid = last?.close ?? hit.price;
+          const ask = bid + b.getSpec(hitSym).typicalSpread;
 
           // Working entry order (limit/stop) — drag entry / attached SL/TP
           const entryOrd = state.orders[hit.orderId];
@@ -1576,6 +1583,7 @@ export default function App() {
         orderBridgeRef.current = createOrderSessionBridge({
           sessionId: fresh.id,
           symbol: primary.pair,
+          symbols: seriesList.map((s) => s.pair),
           accountCurrency: 'USD',
           balance:
             typeof fresh.startingBalance === 'number' &&
@@ -2695,7 +2703,8 @@ export default function App() {
     const pane = panes.find((p) => p.id === activePaneId) ?? panes[0];
     const last = pane?.bars[pane.bars.length - 1];
     const bid = last?.close ?? 0;
-    const spread = orderBridgeRef.current?.getSpec().typicalSpread ?? 0;
+    const spread =
+      orderBridgeRef.current?.getSpec(pane?.pair).typicalSpread ?? 0;
     return { bid, ask: bid + spread };
   }, [panes, activePaneId, orderEngineTick]);
 
@@ -2715,7 +2724,9 @@ export default function App() {
         panesRef.current.find((p) => p.id === activePaneId) ?? panesRef.current[0];
       if (!pane || pane.bars.length === 0) return;
       const last = pane.bars[pane.bars.length - 1]!;
-      const spread = bridge.getSpec().typicalSpread;
+      // Trade the active pane's pair — enables concurrent multi-pair positions.
+      const tradeSymbol = pane.pair;
+      const spread = bridge.getSpec(tradeSymbol).typicalSpread;
       const cursorTime = replayRef.current.get().cursorTime || last.time;
       const id = `ord-${cursorTime}-${bridge.getState().seq + 1}`;
       bridge.submit({
@@ -2724,7 +2735,7 @@ export default function App() {
         ask: last.close + spread,
         order: {
           id,
-          symbol: bridge.getState().symbol,
+          symbol: tradeSymbol,
           side: ticket.side,
           type: ticket.type,
           size: ticket.size,
@@ -4011,14 +4022,36 @@ export default function App() {
               }
               bid={liveBidAsk.bid}
               ask={liveBidAsk.ask}
-              digits={orderBridgeRef.current?.getSpec().digits ?? 5}
-              pipSize={orderBridgeRef.current?.getSpec().pipSize ?? 0.01}
-              tickSize={orderBridgeRef.current?.getSpec().tickSize ?? 0.00001}
-              contractSize={orderBridgeRef.current?.getSpec().contractSize ?? 100_000}
-              baseCurrency={orderBridgeRef.current?.getSpec().baseCurrency ?? 'USD'}
+              digits={
+                orderBridgeRef.current?.getSpec(
+                  (panes.find((p) => p.id === activePaneId) ?? panes[0])?.pair,
+                ).digits ?? 5
+              }
+              pipSize={
+                orderBridgeRef.current?.getSpec(
+                  (panes.find((p) => p.id === activePaneId) ?? panes[0])?.pair,
+                ).pipSize ?? 0.01
+              }
+              tickSize={
+                orderBridgeRef.current?.getSpec(
+                  (panes.find((p) => p.id === activePaneId) ?? panes[0])?.pair,
+                ).tickSize ?? 0.00001
+              }
+              contractSize={
+                orderBridgeRef.current?.getSpec(
+                  (panes.find((p) => p.id === activePaneId) ?? panes[0])?.pair,
+                ).contractSize ?? 100_000
+              }
+              baseCurrency={
+                orderBridgeRef.current?.getSpec(
+                  (panes.find((p) => p.id === activePaneId) ?? panes[0])?.pair,
+                ).baseCurrency ?? 'USD'
+              }
               leverage={
                 orderBridgeRef.current?.getState().account.leverage ??
-                orderBridgeRef.current?.getSpec().leverage ??
+                orderBridgeRef.current?.getSpec(
+                  (panes.find((p) => p.id === activePaneId) ?? panes[0])?.pair,
+                ).leverage ??
                 100
               }
               freeMargin={orderBridgeRef.current?.getState().account.freeMargin ?? 10_000}
@@ -4050,7 +4083,11 @@ export default function App() {
           key={orderEngineTick}
           activeTab={activeTab}
           state={orderBridgeRef.current?.getState() ?? null}
-          spec={orderBridgeRef.current?.getSpec() ?? null}
+          spec={
+            orderBridgeRef.current?.getSpec(
+              (panes.find((p) => p.id === activePaneId) ?? panes[0])?.pair,
+            ) ?? null
+          }
           bid={liveBidAsk.bid}
           ask={liveBidAsk.ask}
           onCancel={(orderId) => {
@@ -4065,17 +4102,35 @@ export default function App() {
             if (!bridge) return;
             const pos = bridge.getState().positions[positionId];
             if (!pos) return;
-            const pane =
-              panesRef.current.find((p) => p.id === activePaneId) ?? panesRef.current[0];
-            const last = pane?.bars[pane.bars.length - 1];
-            if (!last) return;
-            const spread = bridge.getSpec().typicalSpread;
-            const cursorTime = replayRef.current.get().cursorTime || last.time;
+            // Close against that position's own pair bars (may not be the active pane).
+            const key = chartPairKey(pos.symbol);
+            const pane = panesRef.current.find(
+              (p) => chartPairKey(p.pair) === key,
+            );
+            const series = seriesRef.current.find(
+              (s) => chartPairKey(s.pair) === key,
+            );
+            const sess = sessionRef.current.get();
+            const ds = pane?.datasetId ?? series?.datasetId;
+            const cursorTime = replayRef.current.get().cursorTime;
+            let bid = pane?.bars[pane.bars.length - 1]?.close ?? 0;
+            if (!(bid > 0) && ds && sess) {
+              const raw = warmCache.peek(ds, sess.baseTf) ?? [];
+              for (let i = raw.length - 1; i >= 0; i--) {
+                const b = raw[i]!;
+                if (b.time <= cursorTime) {
+                  bid = b.close;
+                  break;
+                }
+              }
+            }
+            if (!(bid > 0) || !(cursorTime > 0)) return;
+            const spread = bridge.getSpec(pos.symbol).typicalSpread;
             const id = `close-${cursorTime}-${bridge.getState().seq + 1}`;
             bridge.submit({
               cursorTime,
-              bid: last.close,
-              ask: last.close + spread,
+              bid,
+              ask: bid + spread,
               order: {
                 id,
                 symbol: pos.symbol,

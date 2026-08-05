@@ -35,7 +35,7 @@ function roundToStep(value: number, step: number): number {
 }
 
 export interface TimeTick {
-  /** Logical index — maps to screen X via indexToX. */
+  /** Logical index — may be < 0 or ≥ bars.length for empty pad. */
   index: number;
   time: number;
 }
@@ -72,15 +72,55 @@ function estimateBarPeriod(
   return 60;
 }
 
+/** Wall-clock at a logical index — extrapolates into empty left/right pad. */
+function timeAtLogicalIndex(
+  bars: readonly ChartBar[],
+  index: number,
+  period: number,
+): number {
+  if (bars.length === 0) return 0;
+  if (index >= 0 && index < bars.length) {
+    const lo = Math.floor(index);
+    const hi = Math.min(bars.length - 1, lo + 1);
+    if (lo === hi || lo < 0) return bars[Math.max(0, lo)]!.time;
+    const frac = index - lo;
+    return bars[lo]!.time + (bars[hi]!.time - bars[lo]!.time) * frac;
+  }
+  if (index >= bars.length) {
+    const tip = bars.length - 1;
+    return bars[tip]!.time + (index - tip) * period;
+  }
+  // index < 0
+  return bars[0]!.time + index * period;
+}
+
+/** Logical index for a wall-clock time — may land in empty pad. */
+function logicalIndexAtTime(
+  bars: readonly ChartBar[],
+  time: number,
+  period: number,
+): number {
+  if (bars.length === 0) return 0;
+  const first = bars[0]!.time;
+  const last = bars[bars.length - 1]!.time;
+  if (time < first) return (time - first) / period;
+  if (time > last) return bars.length - 1 + (time - last) / period;
+  const idx = indexAtOrBeforeBars(bars, time);
+  const bar = bars[idx]!;
+  if (bar.time === time || idx >= bars.length - 1) return idx;
+  const next = bars[idx + 1]!;
+  const span = next.time - bar.time;
+  if (span <= 0) return idx;
+  return idx + (time - bar.time) / span;
+}
+
 /**
- * Time grid ticks.
+ * Time grid ticks across the full visible window — including empty pad.
  *
- * Tick *identity* is wall-clock phase (step × bar-period), then mapped to the
- * current bar index. That way when replay’s warm-cache slides under a fixed
- * right-anchored index window, vertical lines scroll with the candles —
- * labels stay glued to their bar instead of updating under a fixed screen X.
- *
- * Empty left/right pad (negative / past tip indices) never get ticks.
+ * Tick identity is wall-clock phase (step × bar-period), mapped to a logical
+ * index (real bar or extrapolated pad). That keeps lines scrolling with
+ * candles during replay, and continues the grid into future/past empty space
+ * when the user pans (TradingView-style).
  */
 export function niceTimeTicks(
   range: VisibleRange,
@@ -92,56 +132,57 @@ export function niceTimeTicks(
   const span = range.toIndex - range.fromIndex;
   const stepBars = niceIndexStep(span / Math.max(2, approxCount));
 
-  // Only emit ticks over real bars — empty TV-style pads get no grid/labels.
-  const dataFrom = Math.max(range.fromIndex, 0);
-  const dataTo = Math.min(range.toIndex, bars.length);
-  if (dataTo - dataFrom < 1e-6) {
-    const tip = bars[bars.length - 1];
-    if (!tip) return [];
-    const tipIdx = bars.length - 1;
-    if (tipIdx < range.fromIndex || tipIdx > range.toIndex) return [];
-    return [{ index: tipIdx, time: tip.time }];
-  }
-
-  const i0 = Math.max(0, Math.min(bars.length - 1, Math.ceil(dataFrom)));
-  const i1 = Math.max(0, Math.min(bars.length - 1, Math.floor(dataTo - 1e-9)));
-  if (i1 < i0) {
-    const bar = bars[i0];
-    return bar ? [{ index: i0, time: bar.time }] : [];
-  }
-
-  const period = estimateBarPeriod(bars, i0, i1 + 1);
+  // Period from whatever real bars overlap the view (or whole series).
+  const sampleFrom = Math.max(0, Math.min(bars.length - 1, range.fromIndex));
+  const sampleTo = Math.max(
+    sampleFrom + 1,
+    Math.min(bars.length, Math.ceil(range.toIndex)),
+  );
+  const period = estimateBarPeriod(bars, sampleFrom, sampleTo);
   const stepSec = Math.max(period, stepBars * period);
-  const fromTime = bars[i0]!.time;
-  const toTime = bars[i1]!.time;
 
-  // Phase-align to stepSec so the same clock lines keep identity across slides.
+  const fromTime = timeAtLogicalIndex(bars, range.fromIndex, period);
+  const toTime = timeAtLogicalIndex(bars, range.toIndex, period);
+  if (!(toTime > fromTime)) {
+    const tip = bars[bars.length - 1]!;
+    return [{ index: bars.length - 1, time: tip.time }];
+  }
+
+  // Phase-align so the same clock lines keep identity across slides / pans.
   let t = Math.ceil(fromTime / stepSec) * stepSec;
 
   const ticks: TimeTick[] = [];
-  let lastBarIndex = -1;
+  let lastIndex = Number.NaN;
   let lastTime = Number.NaN;
 
-  for (; t <= toTime + period * 0.25; t += stepSec) {
-    const barIndex = indexAtOrBeforeBars(bars, t);
-    if (barIndex < dataFrom || barIndex >= dataTo) continue;
-    if (barIndex < 0 || barIndex >= bars.length) continue;
-    const bar = bars[barIndex];
-    if (!bar) continue;
-    // Skip if this bar is far behind the target (large gap / weekend hole)
-    if (t - bar.time > stepSec * 0.9) continue;
-    if (barIndex === lastBarIndex || bar.time === lastTime) continue;
-    lastBarIndex = barIndex;
-    lastTime = bar.time;
-    ticks.push({ index: barIndex, time: bar.time });
+  for (; t < toTime - stepSec * 0.05; t += stepSec) {
+    let index = logicalIndexAtTime(bars, t, period);
+    let time = t;
+
+    // Snap onto a real candle when the phase lands on data (keeps line on bar).
+    if (index >= 0 && index < bars.length) {
+      const barIndex = indexAtOrBeforeBars(bars, t);
+      const bar = bars[barIndex];
+      if (bar && t - bar.time <= stepSec * 0.9) {
+        index = barIndex;
+        time = bar.time;
+      }
+    }
+
+    if (index < range.fromIndex || index >= range.toIndex) continue;
+    if (index === lastIndex || time === lastTime) continue;
+    lastIndex = index;
+    lastTime = time;
+    ticks.push({ index, time });
     if (ticks.length > 40) break;
   }
 
   if (ticks.length === 0) {
-    const mid = (dataFrom + dataTo) / 2;
-    const barIndex = Math.min(bars.length - 1, Math.max(0, Math.round(mid)));
-    const bar = bars[barIndex];
-    if (bar) ticks.push({ index: barIndex, time: bar.time });
+    const mid = (range.fromIndex + range.toIndex) / 2;
+    ticks.push({
+      index: mid,
+      time: timeAtLogicalIndex(bars, mid, period),
+    });
   }
 
   return ticks;

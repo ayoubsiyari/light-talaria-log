@@ -1,5 +1,5 @@
 /**
- * Time-grid ticks must scroll with candles (not stick to screen X).
+ * Time-grid ticks must scroll with candles and continue into empty pad.
  * Run: npm run test:chart
  */
 import assert from 'node:assert/strict';
@@ -32,18 +32,44 @@ describe('niceTimeTicks', () => {
     assert.ok(ticks.length >= 1);
     const times = ticks.map((t) => t.time);
     assert.equal(new Set(times).size, times.length, 'duplicate times');
-    for (const t of ticks) {
-      assert.ok(t.index >= 0 && t.index < data.length);
-    }
   });
 
-  it('places ticks only over real bars in a normal window', () => {
+  it('places ticks over real bars in a normal window', () => {
     const data = bars(400);
     const ticks = niceTimeTicks({ fromIndex: 100, toIndex: 220 }, data, 6);
     assert.ok(ticks.length >= 2);
     for (const t of ticks) {
       assert.ok(t.index >= 100 && t.index < 220);
-      assert.equal(t.time, data[t.index]!.time);
+    }
+  });
+
+  it('continues ticks into empty right pad (future)', () => {
+    const data = bars(80);
+    // Tip near left; large empty future on the right
+    const range = { fromIndex: 40, toIndex: 200 };
+    const ticks = niceTimeTicks(range, data, 8);
+    assert.ok(ticks.length >= 3);
+    const beyondTip = ticks.filter((t) => t.index >= data.length);
+    assert.ok(
+      beyondTip.length >= 1,
+      `expected pad ticks past tip, got indices=${ticks.map((t) => t.index).join(',')}`,
+    );
+    // Future labels must be after last bar time
+    const lastTime = data[data.length - 1]!.time;
+    for (const t of beyondTip) {
+      assert.ok(t.time > lastTime, 'pad tick time should be in the future');
+    }
+  });
+
+  it('continues ticks into empty left pad (past)', () => {
+    const data = bars(80);
+    const range = { fromIndex: -120, toIndex: 40 };
+    const ticks = niceTimeTicks(range, data, 8);
+    const beforeFirst = ticks.filter((t) => t.index < 0);
+    assert.ok(beforeFirst.length >= 1, 'expected ticks in left pad');
+    const firstTime = data[0]!.time;
+    for (const t of beforeFirst) {
+      assert.ok(t.time < firstTime, 'left-pad tick time should be in the past');
     }
   });
 
@@ -56,7 +82,6 @@ describe('niceTimeTicks', () => {
     const t1 = niceTimeTicks(r1, data, 6);
     assert.ok(t0.length >= 2 && t1.length >= 2);
 
-    // Shared wall-clock tick must slide left on screen
     const shared = t0.find((a) => t1.some((b) => b.time === a.time));
     assert.ok(shared, 'expected overlapping tick time after +1 bar');
     const next = t1.find((b) => b.time === shared!.time)!;
@@ -69,9 +94,8 @@ describe('niceTimeTicks', () => {
   });
 
   it('moves grid X left when buffer slides under a fixed index window', () => {
-    // Warm-cache slide: same length, tip index stuck at end, content advances.
     const w0 = bars(120, 1_700_000_000);
-    const w1 = bars(120, 1_700_000_000 + 60); // dropped oldest, appended newer
+    const w1 = bars(120, 1_700_000_000 + 60);
     const range = { fromIndex: 0, toIndex: 120 };
     const t0 = niceTimeTicks(range, w0, 6);
     const t1 = niceTimeTicks(range, w1, 6);
@@ -84,7 +108,7 @@ describe('niceTimeTicks', () => {
     const x1 = indexToX(next.index, range, plot);
     assert.ok(
       x1 < x0 - 1,
-      `slide: grid X should move left (x0=${x0}, x1=${x1}, i0=${shared!.index}, i1=${next.index})`,
+      `slide: grid X should move left (x0=${x0}, x1=${x1})`,
     );
   });
 });

@@ -116,26 +116,23 @@ function ensureSeedUser(): void {
   if (seeded) return;
   seeded = true;
   loadUsers();
+  // Local stub: only seed an admin when env provides credentials — never hardcode passwords.
+  const email = (process.env.SEED_ADMIN_EMAIL ?? '').trim().toLowerCase();
+  const password = process.env.SEED_ADMIN_PASSWORD ?? '';
+  if (!email || password.length < 16) {
+    if (users.length === 0) {
+      console.warn(
+        '[devAuth] No admin seed — set SEED_ADMIN_EMAIL + SEED_ADMIN_PASSWORD (≥16) in .env',
+      );
+    }
+    return;
+  }
   const before = JSON.stringify(users);
-  // Match SaaS defaults so local stub + VPS share the same admin login.
   ensureSeededUser(
-    'admin@talaria.app',
-    'admin12345',
+    email,
+    password,
     'Admin',
     '00000000-0000-4000-8000-000000000099',
-  );
-  // Legacy stub accounts (login still works).
-  ensureSeededUser(
-    'dev@localhost',
-    'dev12345',
-    'Dev User',
-    '00000000-0000-4000-8000-000000000001',
-  );
-  ensureSeededUser(
-    'admin@localhost',
-    'admin12345',
-    'Admin',
-    '00000000-0000-4000-8000-000000000098',
   );
   if (JSON.stringify(users) !== before) saveUsers();
 }

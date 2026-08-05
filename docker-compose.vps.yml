@@ -24,8 +24,8 @@ services:
       REDIS_URL: redis://redis:6379
       STORAGE_DRIVER: disk
       DISK_ROOT: /app/data/chunks
-      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@talaria.app}
-      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin12345}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:?set SEED_ADMIN_EMAIL in .env}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?set SEED_ADMIN_PASSWORD in .env}
       SEED_DEMO: 'true'
       MAX_CHUNKS_PER_QUERY: 24
       RATE_LIMIT_GLOBAL_RPM: 400

@@ -8,8 +8,17 @@ import { ensureStorage, objectKey, putObject } from './storage.js';
 const DEMO_ID = '11111111-1111-4111-8111-111111111111';
 
 async function ensureAdmin(): Promise<string> {
-  const email = config.seed.adminEmail.toLowerCase();
-  const passwordHash = await hashPassword(config.seed.adminPassword);
+  const email = config.seed.adminEmail.trim().toLowerCase();
+  const password = config.seed.adminPassword;
+  if (!email || !password) {
+    throw new Error(
+      '[seed] SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD must be set in the environment (never commit passwords)',
+    );
+  }
+  if (password.length < 16) {
+    throw new Error('[seed] SEED_ADMIN_PASSWORD must be at least 16 characters');
+  }
+  const passwordHash = await hashPassword(password);
 
   // Migrate legacy seed address that browsers/Zod reject on login.
   if (email !== 'admin@localhost') {
@@ -23,14 +32,14 @@ async function ensureAdmin(): Promise<string> {
 
   const existing = await query<{ id: string }>(`SELECT id FROM users WHERE email = $1`, [email]);
   if (existing.rows[0]) {
-    // Always refresh password + role from SEED_ADMIN_* so deploys can recover admin access.
+    // Sync role + password from env so ops can rotate via `.env` without SQL.
     await query(
       `UPDATE users
        SET password_hash = $1, role = 'admin', display_name = 'Admin', updated_at = now()
        WHERE id = $2`,
       [passwordHash, existing.rows[0].id],
     );
-    console.log(`[seed] admin refreshed ${email} (SEED_ADMIN_PASSWORD)`);
+    console.log(`[seed] admin refreshed ${email}`);
     return existing.rows[0].id;
   }
 
@@ -40,7 +49,7 @@ async function ensureAdmin(): Promise<string> {
      RETURNING id`,
     [email, passwordHash],
   );
-  console.log(`[seed] admin user ${email} / (password from SEED_ADMIN_PASSWORD)`);
+  console.log(`[seed] admin user created ${email}`);
   return rows[0]!.id;
 }
 

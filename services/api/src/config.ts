@@ -95,13 +95,23 @@ export const config = {
     metaMaxAge: envInt('CACHE_META_MAX_AGE', 30),
   },
   seed: {
-    // Use a real-looking domain — Zod + HTML email inputs reject `*@localhost`.
-    adminEmail: env('SEED_ADMIN_EMAIL', 'admin@talaria.app'),
-    adminPassword: env('SEED_ADMIN_PASSWORD', 'admin12345'),
+    /** Must come from env / `.env` — never commit real passwords. */
+    adminEmail: env('SEED_ADMIN_EMAIL', ''),
+    adminPassword: env('SEED_ADMIN_PASSWORD', ''),
     demo: envBool('SEED_DEMO', true),
   },
   cookieName: 'talaria_session',
 } as const;
+
+/** Passwords that must never be used in production (were once committed as samples). */
+const FORBIDDEN_ADMIN_PASSWORDS = new Set([
+  'admin12345',
+  'dev12345',
+  'password',
+  'password123',
+  'changeme',
+  'change-me',
+]);
 
 /**
  * Fail fast in production when secrets / cookies look like defaults.
@@ -115,6 +125,18 @@ export function assertProductionConfig(): void {
   }
   if (config.sessionSecret.length < 32) {
     problems.push('SESSION_SECRET must be at least 32 characters');
+  }
+  if (config.sessionSecret.includes('change-me')) {
+    problems.push('SESSION_SECRET still looks like a placeholder');
+  }
+  if (!config.seed.adminEmail.trim()) {
+    problems.push('SEED_ADMIN_EMAIL must be set');
+  }
+  if (!config.seed.adminPassword || config.seed.adminPassword.length < 16) {
+    problems.push('SEED_ADMIN_PASSWORD must be set (≥16 chars, from env only)');
+  }
+  if (FORBIDDEN_ADMIN_PASSWORDS.has(config.seed.adminPassword.toLowerCase())) {
+    problems.push('SEED_ADMIN_PASSWORD is a known weak/leaked value — rotate it');
   }
   if (!config.secureCookies) {
     console.warn(

@@ -15,17 +15,20 @@ git fetch origin
 git checkout main
 git reset --hard origin/main
 
-# Ensure production env exists (SESSION_SECRET etc.) — never overwrite secrets.
+# Ensure production env exists — generate secrets locally; never commit them.
 if [ ! -f "$APP_DIR/.env" ]; then
-  echo "[deploy] creating $APP_DIR/.env"
+  echo "[deploy] creating $APP_DIR/.env with random secrets (not logged)"
   SECRET="$(openssl rand -base64 48 | tr -d '\n')"
+  ADMIN_PASS="$(openssl rand -base64 32 | tr -d '\n=/+' | head -c 32)"
+  ADMIN_EMAIL="${SEED_ADMIN_EMAIL:-admin@talaria.app}"
   cat >"$APP_DIR/.env" <<EOF
 SESSION_SECRET=${SECRET}
-SEED_ADMIN_EMAIL=admin@talaria.app
-SEED_ADMIN_PASSWORD=admin12345
+SEED_ADMIN_EMAIL=${ADMIN_EMAIL}
+SEED_ADMIN_PASSWORD=${ADMIN_PASS}
 TALARIA_API_PROXY=${API_PROXY}
 EOF
   chmod 600 "$APP_DIR/.env"
+  echo "[deploy] wrote $APP_DIR/.env (chmod 600) — read SEED_ADMIN_* there; do not commit"
 fi
 
 # Load SESSION_SECRET for compose; export proxy for preview.

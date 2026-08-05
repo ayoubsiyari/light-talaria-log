@@ -118,7 +118,7 @@ export function AuthFormPage({
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   disabled={busy}
-                  placeholder={isSignup ? 'you@example.com' : 'admin@talaria.app'}
+                  placeholder="you@example.com"
                 />
               </div>
               <div className="space-y-1.5">

@@ -801,6 +801,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | Left rail TV ordering + section gaps: draw | measure+zoom | magnet/lock/eye | trash | Confirm divider spacing vs TV screenshot |
 | 2026-08-05 | Fix replay grid stuck: time-phase ticks scroll with candles; tip follow uses tip *time* under sliding cache | Play — vertical grid moves with bars, not only labels |
 | 2026-08-05 | Time grid continues into empty left/right pad (projected by bar period) when panning | Drag chart — vertical lines + time labels fill blank area |
+| 2026-08-05 | Paper-stable time grid: equal index lattice (no mid-pan rephase/snap); phase locked to bars[0] for replay slides | Drag — lines scroll solidly like graph paper |
 | 2026-08-05 | Strategy automation: Stop clears marks/indicators; rules engine (direction, RSI gate, trend, cooldown, SL/TP); labeled blocked signals | Strategy → rules → Run → Stop |
 | 2026-08-05 | Strategy run (renamed from TopBar Backtest): long/short flips, condition event marks + labels on chart, auto SMA/Donchian overlays, costs inputs | Chart → Strategy → Run → see labeled marks |
 | 2026-08-05 | Crosshair free-Y on indicator panes; remove TopBar Exit (shell/nav exit only) | Hover volume/RSI — hair stays in that pane |

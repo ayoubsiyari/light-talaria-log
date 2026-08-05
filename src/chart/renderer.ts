@@ -227,7 +227,7 @@ export function paintBaseFrame(
       : computePriceScale(bars, range, maxBarIndex);
 
   const priceTicks = nicePriceTicks(scale.min, scale.max, 6);
-  const timeTicks = niceTimeTicks(range, bars, 6);
+  const timeTicks = niceTimeTicks(range, bars, 8);
 
   drawGrid(ctx, layout, scale, range, priceTicks, timeTicks, colors);
   drawWatermark(ctx, layout, colors, options.showBrandWatermark !== false);

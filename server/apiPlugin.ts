@@ -17,21 +17,36 @@ import {
   type DiskSeriesMeta,
 } from './chunkStore';
 import {
+  adminCountByRole,
+  adminUserCount,
   clearSessionCookie,
   createSession,
   destroySession,
+  listPublicUsers,
   loginUser,
   originAllowed,
   parseCookies,
   COOKIE_NAME,
   registerUser,
   setSessionCookie,
+  setUserRole,
   toPublicUser,
   userFromRequest,
   type PublicDevUser,
 } from './devAuth';
-import { enqueueJob, getJob } from './jobQueue';
+import { enqueueJob, getJob, listJobs } from './jobQueue';
 import * as userSync from './userSyncStore';
+
+function requireAdminUser(
+  user: PublicDevUser,
+  res: Connect.ServerResponse,
+): boolean {
+  if (user.role !== 'admin') {
+    sendJson(res, 403, { error: 'Admin required' });
+    return false;
+  }
+  return true;
+}
 
 function sendJson(
   res: Connect.ServerResponse,
@@ -177,6 +192,65 @@ async function handleApi(
     return;
   }
   const user: PublicDevUser = toPublicUser(authed);
+
+  // --- Admin control plane (server-enforced) ---
+  if (method === 'GET' && pathname === '/api/v1/admin/overview') {
+    if (!requireAdminUser(user, res)) return;
+    const datasets = listDiskDatasets();
+    const roles = adminCountByRole();
+    const jobs = listJobs();
+    sendJson(res, 200, {
+      overview: {
+        usersTotal: adminUserCount(),
+        admins: roles.admins,
+        traders: roles.users,
+        datasetsTotal: datasets.length,
+        datasetsReady: datasets.filter((d) => d.status === 'ready').length,
+        jobsTotal: jobs.length,
+        jobsFailed: jobs.filter((j) => j.status === 'failed').length,
+        jobsRunning: jobs.filter(
+          (j) => j.status === 'queued' || j.status === 'running',
+        ).length,
+        storage: 'local-disk',
+        service: 'talaria-log-api-stub',
+      },
+    });
+    return;
+  }
+
+  if (method === 'GET' && pathname === '/api/v1/admin/users') {
+    if (!requireAdminUser(user, res)) return;
+    sendJson(res, 200, { users: listPublicUsers() });
+    return;
+  }
+
+  const adminUserMatch = pathname.match(/^\/api\/v1\/admin\/users\/([^/]+)$/);
+  if (method === 'PATCH' && adminUserMatch) {
+    if (!requireAdminUser(user, res)) return;
+    if (!originAllowed(req)) {
+      sendJson(res, 403, { error: 'Forbidden origin' });
+      return;
+    }
+    const id = decodeURIComponent(adminUserMatch[1]!);
+    const body = (await readJsonBody(req)) as { role?: string };
+    if (body.role !== 'user' && body.role !== 'admin') {
+      sendJson(res, 400, { error: 'role must be user or admin' });
+      return;
+    }
+    const result = setUserRole(id, body.role);
+    if (!result.ok) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendJson(res, 200, { user: toPublicUser(result.user) });
+    return;
+  }
+
+  if (method === 'GET' && pathname === '/api/v1/admin/jobs') {
+    if (!requireAdminUser(user, res)) return;
+    sendJson(res, 200, { jobs: listJobs().slice(0, 100) });
+    return;
+  }
 
   // --- User cloud sync (sessions / drawings / journal) ---
   if (method === 'GET' && pathname === '/api/v1/sessions') {
@@ -426,8 +500,9 @@ async function handleApi(
     return;
   }
 
-  // PUT /api/v1/datasets/:id — publish / overwrite dataset meta (shared server store)
+  // PUT /api/v1/datasets/:id — publish / overwrite (admin only)
   if (method === 'PUT' && datasetMatch) {
+    if (!requireAdminUser(user, res)) return;
     const id = decodeURIComponent(datasetMatch[1]!);
     let body: Partial<DiskDatasetMeta>;
     try {
@@ -463,11 +538,12 @@ async function handleApi(
     return;
   }
 
-  // PUT /api/v1/datasets/:id/series/:tf — publish series meta for one TF
+  // PUT /api/v1/datasets/:id/series/:tf — publish series meta (admin only)
   const seriesPutMatch = pathname.match(
     /^\/api\/v1\/datasets\/([^/]+)\/series\/([^/]+)$/,
   );
   if (method === 'PUT' && seriesPutMatch) {
+    if (!requireAdminUser(user, res)) return;
     const id = decodeURIComponent(seriesPutMatch[1]!);
     const tf = decodeURIComponent(seriesPutMatch[2]!);
     let body: Partial<DiskSeriesMeta>;
@@ -497,11 +573,12 @@ async function handleApi(
     return;
   }
 
-  // PUT /api/v1/datasets/:id/chunks/:tf/:n — raw packed OHLCV binary
+  // PUT /api/v1/datasets/:id/chunks/:tf/:n — raw packed OHLCV binary (admin only)
   const chunkPutMatch = pathname.match(
     /^\/api\/v1\/datasets\/([^/]+)\/chunks\/([^/]+)\/(\d+)$/,
   );
   if (method === 'PUT' && chunkPutMatch) {
+    if (!requireAdminUser(user, res)) return;
     const id = decodeURIComponent(chunkPutMatch[1]!);
     const tf = decodeURIComponent(chunkPutMatch[2]!);
     const chunkIndex = Number(chunkPutMatch[3]);
@@ -525,9 +602,10 @@ async function handleApi(
     return;
   }
 
-  // POST /api/v1/datasets/:id/ingest — enqueue ingest stub
+  // POST /api/v1/datasets/:id/ingest — enqueue ingest stub (admin only)
   const ingestMatch = pathname.match(/^\/api\/v1\/datasets\/([^/]+)\/ingest$/);
   if (method === 'POST' && ingestMatch) {
+    if (!requireAdminUser(user, res)) return;
     const id = decodeURIComponent(ingestMatch[1]!);
     let body: Record<string, unknown> = {};
     try {

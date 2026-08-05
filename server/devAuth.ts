@@ -281,3 +281,44 @@ export function loginUser(
   }
   return { ok: true, user };
 }
+
+export function listPublicUsers(): PublicDevUser[] {
+  ensureSeedUser();
+  return users
+    .map(toPublicUser)
+    .sort((a, b) => a.email.localeCompare(b.email));
+}
+
+export function setUserRole(
+  userId: string,
+  role: 'user' | 'admin',
+): { ok: true; user: DevUser } | { ok: false; status: number; error: string } {
+  ensureSeedUser();
+  const target = users.find((u) => u.id === userId);
+  if (!target) return { ok: false, status: 404, error: 'User not found' };
+  if (target.role === 'admin' && role === 'user') {
+    const adminCount = users.filter((u) => u.role === 'admin').length;
+    if (adminCount <= 1) {
+      return { ok: false, status: 400, error: 'Cannot demote the last admin' };
+    }
+  }
+  target.role = role;
+  saveUsers();
+  return { ok: true, user: target };
+}
+
+export function adminUserCount(): number {
+  ensureSeedUser();
+  return users.length;
+}
+
+export function adminCountByRole(): { admins: number; users: number } {
+  ensureSeedUser();
+  let admins = 0;
+  let regular = 0;
+  for (const u of users) {
+    if (u.role === 'admin') admins += 1;
+    else regular += 1;
+  }
+  return { admins, users: regular };
+}

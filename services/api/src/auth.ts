@@ -96,6 +96,17 @@ export function requireUser(req: FastifyRequest, reply: FastifyReply): AuthUser 
   return req.user;
 }
 
+/** Server enforcement — client admin UI is not security. */
+export function requireAdmin(req: FastifyRequest, reply: FastifyReply): AuthUser | null {
+  const user = requireUser(req, reply);
+  if (!user) return null;
+  if (user.role !== 'admin') {
+    reply.code(403).send({ error: 'Admin required' });
+    return null;
+  }
+  return user;
+}
+
 export function toPublicUser(user: AuthUser) {
   return {
     id: user.id,

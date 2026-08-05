@@ -1,6 +1,7 @@
 import type { Plugin, Connect } from 'vite';
 import { getHistoricalRates } from 'dukascopy-node';
 import type { InstrumentType, TimeframeType } from 'dukascopy-node';
+import { userFromRequest } from './devAuth';
 
 const MAX_SPAN_DAYS = 365;
 /** Keep in sync with src/datasets/ingestLimits.ts HARD_MAX_ESTIMATED_ROWS */
@@ -151,6 +152,17 @@ async function handleDownload(
 ): Promise<void> {
   if (req.method !== 'POST') {
     sendJson(res, 405, { error: 'Method not allowed' });
+    return;
+  }
+
+  // Server enforcement — Admin UI alone is not security.
+  const actor = userFromRequest(req);
+  if (!actor) {
+    sendJson(res, 401, { error: 'Unauthorized' });
+    return;
+  }
+  if (actor.role !== 'admin') {
+    sendJson(res, 403, { error: 'Admin required' });
     return;
   }
 

@@ -1589,6 +1589,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         indicatorPanes = alignIndicatorPanes(indicatorPanes, bars.length);
       }
 
+      const didReplace = prevLen === 0 || nextLen < prevLen || !canAppend;
       if (replayFollow) {
         const tip =
           cursorTime != null && bars.length > 0
@@ -1598,7 +1599,6 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         const tipMoved =
           tip !== prevTip ||
           (tipTime != null && prevTipTime != null && tipTime !== prevTipTime);
-        const didReplace = prevLen === 0 || nextLen < prevLen || !canAppend;
         if (tipMoved) {
           // Tip advanced (by index *or* time under a sliding buffer).
           centerOnReplayCursor(false);
@@ -1617,6 +1617,17 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
           }
         } else if (didReplace) {
           centerOnReplayCursor(false);
+        }
+      } else if (didReplace && keepTime && bars.length > 0) {
+        // Step / seek / async cache fill while paused: keep the same wall-clock
+        // window so a slid buffer cannot leave the index camera on empty pad.
+        const mapped = visibleRangeFromTimeWindow(
+          bars,
+          keepTime.fromTime,
+          keepTime.toTime,
+        );
+        if (mapped.toIndex > mapped.fromIndex) {
+          setVisibleRangeInternal(mapped, false);
         }
       }
       invalidateScaleCache();

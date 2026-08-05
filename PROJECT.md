@@ -828,6 +828,8 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-05 | Security: remove hardcoded admin passwords from repo; require SEED_ADMIN_* + rotate VPS | Confirm login only via server `.env` |
 | 2026-08-05 | Admin from env-only secrets; strip committed passwords; Admin rail `#/app/admin` | Set SEED_ADMIN_* in server `.env` only |
 | 2026-08-05 | Off-screen orders: step engine on trade-pair bars + retain session-leg caches (SL/TP/PnL while viewing another pair) | Open JPY trade → switch GBP → Play → equity/SL/TP follow JPY |
+| 2026-08-05 | Fix step-forward blank chart: wall-clock camera remap on paused reveal / slid warm-cache | Step ›› — candles stay; no empty plot |
+| 2026-08-05 | Admin console sections: Overview, Datasets, Catalog, Users/roles, Jobs, System; server `/admin/*` + admin-only publish/Dukascopy | Login admin → `#/app/admin` tabs; user cannot publish |
 
 ---
 

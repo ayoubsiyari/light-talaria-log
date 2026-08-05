@@ -42,6 +42,8 @@ interface DatasetsPageProps {
   /** Admin control plane copy + optional banner. */
   adminMode?: boolean;
   adminBanner?: ReactNode;
+  /** Render body only (no AppPageFrame) — used inside Admin console. */
+  bare?: boolean;
 }
 
 function defaultDates(): { start: string; end: string } {
@@ -62,6 +64,7 @@ export function DatasetsPage({
   onGoJournal,
   adminMode = false,
   adminBanner,
+  bare = false,
 }: DatasetsPageProps) {
   const goBacktest = onGoBacktest ?? onGoSessions!;
   const goTrades = onGoTrades ?? onGoJournal;
@@ -282,29 +285,8 @@ export function DatasetsPage({
     void deleteDataset(id).then(refresh);
   };
 
-  return (
-    <AppPageFrame
-      narrow
-      eyebrow={adminMode ? 'Admin' : 'App'}
-      title={adminMode ? 'Dataset management' : 'Datasets'}
-      description={
-        adminMode
-          ? 'Download Dukascopy history, publish to the server, import shared datasets, and clear caches. Regular users only consume published data when creating a session.'
-          : 'Download Dukascopy history and save it to the server. Create a backtest with dates — the chart fetches only that range.'
-      }
-      actions={
-        <>
-          <Button variant="secondary" className="min-h-11" onPress={goBacktest}>
-            Backtest
-          </Button>
-          {goTrades && (
-            <Button variant="ghost" className="min-h-11" onPress={goTrades}>
-              Trades
-            </Button>
-          )}
-        </>
-      }
-    >
+  const body = (
+    <div className="space-y-8">
         {adminBanner}
         {datasets.length > 0 && (
           <Card className="bg-surface border border-border border-l-4 border-l-accent">
@@ -673,6 +655,35 @@ export function DatasetsPage({
             </ul>
           )}
         </section>
+    </div>
+  );
+
+  if (bare) return body;
+
+  return (
+    <AppPageFrame
+      narrow
+      eyebrow={adminMode ? 'Admin' : 'App'}
+      title={adminMode ? 'Dataset management' : 'Datasets'}
+      description={
+        adminMode
+          ? 'Download Dukascopy history, publish to the server, import shared datasets, and clear caches. Regular users only consume published data when creating a session.'
+          : 'Download Dukascopy history and save it to the server. Create a backtest with dates — the chart fetches only that range.'
+      }
+      actions={
+        <>
+          <Button variant="secondary" className="min-h-11" onPress={goBacktest}>
+            Backtest
+          </Button>
+          {goTrades && (
+            <Button variant="ghost" className="min-h-11" onPress={goTrades}>
+              Trades
+            </Button>
+          )}
+        </>
+      }
+    >
+      {body}
     </AppPageFrame>
   );
 }

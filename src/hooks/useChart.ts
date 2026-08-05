@@ -565,19 +565,43 @@ export function useChart(
       return;
     }
 
-    // Pause edge: keep the same wall-clock window across bar-array rebuilds.
-    // Re-applying derive's index range after a different bars[0] made time-grid
-    // labels jump even when the tip candle looked roughly in place.
+    // Pause / step / seek: keep the same wall-clock window across bar rebuilds.
+    // Stale index ranges after a slid warm-cache left the plot empty until
+    // the user double-clicked the axis.
     const liveRange = instance.getVisibleRange();
     const liveBars = instance.getBars();
     const keepTime =
-      wasFollowing && liveBars.length > 0
+      liveBars.length > 0
         ? timeRangeFromVisible(liveBars, liveRange)
         : null;
 
+    // Imperative sync already applied this reveal + remapped camera — don't
+    // clobber with React's stale index range from commitSessionViews.
+    const sameSeries =
+      liveBars.length > 0 &&
+      options.bars.length > 0 &&
+      liveBars.length === options.bars.length &&
+      liveBars[0]!.time === options.bars[0]!.time &&
+      liveBars[liveBars.length - 1]!.time ===
+        options.bars[options.bars.length - 1]!.time;
+
+    const reactIsStaleIndexCamera =
+      rangeFrom != null &&
+      rangeTo != null &&
+      Math.abs(liveRange.fromIndex - rangeFrom) < 1e-4 &&
+      Math.abs(liveRange.toIndex - rangeTo) < 1e-4;
+
     setViewportData(instance, options.bars);
 
-    if (keepTime && options.bars.length > 0) {
+    if (sameSeries) {
+      return;
+    }
+
+    if (
+      keepTime &&
+      options.bars.length > 0 &&
+      (wasFollowing || reactIsStaleIndexCamera)
+    ) {
       const mapped = visibleRangeFromTimeWindow(
         options.bars,
         keepTime.fromTime,
@@ -591,7 +615,7 @@ export function useChart(
       }
     }
 
-    // Explicit React range wins over setViewportBars side-effects (e.g. replay follow).
+    // Explicit React range wins (TF/symbol adopt, initial load).
     if (rangeFrom == null || rangeTo == null || rangeTo <= rangeFrom) return;
     const cur = instance.getVisibleRange();
     if (

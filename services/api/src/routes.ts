@@ -6,6 +6,7 @@ import {
   createSession,
   destroySession,
   hashPassword,
+  requireAdmin,
   requireUser,
   setSessionCookie,
   toPublicUser,
@@ -102,6 +103,157 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       redis,
       storage: config.storageDriver,
       error: pg.error,
+    };
+  });
+
+  /** Admin overview — server-enforced (client UI is not security). */
+  app.get('/api/v1/admin/overview', async (req, reply) => {
+    const admin = requireAdmin(req, reply);
+    if (!admin) return;
+    const users = await query<{ role: string; n: string }>(
+      `SELECT role, count(*)::text AS n FROM users GROUP BY role`,
+    );
+    let admins = 0;
+    let traders = 0;
+    for (const row of users.rows) {
+      const n = Number(row.n) || 0;
+      if (row.role === 'admin') admins = n;
+      else traders += n;
+    }
+    const datasets = await query<{ total: string; ready: string }>(
+      `SELECT count(*)::text AS total,
+              count(*) FILTER (WHERE status = 'ready')::text AS ready
+       FROM datasets`,
+    );
+    const jobs = await query<{
+      total: string;
+      failed: string;
+      running: string;
+    }>(
+      `SELECT count(*)::text AS total,
+              count(*) FILTER (WHERE status = 'failed')::text AS failed,
+              count(*) FILTER (WHERE status IN ('queued','running'))::text AS running
+       FROM jobs`,
+    );
+    return {
+      overview: {
+        usersTotal: admins + traders,
+        admins,
+        traders,
+        datasetsTotal: Number(datasets.rows[0]?.total) || 0,
+        datasetsReady: Number(datasets.rows[0]?.ready) || 0,
+        jobsTotal: Number(jobs.rows[0]?.total) || 0,
+        jobsFailed: Number(jobs.rows[0]?.failed) || 0,
+        jobsRunning: Number(jobs.rows[0]?.running) || 0,
+        storage: config.storageDriver,
+        service: 'talaria-api',
+      },
+    };
+  });
+
+  app.get('/api/v1/admin/users', async (req, reply) => {
+    const admin = requireAdmin(req, reply);
+    if (!admin) return;
+    const { rows } = await query<{
+      id: string;
+      email: string;
+      display_name: string;
+      role: 'user' | 'admin';
+      created_at: string;
+    }>(
+      `SELECT id, email, display_name, role, created_at
+       FROM users
+       ORDER BY created_at DESC
+       LIMIT 500`,
+    );
+    return {
+      users: rows.map((r) => ({
+        id: r.id,
+        email: r.email,
+        displayName: r.display_name,
+        role: r.role,
+        createdAt: r.created_at,
+      })),
+    };
+  });
+
+  app.patch('/api/v1/admin/users/:id', async (req, reply) => {
+    const admin = requireAdmin(req, reply);
+    if (!admin) return;
+    const { id } = req.params as { id: string };
+    const body = z
+      .object({ role: z.enum(['user', 'admin']) })
+      .safeParse(req.body);
+    if (!body.success) {
+      return reply.code(400).send({ error: 'role must be user or admin' });
+    }
+    if (body.data.role === 'user') {
+      const { rows } = await query<{ id: string; role: string }>(
+        `SELECT id, role FROM users WHERE id = $1`,
+        [id],
+      );
+      const target = rows[0];
+      if (!target) return reply.code(404).send({ error: 'User not found' });
+      if (target.role === 'admin') {
+        const admins = await query(
+          `SELECT 1 FROM users WHERE role = 'admin' AND id <> $1 LIMIT 1`,
+          [id],
+        );
+        if ((admins.rowCount ?? 0) === 0) {
+          return reply.code(400).send({ error: 'Cannot demote the last admin' });
+        }
+      }
+    }
+    const { rows } = await query<{
+      id: string;
+      email: string;
+      display_name: string;
+      role: 'user' | 'admin';
+    }>(
+      `UPDATE users SET role = $2, updated_at = now()
+       WHERE id = $1
+       RETURNING id, email, display_name, role`,
+      [id, body.data.role],
+    );
+    const row = rows[0];
+    if (!row) return reply.code(404).send({ error: 'User not found' });
+    return {
+      user: {
+        id: row.id,
+        email: row.email,
+        displayName: row.display_name,
+        role: row.role,
+      },
+    };
+  });
+
+  app.get('/api/v1/admin/jobs', async (req, reply) => {
+    const admin = requireAdmin(req, reply);
+    if (!admin) return;
+    const { rows } = await query<{
+      id: string;
+      type: string;
+      status: string;
+      user_id: string;
+      error: string | null;
+      created_at: string;
+      updated_at: string;
+    }>(
+      `SELECT id, type, status, user_id, error, created_at, updated_at
+       FROM jobs
+       ORDER BY created_at DESC
+       LIMIT 100`,
+    );
+    return {
+      jobs: rows.map((r) => ({
+        id: r.id,
+        type: r.type,
+        status: r.status,
+        userId: r.user_id,
+        error: r.error,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      })),
     };
   });
 
@@ -236,7 +388,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
    * Same contract as the Vite disk stub (`server/apiPlugin.ts`).
    */
   app.put('/api/v1/datasets/:id', rpmLimit(config.limits.publishRpm), async (req, reply) => {
-    const user = requireUser(req, reply);
+    const user = requireAdmin(req, reply);
     if (!user) return;
     const { id } = req.params as { id: string };
     if (!isDatasetId(id)) {
@@ -329,7 +481,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     '/api/v1/datasets/:id/series/:tf',
     rpmLimit(config.limits.publishRpm),
     async (req, reply) => {
-    const user = requireUser(req, reply);
+    const user = requireAdmin(req, reply);
     if (!user) return;
     const { id, tf } = req.params as { id: string; tf: string };
     if (!isDatasetId(id)) {
@@ -477,7 +629,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     '/api/v1/datasets/:id/chunks/:tf/:n',
     rpmLimit(config.limits.publishRpm),
     async (req, reply) => {
-    const user = requireUser(req, reply);
+    const user = requireAdmin(req, reply);
     if (!user) return;
     const { id, tf, n } = req.params as { id: string; tf: string; n: string };
     if (!isDatasetId(id)) {
@@ -758,7 +910,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/api/v1/datasets/:id/ingest', async (req, reply) => {
-    const user = requireUser(req, reply);
+    const user = requireAdmin(req, reply);
     if (!user) return;
     const { id } = req.params as { id: string };
     if (!(await canReadDataset(user, id))) {

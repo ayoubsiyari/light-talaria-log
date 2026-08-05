@@ -984,8 +984,11 @@ export default function App() {
       sessionRef.current.setCursorTime(cursorTime, { follow, react: true });
       stepOrderEngineRef.current(cursorTime);
       commitSessionViews();
+      // Remap engines by wall-clock (step/seek) — React index ranges go stale when
+      // the warm-cache window slides under the tip.
+      syncEnginesFromSession({ applyCamera: false });
     },
-    [activePaneId, catalog, commitSessionViews],
+    [activePaneId, catalog, commitSessionViews, syncEnginesFromSession],
   );
 
   const syncOrdersFromBridge = useCallback(() => {

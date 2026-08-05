@@ -1538,6 +1538,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         replayCursorTime != null && prevLen > 0
           ? indexAtOrBeforeBars(bars, replayCursorTime)
           : -1;
+      // Tip *time* — index alone is wrong when the warm-cache slides under a
+      // fixed-length buffer (tip stays at length-1 while content advances).
+      const prevTipTime =
+        prevTip >= 0 && prevTip < prevLen ? bars[prevTip]!.time : null;
       // Capture wall-clock window before buffer replace (sliding warm-cache).
       const keepTime =
         prevLen > 0 ? timeRangeFromVisible(bars, range) : null;
@@ -1590,13 +1594,17 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
           cursorTime != null && bars.length > 0
             ? indexAtOrBeforeBars(bars, cursorTime)
             : -1;
+        const tipTime = tip >= 0 && tip < bars.length ? bars[tip]!.time : null;
+        const tipMoved =
+          tip !== prevTip ||
+          (tipTime != null && prevTipTime != null && tipTime !== prevTipTime);
         const didReplace = prevLen === 0 || nextLen < prevLen || !canAppend;
-        if (tip !== prevTip) {
-          // Tip advanced — keep live candle on the right.
+        if (tipMoved) {
+          // Tip advanced (by index *or* time under a sliding buffer).
           centerOnReplayCursor(false);
         } else if (didReplace && keepTime && bars.length > 0) {
-          // Warm-cache slide: remap by wall-clock so left history doesn't
-          // flash empty when bars[0] moves (right-anchor on a short tip window).
+          // Warm-cache slide without tip move: remap by wall-clock so left
+          // history doesn't flash empty.
           const mapped = visibleRangeFromTimeWindow(
             bars,
             keepTime.fromTime,

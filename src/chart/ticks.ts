@@ -1,4 +1,5 @@
 import type { ChartBar, VisibleRange } from '@/types/bar';
+import { indexAtOrBeforeBars } from '@/data/timeframeAgg';
 
 /** Nice step: 1 / 2 / 5 × 10^n covering the range with ~approxCount ticks. */
 export function nicePriceTicks(min: number, max: number, approxCount = 6): number[] {
@@ -34,12 +35,12 @@ function roundToStep(value: number, step: number): number {
 }
 
 export interface TimeTick {
-  /** Logical index — equal screen spacing (not wall-clock). */
+  /** Logical index — maps to screen X via indexToX. */
   index: number;
   time: number;
 }
 
-/** Nice integer steps for logical bar indices. */
+/** Nice integer steps for logical bar counts. */
 function niceIndexStep(raw: number): number {
   const n = Math.max(1, raw);
   const pow = Math.pow(10, Math.floor(Math.log10(n)));
@@ -52,14 +53,34 @@ function niceIndexStep(raw: number): number {
   return Math.max(1, Math.round(step));
 }
 
+/** Median-ish bar period (seconds) over a window — used to convert bar-steps → time. */
+function estimateBarPeriod(
+  bars: readonly ChartBar[],
+  fromIdx: number,
+  toIdx: number,
+): number {
+  const i0 = Math.max(0, Math.min(bars.length - 1, Math.floor(fromIdx)));
+  const i1 = Math.max(0, Math.min(bars.length - 1, Math.ceil(toIdx) - 1));
+  if (i1 > i0) {
+    const dt = bars[i1]!.time - bars[i0]!.time;
+    if (dt > 0) return Math.max(1, Math.round(dt / (i1 - i0)));
+  }
+  if (bars.length >= 2) {
+    const dt = bars[1]!.time - bars[0]!.time;
+    if (dt > 0) return Math.max(1, dt);
+  }
+  return 60;
+}
+
 /**
- * Time grid with equal on-screen spacing (equal logical index steps).
- * Labels show that candle's timestamp — calendar gaps (weekends) may
- * look uneven in the text, but vertical lines stay evenly spaced.
+ * Time grid ticks.
  *
- * Never place ticks on empty left/right pad (negative / past tip indices):
- * clamping those to bars[0]/tip reused the same timestamp → sticky duplicate
- * labels while candles scrolled (replay glitch).
+ * Tick *identity* is wall-clock phase (step × bar-period), then mapped to the
+ * current bar index. That way when replay’s warm-cache slides under a fixed
+ * right-anchored index window, vertical lines scroll with the candles —
+ * labels stay glued to their bar instead of updating under a fixed screen X.
+ *
+ * Empty left/right pad (negative / past tip indices) never get ticks.
  */
 export function niceTimeTicks(
   range: VisibleRange,
@@ -69,13 +90,12 @@ export function niceTimeTicks(
   if (bars.length === 0 || range.toIndex <= range.fromIndex) return [];
 
   const span = range.toIndex - range.fromIndex;
-  const step = niceIndexStep(span / Math.max(2, approxCount));
+  const stepBars = niceIndexStep(span / Math.max(2, approxCount));
 
   // Only emit ticks over real bars — empty TV-style pads get no grid/labels.
   const dataFrom = Math.max(range.fromIndex, 0);
   const dataTo = Math.min(range.toIndex, bars.length);
   if (dataTo - dataFrom < 1e-6) {
-    // Viewport is entirely empty pad (e.g. future-only) — one tip label if any.
     const tip = bars[bars.length - 1];
     if (!tip) return [];
     const tipIdx = bars.length - 1;
@@ -83,23 +103,36 @@ export function niceTimeTicks(
     return [{ index: tipIdx, time: tip.time }];
   }
 
-  const ticks: TimeTick[] = [];
-  let index = Math.ceil(dataFrom / step) * step;
-  if (index < dataFrom + step * 0.15) index += step;
+  const i0 = Math.max(0, Math.min(bars.length - 1, Math.ceil(dataFrom)));
+  const i1 = Math.max(0, Math.min(bars.length - 1, Math.floor(dataTo - 1e-9)));
+  if (i1 < i0) {
+    const bar = bars[i0];
+    return bar ? [{ index: i0, time: bar.time }] : [];
+  }
 
+  const period = estimateBarPeriod(bars, i0, i1 + 1);
+  const stepSec = Math.max(period, stepBars * period);
+  const fromTime = bars[i0]!.time;
+  const toTime = bars[i1]!.time;
+
+  // Phase-align to stepSec so the same clock lines keep identity across slides.
+  let t = Math.ceil(fromTime / stepSec) * stepSec;
+
+  const ticks: TimeTick[] = [];
   let lastBarIndex = -1;
   let lastTime = Number.NaN;
 
-  for (; index < dataTo - step * 0.05; index += step) {
-    const barIndex = Math.round(index);
+  for (; t <= toTime + period * 0.25; t += stepSec) {
+    const barIndex = indexAtOrBeforeBars(bars, t);
+    if (barIndex < dataFrom || barIndex >= dataTo) continue;
     if (barIndex < 0 || barIndex >= bars.length) continue;
     const bar = bars[barIndex];
     if (!bar) continue;
-    // Same candle or same unix second → skip (stops sticky duplicates)
+    // Skip if this bar is far behind the target (large gap / weekend hole)
+    if (t - bar.time > stepSec * 0.9) continue;
     if (barIndex === lastBarIndex || bar.time === lastTime) continue;
     lastBarIndex = barIndex;
     lastTime = bar.time;
-    // Snap X to the bar so the line sits on the candle that owns the label
     ticks.push({ index: barIndex, time: bar.time });
     if (ticks.length > 40) break;
   }

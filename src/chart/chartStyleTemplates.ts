@@ -574,6 +574,17 @@ export function resetChartStyleTemplate(): void {
   setActiveTemplateId(null);
 }
 
+/**
+ * Whether the TopBar light/dark toggle should stay visible.
+ * Dark-locked templates do not support light mode — hide the button.
+ */
+export function chartTemplateSupportsLightMode(id: string | null): boolean {
+  if (!id) return true;
+  const t = getChartStyleTemplate(id);
+  if (!t) return true;
+  return t.theme !== 'dark';
+}
+
 /** Heuristic: does current appearance match a template’s core colors? */
 export function matchTemplateId(a: ChartAppearance): string | null {
   const stored = getActiveTemplateId();

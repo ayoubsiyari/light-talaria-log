@@ -1,5 +1,12 @@
+import { useEffect, useState } from 'react';
 import { Button } from '@heroui/react';
 import type { SeriesType } from '@/chart';
+import {
+  chartTemplateSupportsLightMode,
+  getActiveTemplateId,
+  matchTemplateId,
+} from '@/chart/chartStyleTemplates';
+import { getAppearance, subscribeAppearance } from '@/chart/appearanceStore';
 import { BacktestRunMenu } from '@/components/backtest/BacktestRunMenu';
 import { IndicatorsMenu } from '@/components/indicators/IndicatorsMenu';
 import { BrandLogo } from '@/components/landing/BrandLogo';
@@ -80,6 +87,19 @@ export function TopBar({
   onRunBacktest,
   onCancelBacktest,
 }: TopBarProps) {
+  const [templateId, setTemplateId] = useState<string | null>(() =>
+    matchTemplateId(getAppearance()) ?? getActiveTemplateId(),
+  );
+
+  useEffect(() => {
+    setTemplateId(matchTemplateId(getAppearance()) ?? getActiveTemplateId());
+    return subscribeAppearance((a) => {
+      setTemplateId(matchTemplateId(a) ?? getActiveTemplateId());
+    });
+  }, []);
+
+  const showThemeToggle = chartTemplateSupportsLightMode(templateId);
+
   return (
     <header
       className={[
@@ -208,10 +228,10 @@ export function TopBar({
             onPress={onExitSession}
             aria-label="Exit session to Backtest"
           >
-            Backtest
+            Exit
           </Button>
         )}
-        <ThemeToggle compact />
+        {showThemeToggle && <ThemeToggle compact />}
         {backtestParams && onBacktestParamsChange ? (
           <BacktestRunMenu
             running={backtestRunning}

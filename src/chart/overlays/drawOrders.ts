@@ -30,24 +30,6 @@ export interface DrawOrdersOpts {
   priceAxisWidth: number;
 }
 
-function zoneFill(solid: string, alpha: number): string {
-  const hex = solid.trim();
-  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex);
-  if (m) {
-    let h = m[1]!;
-    if (h.length === 3) {
-      h = `${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}`;
-    }
-    const r = parseInt(h.slice(0, 2), 16);
-    const g = parseInt(h.slice(2, 4), 16);
-    const b = parseInt(h.slice(4, 6), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  }
-  const rgb = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i.exec(hex);
-  if (rgb) return `rgba(${rgb[1]}, ${rgb[2]}, ${rgb[3]}, ${alpha})`;
-  return solid;
-}
-
 function markerColor(fallback: string): string {
   if (typeof document === 'undefined') return fallback;
   const root = getComputedStyle(document.documentElement);
@@ -108,15 +90,16 @@ export function drawOrders(
       order.takeProfit != null ? dragPrice(order, 'tp', order.takeProfit) : null;
 
     // Soft band only while dragging this order's level — never a permanent fill.
+    // Use globalAlpha (not rgba parse) so CSS tokens like --success still get 0.2.
     if (
       levelDrag.active &&
       levelDrag.orderId === order.id &&
       entry != null
     ) {
       if (levelDrag.kind === 'sl' && sl != null) {
-        drawBand(ctx, plot, scale, entry, sl, zoneFill(sell, DRAG_BAND_ALPHA));
+        drawBand(ctx, plot, scale, entry, sl, sell, DRAG_BAND_ALPHA);
       } else if (levelDrag.kind === 'tp' && tp != null) {
-        drawBand(ctx, plot, scale, entry, tp, zoneFill(buy, DRAG_BAND_ALPHA));
+        drawBand(ctx, plot, scale, entry, tp, buy, DRAG_BAND_ALPHA);
       }
     }
 
@@ -318,14 +301,19 @@ function drawBand(
   a: number,
   b: number,
   fill: string,
+  alpha: number = DRAG_BAND_ALPHA,
 ): void {
   const y1 = priceToY(a, scale, plot);
   const y2 = priceToY(b, scale, plot);
   const top = Math.min(y1, y2);
   const h = Math.abs(y2 - y1);
   if (h < 0.5) return;
+  // globalAlpha so CSS tokens (--success/--danger) still render at 0.2.
+  ctx.save();
+  ctx.globalAlpha = alpha;
   ctx.fillStyle = fill;
   ctx.fillRect(plot.left, top, plot.width, h);
+  ctx.restore();
 }
 
 function drawLevelLine(

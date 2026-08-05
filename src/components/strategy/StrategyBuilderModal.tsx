@@ -16,7 +16,10 @@ import ReactFlow, {
   ReactFlowProvider,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+import { PieceChartPreview } from '@/components/strategy/PieceChartPreview';
+import { PieceLibraryModal } from '@/components/strategy/PieceLibraryModal';
 import { compileGraph } from '@/strategy/compileGraph';
+import { getPieceDoc } from '@/strategy/pieceDocs';
 import {
   createPieceData,
   getPieceDef,
@@ -124,6 +127,8 @@ function BuilderInner({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [paletteFilter, setPaletteFilter] = useState('');
   const [paletteCat, setPaletteCat] = useState<string>('all');
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [libraryKind, setLibraryKind] = useState<PieceKind | null>(null);
 
   const onConnect = useCallback(
     (c: Connection) => setEdges((eds) => addEdge({ ...c, type: 'default' }, eds)),
@@ -399,6 +404,17 @@ function BuilderInner({
                     ))}
                   </select>
                 </label>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="min-h-11 sm:min-h-8"
+                  onPress={() => {
+                    setLibraryKind(null);
+                    setLibraryOpen(true);
+                  }}
+                >
+                  Piece library
+                </Button>
                 {chartTimeframe && (
                   <span className="text-xs text-muted">
                     Chart TF: <span className="text-foreground font-medium">{chartTimeframe}</span>
@@ -445,7 +461,14 @@ function BuilderInner({
                   <ul className="flex-1 overflow-y-auto p-1.5 space-y-1">
                     {filteredPieces.map((p) => (
                       <li key={p.kind}>
-                        <PaletteItem def={p} onAdd={() => addPiece(p.kind)} />
+                        <PaletteItem
+                          def={p}
+                          onAdd={() => addPiece(p.kind)}
+                          onInfo={() => {
+                            setLibraryKind(p.kind);
+                            setLibraryOpen(true);
+                          }}
+                        />
                       </li>
                     ))}
                   </ul>
@@ -492,6 +515,10 @@ function BuilderInner({
                         updateSelectedPiece({ requiredTimeframe: tf })
                       }
                       onParam={updateParam}
+                      onOpenDocs={() => {
+                        setLibraryKind(selectedPiece.pieceKind);
+                        setLibraryOpen(true);
+                      }}
                     />
                   )}
                 </aside>
@@ -684,6 +711,14 @@ function BuilderInner({
           </div>
         </footer>
       </div>
+
+      {libraryOpen && (
+        <PieceLibraryModal
+          initialKind={libraryKind}
+          onClose={() => setLibraryOpen(false)}
+          onAddPiece={(kind) => addPiece(kind)}
+        />
+      )}
     </div>
   );
 }
@@ -702,26 +737,39 @@ const fieldClass =
 function PaletteItem({
   def,
   onAdd,
+  onInfo,
 }: {
   def: PieceDefinition;
   onAdd: () => void;
+  onInfo: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onAdd}
-      className="w-full text-left min-h-11 rounded-md border border-transparent hover:border-border hover:bg-surface px-2 py-1.5"
-    >
-      <span className="flex items-center justify-between gap-1">
-        <span className="text-xs font-medium text-foreground">{def.shortLabel}</span>
-        {def.defaultRequiredTimeframe && (
-          <span className="text-[9px] font-bold text-accent uppercase">
-            {def.defaultRequiredTimeframe}
-          </span>
-        )}
-      </span>
-      <span className="block text-[10px] text-muted line-clamp-2">{def.description}</span>
-    </button>
+    <div className="flex gap-0.5 items-stretch">
+      <button
+        type="button"
+        onClick={onAdd}
+        className="flex-1 text-left min-h-11 rounded-md border border-transparent hover:border-border hover:bg-surface px-2 py-1.5"
+      >
+        <span className="flex items-center justify-between gap-1">
+          <span className="text-xs font-medium text-foreground">{def.shortLabel}</span>
+          {def.defaultRequiredTimeframe && (
+            <span className="text-[9px] font-bold text-accent uppercase">
+              {def.defaultRequiredTimeframe}
+            </span>
+          )}
+        </span>
+        <span className="block text-[10px] text-muted line-clamp-2">{def.description}</span>
+      </button>
+      <button
+        type="button"
+        aria-label={`How ${def.label} works`}
+        title="How it works"
+        onClick={onInfo}
+        className="shrink-0 min-w-11 min-h-11 rounded-md text-xs font-bold text-muted hover:text-accent hover:bg-surface border border-transparent hover:border-border"
+      >
+        ?
+      </button>
+    </div>
   );
 }
 
@@ -732,6 +780,7 @@ function PieceInspector({
   onLabel,
   onRequiredTf,
   onParam,
+  onOpenDocs,
 }: {
   data: PieceNodeData;
   strategyTfs: string[];
@@ -739,8 +788,10 @@ function PieceInspector({
   onLabel: (v: string) => void;
   onRequiredTf: (tf: Timeframe | null) => void;
   onParam: (key: string, value: number | string | boolean) => void;
+  onOpenDocs: () => void;
 }) {
   const def = getPieceDef(data.pieceKind);
+  const doc = getPieceDoc(data.pieceKind);
   const req = data.requiredTimeframe ?? null;
   const tfWarn =
     req &&
@@ -749,6 +800,21 @@ function PieceInspector({
 
   return (
     <div className="space-y-2">
+      <div className="space-y-1">
+        <div className="flex items-center justify-between gap-2">
+          <Label className="text-xs">How it works</Label>
+          <button
+            type="button"
+            className="text-[10px] font-semibold text-accent min-h-8 px-1"
+            onClick={onOpenDocs}
+          >
+            Full docs
+          </button>
+        </div>
+        <p className="text-[11px] text-muted leading-snug">{doc.howItWorks}</p>
+        <p className="text-[11px] text-foreground/90 leading-snug">{doc.onChart}</p>
+        <PieceChartPreview visual={doc.visual} className="pt-1" />
+      </div>
       <div className="space-y-1">
         <Label className="text-xs">Label</Label>
         <input

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Button, Card } from '@heroui/react';
 import { AppPageFrame } from '@/components/shell/AppPageFrame';
+import { PieceLibraryModal } from '@/components/strategy/PieceLibraryModal';
 import { StrategyBuilderModal } from '@/components/strategy/StrategyBuilderModal';
 import {
   deleteStrategy,
@@ -29,6 +30,7 @@ export function StrategyPage({
   const strategies = useMemo(() => listStrategies(), [tick]);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [edit, setEdit] = useState<StrategyRecord | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
 
   const openNew = () => {
     setEdit(null);
@@ -43,7 +45,7 @@ export function StrategyPage({
     <AppPageFrame
       eyebrow="App"
       title="Strategies"
-      description="Build puzzle strategies from condition and logic pieces. Save, then Run on an open chart."
+      description="Build puzzle strategies from condition and logic pieces. Browse the piece library for how each detection looks on the chart."
       actions={
         <>
           {onGoBacktest && (
@@ -51,6 +53,13 @@ export function StrategyPage({
               Backtest
             </Button>
           )}
+          <Button
+            variant="secondary"
+            className="min-h-11"
+            onPress={() => setLibraryOpen(true)}
+          >
+            Piece library
+          </Button>
           <Button variant="primary" className="min-h-11" onPress={openNew}>
             Build strategy
           </Button>
@@ -136,6 +145,10 @@ export function StrategyPage({
           chartReady={chartReady}
           chartTimeframe={chartTimeframe}
         />
+      )}
+
+      {libraryOpen && (
+        <PieceLibraryModal onClose={() => setLibraryOpen(false)} />
       )}
     </AppPageFrame>
   );

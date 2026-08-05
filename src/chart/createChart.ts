@@ -440,10 +440,11 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   const orderLevelPrices = (): number[] => {
     const out: number[] = [];
     for (const o of chartOrders) {
+      // Closed-trade marks must not pin auto Y-scale (left sticky TP/SL ghosts).
+      if (o.closed) continue;
       if (o.entry != null) out.push(o.entry);
       if (o.stopLoss != null) out.push(o.stopLoss);
       if (o.takeProfit != null) out.push(o.takeProfit);
-      if (o.exit != null) out.push(o.exit);
     }
     return out;
   };
@@ -451,7 +452,11 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   const orderLevelsKey = (): string => {
     let key = '';
     for (const o of chartOrders) {
-      key += `${o.id}:${o.entry ?? ''}:${o.stopLoss ?? ''}:${o.takeProfit ?? ''}:${o.exit ?? ''}|`;
+      if (o.closed) {
+        key += `${o.id}:c|`;
+        continue;
+      }
+      key += `${o.id}:${o.entry ?? ''}:${o.stopLoss ?? ''}:${o.takeProfit ?? ''}|`;
     }
     return key;
   };

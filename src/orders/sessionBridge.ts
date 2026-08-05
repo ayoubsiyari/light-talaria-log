@@ -574,20 +574,22 @@ export function createOrderSessionBridge(input: {
         const bid = mark?.bid ?? 0;
         const ask =
           mark?.ask && mark.ask > 0 ? mark.ask : bid + spec.typicalSpread;
-        // Pending market: keep submit preview glued until fill (don't chase tip).
+        // Pending market: follow live tip (ask/bid) so the entry line stays on
+        // the grey last-price until the next-bar fill — frozen ask preview
+        // looked like a jump above/below the tip after Place → Play.
+        // LIMIT/STOP keep their fixed price level.
         const expectedEntry = isMarket
-          ? (marketPreviewEntry.get(o.id) ??
-            (o.side === 'BUY'
-              ? ask > 0
-                ? ask
-                : bid > 0
-                  ? bid
-                  : null
+          ? o.side === 'BUY'
+            ? ask > 0
+              ? ask
               : bid > 0
                 ? bid
-                : ask > 0
-                  ? ask
-                  : null))
+                : null
+            : bid > 0
+              ? bid
+              : ask > 0
+                ? ask
+                : null
           : (o.price ?? null);
         out.push({
           id: o.id,
@@ -604,8 +606,6 @@ export function createOrderSessionBridge(input: {
           unrealizedPnL: null,
           entryLocked: isMarket,
         });
-        void key;
-        void spec;
       }
       // Closed trades stay on chart as entry/exit marks after TP/SL fills.
       out.push(...closedChartOrdersFromJournal(journal, sessionId));

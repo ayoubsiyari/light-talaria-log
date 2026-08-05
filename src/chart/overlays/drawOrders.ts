@@ -519,7 +519,20 @@ function drawClosedTradeMarks(
       ? priceToY(bar.low, scale, plot) + 10
       : priceToY(bar.high, scale, plot) - 10;
     drawTriangleMarker(ctx, exitX, tipY, exitUp, color);
-    drawSolidLabel(ctx, plot, scale, exitPrice, exitLabel, color, onSolid);
+    // Label next to the exit candle — never a sticky right-edge pill
+    // (those looked like live TP/SL rails after the trade was flat).
+    ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif';
+    ctx.fillStyle = color;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const lx = Math.min(exitX + 8, plot.left + plot.width - 8);
+    const ly = Math.min(
+      Math.max(tipY, plot.top + 8),
+      plot.top + plot.height - 8,
+    );
+    ctx.fillText(exitLabel, lx, ly);
+    void onSolid;
+    void exitPrice;
   }
 
   ctx.font = FONT;

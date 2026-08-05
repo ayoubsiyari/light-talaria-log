@@ -845,6 +845,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-05 | Order persistence: command log + `rebuildTo` on load/seek-back; `ensureOrderBars` for IDB coverage — no wipe on rewind | Place → Play → Exit/reopen; scrub back — book restores |
 | 2026-08-05 | Closed marks: no Y-scale pin / no sticky axis pill; pending MARKET follows live tip again | Hit TP — labels at exit bar; Place→Play entry tracks tip |
 | 2026-08-05 | Closed trades stay on chart: entry/exit triangles + TP/SL label after fill (journal → toChartOrders) | Place → hit TP — marks remain; Balance updates |
+| 2026-08-05 | Order costs off for now: `ORDER_COSTS_ENABLED=false` zeros spread/commission/slippage (code kept) | Place buy — tip=ask; flip flag later for broker costs |
 
 ---
 

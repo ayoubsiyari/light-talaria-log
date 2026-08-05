@@ -5,6 +5,27 @@
 
 export type CommissionMode = 'perLot' | 'percent';
 
+/**
+ * Temporary gate: keep spread / commission / slippage code paths, but force
+ * them to zero in the live engine until Place Order UX is validated.
+ * Unit tests that set explicit spreads on SPEC_* fixtures are unaffected.
+ * Flip to `true` later to restore broker-like costs.
+ */
+export const ORDER_COSTS_ENABLED = false;
+
+/** Zero cost fields when {@link ORDER_COSTS_ENABLED} is false. */
+export function applyCostPolicy(spec: InstrumentSpec): InstrumentSpec {
+  if (ORDER_COSTS_ENABLED) return spec;
+  return {
+    ...spec,
+    typicalSpread: 0,
+    baseSlippage: 0,
+    slippagePerAtr: 0,
+    commissionPerLot: 0,
+    commissionPercent: 0,
+  };
+}
+
 export interface InstrumentSpec {
   symbol: string;
   /** ISO currency of the pair base (e.g. EUR in EURUSD). */
@@ -123,7 +144,7 @@ export function defaultSpecForSymbol(symbol: string): InstrumentSpec {
   const pipSize = xau ? 0.1 : jpy ? 0.01 : 0.0001;
   const digits = xau ? 2 : jpy ? 3 : 5;
   const key = instrumentSymbolKey(symbol);
-  return {
+  return applyCostPolicy({
     symbol: key.slice(0, 6) || key,
     baseCurrency,
     quoteCurrency,
@@ -136,6 +157,7 @@ export function defaultSpecForSymbol(symbol: string): InstrumentSpec {
     lotStep: 0.01,
     /** Min distance from bid/ask for pending limits/stops (1 pip — TV-like, placeable on last price). */
     stopLevel: pipSize,
+    // Nominal broker-like values — zeroed by applyCostPolicy while costs are off.
     typicalSpread: jpy ? 0.02 : xau ? 0.3 : 0.00015,
     baseSlippage: 0,
     slippagePerAtr: 0,
@@ -150,7 +172,7 @@ export function defaultSpecForSymbol(symbol: string): InstrumentSpec {
     swapTimeUtc: 21 * 3600,
     tripleSwapWeekday: 3,
     sessionCloseUtc: 21 * 3600,
-  };
+  });
 }
 
 /** Well-known fixtures used by unit tests (hand-tuned, not live broker). */

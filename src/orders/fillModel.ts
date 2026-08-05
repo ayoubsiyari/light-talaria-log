@@ -201,9 +201,6 @@ export function resolveSpread(
     return barSpread;
   }
   if (spec.typicalSpread > 0) return spec.typicalSpread;
-  // Loud fallback: a zero-spread backtest is a fantasy.
-  console.warn(
-    `[orders] zero spread for ${spec.symbol} — backtest will be unrealistically optimistic`,
-  );
+  // Silent when costs are intentionally off (ORDER_COSTS_ENABLED = false).
   return 0;
 }

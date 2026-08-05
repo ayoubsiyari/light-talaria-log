@@ -238,13 +238,14 @@ export function OrderTicket({
       ? `${symbol.slice(0, 3)}/${symbol.slice(3, 6)}`
       : symbol;
 
+  // Button shows expected fill (BUY→ask) — chart tip stays on bid.
   const placeLabel = [
     side === 'BUY' ? 'Buy' : 'Sell',
     '/',
     lots || 0.1,
     displaySym.replace('/', ''),
     '@',
-    entryPx.toFixed(digits),
+    (type === 'MARKET' ? fillPx : entryPx).toFixed(digits),
     type === 'MARKET' ? 'MARKET' : type === 'LIMIT' ? 'LIMIT' : 'STOP',
   ].join(' ');
 

@@ -8,6 +8,7 @@
  */
 
 import {
+  applyCostPolicy,
   defaultSpecForSymbol,
   instrumentSymbolKey,
   type InstrumentSpec,
@@ -117,9 +118,11 @@ export function createOrderSessionBridge(input: {
   for (const key of seedSymbols) {
     specs.set(
       key,
-      key === primaryKey && input.spec
-        ? input.spec
-        : defaultSpecForSymbol(key),
+      applyCostPolicy(
+        key === primaryKey && input.spec
+          ? input.spec
+          : defaultSpecForSymbol(key),
+      ),
     );
   }
 
@@ -574,22 +577,15 @@ export function createOrderSessionBridge(input: {
         const bid = mark?.bid ?? 0;
         const ask =
           mark?.ask && mark.ask > 0 ? mark.ask : bid + spec.typicalSpread;
-        // Pending market: follow live tip (ask/bid) so the entry line stays on
-        // the grey last-price until the next-bar fill — frozen ask preview
-        // looked like a jump above/below the tip after Place → Play.
-        // LIMIT/STOP keep their fixed price level.
+        // Pending market: glue chart entry to the tip (bid = last-price line).
+        // Using ask for BUY made a visible ~spread jump above the tip after Place.
+        // Engine still fills BUY at next open+ask; LIMIT/STOP keep fixed price.
         const expectedEntry = isMarket
-          ? o.side === 'BUY'
-            ? ask > 0
+          ? bid > 0
+            ? bid
+            : ask > 0
               ? ask
-              : bid > 0
-                ? bid
-                : null
-            : bid > 0
-              ? bid
-              : ask > 0
-                ? ask
-                : null
+              : null
           : (o.price ?? null);
         out.push({
           id: o.id,

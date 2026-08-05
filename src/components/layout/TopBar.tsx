@@ -220,17 +220,6 @@ export function TopBar({
           sync={layoutSync}
           onSyncChange={onLayoutSyncChange}
         />
-        {onExitSession && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 min-h-7 [@media(hover:none)]:min-h-11 px-2 text-xs shrink-0"
-            onPress={onExitSession}
-            aria-label="Exit session to Backtest"
-          >
-            Exit
-          </Button>
-        )}
         {showThemeToggle && <ThemeToggle compact />}
         {backtestParams && onBacktestParamsChange ? (
           <BacktestRunMenu

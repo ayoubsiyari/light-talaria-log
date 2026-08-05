@@ -40,10 +40,11 @@ export function resolveCrosshair(
   const bar = bars[barIndex] ?? null;
 
   if (mode === 'normal') {
+    // Sub-panes (volume / RSI / MACD): keep free Y. Remapping via main
+    // priceToY(close) snaps the hair into the middle of the price pane.
     const price = inMainPlot
       ? yToPrice(canvasY, priceScale, plot)
       : (bar?.close ?? yToPrice(plot.top + plot.height, priceScale, plot));
-    const y = inMainPlot ? canvasY : priceToY(price, priceScale, plot);
     const index = rawIndex;
     // Extrapolate past first/last bar so drawings can sit in empty pad space
     const time = timeAtLogicalIndex(bars, index) ?? 0;
@@ -51,7 +52,7 @@ export function resolveCrosshair(
       rawIndex >= -0.5 && rawIndex <= bars.length - 0.5 ? bars[barIndex] ?? null : null;
     return {
       x: canvasX,
-      y,
+      y: canvasY,
       index,
       time,
       price,
@@ -60,7 +61,7 @@ export function resolveCrosshair(
     };
   }
 
-  // Magnet modes: lock X to candle center
+  // Magnet modes: lock X to candle center; Y only on main plot
   if (!bar) return null;
   const x = indexToX(barIndex, range, plot);
 
@@ -77,7 +78,7 @@ export function resolveCrosshair(
     );
   }
 
-  const y = priceToY(price, priceScale, plot);
+  const y = inMainPlot ? priceToY(price, priceScale, plot) : canvasY;
   return {
     x,
     y,

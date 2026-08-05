@@ -41,6 +41,34 @@ export function computePriceScale(
   return { min: min - pad, max: max + pad };
 }
 
+/**
+ * Widen an auto price scale so entry / SL / TP stay on-screen.
+ * Without this, protective levels often sit outside the candle range and
+ * look like they “disappeared” (clipped by the plot).
+ */
+export function expandPriceScale(
+  scale: PriceScale,
+  prices: readonly (number | null | undefined)[],
+): PriceScale {
+  let { min, max } = scale;
+  let touched = false;
+  for (const p of prices) {
+    if (p == null || !Number.isFinite(p)) continue;
+    if (p < min) {
+      min = p;
+      touched = true;
+    }
+    if (p > max) {
+      max = p;
+      touched = true;
+    }
+  }
+  if (!touched) return scale;
+  const span = max - min;
+  const pad = (span > 0 ? span : Math.abs(max) || 1) * PRICE_PAD;
+  return { min: min - pad, max: max + pad };
+}
+
 /** Logical index → canvas x (center of bar slot). */
 export function indexToX(index: number, range: VisibleRange, plot: PlotRect): number {
   const span = range.toIndex - range.fromIndex;

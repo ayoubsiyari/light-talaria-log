@@ -184,6 +184,38 @@
   }
 
   /*
+   * App shell atmosphere — soft dark-blue wash on sides / corners (not flat black).
+   */
+  .app-shell {
+    background-color: var(--background);
+    background-image:
+      radial-gradient(ellipse 55% 45% at 0% 0%, color-mix(in oklab, #1e3a8a 28%, transparent), transparent 70%),
+      radial-gradient(ellipse 50% 40% at 100% 0%, color-mix(in oklab, #172554 22%, transparent), transparent 68%),
+      radial-gradient(ellipse 45% 50% at 100% 100%, color-mix(in oklab, #1e3a8a 18%, transparent), transparent 70%),
+      radial-gradient(ellipse 40% 45% at 0% 100%, color-mix(in oklab, #0f172a 35%, transparent), transparent 65%);
+  }
+
+  .app-shell-aside {
+    background: color-mix(in oklab, var(--surface) 88%, transparent);
+    backdrop-filter: blur(10px);
+  }
+
+  /* Neutral CTAs — no solid dark-blue fill */
+  .shell-cta {
+    background: color-mix(in oklab, var(--foreground) 8%, transparent) !important;
+    color: var(--foreground) !important;
+    border: 1px solid color-mix(in oklab, var(--foreground) 16%, transparent) !important;
+    box-shadow: none !important;
+  }
+  .shell-cta:hover {
+    background: color-mix(in oklab, var(--foreground) 14%, transparent) !important;
+    border-color: color-mix(in oklab, var(--foreground) 28%, transparent) !important;
+  }
+  .shell-cta:active {
+    background: color-mix(in oklab, var(--foreground) 10%, transparent) !important;
+  }
+
+  /*
    * V8b chrome language: left/bottom gradient accent bars + soft hover wells.
    * Colors stay on Hero tokens (--accent / --muted / --foreground).
    */

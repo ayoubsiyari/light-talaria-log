@@ -73,6 +73,7 @@ import {
 import { yToPaneValue } from './series/drawIndicatorPane';
 import {
   computePriceScale,
+  expandPriceScale,
   xToIndex,
   yToPrice,
   type PriceScale,
@@ -436,17 +437,37 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     }
   };
 
+  const orderLevelPrices = (): number[] => {
+    const out: number[] = [];
+    for (const o of chartOrders) {
+      if (o.entry != null) out.push(o.entry);
+      if (o.stopLoss != null) out.push(o.stopLoss);
+      if (o.takeProfit != null) out.push(o.takeProfit);
+    }
+    return out;
+  };
+
+  const orderLevelsKey = (): string => {
+    let key = '';
+    for (const o of chartOrders) {
+      key += `${o.id}:${o.entry ?? ''}:${o.stopLoss ?? ''}:${o.takeProfit ?? ''}|`;
+    }
+    return key;
+  };
+
   const resolvePriceScale = (): PriceScale => {
     if (priceScaleMode === 'manual' && manualPriceScale) {
       return manualPriceScale;
     }
-    const key = `${bars.length}|${range.fromIndex}|${range.toIndex}|${replayCursorTime ?? ''}`;
+    const levelsKey = orderLevelsKey();
+    const key = `${bars.length}|${range.fromIndex}|${range.toIndex}|${replayCursorTime ?? ''}|${levelsKey}`;
     if (cachedAutoScale && scaleCacheKey === key) return cachedAutoScale;
     const maxBarIndex =
       replayCursorTime != null && bars.length > 0
         ? indexAtOrBeforeBars(bars, replayCursorTime)
         : null;
-    cachedAutoScale = computePriceScale(bars, range, maxBarIndex);
+    const base = computePriceScale(bars, range, maxBarIndex);
+    cachedAutoScale = expandPriceScale(base, orderLevelPrices());
     scaleCacheKey = key;
     return cachedAutoScale;
   };
@@ -1346,9 +1367,17 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     },
 
     setOrders(orders: readonly ChartOrder[], selectedId = selectedOrderId) {
+      const prevLevels = orderLevelsKey();
       chartOrders = orders;
       if (selectedId !== undefined) selectedOrderId = selectedId;
-      markOverlayDirty();
+      // Level prices affect auto Y-scale — rebuild series when they change so
+      // SL/TP never sit clipped off-screen. PnL-only updates stay overlay-cheap.
+      if (prevLevels !== orderLevelsKey()) {
+        invalidateScaleCache();
+        markSceneDirty();
+      } else {
+        markOverlayDirty();
+      }
     },
 
     hitTestOrdersAt(y: number) {

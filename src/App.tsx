@@ -2748,12 +2748,18 @@ export default function App() {
           createdAt: cursorTime,
         },
       });
-      syncOrdersFromBridge();
+      // Always push panes imperatively — during Play, React→setOrders is skipped.
+      const all = bridge.toChartOrders(sessionIdRef.current ?? '');
+      setOrders(all);
+      setLastOrderReject(bridge.getLastReject());
+      setOrderEngineTick((n) => n + 1);
+      pushOrdersToPanes(all, id);
       const reject = bridge.getLastReject();
       if (reject) {
         // Keep ticket + draft levels so the user can fix and resubmit.
         setLastOrderReject(reject);
         setSelectedOrderId(null);
+        pushOrdersToPanes(all, null);
         return;
       }
       setLastOrderReject(null);
@@ -2762,7 +2768,7 @@ export default function App() {
       setTicketDraft(null);
       setActiveTab('open');
     },
-    [activePaneId, syncOrdersFromBridge],
+    [activePaneId, pushOrdersToPanes],
   );
 
   useEffect(() => subscribeBacktest(() => setBacktestTick((n) => n + 1)), []);
@@ -4171,7 +4177,16 @@ export default function App() {
         onPlay={() => {
           void armReplayPlay();
         }}
-        onPause={() => replayRef.current.pause()}
+        onPause={() => {
+          replayRef.current.pause();
+          // Re-sync React + panes from the live book (play throttles chrome).
+          const bridge = orderBridgeRef.current;
+          if (bridge) {
+            const all = bridge.toChartOrders(sessionIdRef.current ?? '');
+            setOrders(all);
+            pushOrdersToPanes(all, selectedOrderIdRef.current);
+          }
+        }}
         onToggle={() => {
           if (replayRef.current.get().playing) {
             replayRef.current.pause();

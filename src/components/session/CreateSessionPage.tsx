@@ -409,7 +409,7 @@ export function CreateSessionPage({
   ];
 
   return (
-    <div className="min-h-full bg-background text-foreground">
+    <div className="min-h-full text-foreground">
       <div
         className={[
           'mx-auto w-full max-w-[1400px] px-4 sm:px-6 py-5 sm:py-6 space-y-4',
@@ -423,15 +423,15 @@ export function CreateSessionPage({
           <div className="flex flex-wrap gap-2">
             <Button
               variant="secondary"
-              className="min-h-10"
+              className="shell-cta min-h-10"
               onPress={loadServer}
               isDisabled={remoteStatus === 'loading'}
             >
               {remoteStatus === 'loading' ? 'Loading…' : 'Refresh'}
             </Button>
             <Button
-              variant="primary"
-              className="min-h-10 font-semibold"
+              variant="secondary"
+              className="shell-cta min-h-10 font-semibold"
               onPress={() => setModalOpen(true)}
             >
               + Create session
@@ -448,7 +448,7 @@ export function CreateSessionPage({
               'bg-surface px-4 py-3 text-left hover:bg-background/60 transition-colors',
             ].join(' ')}
           >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[color:var(--accent-foreground)]">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-foreground/20 bg-foreground/10 text-foreground">
               <PlayIcon />
             </span>
             <div className="min-w-0 flex-1 space-y-1.5">
@@ -457,7 +457,7 @@ export function CreateSessionPage({
               </p>
               <div className="h-1 rounded-full bg-background overflow-hidden">
                 <div
-                  className="h-full bg-accent transition-[width]"
+                  className="h-full bg-foreground/35 transition-[width]"
                   style={{ width: `${Math.round(continueSession.progress)}%` }}
                 />
               </div>
@@ -468,14 +468,14 @@ export function CreateSessionPage({
           </button>
         )}
 
-        <div className="rounded-lg border border-[color:var(--tv-panel-line)] bg-surface">
+        <div className="rounded-lg border border-[color:var(--tv-panel-line)] bg-surface/80 backdrop-blur-sm">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3">
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
                 Stats
               </span>
               <div
-                className="inline-flex rounded-md border border-border p-0.5 bg-background"
+                className="inline-flex rounded-md border border-border p-0.5 bg-background/60"
                 role="group"
                 aria-label="Stats mode"
               >
@@ -487,7 +487,7 @@ export function CreateSessionPage({
                     className={[
                       'min-h-8 px-2.5 rounded text-xs font-semibold capitalize',
                       statsMode === mode
-                        ? 'bg-accent text-[color:var(--accent-foreground)]'
+                        ? 'bg-foreground/12 text-foreground'
                         : 'text-muted hover:text-foreground',
                     ].join(' ')}
                   >
@@ -526,7 +526,7 @@ export function CreateSessionPage({
                 className={[
                   'min-h-10 px-3 text-sm font-semibold border-b-2 -mb-px',
                   sessFilter === f.id
-                    ? 'border-accent text-foreground'
+                    ? 'border-foreground/70 text-foreground'
                     : 'border-transparent text-muted hover:text-foreground',
                 ].join(' ')}
               >
@@ -552,7 +552,7 @@ export function CreateSessionPage({
               onClick={() => setViewMode('list')}
               className={[
                 'min-h-9 min-w-9 flex items-center justify-center rounded',
-                viewMode === 'list' ? 'bg-accent/15 text-accent' : 'text-muted',
+                viewMode === 'list' ? 'bg-foreground/10 text-foreground' : 'text-muted',
               ].join(' ')}
             >
               <ListIcon />
@@ -564,7 +564,7 @@ export function CreateSessionPage({
               onClick={() => setViewMode('grid')}
               className={[
                 'min-h-9 min-w-9 flex items-center justify-center rounded',
-                viewMode === 'grid' ? 'bg-accent/15 text-accent' : 'text-muted',
+                viewMode === 'grid' ? 'bg-foreground/10 text-foreground' : 'text-muted',
               ].join(' ')}
             >
               <GridIcon />
@@ -576,7 +576,7 @@ export function CreateSessionPage({
           <Card className="bg-surface border border-border">
             <Card.Content className="px-5 py-4 space-y-3">
               <p className="text-sm text-danger">{remoteError ?? 'Server unreachable.'}</p>
-              <Button variant="primary" className="min-h-11" onPress={loadServer}>
+              <Button variant="secondary" className="shell-cta min-h-11" onPress={loadServer}>
                 Retry
               </Button>
             </Card.Content>
@@ -591,13 +591,17 @@ export function CreateSessionPage({
                   ? 'No sessions yet. Create a backtest session to start.'
                   : 'No sessions match this filter.'}
               </p>
-              <Button variant="primary" className="min-h-11" onPress={() => setModalOpen(true)}>
+              <Button
+                variant="secondary"
+                className="shell-cta min-h-11"
+                onPress={() => setModalOpen(true)}
+              >
                 + Create session
               </Button>
             </Card.Content>
           </Card>
         ) : viewMode === 'list' ? (
-          <div className="rounded-lg border border-[color:var(--tv-panel-line)] bg-surface overflow-x-auto">
+          <div className="rounded-lg border border-[color:var(--tv-panel-line)] bg-surface/80 backdrop-blur-sm overflow-x-auto">
             <table className="w-full min-w-[860px] text-sm text-left">
               <thead>
                 <tr className="border-b border-[color:var(--tv-panel-line)] text-xs text-muted">
@@ -630,7 +634,7 @@ export function CreateSessionPage({
                           type="button"
                           aria-label={row.progress === 0 ? 'Start' : 'Resume'}
                           onClick={() => onStart(s)}
-                          className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-[color:var(--accent-foreground)] hover:brightness-110"
+                          className="flex h-9 w-9 items-center justify-center rounded-full border border-foreground/20 bg-foreground/10 text-foreground hover:bg-foreground/16"
                         >
                           <PlayIcon />
                         </button>
@@ -641,8 +645,8 @@ export function CreateSessionPage({
                         </p>
                         <p className="text-xs text-muted mt-0.5">
                           {trades} {trades === 1 ? 'trade' : 'trades'}
-                          <span className="mx-1.5 text-accent/80">·</span>
-                          <span className="text-accent">{modeLabel}</span>
+                          <span className="mx-1.5 text-muted">·</span>
+                          <span className="text-muted">{modeLabel}</span>
                         </p>
                       </td>
                       <td className="px-3 py-3">
@@ -751,7 +755,7 @@ export function CreateSessionPage({
                         type="button"
                         aria-label="Open"
                         onClick={() => onStart(s)}
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[color:var(--accent-foreground)]"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-foreground/20 bg-foreground/10 text-foreground"
                       >
                         <PlayIcon />
                       </button>
@@ -788,7 +792,7 @@ export function CreateSessionPage({
                     </div>
                     <div className="h-1 rounded-full bg-background overflow-hidden">
                       <div
-                        className="h-full bg-accent"
+                        className="h-full bg-foreground/35"
                         style={{ width: `${Math.round(row.progress)}%` }}
                       />
                     </div>
@@ -891,7 +895,7 @@ export function CreateSessionPage({
                               <button
                                 key={p}
                                 type="button"
-                                className="inline-flex items-center gap-1.5 min-h-9 rounded-md border border-accent/40 bg-accent/10 px-2.5 text-sm text-foreground"
+                                className="inline-flex items-center gap-1.5 min-h-9 rounded-md border border-border bg-foreground/6 px-2.5 text-sm text-foreground"
                                 onClick={() => removePair(p)}
                                 title={
                                   selectedPairs.length <= 1
@@ -998,8 +1002,8 @@ export function CreateSessionPage({
                 Save
               </Button>
               <Button
-                variant="primary"
-                className="min-h-11"
+                variant="secondary"
+                className="shell-cta min-h-11 font-semibold"
                 isDisabled={!canCreate}
                 onPress={handleStart}
               >

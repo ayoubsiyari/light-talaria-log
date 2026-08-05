@@ -44,13 +44,13 @@ export function AppShell({
   };
 
   return (
-    <div className="h-dvh min-h-0 bg-background text-foreground flex overflow-hidden">
+    <div className="app-shell h-dvh min-h-0 text-foreground flex overflow-hidden">
       {/* Desktop rail — labeled, TV-style */}
       <aside
         className={[
-          'hidden sm:flex flex-col shrink-0 w-[13.5rem]',
+          'app-shell-aside hidden sm:flex flex-col shrink-0 w-[13.5rem]',
           'border-r border-[color:var(--tv-panel-line)]',
-          'bg-surface pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]',
+          'pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]',
           'pl-[env(safe-area-inset-left)]',
         ].join(' ')}
       >
@@ -61,15 +61,15 @@ export function AppShell({
           onClick={onGoHome}
           className="mx-3 mt-3 mb-2 flex items-center gap-2.5 rounded-md px-1.5 py-1.5 hover:bg-background/70 text-left"
         >
-          <BrandLogo size={22} variant="raster" className="w-[22px] h-[22px] shrink-0" />
-          <span className="text-sm font-semibold tracking-tight truncate">Talaria-Log</span>
+          <BrandLogo size={30} variant="raster" className="w-[30px] h-[30px] shrink-0" />
+          <span className="text-base font-semibold tracking-tight truncate">Talaria-Log</span>
         </button>
 
         {onCreateSession && (
           <div className="px-3 mb-3">
             <Button
-              variant="primary"
-              className="w-full min-h-10 justify-center text-sm font-semibold"
+              variant="secondary"
+              className="shell-cta w-full min-h-10 justify-center text-sm font-semibold"
               onPress={onCreateSession}
             >
               + Create Session
@@ -112,7 +112,7 @@ export function AppShell({
           className={[
             'sm:hidden shrink-0 flex items-center gap-2 px-2',
             'h-12 min-h-12 pt-[env(safe-area-inset-top)]',
-            'border-b border-[color:var(--tv-panel-line)] bg-surface',
+            'border-b border-[color:var(--tv-panel-line)] app-shell-aside',
           ].join(' ')}
         >
           <Button
@@ -136,9 +136,9 @@ export function AppShell({
           <div className="ml-auto flex items-center gap-1">
             {onCreateSession && (
               <Button
-                variant="primary"
+                variant="secondary"
                 size="sm"
-                className="min-h-9 text-xs font-semibold"
+                className="shell-cta min-h-9 text-xs font-semibold"
                 onPress={onCreateSession}
               >
                 + Create
@@ -164,8 +164,8 @@ export function AppShell({
               {onCreateSession && (
                 <div className="px-3 mb-2">
                   <Button
-                    variant="primary"
-                    className="w-full min-h-11 justify-center"
+                    variant="secondary"
+                    className="shell-cta w-full min-h-11 justify-center"
                     onPress={() => {
                       setMobileOpen(false);
                       onCreateSession();
@@ -187,13 +187,13 @@ export function AppShell({
                       className={[
                         'relative flex items-center gap-3 min-h-11 px-3 rounded-md text-sm text-left',
                         active
-                          ? 'bg-accent/15 text-accent'
+                          ? 'bg-foreground/8 text-foreground font-semibold'
                           : 'text-foreground hover:bg-background/70',
                       ].join(' ')}
                     >
                       {active && (
                         <span
-                          className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-accent"
+                          className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-foreground/70"
                           aria-hidden
                         />
                       )}
@@ -245,17 +245,17 @@ function NavRow({
       className={[
         'relative flex items-center gap-2.5 min-h-10 w-full px-2.5 rounded-md text-sm transition-colors text-left',
         active
-          ? 'bg-accent/15 text-accent font-semibold'
+          ? 'bg-foreground/8 text-foreground font-semibold'
           : 'text-muted hover:text-foreground hover:bg-background/70',
       ].join(' ')}
     >
       {active && (
         <span
-          className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent"
+          className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-foreground/70"
           aria-hidden
         />
       )}
-      <Icon className="w-[18px] h-[18px] shrink-0" />
+      <Icon className="w-5 h-5 shrink-0" />
       <span className="truncate">{label}</span>
     </button>
   );

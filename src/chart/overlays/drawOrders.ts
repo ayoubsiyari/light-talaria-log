@@ -13,23 +13,24 @@ import {
 } from '../scales';
 
 /**
- * TradingView-style order / position overlay (canvas only — no DOM).
- * Keep paint cheap: few fillRect/stroke calls, skip off-screen markers.
+ * Order / position overlay — canvas only.
+ * Solid TV-style pills; no heavy RR fills (optional soft band only while dragging).
  */
 
 const FONT = '600 11px ui-sans-serif, system-ui, sans-serif';
 const LABEL_H = 18;
 const AXIS_LABEL_H = 18;
+/** Soft RR band while dragging a level (user-requested ~0.2). */
+const DRAG_BAND_ALPHA = 0.2;
 
 export interface DrawOrdersOpts {
   bars: readonly ChartBar[];
   range: VisibleRange;
-  /** Full canvas width + price-axis width for axis chips. */
   width: number;
   priceAxisWidth: number;
 }
 
-function zoneFill(solid: string, alpha = 0.1): string {
+function zoneFill(solid: string, alpha: number): string {
   const hex = solid.trim();
   const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex);
   if (m) {
@@ -47,13 +48,12 @@ function zoneFill(solid: string, alpha = 0.1): string {
   return solid;
 }
 
-function markerColor(colors: ChartColors, fallback: string): string {
+function markerColor(fallback: string): string {
   if (typeof document === 'undefined') return fallback;
   const root = getComputedStyle(document.documentElement);
   return (
     root.getPropertyValue('--chart-order-marker').trim() ||
     root.getPropertyValue('--link').trim() ||
-    colors.accent ||
     fallback
   );
 }
@@ -92,7 +92,6 @@ export function drawOrders(
   if (orders.length === 0 && !levelDrag.active) return;
 
   const { buy, sell } = orderColors(colors);
-  const labelBg = colors.labelBg || 'rgba(19, 21, 23, 0.92)';
 
   ctx.save();
   ctx.beginPath();
@@ -108,11 +107,17 @@ export function drawOrders(
     const tp =
       order.takeProfit != null ? dragPrice(order, 'tp', order.takeProfit) : null;
 
-    if (entry != null && sl != null && Math.abs(entry - sl) > 1e-12) {
-      drawBand(ctx, plot, scale, entry, sl, zoneFill(sell));
-    }
-    if (entry != null && tp != null && Math.abs(entry - tp) > 1e-12) {
-      drawBand(ctx, plot, scale, entry, tp, zoneFill(buy));
+    // Soft band only while dragging this order's level — never a permanent fill.
+    if (
+      levelDrag.active &&
+      levelDrag.orderId === order.id &&
+      entry != null
+    ) {
+      if (levelDrag.kind === 'sl' && sl != null) {
+        drawBand(ctx, plot, scale, entry, sl, zoneFill(sell, DRAG_BAND_ALPHA));
+      } else if (levelDrag.kind === 'tp' && tp != null) {
+        drawBand(ctx, plot, scale, entry, tp, zoneFill(buy, DRAG_BAND_ALPHA));
+      }
     }
 
     const openPos = !order.working && !order.draft && order.entry != null;
@@ -121,17 +126,20 @@ export function drawOrders(
     const sizeTxt =
       order.size != null && Number.isFinite(order.size)
         ? order.size.toFixed(1)
-        : order.size != null
-          ? String(order.size)
-          : '';
+        : '';
 
-    // Entry line + label
     if (entry != null) {
       const pnl = openPos ? order.unrealizedPnL : null;
-      const entryColor = sideBuy ? buy : sell;
+      const entryColor =
+        pnl != null && Number.isFinite(pnl)
+          ? pnl >= 0
+            ? buy
+            : sell
+          : sideBuy
+            ? buy
+            : sell;
       drawLevelLine(ctx, plot, scale, entry, entryColor, {
         dashed: pending,
-        selected,
         width: openPos || selected ? 1.5 : 1,
       });
 
@@ -139,13 +147,10 @@ export function drawOrders(
         const seq = order.seqLabel ?? 1;
         const pnlTxt =
           pnl != null && Number.isFinite(pnl) ? formatMoney(pnl) : '$0';
-        drawPositionLabel(ctx, plot, scale, entry, {
-          prefix: `${seq}. P&L: ${pnlTxt} | `,
-          qty: sizeTxt,
-          color: entryColor,
-          bg: labelBg,
-          onSolid: colors.onSolid,
-        });
+        const label = sizeTxt
+          ? `${seq}. P&L: ${pnlTxt}  ${sizeTxt}`
+          : `${seq}. P&L: ${pnlTxt}`;
+        drawSolidLabel(ctx, plot, scale, entry, label, entryColor, colors.onSolid);
       } else {
         const sideTxt = sideBuy ? 'Buy' : 'Sell';
         const parts = [
@@ -154,14 +159,14 @@ export function drawOrders(
           sizeTxt || null,
           formatPrice(entry),
         ].filter(Boolean) as string[];
-        drawSimpleBorderLabel(
+        drawSolidLabel(
           ctx,
           plot,
           scale,
           entry,
           parts.join('  '),
           entryColor,
-          labelBg,
+          colors.onSolid,
         );
       }
     }
@@ -174,32 +179,28 @@ export function drawOrders(
         levelDrag.invalidReason != null;
       drawLevelLine(ctx, plot, scale, sl, sell, {
         dashed: true,
-        selected: selected || slInvalid,
-        width: 1,
+        width: selected || slInvalid ? 1.5 : 1,
       });
       if (openPos) {
         const pnl =
           order.stopLossPnL != null && Number.isFinite(order.stopLossPnL)
             ? formatMoney(order.stopLossPnL)
-            : '—';
-        drawPositionLabel(ctx, plot, scale, sl, {
-          prefix: slInvalid
-            ? `SL. invalid | `
-            : `SL. P&L: ${pnl} | `,
-          qty: sizeTxt,
-          color: sell,
-          bg: labelBg,
-          onSolid: colors.onSolid,
-        });
+            : null;
+        const label = slInvalid
+          ? `SL  ${formatPrice(sl)}  invalid`
+          : pnl != null
+            ? `SL  ${pnl}`
+            : `SL  ${formatPrice(sl)}`;
+        drawSolidLabel(ctx, plot, scale, sl, label, sell, colors.onSolid);
       } else {
-        drawSimpleBorderLabel(
+        drawSolidLabel(
           ctx,
           plot,
           scale,
           sl,
           slInvalid ? `SL  ${formatPrice(sl)}  invalid` : `SL  ${formatPrice(sl)}`,
           sell,
-          labelBg,
+          colors.onSolid,
         );
       }
     }
@@ -207,35 +208,29 @@ export function drawOrders(
     if (tp != null) {
       drawLevelLine(ctx, plot, scale, tp, buy, {
         dashed: true,
-        selected,
-        width: 1,
+        width: selected ? 1.5 : 1,
       });
       if (openPos) {
         const pnl =
           order.takeProfitPnL != null && Number.isFinite(order.takeProfitPnL)
             ? formatMoney(order.takeProfitPnL)
-            : '—';
-        drawPositionLabel(ctx, plot, scale, tp, {
-          prefix: `PT. P&L: ${pnl} | `,
-          qty: sizeTxt,
-          color: buy,
-          bg: labelBg,
-          onSolid: colors.onSolid,
-        });
+            : null;
+        const label =
+          pnl != null ? `TP  ${pnl}` : `TP  ${formatPrice(tp)}`;
+        drawSolidLabel(ctx, plot, scale, tp, label, buy, colors.onSolid);
       } else {
-        drawSimpleBorderLabel(
+        drawSolidLabel(
           ctx,
           plot,
           scale,
           tp,
-          `PT  ${formatPrice(tp)}`,
+          `TP  ${formatPrice(tp)}`,
           buy,
-          labelBg,
+          colors.onSolid,
         );
       }
     }
 
-    // Entry fill marker on the open candle (arrow + price) — skip if off-screen.
     if (
       openPos &&
       entry != null &&
@@ -252,8 +247,7 @@ export function drawOrders(
         order.createdAt,
         entry,
         sideBuy,
-        // Bright marker (TV uses cyan); fall back to accent / side color.
-        markerColor(colors, sideBuy ? buy : sell),
+        markerColor(sideBuy ? buy : sell),
         colors.muted,
       );
     }
@@ -261,36 +255,20 @@ export function drawOrders(
 
   ctx.restore();
 
-  // Axis price chips (outside plot clip) — same pattern as last-price notch.
+  // Axis chips for SL / TP only (entry conflicts with last-price tag).
   if (opts && opts.priceAxisWidth > 0) {
     for (const order of orders) {
-      const openPos = !order.working && !order.draft && order.entry != null;
-      if (!openPos && !order.working && !order.draft) continue;
-      const entry =
-        order.entry != null ? dragPrice(order, 'entry', order.entry) : null;
       const sl =
         order.stopLoss != null ? dragPrice(order, 'sl', order.stopLoss) : null;
       const tp =
         order.takeProfit != null
           ? dragPrice(order, 'tp', order.takeProfit)
           : null;
-      const sideBuy = order.side === 'buy';
       if (tp != null) {
         drawAxisChip(ctx, plot, scale, opts, tp, buy, colors.onSolid);
       }
       if (sl != null) {
         drawAxisChip(ctx, plot, scale, opts, sl, sell, colors.onSolid);
-      }
-      if (entry != null) {
-        drawAxisChip(
-          ctx,
-          plot,
-          scale,
-          opts,
-          entry,
-          sideBuy ? buy : sell,
-          colors.onSolid,
-        );
       }
     }
   }
@@ -326,7 +304,7 @@ function drawLevelLine(
   scale: PriceScale,
   price: number,
   color: string,
-  opts: { dashed?: boolean; selected?: boolean; width?: number },
+  opts: { dashed?: boolean; width?: number },
 ): void {
   const y = priceToY(price, scale, plot);
   if (y < plot.top - 2 || y > plot.top + plot.height + 2) return;
@@ -343,96 +321,37 @@ function drawLevelLine(
   ctx.globalAlpha = 1;
 }
 
-/** Dark fill + colored border; qty in solid chip; visual ✕ (close via TradeDock). */
-function drawPositionLabel(
-  ctx: CanvasRenderingContext2D,
-  plot: PlotRect,
-  scale: PriceScale,
-  price: number,
-  parts: {
-    prefix: string;
-    qty: string;
-    color: string;
-    bg: string;
-    onSolid: string;
-  },
-): void {
-  const y = priceToY(price, scale, plot);
-  if (y < plot.top - 2 || y > plot.top + plot.height + 2) return;
-
-  const padX = 6;
-  const qtyPad = 4;
-  const closeTxt = '✕';
-  const prefixW = ctx.measureText(parts.prefix).width;
-  const qtyW = parts.qty ? ctx.measureText(parts.qty).width + qtyPad * 2 : 0;
-  const midW = parts.qty ? ctx.measureText(' | ').width : 0;
-  const closeW = ctx.measureText(closeTxt).width;
-  const w = padX + prefixW + qtyW + midW + closeW + padX;
-  const x = plot.left + plot.width - w - 4;
-  const top = Math.min(
-    Math.max(y - LABEL_H / 2, plot.top + 1),
-    plot.top + plot.height - LABEL_H - 1,
-  );
-
-  ctx.fillStyle = parts.bg;
-  roundRect(ctx, x, top, w, LABEL_H, 2);
-  ctx.fill();
-  ctx.strokeStyle = parts.color;
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  const cy = top + LABEL_H / 2;
-  ctx.fillStyle = parts.color;
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  let cx = x + padX;
-  ctx.fillText(parts.prefix, cx, cy);
-  cx += prefixW;
-
-  if (parts.qty) {
-    const qh = 14;
-    const qy = top + (LABEL_H - qh) / 2;
-    ctx.fillStyle = parts.color;
-    roundRect(ctx, cx, qy, qtyW, qh, 2);
-    ctx.fill();
-    ctx.fillStyle = parts.onSolid;
-    ctx.fillText(parts.qty, cx + qtyPad, cy);
-    cx += qtyW;
-    ctx.fillStyle = parts.color;
-    ctx.fillText(' | ', cx, cy);
-    cx += midW;
-  }
-
-  ctx.fillStyle = parts.color;
-  ctx.fillText(closeTxt, cx, cy);
-}
-
-function drawSimpleBorderLabel(
+/** Solid colored pill — readable on candles, lighter than bordered dark boxes. */
+function drawSolidLabel(
   ctx: CanvasRenderingContext2D,
   plot: PlotRect,
   scale: PriceScale,
   price: number,
   text: string,
-  color: string,
-  bg: string,
+  fill: string,
+  textColor: string,
 ): void {
   const y = priceToY(price, scale, plot);
   if (y < plot.top - 2 || y > plot.top + plot.height + 2) return;
+
   const padX = 7;
   const tw = ctx.measureText(text).width;
   const w = tw + padX * 2;
-  const x = plot.left + plot.width - w - 4;
+  const x = plot.left + plot.width - w - 6;
   const top = Math.min(
     Math.max(y - LABEL_H / 2, plot.top + 1),
     plot.top + plot.height - LABEL_H - 1,
   );
-  ctx.fillStyle = bg;
-  roundRect(ctx, x, top, w, LABEL_H, 2);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  roundRect(ctx, x + 1, top + 1, w, LABEL_H, 3);
   ctx.fill();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  ctx.fillStyle = color;
+
+  ctx.fillStyle = fill;
+  roundRect(ctx, x, top, w, LABEL_H, 3);
+  ctx.fill();
+
+  ctx.fillStyle = textColor;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x + padX, top + LABEL_H / 2);
@@ -462,7 +381,6 @@ function drawEntryMarker(
 
   if (tipY < plot.top - 4 || tipY > plot.top + plot.height + 4) return;
 
-  // Small filled triangle (TV entry arrow).
   const s = 5;
   ctx.fillStyle = arrowColor;
   ctx.beginPath();

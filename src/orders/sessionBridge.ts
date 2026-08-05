@@ -136,6 +136,12 @@ export function createOrderSessionBridge(input: {
   let lastSteppedTime: number | null = null;
   /** Last mark per symbol (bid = bar.close). */
   const marks = new Map<string, SymbolMark>();
+  /**
+   * Frozen chart preview for pending MARKET entries (submit bid/ask).
+   * Without this, Play updates the line to every new tip close before fill,
+   * so the order appears to jump away from where the user placed it.
+   */
+  const marketPreviewEntry = new Map<string, number>();
   let lastReject: string | null = null;
   const listeners = new Set<() => void>();
 
@@ -257,12 +263,23 @@ export function createOrderSessionBridge(input: {
       lastReject = null;
       const orderSym = cmd.order.symbol || state.symbol;
       const spec = specFor(orderSym);
-      if (cmd.bid > 0) {
+      const bid = cmd.bid > 0 ? cmd.bid : 0;
+      const ask = cmd.ask > 0 ? cmd.ask : bid > 0 ? bid + spec.typicalSpread : 0;
+      if (bid > 0) {
         const key = instrumentSymbolKey(orderSym);
-        marks.set(key, {
-          bid: cmd.bid,
-          ask: cmd.ask > 0 ? cmd.ask : cmd.bid + spec.typicalSpread,
-        });
+        marks.set(key, { bid, ask });
+      }
+      // Freeze expected fill for chart: BUY→ask, SELL→bid (matches §4.3 side).
+      if (cmd.order.type === 'MARKET' && (bid > 0 || ask > 0)) {
+        const preview =
+          cmd.order.side === 'BUY'
+            ? ask > 0
+              ? ask
+              : bid
+            : bid > 0
+              ? bid
+              : ask;
+        if (preview > 0) marketPreviewEntry.set(cmd.order.id, preview);
       }
       const result = reduceCommand(
         state,
@@ -277,6 +294,10 @@ export function createOrderSessionBridge(input: {
         spec,
       );
       state = result.state;
+      // Drop preview if submit was rejected.
+      if (!state.workingIds.includes(cmd.order.id)) {
+        marketPreviewEntry.delete(cmd.order.id);
+      }
       // Anchor the step cursor at submit time so Play cannot re-feed history
       // before this bar (which would fill a market on the first dataset bar).
       if (lastSteppedTime == null || cmd.cursorTime > lastSteppedTime) {
@@ -295,6 +316,7 @@ export function createOrderSessionBridge(input: {
         spec,
       );
       state = result.state;
+      marketPreviewEntry.delete(orderId);
       commit(result.events);
       return result.events;
     },
@@ -328,6 +350,7 @@ export function createOrderSessionBridge(input: {
       });
       lastSteppedTime = null;
       marks.clear();
+      marketPreviewEntry.clear();
       journal = createJournal(input.sessionId, journal.bootstrap);
       persistJournal(journal);
       lastReject = null;
@@ -337,6 +360,10 @@ export function createOrderSessionBridge(input: {
 
     toChartOrders(sessionId) {
       const out: ChartOrder[] = [];
+      // Drop previews for orders that are no longer working (filled/cancelled).
+      for (const id of [...marketPreviewEntry.keys()]) {
+        if (!state.workingIds.includes(id)) marketPreviewEntry.delete(id);
+      }
 
       // Open positions keep entry + protective levels until SL/TP (or close) fills.
       for (const pos of Object.values(state.positions)) {
@@ -396,12 +423,20 @@ export function createOrderSessionBridge(input: {
         const bid = mark?.bid ?? 0;
         const ask =
           mark?.ask && mark.ask > 0 ? mark.ask : bid + spec.typicalSpread;
+        // Pending market: keep submit preview glued until fill (don't chase tip).
         const expectedEntry = isMarket
-          ? bid > 0
-            ? bid
-            : ask > 0
-              ? ask
-              : null
+          ? (marketPreviewEntry.get(o.id) ??
+            (o.side === 'BUY'
+              ? ask > 0
+                ? ask
+                : bid > 0
+                  ? bid
+                  : null
+              : bid > 0
+                ? bid
+                : ask > 0
+                  ? ask
+                  : null))
           : (o.price ?? null);
         out.push({
           id: o.id,
@@ -418,6 +453,7 @@ export function createOrderSessionBridge(input: {
           unrealizedPnL: null,
           entryLocked: isMarket,
         });
+        void key;
         void spec;
       }
       return out;

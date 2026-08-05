@@ -11,6 +11,10 @@ import {
   type OrderJournal,
 } from './journal';
 import type { TradeExitReason } from './orderTypes';
+import type { ChartOrder } from '@/types/order';
+
+/** Cap closed-trade markers on chart (oldest dropped). */
+const MAX_CLOSED_CHART_MARKS = 80;
 
 const STORAGE_PREFIX = 'talaria.orderJournal.v1:';
 
@@ -93,6 +97,99 @@ function asExitReason(v: unknown): TradeExitReason {
 function asTags(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   return v.filter((t): t is string => typeof t === 'string' && t.length > 0);
+}
+
+/**
+ * Closed trades as chart overlays (entry + exit marks).
+ * Used so TP/SL fills leave markers after the live position is gone.
+ */
+export function closedChartOrdersFromJournal(
+  journal: OrderJournal,
+  sessionId: string,
+): ChartOrder[] {
+  const opens = new Map<
+    string,
+    {
+      side: 'BUY' | 'SELL';
+      entryPrice: number;
+      entryTime: number;
+      size: number;
+      symbol: string;
+    }
+  >();
+  const out: ChartOrder[] = [];
+  const bootstrapSym = journal.bootstrap.symbol;
+
+  for (const e of journal.entries) {
+    if (e.type === 'POSITION_OPENED') {
+      const id = asStr(e.payload.positionId);
+      const side = asStr(e.payload.side);
+      const entryPrice = asNum(e.payload.entryPrice);
+      const size = asNum(e.payload.size);
+      if (!id || (side !== 'BUY' && side !== 'SELL') || entryPrice == null || size == null) {
+        continue;
+      }
+      opens.set(id, {
+        side,
+        entryPrice,
+        entryTime: e.cursorTime,
+        size,
+        symbol: asStr(e.payload.symbol) ?? bootstrapSym,
+      });
+      continue;
+    }
+
+    if (e.type !== 'POSITION_CLOSED') continue;
+    const id = asStr(e.payload.positionId);
+    const fillPrice =
+      asNum(e.payload.fillPrice) ?? asNum(e.payload.fillsPrice);
+    const size = asNum(e.payload.size);
+    if (!id || fillPrice == null || size == null) continue;
+    const open = opens.get(id);
+    opens.delete(id);
+
+    const sidePayload = asStr(e.payload.side);
+    const side: 'buy' | 'sell' =
+      sidePayload === 'BUY' || sidePayload === 'SELL'
+        ? sidePayload === 'BUY'
+          ? 'buy'
+          : 'sell'
+        : open
+          ? open.side === 'BUY'
+            ? 'buy'
+            : 'sell'
+          : 'buy';
+    const entryPrice =
+      asNum(e.payload.entryPrice) ?? open?.entryPrice ?? fillPrice;
+    const entryTime =
+      asNum(e.payload.openedAt) ?? open?.entryTime ?? e.cursorTime;
+    const tradeSymbol =
+      asStr(e.payload.symbol) ?? open?.symbol ?? bootstrapSym;
+    const net = asNum(e.payload.netPnLAccount) ?? 0;
+    const exitReason = asExitReason(e.payload.exitReason);
+
+    out.push({
+      id: `closed-${id}-${e.seq}`,
+      sessionId,
+      pair: tradeSymbol,
+      side,
+      entry: entryPrice,
+      stopLoss: null,
+      takeProfit: null,
+      createdAt: entryTime,
+      enginePositionId: id,
+      closed: true,
+      exit: fillPrice,
+      exitAt: e.cursorTime,
+      exitReason,
+      realizedPnL: net,
+      size,
+      unrealizedPnL: null,
+    });
+  }
+
+  if (out.length <= MAX_CLOSED_CHART_MARKS) return out;
+  return out.slice(out.length - MAX_CLOSED_CHART_MARKS);
 }
 
 /** Build closed-trade list from POSITION_OPENED / POSITION_CLOSED events. */

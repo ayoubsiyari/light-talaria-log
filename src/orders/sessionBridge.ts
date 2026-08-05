@@ -35,6 +35,7 @@ import type {
   OrderEngineState,
 } from './orderTypes';
 import { unrealizedPnL } from './pnl';
+import { closedChartOrdersFromJournal } from './tradeJournal';
 import type { ChartBar } from '@/types/bar';
 import type { ChartOrder } from '@/types/order';
 
@@ -606,6 +607,8 @@ export function createOrderSessionBridge(input: {
         void key;
         void spec;
       }
+      // Closed trades stay on chart as entry/exit marks after TP/SL fills.
+      out.push(...closedChartOrdersFromJournal(journal, sessionId));
       return out;
     },
 

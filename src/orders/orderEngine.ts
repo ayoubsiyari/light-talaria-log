@@ -469,6 +469,7 @@ function applyFillToPosition(
   };
   next = pushEvent(events, next, cursorTime, 'POSITION_OPENED', {
     positionId: posId,
+    symbol: pos.symbol,
     side: pos.side,
     size: pos.size,
     entryPrice: pos.entryPrice,
@@ -618,6 +619,7 @@ function closeOrReducePosition(
     };
     next = pushEvent(events, next, cursorTime, 'POSITION_CLOSED', {
       positionId: pos.id,
+      symbol: pos.symbol,
       side: pos.side,
       openedAt: pos.openedAt,
       entryPrice: pos.entryPrice,

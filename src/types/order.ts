@@ -46,6 +46,19 @@ export interface ChartOrder {
    * SL/TP remain draggable.
    */
   entryLocked?: boolean;
+  /**
+   * Closed trade from the order journal — draw entry/exit marks only
+   * (no live SL/TP lines). Set when TP/SL/manual close fills.
+   */
+  closed?: boolean;
+  /** Exit fill price (closed trades). */
+  exit?: number | null;
+  /** Exit bar time (unix sec). */
+  exitAt?: number;
+  /** TP | SL | MANUAL | STOP_OUT | TRAILING */
+  exitReason?: string;
+  /** Realized net P&L in account currency. */
+  realizedPnL?: number | null;
 }
 
 export type OrderLineKind = 'entry' | 'sl' | 'tp';

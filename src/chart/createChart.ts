@@ -443,6 +443,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       if (o.entry != null) out.push(o.entry);
       if (o.stopLoss != null) out.push(o.stopLoss);
       if (o.takeProfit != null) out.push(o.takeProfit);
+      if (o.exit != null) out.push(o.exit);
     }
     return out;
   };
@@ -450,7 +451,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   const orderLevelsKey = (): string => {
     let key = '';
     for (const o of chartOrders) {
-      key += `${o.id}:${o.entry ?? ''}:${o.stopLoss ?? ''}:${o.takeProfit ?? ''}|`;
+      key += `${o.id}:${o.entry ?? ''}:${o.stopLoss ?? ''}:${o.takeProfit ?? ''}:${o.exit ?? ''}|`;
     }
     return key;
   };

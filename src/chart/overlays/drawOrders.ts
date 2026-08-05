@@ -120,13 +120,42 @@ export function drawOrders(
       }
     }
 
-    const openPos = !order.working && !order.draft && order.entry != null;
+    const closed = Boolean(order.closed);
+    const openPos =
+      !order.working && !order.draft && !closed && order.entry != null;
     const pending = Boolean(order.working || order.draft);
     const sideBuy = order.side === 'buy';
     const sizeTxt =
       order.size != null && Number.isFinite(order.size)
         ? order.size.toFixed(1)
         : '';
+
+    // Closed trade: entry + exit candle marks (no live SL/TP rails).
+    if (closed && opts && order.entry != null && order.exit != null) {
+      const pnl = order.realizedPnL;
+      const win = pnl != null && Number.isFinite(pnl) ? pnl >= 0 : sideBuy;
+      const markCol = win ? buy : sell;
+      const reason = (order.exitReason ?? 'Exit').toUpperCase();
+      const pnlTxt =
+        pnl != null && Number.isFinite(pnl) ? formatMoney(pnl) : '';
+      drawClosedTradeMarks(
+        ctx,
+        opts.bars,
+        opts.range,
+        plot,
+        scale,
+        order.createdAt,
+        order.entry,
+        order.exitAt ?? order.createdAt,
+        order.exit,
+        sideBuy,
+        markCol,
+        colors.muted,
+        `${reason}${pnlTxt ? `  ${pnlTxt}` : ''}`,
+        colors.onSolid,
+      );
+      continue;
+    }
 
     if (entry != null) {
       const pnl = openPos ? order.unrealizedPnL : null;
@@ -258,6 +287,7 @@ export function drawOrders(
   // Axis chips for SL / TP only (entry conflicts with last-price tag).
   if (opts && opts.priceAxisWidth > 0) {
     for (const order of orders) {
+      if (order.closed) continue;
       const sl =
         order.stopLoss != null ? dragPrice(order, 'sl', order.stopLoss) : null;
       const tp =
@@ -381,10 +411,31 @@ function drawEntryMarker(
 
   if (tipY < plot.top - 4 || tipY > plot.top + plot.height + 4) return;
 
+  drawTriangleMarker(ctx, x, tipY, isBuy, arrowColor);
+
+  const label = `$${formatPrice(entryPrice)}`;
+  ctx.font = '500 10px ui-sans-serif, system-ui, sans-serif';
+  ctx.fillStyle = textColor;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = isBuy ? 'top' : 'bottom';
   const s = 5;
-  ctx.fillStyle = arrowColor;
+  ctx.fillText(label, x, isBuy ? tipY + s + 2 : tipY - s - 2);
+  ctx.font = FONT;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+}
+
+function drawTriangleMarker(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  tipY: number,
+  pointUp: boolean,
+  color: string,
+): void {
+  const s = 5;
+  ctx.fillStyle = color;
   ctx.beginPath();
-  if (isBuy) {
+  if (pointUp) {
     ctx.moveTo(x, tipY - s);
     ctx.lineTo(x - s, tipY + s * 0.6);
     ctx.lineTo(x + s, tipY + s * 0.6);
@@ -395,13 +446,82 @@ function drawEntryMarker(
   }
   ctx.closePath();
   ctx.fill();
+}
 
-  const label = `$${formatPrice(entryPrice)}`;
-  ctx.font = '500 10px ui-sans-serif, system-ui, sans-serif';
-  ctx.fillStyle = textColor;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = isBuy ? 'top' : 'bottom';
-  ctx.fillText(label, x, isBuy ? tipY + s + 2 : tipY - s - 2);
+/** Entry ▲/▼ on open candle + exit ▲/▼ on close candle + faint connector + exit label. */
+function drawClosedTradeMarks(
+  ctx: CanvasRenderingContext2D,
+  bars: readonly ChartBar[],
+  range: VisibleRange,
+  plot: PlotRect,
+  scale: PriceScale,
+  entryTime: number,
+  entryPrice: number,
+  exitTime: number,
+  exitPrice: number,
+  isBuy: boolean,
+  color: string,
+  muted: string,
+  exitLabel: string,
+  onSolid: string,
+): void {
+  const entryIdx = indexAtOrBeforeBars(bars, entryTime);
+  const exitIdx = indexAtOrBeforeBars(bars, exitTime);
+  if (entryIdx < 0 || exitIdx < 0) return;
+
+  const entryInView =
+    entryIdx >= range.fromIndex - 1 && entryIdx <= range.toIndex + 1;
+  const exitInView =
+    exitIdx >= range.fromIndex - 1 && exitIdx <= range.toIndex + 1;
+  if (!entryInView && !exitInView) return;
+
+  const entryX = indexToX(entryIdx, range, plot);
+  const exitX = indexToX(exitIdx, range, plot);
+  const entryY = priceToY(entryPrice, scale, plot);
+  const exitY = priceToY(exitPrice, scale, plot);
+
+  // Faint connector between entry and exit prices.
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = 0.45;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.moveTo(entryX, entryY);
+  ctx.lineTo(exitX, exitY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  if (entryInView) {
+    const bar = bars[entryIdx]!;
+    const tipY = isBuy
+      ? priceToY(bar.low, scale, plot) + 10
+      : priceToY(bar.high, scale, plot) - 10;
+    drawTriangleMarker(ctx, entryX, tipY, isBuy, color);
+    ctx.font = '500 10px ui-sans-serif, system-ui, sans-serif';
+    ctx.fillStyle = muted;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = isBuy ? 'top' : 'bottom';
+    ctx.fillText(
+      `$${formatPrice(entryPrice)}`,
+      entryX,
+      isBuy ? tipY + 7 : tipY - 7,
+    );
+  }
+
+  if (exitInView) {
+    const bar = bars[exitIdx]!;
+    // Exit points opposite the entry (close of a long = sell → down triangle).
+    const exitUp = !isBuy;
+    const tipY = exitUp
+      ? priceToY(bar.low, scale, plot) + 10
+      : priceToY(bar.high, scale, plot) - 10;
+    drawTriangleMarker(ctx, exitX, tipY, exitUp, color);
+    drawSolidLabel(ctx, plot, scale, exitPrice, exitLabel, color, onSolid);
+  }
+
   ctx.font = FONT;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
@@ -471,6 +591,7 @@ export function hitTestOrderLevel(
   const hitPx = orderHitPx();
   for (let i = orders.length - 1; i >= 0; i--) {
     const o = orders[i]!;
+    if (o.closed) continue; // marks only — not draggable
     const levels: { kind: OrderLineKind; price: number }[] = [];
     if (o.stopLoss != null) levels.push({ kind: 'sl', price: o.stopLoss });
     if (o.takeProfit != null) levels.push({ kind: 'tp', price: o.takeProfit });

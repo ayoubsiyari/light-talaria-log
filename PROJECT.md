@@ -843,6 +843,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-05 | Sessions UI: drop duplicate header Create/Refresh; accent play buttons; stronger shell ambient wash | Open Sessions — play pills + glow |
 | 2026-08-05 | Shell polish: neutral CTAs (no dark-blue fill); soft blue corner/side ambient wash | Open Sessions — buttons + glow background |
 | 2026-08-05 | Order persistence: command log + `rebuildTo` on load/seek-back; `ensureOrderBars` for IDB coverage — no wipe on rewind | Place → Play → Exit/reopen; scrub back — book restores |
+| 2026-08-05 | Closed trades stay on chart: entry/exit triangles + TP/SL label after fill (journal → toChartOrders) | Place → hit TP — marks remain; Balance updates |
 
 ---
 

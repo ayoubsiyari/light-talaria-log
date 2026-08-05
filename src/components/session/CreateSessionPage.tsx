@@ -431,7 +431,7 @@ export function CreateSessionPage({
               'bg-surface px-4 py-3 text-left hover:bg-background/60 transition-colors',
             ].join(' ')}
           >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[color:var(--accent-foreground)]">
+            <span className="shell-play flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
               <PlayIcon />
             </span>
             <div className="min-w-0 flex-1 space-y-1.5">
@@ -617,7 +617,7 @@ export function CreateSessionPage({
                           type="button"
                           aria-label={row.progress === 0 ? 'Start' : 'Resume'}
                           onClick={() => onStart(s)}
-                          className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-[color:var(--accent-foreground)] hover:brightness-110"
+                          className="shell-play flex h-9 w-9 items-center justify-center rounded-full"
                         >
                           <PlayIcon />
                         </button>
@@ -738,7 +738,7 @@ export function CreateSessionPage({
                         type="button"
                         aria-label="Open"
                         onClick={() => onStart(s)}
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[color:var(--accent-foreground)]"
+                        className="shell-play flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
                       >
                         <PlayIcon />
                       </button>

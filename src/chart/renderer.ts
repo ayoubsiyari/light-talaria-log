@@ -552,10 +552,15 @@ function drawTimeAxis(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
 
+  let lastLabel = '';
   for (const tick of timeTicks) {
     const x = indexToX(tick.index, range, plot);
     if (x < plot.left || x > plot.left + plot.width) continue;
-    ctx.fillText(formatTime(tick.time), x, axisY + 8);
+    const label = formatTime(tick.time);
+    // Belt-and-suspenders: never paint the same time string twice in a row
+    if (label === lastLabel) continue;
+    lastLabel = label;
+    ctx.fillText(label, x, axisY + 8);
   }
 }
 

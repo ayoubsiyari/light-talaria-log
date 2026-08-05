@@ -267,11 +267,23 @@ export function createSessionController() {
       });
       if (!state) return;
       if (tf !== state.baseTf) {
+        // Base clock needs enough 1m bars to cover the higher-TF viewport
+        // (span is in *pane* bars — 120×1h ≈ 7200×1m).
+        const baseSpan = Math.min(
+          MAX_BARS_IN_MEMORY,
+          Math.max(
+            state.span,
+            Math.ceil(
+              (state.span * timeframeSeconds(tf)) /
+                timeframeSeconds(state.baseTf),
+            ),
+          ),
+        );
         await warmCache.fill(
           state.panes[paneId]!.datasetId,
           state.baseTf,
           state.cursorTime,
-          state.span,
+          baseSpan,
           { awaitRemote: true },
         );
       }
@@ -319,17 +331,39 @@ export function createSessionController() {
       }
       const s = state;
       // Warm the active TF (+ base) before painting — await remote for first paint.
+      // Higher TF on a newly focused pair often has empty IDB; fill must pull
+      // history *behind* the cursor (see warmCache historyShort) or replay
+      // truncate leaves a single forming candle.
       await warmCache.fill(meta.datasetId, keepTf, s.anchorTime, s.span, {
         awaitRemote: true,
       });
       if (!state) return;
       if (keepTf !== state.baseTf) {
-        await warmCache.fill(meta.datasetId, state.baseTf, state.cursorTime, state.span, {
+        const baseSpan = Math.min(
+          MAX_BARS_IN_MEMORY,
+          Math.max(
+            state.span,
+            Math.ceil(
+              (state.span * timeframeSeconds(keepTf)) /
+                timeframeSeconds(state.baseTf),
+            ),
+          ),
+        );
+        await warmCache.fill(meta.datasetId, state.baseTf, state.cursorTime, baseSpan, {
           awaitRemote: true,
         });
       }
       if (!state) return;
       rederivePaneSync(paneId);
+      // Still sparse after first fill (slow remote) — one more awaited pass.
+      const painted = views[paneId]?.bars.length ?? 0;
+      if (painted < Math.min(8, Math.max(2, Math.floor(s.span * 0.05)))) {
+        await warmCache.fill(meta.datasetId, keepTf, state.anchorTime, state.span, {
+          awaitRemote: true,
+        });
+        if (!state) return;
+        rederivePaneSync(paneId);
+      }
       notify();
       void warmCache
         .prefetchAll(meta.datasetId, availableTfs, state.cursorTime, state.span)

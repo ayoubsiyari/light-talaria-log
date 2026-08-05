@@ -180,17 +180,31 @@ export class WarmCache {
       const bars = vp.bars as ChartBar[];
       this.writeEntry(k, { bars, anchorTime, loadedAt: Date.now(), touchedAt: Date.now() });
 
-      // Remote top-up when tip is short / empty. Interactive TF switches await
-      // this so the first click does not keep painting the previous interval.
+      // Remote top-up when history and/or tip is short. Symbol switches onto a
+      // higher TF often have empty IDB — fetching only *ahead* of the cursor
+      // left replay truncate with a single forming candle.
       const entry = getDataset(datasetId);
       if (!entry || entry.source === 'remote') {
         const tfSec = timeframeSeconds(tf);
         const tip = bars.length > 0 ? bars[bars.length - 1]!.time : null;
+        const first = bars.length > 0 ? bars[0]!.time : null;
+        const historyBars = Math.max(
+          span,
+          64,
+          Math.floor(windowBars * 0.4),
+        );
+        const historyNeedSec = historyBars * tfSec;
         const needAheadTo = anchorTime + Math.floor(windowBars * 0.55 * tfSec);
+        const historyShort =
+          first == null || first > anchorTime - historyNeedSec * 0.5;
         const tipShort = tip == null || tip < needAheadTo - tfSec * 30;
-        if (tipShort) {
-          const fetchFrom = tip ?? anchorTime;
-          const fetchTo = needAheadTo;
+        if (historyShort || tipShort) {
+          const fetchFrom = historyShort
+            ? anchorTime - historyNeedSec
+            : Math.min(tip ?? anchorTime, anchorTime);
+          const fetchTo = tipShort
+            ? needAheadTo
+            : anchorTime + Math.max(tfSec * 2, Math.floor(span * 0.1 * tfSec));
           const topUp = async (): Promise<ChartBar[]> => {
             try {
               const fetched = await ensureRemoteTimeCoverage(
@@ -199,7 +213,10 @@ export class WarmCache {
                 fetchFrom,
                 fetchTo,
                 {
-                  maxBars: Math.min(CHUNK_SIZE, Math.max(500, windowBars)),
+                  maxBars: Math.min(
+                    CHUNK_SIZE,
+                    Math.max(500, historyBars + Math.floor(windowBars * 0.55)),
+                  ),
                 },
               );
               scheduleRemoteChunkGc(datasetId, tf, anchorTime);

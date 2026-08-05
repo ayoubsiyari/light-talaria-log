@@ -193,10 +193,12 @@
   .app-shell {
     background-color: var(--background);
     background-image:
-      radial-gradient(ellipse 42% 36% at 0% 0%, color-mix(in oklab, #1e3a8a 26%, transparent), transparent 70%),
-      radial-gradient(ellipse 38% 32% at 100% 8%, color-mix(in oklab, #1e40af 20%, transparent), transparent 68%),
-      radial-gradient(ellipse 36% 34% at 100% 100%, color-mix(in oklab, #1e3a8a 18%, transparent), transparent 70%),
-      radial-gradient(ellipse 34% 32% at 0% 100%, color-mix(in oklab, #172554 22%, transparent), transparent 68%);
+      /* Top-left — dominant glow */
+      radial-gradient(ellipse 72% 58% at 0% 0%, color-mix(in oklab, #1e3a8a 38%, transparent), transparent 72%),
+      /* Other corners — soft / small */
+      radial-gradient(ellipse 28% 24% at 100% 8%, color-mix(in oklab, #1e40af 14%, transparent), transparent 68%),
+      radial-gradient(ellipse 26% 24% at 100% 100%, color-mix(in oklab, #1e3a8a 12%, transparent), transparent 70%),
+      radial-gradient(ellipse 24% 22% at 0% 100%, color-mix(in oklab, #172554 14%, transparent), transparent 68%);
   }
 
   .shell-play {

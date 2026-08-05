@@ -21,7 +21,7 @@ if [ ! -f "$APP_DIR/.env" ]; then
   SECRET="$(openssl rand -base64 48 | tr -d '\n')"
   cat >"$APP_DIR/.env" <<EOF
 SESSION_SECRET=${SECRET}
-SEED_ADMIN_EMAIL=admin@localhost
+SEED_ADMIN_EMAIL=admin@talaria.app
 SEED_ADMIN_PASSWORD=admin12345
 TALARIA_API_PROXY=${API_PROXY}
 EOF

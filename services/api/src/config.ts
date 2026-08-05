@@ -95,7 +95,8 @@ export const config = {
     metaMaxAge: envInt('CACHE_META_MAX_AGE', 30),
   },
   seed: {
-    adminEmail: env('SEED_ADMIN_EMAIL', 'admin@localhost'),
+    // Use a real-looking domain — Zod + HTML email inputs reject `*@localhost`.
+    adminEmail: env('SEED_ADMIN_EMAIL', 'admin@talaria.app'),
     adminPassword: env('SEED_ADMIN_PASSWORD', 'admin12345'),
     demo: envBool('SEED_DEMO', true),
   },

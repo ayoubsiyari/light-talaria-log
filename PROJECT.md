@@ -554,7 +554,7 @@ fast-chart/
 **Status:** Done (2026-08-02) — API stub + Datasets “Import from API” + catalog/rehydrate; local Dukascopy/CSV/IDB path unchanged.  
 **Deliverables:**
 - [x] Auth + dataset list API (dev stub; seeded demo dataset — no upload UI yet)
-- [x] App sign-in / sign-up pages + protected `#/app/*` and `#/chart/*` (HttpOnly cookie; stub seed `dev@localhost` / `dev12345`)
+- [x] App sign-in / sign-up pages + protected `#/app/*` and `#/chart/*` (HttpOnly cookie; stub seed `admin@talaria.app` / `admin12345` (also `dev@localhost` / `dev12345`))
 - [x] Cloud sync: sessions + drawings + journal/trades follow the account across browsers (`004_user_sync.sql` + stub `data/user-sync/`)
 - [x] Chunked bar files on local disk stub (`data/chunks/…`, gitignored)
 - [x] Client fetch-by-range → same IDB ingest/cache path (`ingestRemoteChunksToIdb` / `ingestRemoteDatasetAllTfs`)
@@ -825,7 +825,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-05 | Fix new-account session leak: no legacy localStorage migrate into signed-in users; clear cache before cloud pull | New signup → empty Backtest list |
 | 2026-08-05 | Admin page (`#/app/admin`): dataset download/publish/import/cache; role on `/auth/me`; Datasets removed from user nav | Login as admin → Admin rail; users see no Datasets |
 | 2026-08-05 | Fix symbol switch: reset price scale + filter order overlays by pane pair (no stuck JPY levels / blank chart) | Place trade on USD/JPY → switch GBP → candles + no SL/TP; switch back → trade returns |
-| 2026-08-05 | Ensure admin account on every seed/boot: `admin@localhost` / `admin12345` (SaaS + stub); Admin rail `#/app/admin` | Sign in → Admin → datasets |
+| 2026-08-05 | Ensure admin account on every seed/boot: `admin@talaria.app` / `admin12345` (SaaS + stub); Admin rail `#/app/admin` | Sign in → Admin → datasets |
 | 2026-08-05 | Off-screen orders: step engine on trade-pair bars + retain session-leg caches (SL/TP/PnL while viewing another pair) | Open JPY trade → switch GBP → Play → equity/SL/TP follow JPY |
 
 ---

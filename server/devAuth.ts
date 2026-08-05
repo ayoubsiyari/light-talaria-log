@@ -119,16 +119,23 @@ function ensureSeedUser(): void {
   const before = JSON.stringify(users);
   // Match SaaS defaults so local stub + VPS share the same admin login.
   ensureSeededUser(
-    'admin@localhost',
+    'admin@talaria.app',
     'admin12345',
     'Admin',
     '00000000-0000-4000-8000-000000000099',
   );
+  // Legacy stub accounts (login still works).
   ensureSeededUser(
     'dev@localhost',
     'dev12345',
     'Dev User',
     '00000000-0000-4000-8000-000000000001',
+  );
+  ensureSeededUser(
+    'admin@localhost',
+    'admin12345',
+    'Admin',
+    '00000000-0000-4000-8000-000000000098',
   );
   if (JSON.stringify(users) !== before) saveUsers();
 }
@@ -239,7 +246,10 @@ export function registerUser(input: {
 }): { ok: true; user: DevUser } | { ok: false; status: number; error: string } {
   ensureSeedUser();
   const email = input.email.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) &&
+    !/^[^\s@]+@localhost$/i.test(email)
+  ) {
     return { ok: false, status: 400, error: 'Invalid registration payload' };
   }
   if (input.password.length < 8 || input.password.length > 128) {

@@ -111,12 +111,14 @@ export function AuthFormPage({
                 <input
                   id="auth-email"
                   className={fieldClass}
-                  type="email"
+                  type="text"
+                  inputMode="email"
                   autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   disabled={busy}
+                  placeholder={isSignup ? 'you@example.com' : 'admin@talaria.app'}
                 />
               </div>
               <div className="space-y-1.5">

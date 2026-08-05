@@ -15,6 +15,7 @@ import { createHash } from 'node:crypto';
 import { canReadDataset, canWriteDataset, getDatasetVisibility } from './access.js';
 import { applyChunkBinaryHeaders, applyMetaCacheHeaders } from './cacheHeaders.js';
 import { config } from './config.js';
+import { authEmailSchema } from './emailSchema.js';
 import { query, readyCheck } from './db.js';
 import { enqueueDbJob, redisReady } from './jobs.js';
 import {
@@ -111,7 +112,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
     const body = z
       .object({
-        email: z.string().email(),
+        email: authEmailSchema,
         password: z.string().min(8).max(128),
         displayName: z.string().min(1).max(80).optional(),
       })
@@ -156,7 +157,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
     const body = z
       .object({
-        email: z.string().email(),
+        email: authEmailSchema,
         password: z.string().min(1),
       })
       .safeParse(req.body);

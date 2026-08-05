@@ -10,6 +10,17 @@ const DEMO_ID = '11111111-1111-4111-8111-111111111111';
 async function ensureAdmin(): Promise<string> {
   const email = config.seed.adminEmail.toLowerCase();
   const passwordHash = await hashPassword(config.seed.adminPassword);
+
+  // Migrate legacy seed address that browsers/Zod reject on login.
+  if (email !== 'admin@localhost') {
+    await query(
+      `UPDATE users SET email = $1, updated_at = now()
+       WHERE email = 'admin@localhost'
+         AND NOT EXISTS (SELECT 1 FROM users WHERE email = $1)`,
+      [email],
+    );
+  }
+
   const existing = await query<{ id: string }>(`SELECT id FROM users WHERE email = $1`, [email]);
   if (existing.rows[0]) {
     // Always refresh password + role from SEED_ADMIN_* so deploys can recover admin access.

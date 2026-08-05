@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@heroui/react';
 import {
   IconChevron,
@@ -106,28 +107,138 @@ function ReplayControls({
   onToggle,
   onStep,
   onSpeed,
-  onOpenJump,
+  jumpOpen,
+  jumpValue,
+  onToggleJump,
+  onJumpValueChange,
+  onApplyJump,
+  onCloseJump,
 }: {
   replay: ReplayState;
   onToggle: () => void;
   onStep: (deltaBars: number) => void;
   onSpeed: (speed: number) => void;
-  onOpenJump: () => void;
+  jumpOpen: boolean;
+  jumpValue: string;
+  onToggleJump: () => void;
+  onJumpValueChange: (value: string) => void;
+  onApplyJump: () => void;
+  onCloseJump: () => void;
 }) {
   const si = nearestSpeedIndex(replay.speed);
   const pct = (si / (SPEED_STEPS.length - 1)) * 100;
+  const gearRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+
+  useLayoutEffect(() => {
+    if (!jumpOpen) {
+      setMenuPos(null);
+      return;
+    }
+    const place = () => {
+      const el = gearRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const width = Math.min(window.innerWidth - 24, 288);
+      const left = Math.min(
+        Math.max(12, r.left + r.width / 2 - width / 2),
+        window.innerWidth - width - 12,
+      );
+      const top = Math.max(12, r.top - 8);
+      setMenuPos({ top, left });
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [jumpOpen]);
+
+  useEffect(() => {
+    if (!jumpOpen) return;
+    const onPointer = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (panelRef.current?.contains(t) || gearRef.current?.contains(t)) return;
+      onCloseJump();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCloseJump();
+    };
+    document.addEventListener('pointerdown', onPointer, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [jumpOpen, onCloseJump]);
 
   return (
-    <div className="flex items-center h-full justify-center gap-0.5 shrink-0">
+    <div className="relative flex items-center h-full justify-center gap-0.5 shrink-0">
       <span className="v8b-sep !mx-1" aria-hidden />
       <button
+        ref={gearRef}
         type="button"
         className="v8b-chrome-btn !px-1.5"
-        title="Jump to date"
-        onClick={onOpenJump}
+        title="Replay settings"
+        aria-label="Replay settings"
+        aria-expanded={jumpOpen}
+        aria-haspopup="dialog"
+        data-active={jumpOpen ? 'true' : undefined}
+        onClick={onToggleJump}
       >
         <IconSettings className="w-[18px] h-[18px]" />
       </button>
+      {jumpOpen &&
+        menuPos &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="dialog"
+            aria-label="Jump to date"
+            className={[
+              'fixed z-[100020] w-[min(calc(100vw-1.5rem),18rem)]',
+              'rounded-lg border border-border bg-surface text-foreground shadow-xl',
+              'p-3 space-y-2',
+            ].join(' ')}
+            style={{
+              top: menuPos.top,
+              left: menuPos.left,
+              transform: 'translateY(-100%)',
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+              Jump to date
+            </p>
+            <input
+              type="datetime-local"
+              value={jumpValue}
+              onChange={(e) => onJumpValueChange(e.target.value)}
+              className="w-full min-h-11 rounded-md border border-border bg-background px-2 py-2 text-sm text-foreground outline-none focus:border-accent"
+              aria-label="Jump to date"
+            />
+            <div className="flex gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                className="min-h-11 flex-1"
+                onPress={onApplyJump}
+              >
+                Go
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="min-h-11 px-3"
+                onPress={onCloseJump}
+              >
+                Close
+              </Button>
+            </div>
+          </div>,
+          document.body,
+        )}
       <button
         type="button"
         className="v8b-chrome-btn !px-1.5 relative"
@@ -257,10 +368,16 @@ export function BottomBar({
     [openCount, pendingCount, historyCount, tradeCount],
   );
 
-  const openJump = () => {
+  const toggleJump = () => {
+    if (jumpOpen) {
+      setJumpOpen(false);
+      return;
+    }
     setJumpValue(toDatetimeLocalValue(replay.cursorTime || replay.startTime));
     setJumpOpen(true);
   };
+
+  const closeJump = () => setJumpOpen(false);
 
   const applyJump = () => {
     const t = fromDatetimeLocalValue(jumpValue);
@@ -269,11 +386,26 @@ export function BottomBar({
     setJumpOpen(false);
   };
 
+  const replayControls = (
+    <ReplayControls
+      replay={replay}
+      onToggle={onToggle}
+      onStep={onStep}
+      onSpeed={onSpeed}
+      jumpOpen={jumpOpen}
+      jumpValue={jumpValue}
+      onToggleJump={toggleJump}
+      onJumpValueChange={setJumpValue}
+      onApplyJump={applyJump}
+      onCloseJump={closeJump}
+    />
+  );
+
   if (!expanded) {
     return (
       <footer
         className={[
-          'chrome-bottombar shrink-0 flex items-center justify-between gap-1.5',
+          'chrome-bottombar shrink-0 flex items-center justify-between gap-1.5 overflow-visible',
           'h-9 [@media(hover:none)]:h-11 px-2 pb-[env(safe-area-inset-bottom)] text-xs',
           'border-t border-[color-mix(in_oklab,var(--accent)_22%,transparent)]',
         ].join(' ')}
@@ -296,13 +428,7 @@ export function BottomBar({
           {cursorLabel}
         </span>
         <div className="flex-1" />
-        <ReplayControls
-          replay={replay}
-          onToggle={onToggle}
-          onStep={onStep}
-          onSpeed={onSpeed}
-          onOpenJump={openJump}
-        />
+        {replayControls}
       </footer>
     );
   }
@@ -310,7 +436,7 @@ export function BottomBar({
   return (
     <footer
       className={[
-        'chrome-bottombar shrink-0 flex flex-col pb-[env(safe-area-inset-bottom)] text-xs',
+        'chrome-bottombar shrink-0 flex flex-col overflow-visible pb-[env(safe-area-inset-bottom)] text-xs',
         'border-t border-[color-mix(in_oklab,var(--accent)_22%,transparent)]',
       ].join(' ')}
     >
@@ -337,23 +463,6 @@ export function BottomBar({
         >
           {cursorLabel}
         </span>
-        {jumpOpen && (
-          <div className="flex items-center gap-1 shrink-0">
-            <input
-              type="datetime-local"
-              value={jumpValue}
-              onChange={(e) => setJumpValue(e.target.value)}
-              className="h-7 rounded border border-[color:var(--tv-panel-line)] bg-background px-1.5 text-foreground outline-none"
-              aria-label="Jump to date"
-            />
-            <Button variant="primary" size="sm" className="h-7 min-h-7 px-2" onPress={applyJump}>
-              Go
-            </Button>
-            <Button variant="ghost" size="sm" className="h-7 min-h-7 px-2" onPress={() => setJumpOpen(false)}>
-              ✕
-            </Button>
-          </div>
-        )}
       </div>
 
       {/* Status + replay — V8b 3-column grid */}
@@ -372,13 +481,7 @@ export function BottomBar({
           </div>
         </div>
 
-        <ReplayControls
-          replay={replay}
-          onToggle={onToggle}
-          onStep={onStep}
-          onSpeed={onSpeed}
-          onOpenJump={openJump}
-        />
+        {replayControls}
 
         <div className="flex items-center justify-end gap-0 min-w-0">
           <div className="hidden md:grid grid-cols-3 gap-x-4 gap-y-0.5 justify-items-end px-3">

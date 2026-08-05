@@ -2,19 +2,21 @@
  * Hash routes so refresh restores the current page without a router lib.
  * Vite serves index.html for `/`; deep links live in the hash.
  *
- * V8b-parity shell tabs (Hero UI pages — not hosting the monolith):
- *   #/app/dashboard|trades|backtest|strategy|resources|profile
+ * Canonical shell tabs:
+ *   #/app/dashboard|trades|backtest|datasets|strategy|resources|profile
  *
- * Compat:
+ * Compat (read only — never written by formatAppRoute):
  *   #/sessions → backtest
  *   #/journal → trades
  *   #/journal/:id → trades + session id
+ *   #/datasets → #/app/datasets
  */
 
 export type AppTab =
   | 'dashboard'
   | 'trades'
   | 'backtest'
+  | 'datasets'
   | 'strategy'
   | 'resources'
   | 'profile';
@@ -22,7 +24,6 @@ export type AppTab =
 export type AppView =
   | 'landing'
   | 'app'
-  | 'datasets'
   | 'chart'
   | 'notFound';
 
@@ -38,6 +39,7 @@ const APP_TABS: readonly AppTab[] = [
   'dashboard',
   'trades',
   'backtest',
+  'datasets',
   'strategy',
   'resources',
   'profile',
@@ -139,10 +141,11 @@ export function parseAppRoute(hash: string = window.location.hash): AppRoute {
       focusTradeId: null,
     };
   }
+  // Legacy orphan path → shell Datasets tab
   if (head === 'datasets') {
     return {
-      view: 'datasets',
-      appTab: null,
+      view: 'app',
+      appTab: 'datasets',
       sessionId: null,
       focusTime: null,
       focusTradeId: null,
@@ -204,8 +207,6 @@ export function formatAppRoute(route: AppRoute): string {
       }
       return `#/app/${tab}`;
     }
-    case 'datasets':
-      return '#/datasets';
     case 'chart': {
       if (!route.sessionId) return '#/app/backtest';
       const base = `#/chart/${encodeURIComponent(route.sessionId)}`;

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Card, Label } from '@heroui/react';
-import { AppPageHeader } from '@/components/layout/AppPageNav';
+import { AppPageFrame } from '@/components/shell/AppPageFrame';
 import {
   datasetLabel,
   deleteDataset,
@@ -36,9 +36,15 @@ import type { RemoteDatasetMeta, RemoteUser } from '@/types/remoteApi';
 import type { Timeframe } from '@/types/ui';
 
 interface DatasetsPageProps {
-  onGoSessions: () => void;
+  onGoBacktest: () => void;
+  /** @deprecated Use onGoBacktest */
+  onGoSessions?: () => void;
   onGoHome?: () => void;
+  onGoTrades?: () => void;
+  /** @deprecated Use onGoTrades */
   onGoJournal?: () => void;
+  /** Inside AppShell — kept for call-site compat. */
+  embedded?: boolean;
 }
 
 function defaultDates(): { start: string; end: string } {
@@ -53,10 +59,13 @@ const fieldClass =
   'w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent';
 
 export function DatasetsPage({
+  onGoBacktest,
   onGoSessions,
-  onGoHome,
+  onGoTrades,
   onGoJournal,
 }: DatasetsPageProps) {
+  const goBacktest = onGoBacktest ?? onGoSessions!;
+  const goTrades = onGoTrades ?? onGoJournal;
   const defaults = useMemo(() => defaultDates(), []);
   const [pair, setPair] = useState<PairSymbol>('EUR/USD');
   const [timeframe, setTimeframe] = useState<Timeframe>('1m');
@@ -284,18 +293,24 @@ export function DatasetsPage({
   };
 
   return (
-    <div className="min-h-full bg-background text-foreground overflow-auto">
-      <div className="max-w-3xl mx-auto px-6 py-10 space-y-8">
-        <AppPageHeader
-          current="datasets"
-          title="Datasets"
-          description="Download Dukascopy history and save it to the server. Users create sessions with dates — the chart then fetches only that range (no pre-import required)."
-          onGoHome={onGoHome}
-          onGoSessions={onGoSessions}
-          onGoDatasets={() => undefined}
-          onGoJournal={onGoJournal}
-        />
-
+    <AppPageFrame
+      narrow
+      eyebrow="App"
+      title="Datasets"
+      description="Download Dukascopy history and save it to the server. Create a backtest with dates — the chart fetches only that range."
+      actions={
+        <>
+          <Button variant="secondary" className="min-h-11" onPress={goBacktest}>
+            Backtest
+          </Button>
+          {goTrades && (
+            <Button variant="ghost" className="min-h-11" onPress={goTrades}>
+              Trades
+            </Button>
+          )}
+        </>
+      }
+    >
         {datasets.length > 0 && (
           <Card className="bg-surface border border-border border-l-4 border-l-accent">
             <Card.Content className="px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -310,7 +325,7 @@ export function DatasetsPage({
               <Button
                 variant="primary"
                 className="min-h-11 shrink-0"
-                onPress={onGoSessions}
+                onPress={goBacktest}
               >
                 Create session
               </Button>
@@ -743,7 +758,6 @@ export function DatasetsPage({
             </ul>
           )}
         </section>
-      </div>
-    </div>
+    </AppPageFrame>
   );
 }

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Button, Card } from '@heroui/react';
-import { AppPageHeader } from '@/components/layout/AppPageNav';
+import { AppPageFrame } from '@/components/shell/AppPageFrame';
 import {
   BACKTEST_STRATEGY_LABELS,
   type BacktestTrade,
@@ -36,13 +36,15 @@ interface JournalPageProps {
   initialSessionId?: string | null;
   /** Live in-memory journal from the open chart session (may be ahead of localStorage). */
   liveJournal?: OrderJournal | null;
-  onGoSessions: () => void;
+  onGoBacktest: () => void;
+  /** @deprecated Use onGoBacktest */
+  onGoSessions?: () => void;
   onGoHome?: () => void;
   onGoDatasets?: () => void;
   onOpenChart?: (sessionId: string, focus?: JournalChartFocus) => void;
-  /** True when the chart session is still in memory (soft journal navigate). */
+  /** True when the chart session is still in memory (soft trades navigate). */
   canReturnToChart?: boolean;
-  /** Inside AppShell — hide duplicate top nav. */
+  /** Inside AppShell — kept for call-site compat. */
   embedded?: boolean;
 }
 
@@ -281,13 +283,13 @@ function runOptionLabel(entry: JournalEntry): string {
 export function JournalPage({
   initialSessionId = null,
   liveJournal = null,
+  onGoBacktest,
   onGoSessions,
-  onGoHome,
   onGoDatasets,
   onOpenChart,
   canReturnToChart = false,
-  embedded = false,
 }: JournalPageProps) {
+  const goBacktest = onGoBacktest ?? onGoSessions!;
   const [tick, setTick] = useState(0);
   const [tab, setTab] = useState<JournalTab>('orders');
 
@@ -408,23 +410,23 @@ export function JournalPage({
   const emptyRuns = backtestRuns.length === 0;
 
   return (
-    <div className="min-h-full bg-background text-foreground overflow-auto">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6">
-        <AppPageHeader
-          current="journal"
-          title="Trades"
-          description="Order fills and strategy runs — jump to any trade on the chart (V8b Trades tab)."
-          onGoHome={onGoHome}
-          onGoSessions={onGoSessions}
-          onGoDatasets={onGoDatasets ?? onGoSessions}
-          onGoJournal={undefined}
-          embedded={embedded}
-        />
-
+    <AppPageFrame
+      narrow
+      eyebrow="App"
+      title="Trades"
+      description="Order fills and strategy runs — jump to any trade on the chart."
+      actions={
+        onGoDatasets ? (
+          <Button variant="secondary" className="min-h-11" onPress={onGoDatasets}>
+            Datasets
+          </Button>
+        ) : undefined
+      }
+    >
         <div
           className="flex rounded-lg border border-border bg-surface p-1 gap-1"
           role="tablist"
-          aria-label="Journal source"
+          aria-label="Trades source"
         >
           <Button
             variant={tab === 'orders' ? 'primary' : 'ghost'}
@@ -454,8 +456,8 @@ export function JournalPage({
                   No closed trades yet. Open a session, place orders, let them fill / hit SL·TP,
                   then return here.
                 </p>
-                <Button variant="primary" className="min-h-11" onPress={onGoSessions}>
-                  {embedded ? 'New backtest' : 'Back to sessions'}
+                <Button variant="primary" className="min-h-11" onPress={goBacktest}>
+                  New backtest
                 </Button>
               </Card.Content>
             </Card>
@@ -622,8 +624,8 @@ export function JournalPage({
                   No strategy runs yet. Open a session, tap Backtest, choose a strategy, and Run.
                   Each run is kept here.
                 </p>
-                <Button variant="primary" className="min-h-11" onPress={onGoSessions}>
-                  {embedded ? 'New backtest' : 'Back to sessions'}
+                <Button variant="primary" className="min-h-11" onPress={goBacktest}>
+                  New backtest
                 </Button>
               </Card.Content>
             </Card>
@@ -783,7 +785,6 @@ export function JournalPage({
               )}
             </>
           ))}
-      </div>
-    </div>
+    </AppPageFrame>
   );
 }

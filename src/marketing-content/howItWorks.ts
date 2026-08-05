@@ -12,8 +12,8 @@ export const howItWorksCopy = {
     },
     {
       num: "03",
-      title: "Backtest & journal",
-      body: "Run the built-in SMA cross strategy, then review trades and equity in Journal.",
+      title: "Backtest & trades",
+      body: "Run the built-in SMA cross strategy, then review fills and equity under Trades.",
     },
   ],
 } as const;

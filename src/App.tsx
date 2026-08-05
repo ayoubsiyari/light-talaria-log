@@ -2420,7 +2420,7 @@ export default function App() {
   const openJournalView = (sessionId?: string | null) => {
     const id = sessionId ?? session?.id ?? null;
     // Soft navigate: pause replay but keep session in memory so "Back to chart"
-    // does not force a full re-ingest. Explicit Exit / Sessions still teardowns.
+    // does not force a full re-ingest. Explicit Exit / Backtest still teardowns.
     replayRef.current.pause();
     persistReplayProgress(true);
     setJournalSessionId(id);
@@ -2716,7 +2716,7 @@ export default function App() {
   if (view === 'landing') {
     return (
       <MarketingHome
-        onStartFree={() => goAppTab('dashboard')}
+        onStartFree={() => goAppTab('backtest')}
         onOpenApp={() => goAppTab('dashboard')}
       />
     );
@@ -2726,17 +2726,7 @@ export default function App() {
     return (
       <NotFoundPage
         onGoHome={() => setView('landing')}
-        onGoSessions={() => goAppTab('backtest')}
-      />
-    );
-  }
-
-  if (view === 'datasets') {
-    return (
-      <DatasetsPage
-        onGoSessions={() => goAppTab('backtest')}
-        onGoHome={() => setView('landing')}
-        onGoJournal={() => goAppTab('trades')}
+        onGoBacktest={() => goAppTab('backtest')}
       />
     );
   }
@@ -2840,10 +2830,9 @@ export default function App() {
             }}
             onGoDatasets={() => {
               setJournalSessionId(null);
-              if (session) teardownChartSession();
-              setView('datasets');
+              goAppTab('datasets');
             }}
-            onGoSessions={() => goAppTab('backtest')}
+            onGoBacktest={() => goAppTab('backtest')}
             onOpenChart={openChartFromJournal}
           />
         );
@@ -2851,12 +2840,18 @@ export default function App() {
       case 'backtest':
         shellBody = (
           <CreateSessionPage
-            embedded
             onStart={(s) => void loadSessionData(s)}
-            onGoDatasets={() => setView('datasets')}
+            onGoDatasets={() => goAppTab('datasets')}
             onGoJournal={(sessionId) => goAppTab('trades', sessionId ?? null)}
             onGoDashboard={() => goAppTab('dashboard')}
-            onGoHome={() => setView('landing')}
+          />
+        );
+        break;
+      case 'datasets':
+        shellBody = (
+          <DatasetsPage
+            onGoBacktest={() => goAppTab('backtest')}
+            onGoTrades={() => goAppTab('trades')}
           />
         );
         break;
@@ -2975,7 +2970,7 @@ export default function App() {
                 </Alert.Content>
               </Alert>
               <Button variant="secondary" size="sm" onPress={handleExitSession}>
-                Back to sessions
+                Back to Backtest
               </Button>
             </div>
           )}
@@ -2998,7 +2993,7 @@ export default function App() {
                 No chart data loaded for this session. Check Datasets or re-open the session.
               </p>
               <Button variant="secondary" className="min-h-11" onPress={handleExitSession}>
-                Back to sessions
+                Back to Backtest
               </Button>
             </div>
           )}

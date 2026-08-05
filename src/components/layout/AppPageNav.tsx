@@ -2,51 +2,46 @@ import type { ReactNode } from 'react';
 import { Button } from '@heroui/react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
-export type AppPageNavId = 'sessions' | 'datasets' | 'journal';
+/** Canonical page ids — matches AppTab glossary. */
+export type AppPageNavId = 'backtest' | 'datasets' | 'trades';
 
 interface AppPageNavProps {
   current: AppPageNavId;
   onGoHome?: () => void;
-  onGoSessions: () => void;
+  onGoBacktest: () => void;
   onGoDatasets: () => void;
-  onGoJournal?: () => void;
+  onGoTrades?: () => void;
 }
 
-const LINK =
-  'min-h-11 sm:min-h-8 px-2.5 text-xs sm:text-sm';
+const LINK = 'min-h-11 sm:min-h-8 px-2.5 text-xs sm:text-sm';
 
 /**
- * Shared header actions for Sessions / Datasets / Journal.
- * Mobile: 44px hits; wraps under the page title.
+ * Secondary header actions when a page is outside the shell rail focus.
+ * Prefer AppShell rail as primary nav; this is breadcrumb-style only.
  */
 export function AppPageNav({
   current,
   onGoHome,
-  onGoSessions,
+  onGoBacktest,
   onGoDatasets,
-  onGoJournal,
+  onGoTrades,
 }: AppPageNavProps) {
   return (
     <div className="flex items-center gap-2 flex-wrap justify-end">
       <ThemeToggle />
-      {onGoHome && current !== 'sessions' && (
+      {onGoHome && (
         <Button variant="ghost" size="sm" className={LINK} onPress={onGoHome}>
           Home
         </Button>
       )}
-      {current !== 'sessions' && (
-        <Button
-          variant="secondary"
-          size="sm"
-          className={LINK}
-          onPress={onGoSessions}
-        >
+      {current !== 'backtest' && (
+        <Button variant="secondary" size="sm" className={LINK} onPress={onGoBacktest}>
           Backtest
         </Button>
       )}
       {current !== 'datasets' && (
         <Button
-          variant={current === 'sessions' ? 'secondary' : 'ghost'}
+          variant={current === 'backtest' ? 'secondary' : 'ghost'}
           size="sm"
           className={LINK}
           onPress={onGoDatasets}
@@ -54,9 +49,9 @@ export function AppPageNav({
           Datasets
         </Button>
       )}
-      {onGoJournal && current !== 'journal' && (
-        <Button variant="secondary" size="sm" className={LINK} onPress={onGoJournal}>
-          Journal
+      {onGoTrades && current !== 'trades' && (
+        <Button variant="ghost" size="sm" className={LINK} onPress={onGoTrades}>
+          Trades
         </Button>
       )}
     </div>
@@ -68,28 +63,27 @@ interface AppPageHeaderProps {
   description: string;
   current: AppPageNavId;
   onGoHome?: () => void;
-  onGoSessions: () => void;
+  onGoBacktest: () => void;
   onGoDatasets: () => void;
-  onGoJournal?: () => void;
-  /**
-   * Inside AppShell: hide brand + top nav (shell owns chrome).
-   * Optional `actions` for page-specific links (e.g. Datasets).
-   */
+  onGoTrades?: () => void;
+  /** Inside AppShell: hide brand + top nav (shell owns chrome). */
   embedded?: boolean;
   actions?: ReactNode;
+  eyebrow?: string;
 }
 
-/** Brand wordmark + title + shared nav for app pages outside the chart. */
+/** @deprecated Prefer AppPageFrame for new shell pages. Kept for gradual migration. */
 export function AppPageHeader({
   title,
   description,
   current,
   onGoHome,
-  onGoSessions,
+  onGoBacktest,
   onGoDatasets,
-  onGoJournal,
+  onGoTrades,
   embedded = false,
   actions,
+  eyebrow,
 }: AppPageHeaderProps) {
   return (
     <header className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
@@ -105,8 +99,13 @@ export function AppPageHeader({
               Talaria-Log
             </Button>
           ) : (
-            <p className="text-xs uppercase tracking-[0.2em] text-muted">Talaria-Log</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-muted">
+              {eyebrow ?? 'Talaria-Log'}
+            </p>
           ))}
+        {embedded && eyebrow && (
+          <p className="text-xs uppercase tracking-[0.2em] text-muted">{eyebrow}</p>
+        )}
         <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">{title}</h1>
         <p className="text-sm text-muted max-w-xl">{description}</p>
       </div>
@@ -116,9 +115,9 @@ export function AppPageHeader({
         <AppPageNav
           current={current}
           onGoHome={onGoHome}
-          onGoSessions={onGoSessions}
+          onGoBacktest={onGoBacktest}
           onGoDatasets={onGoDatasets}
-          onGoJournal={onGoJournal}
+          onGoTrades={onGoTrades}
         />
       )}
     </header>

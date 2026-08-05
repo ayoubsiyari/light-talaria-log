@@ -58,7 +58,7 @@ export function DashboardPage({
       >
         <div className="min-w-0">
           <h1 className="text-base sm:text-lg font-semibold tracking-tight leading-tight">
-            Analytics
+            Dashboard
           </h1>
           <p className="text-[11px] text-muted tabular-nums truncate">
             {stats.closedTrades} trades · {stats.sessions} sessions ·{' '}

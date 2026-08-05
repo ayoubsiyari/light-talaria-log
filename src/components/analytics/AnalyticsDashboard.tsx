@@ -715,7 +715,7 @@ export function AnalyticsDashboard({
           )}
           {onOpenJournal && (
             <Button variant="secondary" className="min-h-11" onPress={onOpenJournal}>
-              Open Journal
+              Open Trades
             </Button>
           )}
         </div>
@@ -736,9 +736,9 @@ export function AnalyticsDashboard({
                 e.target.value === 'all' ? 'all' : e.target.value,
               )
             }
-            aria-label="Journal session"
+            aria-label="Trades session"
           >
-            <option value="all">All journals</option>
+            <option value="all">All sessions</option>
             {journalViews.map((v) => (
               <option key={v.sessionId} value={v.sessionId}>
                 {v.sessionName} · {v.symbol} ({v.trades.length})
@@ -765,7 +765,7 @@ export function AnalyticsDashboard({
                 className="min-h-11 sm:min-h-8"
                 onPress={() => setSource('journal')}
               >
-                Journal
+                Saved
               </Button>
               <Button
                 size="sm"
@@ -813,6 +813,7 @@ export function AnalyticsDashboard({
               variant="ghost"
               className="min-h-11 sm:min-h-8"
               onPress={onOpenJournal}
+              aria-label="Open Trades"
             >
               Log
             </Button>

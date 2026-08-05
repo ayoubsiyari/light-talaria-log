@@ -93,7 +93,7 @@ export function TopBar({
         variant="ghost"
         size="sm"
         className="shrink-0 h-8 min-h-8 w-8 min-w-8 [@media(hover:none)]:h-11 [@media(hover:none)]:min-h-11 [@media(hover:none)]:w-11 [@media(hover:none)]:min-w-11 mr-0.5 px-0"
-        aria-label="Back to sessions"
+        aria-label="Exit session to Backtest"
         onPress={onExitSession}
         isDisabled={!onExitSession}
       >
@@ -182,7 +182,7 @@ export function TopBar({
           <svg width={12} height={12} viewBox="0 0 12 12" fill="none" aria-hidden>
             <path
               d="M6,1 L6,11 M1,6 L11,6"
-              stroke="#fff"
+              stroke="currentColor"
               strokeWidth={2.4}
               strokeLinecap="round"
             />
@@ -206,8 +206,9 @@ export function TopBar({
             size="sm"
             className="h-7 min-h-7 [@media(hover:none)]:min-h-11 px-2 text-xs shrink-0"
             onPress={onExitSession}
+            aria-label="Exit session to Backtest"
           >
-            Sessions
+            Backtest
           </Button>
         )}
         <ThemeToggle compact />

@@ -17,8 +17,8 @@ interface AppShellProps {
 }
 
 /**
- * In-app shell: left rail (Dashboard / Backtest / Journal / Strategy / Profile)
- * + main content. Hero UI tokens only — no V8b palette.
+ * In-app shell: left rail (Dashboard / Trades / Backtest / Strategies / Resources / Profile)
+ * + main content. Datasets is a shell tab linked from Backtest, not the rail.
  */
 export function AppShell({ tab, onTabChange, onGoHome, children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);

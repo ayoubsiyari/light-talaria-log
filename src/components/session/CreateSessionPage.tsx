@@ -27,18 +27,16 @@ import {
 } from '@/sessions/sessionStore';
 import type { DownloadedDataset } from '@/types/dataset';
 import type { RemoteDatasetMeta } from '@/types/remoteApi';
+import { AppPageFrame } from '@/components/shell/AppPageFrame';
 import type { BacktestSession, PairSymbol, SessionLeg } from '@/types/session';
 import type { Timeframe } from '@/types/ui';
 
 interface CreateSessionPageProps {
   onStart: (session: BacktestSession) => void;
   onGoDatasets: () => void;
-  /** Open trades/journal; pass session id to prefer that entry, or omit for latest. */
+  /** Open Trades; pass session id to prefer that entry, or omit for latest. */
   onGoJournal?: (sessionId?: string) => void;
   onGoDashboard?: (sessionId?: string) => void;
-  onGoHome?: () => void;
-  /** Inside AppShell — hide duplicate top nav. */
-  embedded?: boolean;
 }
 
 type SessFilter = 'all' | 'not-started' | 'active' | 'completed';
@@ -75,8 +73,6 @@ export function CreateSessionPage({
   onGoDatasets,
   onGoJournal,
   onGoDashboard,
-  onGoHome,
-  embedded = false,
 }: CreateSessionPageProps) {
   const [remoteStatus, setRemoteStatus] = useState<'loading' | 'ready' | 'error'>(
     'loading',
@@ -314,43 +310,29 @@ export function CreateSessionPage({
   ];
 
   return (
-    <div className="min-h-full bg-background text-foreground overflow-auto">
-      <div className="max-w-[1288px] mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6">
-        <header className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1.5 min-w-0">
-            {!embedded && onGoHome && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="min-h-11 -ml-2 px-2 text-xs uppercase tracking-[0.2em] text-muted"
-                onPress={onGoHome}
-              >
-                Talaria-Log
-              </Button>
-            )}
-            <p className="text-xs uppercase tracking-[0.2em] text-muted">Backtest</p>
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Sessions</h1>
-            <p className="text-sm text-muted max-w-xl">
-              V8b-style session hub — real server datasets, Resume opens the chart engine.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" className="min-h-11" onPress={onGoDatasets}>
-              Datasets
-            </Button>
-            <Button
-              variant="secondary"
-              className="min-h-11"
-              onPress={loadServer}
-              isDisabled={remoteStatus === 'loading'}
-            >
-              {remoteStatus === 'loading' ? 'Loading…' : 'Refresh'}
-            </Button>
-            <Button variant="primary" className="min-h-11" onPress={() => setModalOpen(true)}>
-              New session
-            </Button>
-          </div>
-        </header>
+    <AppPageFrame
+      eyebrow="App"
+      title="Backtest"
+      description="Create a session from server datasets, then Start or Resume to open the chart."
+      actions={
+        <>
+          <Button variant="secondary" className="min-h-11" onPress={onGoDatasets}>
+            Datasets
+          </Button>
+          <Button
+            variant="secondary"
+            className="min-h-11"
+            onPress={loadServer}
+            isDisabled={remoteStatus === 'loading'}
+          >
+            {remoteStatus === 'loading' ? 'Loading…' : 'Refresh'}
+          </Button>
+          <Button variant="primary" className="min-h-11" onPress={() => setModalOpen(true)}>
+            New session
+          </Button>
+        </>
+      }
+    >
 
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -536,7 +518,6 @@ export function CreateSessionPage({
             })}
           </div>
         )}
-      </div>
 
       {modalOpen && (
         <div className="fixed inset-0 z-[100010] flex items-center justify-center bg-background/80 p-3">
@@ -705,7 +686,7 @@ export function CreateSessionPage({
           </div>
         </div>
       )}
-    </div>
+    </AppPageFrame>
   );
 }
 

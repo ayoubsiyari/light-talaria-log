@@ -7,7 +7,7 @@ export interface ShellNavItem {
   pinBottom?: boolean;
 }
 
-/** V8b left-rail order (Hero shell). */
+/** App left-rail order (Hero shell). Datasets is a shell tab but not rail-pinned. */
 export const SHELL_NAV_MAIN: readonly ShellNavItem[] = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'trades', label: 'Trades' },
@@ -80,10 +80,21 @@ export function ShellIconProfile({ className = 'w-5 h-5' }: { className?: string
   );
 }
 
+export function ShellIconDatasets({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+      <ellipse cx="12" cy="6" rx="7" ry="3" />
+      <path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" strokeLinecap="round" />
+      <path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export const SHELL_ICONS: Record<AppTab, ShellIcon> = {
   dashboard: ShellIconDashboard,
   trades: ShellIconTrades,
   backtest: ShellIconBacktest,
+  datasets: ShellIconDatasets,
   strategy: ShellIconStrategy,
   resources: ShellIconResources,
   profile: ShellIconProfile,

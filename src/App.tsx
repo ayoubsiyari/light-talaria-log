@@ -80,15 +80,20 @@ import {
   subscribeBacktest,
 } from '@/backtest/backtestStore';
 import { cancelBacktest, runBacktest } from '@/backtest/runBacktestWorker';
+import { mergeAbResults } from '@/backtest/mergeAbResults';
 import { getJournalRun, saveJournalResult } from '@/journal/journalStore';
 import {
   DEFAULT_BACKTEST_PARAMS,
   normalizeBacktestParams,
+  type BacktestEvent,
   type BacktestParams,
+  type BacktestResult,
 } from '@/types/backtest';
 import { compileGraph, firstTfMismatch } from '@/strategy/compileGraph';
+import { rulesFromStrategyNodes } from '@/strategy/riskFromGraph';
 import { getStrategy } from '@/strategy/strategyStore';
 import { isLogicKind } from '@/strategy/pieceRegistry';
+import { StrategyRunHud } from '@/components/strategy/StrategyRunHud';
 import {
   createOrderSessionBridge,
   type OrderSessionBridge,
@@ -278,6 +283,30 @@ export default function App() {
   );
   /** Fingerprints of indicators auto-added by Strategy Run (cleared on Stop). */
   const autoStrategyIndicatorKeysRef = useRef<string[]>([]);
+  /** Last puzzle strategy id (watch / A-B). */
+  const lastGraphStrategyIdRef = useRef<string | null>(null);
+  const [explainEvent, setExplainEvent] = useState<BacktestEvent | null>(null);
+  const [watchTip, setWatchTip] = useState(false);
+  const [compareResult, setCompareResult] = useState<BacktestResult | null>(null);
+  const [abPickMode, setAbPickMode] = useState(false);
+  /** Unmerged primary run while A/B overlay is active. */
+  const primaryResultRef = useRef<BacktestResult | null>(null);
+  const compareResultRef = useRef<BacktestResult | null>(null);
+  compareResultRef.current = compareResult;
+  const watchTipRef = useRef(false);
+  watchTipRef.current = watchTip;
+  const watchTimerRef = useRef(0);
+  const watchLastCursorRef = useRef<number | null>(null);
+  const handleRunGraphStrategyRef = useRef<
+    (
+      strategyId: string,
+      opts?: {
+        skipTfPrompt?: boolean;
+        asCompare?: boolean;
+        tipOnly?: boolean;
+      },
+    ) => void
+  >(() => {});
   const [chartLayout, setChartLayout] = useState<ChartLayout>('1');
   const [layoutSync, setLayoutSync] = useState<LayoutSyncOptions>(DEFAULT_LAYOUT_SYNC);
   const layoutSyncRef = useRef(layoutSync);
@@ -2614,6 +2643,12 @@ export default function App() {
   const handleStopStrategy = useCallback(() => {
     cancelBacktest();
     clearBacktestResult();
+    setExplainEvent(null);
+    setWatchTip(false);
+    setCompareResult(null);
+    setAbPickMode(false);
+    primaryResultRef.current = null;
+    lastGraphStrategyIdRef.current = null;
     const keys = new Set(autoStrategyIndicatorKeysRef.current);
     autoStrategyIndicatorKeysRef.current = [];
     if (keys.size === 0) return;
@@ -2624,7 +2659,16 @@ export default function App() {
 
   /** Run a saved puzzle strategy on the open chart (Worker → marks). */
   const handleRunGraphStrategy = useCallback(
-    (strategyId: string, opts?: { skipTfPrompt?: boolean }) => {
+    (
+      strategyId: string,
+      opts?: {
+        skipTfPrompt?: boolean;
+        /** Keep existing result as lane A; this run becomes B. */
+        asCompare?: boolean;
+        /** Tip-window only (watch mode) — last ~800 bars. */
+        tipOnly?: boolean;
+      },
+    ) => {
       const strat = getStrategy(strategyId);
       if (!strat) {
         toast.info('Strategy not found', { timeout: 3500 });
@@ -2682,14 +2726,46 @@ export default function App() {
         sma: { ...DEFAULT_BACKTEST_PARAMS.sma },
         donchian: { ...DEFAULT_BACKTEST_PARAMS.donchian },
         costs: { ...DEFAULT_BACKTEST_PARAMS.costs },
-        rules: { ...DEFAULT_BACKTEST_PARAMS.rules },
+        rules: rulesFromStrategyNodes(strat.nodes, {
+          ...DEFAULT_BACKTEST_PARAMS.rules,
+        }),
         strategyId: 'graph',
         graph: compiled.graph,
       };
 
-      setView('chart');
-      setBacktestRunning();
-      const { timeStart, timeEnd } = replayBounds(session, seriesRef.current);
+      lastGraphStrategyIdRef.current = strategyId;
+      const asCompare = opts?.asCompare === true || abPickMode;
+      const tipOnly = opts?.tipOnly === true;
+      if (!asCompare && !tipOnly) {
+        setCompareResult(null);
+        setAbPickMode(false);
+        primaryResultRef.current = null;
+      }
+      if (!tipOnly) setView('chart');
+      if (!asCompare && !tipOnly) setBacktestRunning();
+      const bounds = replayBounds(session, seriesRef.current);
+      let timeStart = bounds.timeStart;
+      let timeEnd = bounds.timeEnd;
+      if (tipOnly) {
+        const cursor =
+          replayRef.current.get().cursorTime ||
+          bounds.timeEnd;
+        // ~800 bars on current TF (cheap tip re-eval for watch)
+        const period =
+          pane.timeframe === '1D'
+            ? 86400
+            : pane.timeframe === '4h'
+              ? 14400
+              : pane.timeframe === '1h'
+                ? 3600
+                : pane.timeframe === '15m'
+                  ? 900
+                  : pane.timeframe === '5m'
+                    ? 300
+                    : 60;
+        timeEnd = cursor;
+        timeStart = Math.max(bounds.timeStart, cursor - period * 800);
+      }
 
       void runBacktest({
         sessionId: session.id,
@@ -2700,11 +2776,66 @@ export default function App() {
         params,
       })
         .then((result) => {
-          const note = result.truncated
+          const withName: BacktestResult = {
+            ...result,
+            strategyName: strat.name,
+          };
+          if (asCompare) {
+            const primary =
+              primaryResultRef.current ?? getBacktestState().result;
+            if (!primary) {
+              setBacktestResult(withName, 'A/B needs a primary run first');
+              return;
+            }
+            // Drop prior merge if present
+            const base =
+              primaryResultRef.current ??
+              (primary.strategyName?.includes(' vs ')
+                ? primary
+                : primary);
+            primaryResultRef.current = base;
+            setCompareResult(withName);
+            const merged = mergeAbResults(base, withName);
+            setBacktestResult(
+              merged,
+              `A/B · A ${base.trades.length} / B ${withName.trades.length} trades`,
+            );
+            setAbPickMode(false);
+            toast.info('A/B overlay ready', {
+              description: 'Lane B marks are labeled B·…',
+              timeout: 4000,
+            });
+            return;
+          }
+          if (tipOnly) {
+            const prevPrimary = primaryResultRef.current;
+            const prevEntries =
+              prevPrimary?.events.filter((e) => e.kind === 'entry').length ?? 0;
+            const nextEntries = withName.events.filter(
+              (e) => e.kind === 'entry',
+            ).length;
+            primaryResultRef.current = withName;
+            const b = compareResultRef.current;
+            if (b) {
+              setBacktestResult(mergeAbResults(withName, b), 'Watch tip · A/B');
+            } else {
+              setBacktestResult(withName, 'Watch tip');
+            }
+            if (nextEntries > prevEntries) {
+              toast.info('Watch: new entry signal', {
+                description: strat.name,
+                timeout: 4500,
+              });
+            }
+            return;
+          }
+          const note = withName.truncated
             ? `Capped at ${MAX_BACKTEST_BARS.toLocaleString()} bars (newest)`
-            : `${result.trades.length} trades · ${result.events.length} marks`;
-          setBacktestResult(result, note);
-          saveJournalResult(session.id, session.name, result);
+            : `${withName.trades.length} trades · ${withName.events.length} marks`;
+          primaryResultRef.current = withName;
+          setBacktestResult(withName, note);
+          saveJournalResult(session.id, session.name, withName);
+          setExplainEvent(null);
 
           const keys: string[] = [];
           setEnabledIndicators((prev) => {
@@ -2860,8 +2991,53 @@ export default function App() {
       activePaneId,
       seriesForPane,
       applyPaneTimeframe,
+      abPickMode,
     ],
   );
+
+  // Keep latest runner for watch subscription (avoids stale closures).
+  handleRunGraphStrategyRef.current = handleRunGraphStrategy;
+
+  /**
+   * Tip-bar watch: subscribe to replay controller directly so play/seek
+   * re-eval even when App does not React-render each cursor tick.
+   */
+  useEffect(() => {
+    const ctrl = replayRef.current;
+    return ctrl.subscribe((rs) => {
+      if (!watchTipRef.current) return;
+      const id = lastGraphStrategyIdRef.current;
+      if (!id || !Number.isFinite(rs.cursorTime)) return;
+      if (watchLastCursorRef.current === rs.cursorTime) return;
+      window.clearTimeout(watchTimerRef.current);
+      watchTimerRef.current = window.setTimeout(() => {
+        if (!watchTipRef.current) return;
+        const cur = ctrl.get().cursorTime;
+        if (watchLastCursorRef.current === cur) return;
+        watchLastCursorRef.current = cur;
+        handleRunGraphStrategyRef.current(id, {
+          tipOnly: true,
+          skipTfPrompt: true,
+        });
+      }, 1200);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!watchTip) {
+      window.clearTimeout(watchTimerRef.current);
+      watchLastCursorRef.current = null;
+      return;
+    }
+    // Kick once when Watch is turned on (even if cursor is idle).
+    const id = lastGraphStrategyIdRef.current;
+    if (!id) return;
+    watchLastCursorRef.current = null;
+    handleRunGraphStrategyRef.current(id, {
+      tipOnly: true,
+      skipTfPrompt: true,
+    });
+  }, [watchTip]);
 
   useEffect(() => {
     return () => {
@@ -3374,6 +3550,7 @@ export default function App() {
               marqueeZoomEnabled={activeTool === 'zoom'}
               drawingsLocked={drawingsLocked}
               onChartPoint={handleChartPoint}
+              onBacktestEventSelect={setExplainEvent}
               onFreehandStroke={handleFreehandStroke}
               onDrawingsChange={handleEngineDrawingsChange}
               onDrawingSelect={handleEngineDrawingSelect}
@@ -3384,6 +3561,33 @@ export default function App() {
                 setCameraDetached(true);
               }}
             />
+            {btResult && (
+              <StrategyRunHud
+                result={primaryResultRef.current ?? btResult}
+                compareResult={compareResult}
+                explainEvent={explainEvent}
+                onClearExplain={() => setExplainEvent(null)}
+                watchEnabled={watchTip}
+                onWatchChange={setWatchTip}
+                onRunAsB={() => {
+                  setAbPickMode(true);
+                  toast.info('Pick lane B', {
+                    description:
+                      'Open Strategies and Run another puzzle — it overlays as B.',
+                    timeout: 6000,
+                  });
+                }}
+                onClearCompare={() => {
+                  setCompareResult(null);
+                  setAbPickMode(false);
+                  const primary = primaryResultRef.current;
+                  if (primary) {
+                    setBacktestResult(primary, null);
+                  }
+                }}
+                onStop={handleStopStrategy}
+              />
+            )}
             {import.meta.env.DEV && (
               <PerfOverlay barsInMemory={barsInMemory} paneCount={panes.length} />
             )}

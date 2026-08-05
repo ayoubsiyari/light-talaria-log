@@ -580,6 +580,63 @@ export const PIECE_DOCS: Record<PieceKind, PieceDoc> = {
     onChart: 'Diamond when the hour window opens — filter with AND.',
     visual: 'session',
   },
+  htf_ma_bias: {
+    kind: 'htf_ma_bias',
+    howItWorks:
+      'Aggregates chart bars to a higher timeframe, then keeps bias when HTF close is above (buy) or below (sell) an HTF EMA.',
+    onChart:
+      'Diamonds while HTF bias is active; soft HTF zones may appear. Use as AND filter with LTF entries.',
+    visual: 'ma_slope',
+  },
+  htf_bos_bias: {
+    kind: 'htf_bos_bias',
+    howItWorks:
+      'Detects break of structure on an aggregated HTF, then forward-fills that bias until the opposite BOS.',
+    onChart: 'Diamonds while HTF BOS bias holds; optional HTF tint zones.',
+    visual: 'breakout',
+  },
+  htf_rsi_bias: {
+    kind: 'htf_rsi_bias',
+    howItWorks:
+      'HTF RSI vs a level (e.g. buy when HTF RSI ≤ 50). Mapped back onto every LTF bar in that HTF candle.',
+    onChart: 'Diamonds while the HTF RSI filter is true.',
+    visual: 'osc_level',
+  },
+  risk_stop_loss: {
+    kind: 'risk_stop_loss',
+    howItWorks:
+      'Config node — not a condition. Sets stop-loss % on the automation engine when you Run.',
+    onChart: 'No diamond. Exits show as triangles when price hits the stop.',
+    visual: 'level_touch',
+  },
+  risk_take_profit: {
+    kind: 'risk_take_profit',
+    howItWorks:
+      'Config node — take-profit % applied on Run (fraction of entry).',
+    onChart: 'No diamond. TP exits appear as exit triangles.',
+    visual: 'level_touch',
+  },
+  risk_cooldown: {
+    kind: 'risk_cooldown',
+    howItWorks:
+      'Config node — bars to wait after a flat exit before the next entry.',
+    onChart: 'No diamond; fewer clustered re-entries after exits.',
+    visual: 'session',
+  },
+  risk_direction: {
+    kind: 'risk_direction',
+    howItWorks:
+      'Config node — restrict automation to long only, short only, or both.',
+    onChart: 'No diamond; only allowed-side entries appear.',
+    visual: 'logic',
+  },
+  risk_rr: {
+    kind: 'risk_rr',
+    howItWorks:
+      'Config node — risk:reward multiple. With Stop loss %, derives take-profit = SL × R:R (skipped if Take profit % is also on the canvas).',
+    onChart: 'No diamond; TP exits appear when price reaches the derived target.',
+    visual: 'level_touch',
+  },
 };
 
 export function getPieceDoc(kind: PieceKind): PieceDoc {

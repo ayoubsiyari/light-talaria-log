@@ -4,6 +4,7 @@
  * Worker-only.
  */
 import { runAutomation, type RawFlipSignal } from '@/backtest/automationEngine';
+import { collectZonesFromLeaves } from '@/backtest/strategies/collectZones';
 import {
   evalAllConditions,
   sideAt,
@@ -16,6 +17,7 @@ import type {
   BacktestCostParams,
   BacktestEvent,
   BacktestTrade,
+  BacktestZone,
   EquityPoint,
 } from '@/types/backtest';
 import type { OrderSide } from '@/types/order';
@@ -37,6 +39,7 @@ export interface RunGraphInput {
 export interface RunGraphOutput {
   trades: BacktestTrade[];
   events: BacktestEvent[];
+  zones: BacktestZone[];
   equity: EquityPoint[];
   finalEquity: number;
   totalPnl: number;
@@ -72,22 +75,27 @@ function collectDetectionMarks(
   leaves: Map<string, ConditionEval>,
   times: Float64Array,
   closes: Float32Array,
+  byId: Map<string, CompiledPiece>,
 ): BacktestEvent[] {
   // Collect rising edges per piece, then round-robin so every piece can show.
   const perPiece: BacktestEvent[][] = [];
-  for (const [, ev] of leaves) {
+  for (const [id, ev] of leaves) {
+    const piece = byId.get(id);
     const list: BacktestEvent[] = [];
     const n = ev.flags.length;
     for (let i = 1; i < n; i++) {
       if (ev.flags[i] !== 1 || ev.flags[i - 1] === 1) continue;
       const side = sideAt(ev, i);
+      const name = ev.label || piece?.label || id;
       list.push({
         id: '',
         time: times[i]!,
         price: closes[i]!,
         kind: 'signal',
-        label: ev.label,
+        label: name,
         side: side ?? undefined,
+        pieceIds: [id],
+        explain: `Detected: ${name}\nPiece id: ${id}${piece ? `\nKind: ${piece.kind}` : ''}`,
       });
     }
     if (list.length) perPiece.push(list);
@@ -117,61 +125,69 @@ export function runGraphStrategy(input: RunGraphInput): RunGraphOutput {
   const { times, opens, highs, lows, closes, graph, costs, rules } = input;
   const n = closes.length;
   if (n === 0 || graph.pieces.length === 0) {
-    return { trades: [], events: [], equity: [], finalEquity: 1, totalPnl: 0 };
+    return {
+      trades: [],
+      events: [],
+      zones: [],
+      equity: [],
+      finalEquity: 1,
+      totalPnl: 0,
+    };
   }
 
   const series = { times, opens, highs, lows, closes };
   const leaves = evalAllConditions(graph.pieces, series);
   const { outs, ins, byId } = buildAdj(graph);
 
-  const memoKey = (id: string, i: number) => `${id}:${i}`;
-  const boolMemo = new Map<string, boolean>();
-  const sideMemo = new Map<string, OrderSide | null>();
-  const labelMemo = new Map<string, string>();
+  type NodeEval = {
+    ok: boolean;
+    side: OrderSide | null;
+    label: string;
+    pieceIds: string[];
+  };
 
-  const evalNode = (
-    id: string,
-    i: number,
-  ): { ok: boolean; side: OrderSide | null; label: string } => {
+  const memoKey = (id: string, i: number) => `${id}:${i}`;
+  const memo = new Map<string, NodeEval>();
+
+  const evalNode = (id: string, i: number): NodeEval => {
     const key = memoKey(id, i);
-    if (boolMemo.has(key)) {
-      return {
-        ok: boolMemo.get(key)!,
-        side: sideMemo.get(key) ?? null,
-        label: labelMemo.get(key) ?? '',
-      };
-    }
+    const hit = memo.get(key);
+    if (hit) return hit;
+
+    const finish = (r: NodeEval): NodeEval => {
+      memo.set(key, r);
+      return r;
+    };
 
     if (id === graph.entryId || id === graph.exitId) {
       const kids = (
         id === graph.entryId ? (outs.get(id) ?? []) : (ins.get(id) ?? [])
       ).filter((k) => byId.has(k));
       if (kids.length === 0) {
-        boolMemo.set(key, false);
-        sideMemo.set(key, null);
-        labelMemo.set(key, '');
-        return { ok: false, side: null, label: '' };
+        return finish({ ok: false, side: null, label: '', pieceIds: [] });
       }
       let ok = true;
       let side: OrderSide | null = null;
       const labels: string[] = [];
+      const pieceIds: string[] = [];
       for (const kid of kids) {
         const r = evalNode(kid, i);
         if (!r.ok) ok = false;
         if (r.ok && r.label) labels.push(r.label);
+        if (r.ok) pieceIds.push(...r.pieceIds);
         if (r.side && !side) side = r.side;
       }
-      const label = labels.join(' + ');
-      boolMemo.set(key, ok);
-      sideMemo.set(key, side);
-      labelMemo.set(key, label);
-      return { ok, side, label };
+      return finish({
+        ok,
+        side,
+        label: labels.join(' + '),
+        pieceIds: [...new Set(pieceIds)],
+      });
     }
 
     const piece = byId.get(id);
     if (!piece) {
-      boolMemo.set(key, false);
-      return { ok: false, side: null, label: '' };
+      return finish({ ok: false, side: null, label: '', pieceIds: [] });
     }
 
     if (isLogicKind(piece.kind)) {
@@ -179,78 +195,110 @@ export function runGraphStrategy(input: RunGraphInput): RunGraphOutput {
       if (piece.kind === 'not') {
         const child = preds[0];
         if (!child) {
-          boolMemo.set(key, false);
-          return { ok: false, side: null, label: piece.label };
+          return finish({
+            ok: false,
+            side: null,
+            label: piece.label,
+            pieceIds: [],
+          });
         }
         const r = evalNode(child, i);
         const ok = !r.ok;
-        boolMemo.set(key, ok);
-        sideMemo.set(key, r.side);
-        labelMemo.set(key, ok ? `NOT(${r.label || piece.label})` : '');
-        return {
+        return finish({
           ok,
           side: r.side,
           label: ok ? `NOT(${r.label || piece.label})` : '',
-        };
+          pieceIds: ok ? r.pieceIds : [],
+        });
       }
       if (piece.kind === 'and') {
         let ok = preds.length > 0;
         let side: OrderSide | null = null;
         const labels: string[] = [];
+        const pieceIds: string[] = [];
         for (const p of preds) {
           const r = evalNode(p, i);
           if (!r.ok) ok = false;
           if (r.ok && r.label) labels.push(r.label);
+          if (r.ok) pieceIds.push(...r.pieceIds);
           if (r.side && !side) side = r.side;
         }
-        const label = labels.join(' ∧ ');
-        boolMemo.set(key, ok);
-        sideMemo.set(key, side);
-        labelMemo.set(key, ok ? label : '');
-        return { ok, side, label: ok ? label : '' };
+        return finish({
+          ok,
+          side,
+          label: ok ? labels.join(' ∧ ') : '',
+          pieceIds: ok ? [...new Set(pieceIds)] : [],
+        });
       }
       if (piece.kind === 'xor') {
         const a = preds[0] ? evalNode(preds[0], i) : null;
         const b = preds[1] ? evalNode(preds[1], i) : null;
         const ok = !!(a && b && a.ok !== b.ok);
-        const side = ok ? (a!.ok ? a!.side : b!.side) : null;
-        const label = ok
-          ? `XOR(${a!.ok ? a!.label : b!.label})`
-          : '';
-        boolMemo.set(key, ok);
-        sideMemo.set(key, side);
-        labelMemo.set(key, label);
-        return { ok, side, label };
+        const winner = ok ? (a!.ok ? a! : b!) : null;
+        return finish({
+          ok,
+          side: winner?.side ?? null,
+          label: winner ? `XOR(${winner.label})` : '',
+          pieceIds: winner ? winner.pieceIds : [],
+        });
       }
       let ok = false;
       let side: OrderSide | null = null;
       const labels: string[] = [];
+      const pieceIds: string[] = [];
       for (const p of preds) {
         const r = evalNode(p, i);
         if (r.ok) {
           ok = true;
           if (r.label) labels.push(r.label);
+          pieceIds.push(...r.pieceIds);
           if (r.side && !side) side = r.side;
         }
       }
-      const label = labels.join(' ∨ ');
-      boolMemo.set(key, ok);
-      sideMemo.set(key, side);
-      labelMemo.set(key, ok ? label : '');
-      return { ok, side, label: ok ? label : '' };
+      return finish({
+        ok,
+        side,
+        label: ok ? labels.join(' ∨ ') : '',
+        pieceIds: ok ? [...new Set(pieceIds)] : [],
+      });
     }
 
     const leaf = leaves.get(id);
     if (!leaf) {
-      boolMemo.set(key, false);
-      return { ok: false, side: null, label: piece.label };
+      return finish({
+        ok: false,
+        side: null,
+        label: piece.label,
+        pieceIds: [],
+      });
     }
     const ok = leaf.flags[i] === 1;
     const side = ok ? sideAt(leaf, i) : null;
-    boolMemo.set(key, ok);
-    sideMemo.set(key, side);
-    labelMemo.set(key, ok ? leaf.label : '');
-    return { ok, side, label: ok ? leaf.label : '' };
+    return finish({
+      ok,
+      side,
+      label: ok ? leaf.label : '',
+      pieceIds: ok ? [id] : [],
+    });
+  };
+
+  const explainFor = (
+    kind: 'entry' | 'exit',
+    label: string,
+    pieceIds: string[],
+  ): string => {
+    const lines = [
+      kind === 'entry' ? `Entry because: ${label || 'signal'}` : `Exit because: ${label || 'signal'}`,
+    ];
+    if (pieceIds.length) {
+      const names = pieceIds.map((pid) => {
+        const p = byId.get(pid);
+        return p ? `${p.label} (${p.kind})` : pid;
+      });
+      lines.push(`Contributing pieces (${names.length}):`);
+      for (const n of names) lines.push(`• ${n}`);
+    }
+    return lines.join('\n');
   };
 
   const signals: RawFlipSignal[] = [];
@@ -262,17 +310,23 @@ export function runGraphStrategy(input: RunGraphInput): RunGraphOutput {
     const exit = evalNode(graph.exitId, i);
 
     if (entry.ok && !prevEntry) {
+      const label = entry.label || 'Entry';
       signals.push({
         i,
         side: entry.side ?? 'buy',
-        label: entry.label || 'Entry',
+        label,
+        pieceIds: entry.pieceIds,
+        explain: explainFor('entry', label, entry.pieceIds),
       });
     } else if (exit.ok && !prevExit) {
+      const label = exit.label || 'Exit';
       signals.push({
         i,
         side: exit.side ?? 'sell',
-        label: exit.label || 'Exit',
+        label,
         exitOnly: true,
+        pieceIds: exit.pieceIds,
+        explain: explainFor('exit', label, exit.pieceIds),
       });
     }
 
@@ -291,13 +345,22 @@ export function runGraphStrategy(input: RunGraphInput): RunGraphOutput {
     trendPeriod: 30,
   });
 
-  const detects = collectDetectionMarks(leaves, times, closes);
-  // Trade entry/exit first, then piece detections (chart draws all)
+  const detects = collectDetectionMarks(leaves, times, closes, byId);
+  const zones = collectZonesFromLeaves(
+    graph,
+    leaves,
+    times,
+    highs,
+    lows,
+    closes,
+  );
+
   const events = [...auto.events, ...detects];
 
   return {
     trades: auto.trades,
     events,
+    zones,
     equity: auto.equity,
     finalEquity: auto.finalEquity,
     totalPnl: auto.totalPnl,

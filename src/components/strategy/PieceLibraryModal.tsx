@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Button, Label } from '@heroui/react';
 import { PieceChartPreview } from '@/components/strategy/PieceChartPreview';
 import { getPieceDoc } from '@/strategy/pieceDocs';
+import { getPieceConfidence } from '@/strategy/pieceRegistry';
 import {
   PIECE_CATEGORIES,
   PIECE_REGISTRY,
@@ -114,7 +115,8 @@ export function PieceLibraryModal({
                       )}
                     </span>
                     <span className="block text-[10px] text-muted truncate">
-                      {p.shortLabel} · {p.category}
+                      {p.shortLabel} · {p.category} ·{' '}
+                      {getPieceConfidence(p.kind)}
                     </span>
                   </button>
                 </li>
@@ -132,6 +134,8 @@ export function PieceLibraryModal({
                 <div className="space-y-1">
                   <p className="text-[10px] uppercase tracking-wide text-muted font-semibold">
                     {active.category}
+                    {' · '}
+                    {getPieceConfidence(active.kind)}
                   </p>
                   <h3 className="text-xl font-semibold">{active.label}</h3>
                   <p className="text-sm text-muted">{active.description}</p>

@@ -93,6 +93,91 @@ export function deleteStrategy(id: string): void {
   writeAll(readAll().filter((s) => s.id !== id));
 }
 
+const TEMPLATE_VERSION = 1 as const;
+
+export interface StrategyTemplateFile {
+  version: typeof TEMPLATE_VERSION;
+  exportedAt: number;
+  strategies: StrategyRecord[];
+}
+
+/** Export one or more strategies as portable JSON (local share/import). */
+export function exportStrategiesJson(ids?: string[]): string {
+  const all = readAll();
+  const strategies =
+    ids && ids.length > 0
+      ? all.filter((s) => ids.includes(s.id))
+      : all;
+  const payload: StrategyTemplateFile = {
+    version: TEMPLATE_VERSION,
+    exportedAt: Date.now(),
+    strategies,
+  };
+  return JSON.stringify(payload, null, 2);
+}
+
+export interface ImportStrategiesResult {
+  imported: number;
+  skipped: number;
+  error?: string;
+}
+
+/** Import template JSON — new ids so local copies never collide. */
+export function importStrategiesJson(raw: string): ImportStrategiesResult {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') {
+      return { imported: 0, skipped: 0, error: 'Invalid JSON' };
+    }
+    const bag = parsed as Partial<StrategyTemplateFile> & {
+      strategies?: unknown;
+    };
+    const list = Array.isArray(bag.strategies)
+      ? bag.strategies
+      : Array.isArray(parsed)
+        ? (parsed as unknown[])
+        : null;
+    if (!list) {
+      return { imported: 0, skipped: 0, error: 'No strategies array' };
+    }
+    let imported = 0;
+    let skipped = 0;
+    for (const item of list) {
+      if (!item || typeof item !== 'object') {
+        skipped += 1;
+        continue;
+      }
+      const s = item as Partial<StrategyRecord>;
+      if (typeof s.name !== 'string' || !Array.isArray(s.nodes)) {
+        skipped += 1;
+        continue;
+      }
+      saveStrategy({
+        name: s.name.endsWith(' (import)')
+          ? s.name
+          : `${s.name} (import)`,
+        desc: typeof s.desc === 'string' ? s.desc : '',
+        markets: Array.isArray(s.markets) ? s.markets.map(String) : [],
+        timeframes: Array.isArray(s.timeframes)
+          ? s.timeframes.map(String)
+          : [],
+        tags: Array.isArray(s.tags) ? s.tags.map(String) : ['import'],
+        variables: Array.isArray(s.variables) ? s.variables : [],
+        nodes: s.nodes,
+        edges: Array.isArray(s.edges) ? s.edges : [],
+      });
+      imported += 1;
+    }
+    return { imported, skipped };
+  } catch (err) {
+    return {
+      imported: 0,
+      skipped: 0,
+      error: err instanceof Error ? err.message : 'Parse failed',
+    };
+  }
+}
+
 export function emptyCanvas(): { nodes: Node[]; edges: Edge[] } {
   return {
     nodes: [

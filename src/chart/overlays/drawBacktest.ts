@@ -10,6 +10,7 @@ import type {
   BacktestEvent,
   BacktestResult,
   BacktestTrade,
+  BacktestZone,
   EquityPoint,
 } from '@/types/backtest';
 import type { ChartBar, VisibleRange } from '@/types/bar';
@@ -24,6 +25,15 @@ const MAX_MARKERS_PER_FRAME = 400;
 /** Min gap between label chips (px). */
 const MIN_LABEL_PX = 24;
 const MAX_LABELS_PER_FRAME = 140;
+const MAX_ZONES_PER_FRAME = 80;
+/** Hit radius for click-to-explain (css px). */
+const HIT_R = 14;
+
+export type DrawBacktestOpts = {
+  focusedTradeId?: string | null;
+  /** When set (replay), hide marks/zones after this unix time. */
+  cursorTime?: number | null;
+};
 
 export function drawBacktest(
   ctx: CanvasRenderingContext2D,
@@ -35,6 +45,7 @@ export function drawBacktest(
   colors: ChartColors,
   /** Journal / deep-link focus — brief highlight on matching trade id. */
   focusedTradeId: string | null = null,
+  cursorTime: number | null = null,
 ): void {
   if (!result || bars.length === 0) return;
 
@@ -53,13 +64,33 @@ export function drawBacktest(
   }
 
   const padSec = Math.max(1, (toT - fromT) * 0.02);
+  const tHi = cursorTime != null ? Math.min(toT + padSec, cursorTime) : toT + padSec;
+
+  if (result.zones?.length) {
+    drawZones(
+      ctx,
+      result.zones,
+      bars,
+      range,
+      plot,
+      scale,
+      colors,
+      fromT - padSec,
+      tHi,
+    );
+  }
+
   const trades = result.trades;
   const lo = lowerBoundTrade(trades, fromT - padSec);
-  const hi = upperBoundTrade(trades, toT + padSec);
+  const hi = upperBoundTrade(trades, tHi);
 
-  const events = result.events?.length
+  const rawEvents = result.events?.length
     ? result.events
     : synthesizeEventsFromTrades(trades);
+  const events =
+    cursorTime != null
+      ? rawEvents.filter((e) => e.time <= cursorTime)
+      : rawEvents;
   const eventsOwnMarkers = events.length > 0;
 
   let drawn = 0;
@@ -68,6 +99,7 @@ export function drawBacktest(
 
   for (let i = lo; i < hi && drawn < MAX_MARKERS_PER_FRAME; i++) {
     const trade = trades[i]!;
+    if (cursorTime != null && trade.entryTime > cursorTime) continue;
     const painted = drawTrade(
       ctx,
       trade,
@@ -80,6 +112,7 @@ export function drawBacktest(
       lastExitX,
       focusedTradeId != null && trade.id === focusedTradeId,
       /* markers */ !eventsOwnMarkers,
+      cursorTime,
     );
     if (painted.entryX != null) lastEntryX = painted.entryX;
     if (painted.exitX != null) lastExitX = painted.exitX;
@@ -95,11 +128,98 @@ export function drawBacktest(
     scale,
     colors,
     fromT - padSec,
-    toT + padSec,
+    tHi,
     focusedTradeId,
   );
 
   ctx.restore();
+}
+
+/** Nearest strategy mark under pointer — for explainability panel. */
+export function hitTestBacktestEvent(
+  result: BacktestResult | null | undefined,
+  bars: readonly ChartBar[],
+  range: VisibleRange,
+  plot: PlotRect,
+  scale: PriceScale,
+  cssX: number,
+  cssY: number,
+  cursorTime: number | null = null,
+): BacktestEvent | null {
+  if (!result || bars.length === 0) return null;
+  const events = result.events;
+  if (!events?.length) return null;
+
+  let best: BacktestEvent | null = null;
+  let bestD = HIT_R * HIT_R;
+
+  for (const e of events) {
+    if (cursorTime != null && e.time > cursorTime) continue;
+    const li = logicalIndexAtTime(bars, e.time);
+    if (li < range.fromIndex - 1 || li > range.toIndex + 1) continue;
+    const x = indexToX(li, range, plot);
+    const y = priceToY(e.price, scale, plot);
+    const dx = x - cssX;
+    const dy = y - cssY;
+    const d = dx * dx + dy * dy;
+    if (d < bestD) {
+      bestD = d;
+      best = e;
+    }
+  }
+  return best;
+}
+
+function drawZones(
+  ctx: CanvasRenderingContext2D,
+  zones: readonly BacktestZone[],
+  bars: readonly ChartBar[],
+  range: VisibleRange,
+  plot: PlotRect,
+  scale: PriceScale,
+  colors: ChartColors,
+  fromT: number,
+  toT: number,
+): void {
+  let n = 0;
+  for (const z of zones) {
+    if (n >= MAX_ZONES_PER_FRAME) break;
+    if (z.timeEnd < fromT || z.timeStart > toT) continue;
+    const t0 = Math.max(z.timeStart, fromT);
+    const t1 = Math.min(z.timeEnd, toT);
+    const i0 = logicalIndexAtTime(bars, t0);
+    const i1 = logicalIndexAtTime(bars, t1);
+    const x0 = indexToX(i0, range, plot);
+    const x1 = indexToX(Math.max(i0 + 0.2, i1), range, plot);
+    const yHi = priceToY(z.priceHigh, scale, plot);
+    const yLo = priceToY(z.priceLow, scale, plot);
+    const top = Math.min(yHi, yLo);
+    const h = Math.max(2, Math.abs(yLo - yHi));
+    const w = Math.max(2, x1 - x0);
+
+    const base =
+      z.kind === 'fvg'
+        ? colors.accent
+        : z.kind === 'orb' || z.kind === 'range'
+          ? colors.crosshair
+          : z.kind === 'ob'
+            ? colors.downColor
+            : z.kind === 'fib'
+              ? colors.upColor
+              : colors.grid;
+    const fill = z.lane === 'b' ? colors.crosshair : base;
+    ctx.globalAlpha = z.lane === 'b' ? 0.08 : 0.14;
+    ctx.fillStyle = fill;
+    ctx.fillRect(x0, top, w, h);
+    ctx.globalAlpha = z.lane === 'b' ? 0.45 : 0.4;
+    ctx.strokeStyle = fill;
+    ctx.lineWidth = z.lane === 'b' ? 1.5 : 1;
+    if (z.lane === 'b') ctx.setLineDash([4, 3]);
+    ctx.strokeRect(x0, top, w, h);
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    n++;
+  }
 }
 
 function synthesizeEventsFromTrades(
@@ -165,17 +285,34 @@ function drawEventLabels(
     if (!focused && Math.abs(pt.x - lastLabelX) < MIN_LABEL_PX) continue;
 
     const isDetect = ev.kind === 'signal';
-    const fill = isDetect
-      ? colors.accent
-      : ev.kind === 'exit'
-        ? colors.downColor
-        : ev.side === 'sell'
+    const laneB = ev.lane === 'b';
+    const fill = laneB
+      ? colors.crosshair
+      : isDetect
+        ? colors.accent
+        : ev.kind === 'exit'
           ? colors.downColor
-          : colors.upColor;
+          : ev.side === 'sell'
+            ? colors.downColor
+            : colors.upColor;
 
     // Entry/exit = triangles; piece detections = diamonds (easy to tell apart)
+    // Lane B uses dashed outline so A/B overlays stay distinct.
     if (isDetect) {
       drawDiamond(ctx, pt.x, pt.y, fill);
+      if (laneB) {
+        ctx.strokeStyle = fill;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 2]);
+        ctx.beginPath();
+        ctx.moveTo(pt.x, pt.y - MARKER_R - 3);
+        ctx.lineTo(pt.x + MARKER_R + 3, pt.y);
+        ctx.lineTo(pt.x, pt.y + MARKER_R + 3);
+        ctx.lineTo(pt.x - MARKER_R - 3, pt.y);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
     } else {
       drawTriangle(
         ctx,
@@ -277,12 +414,16 @@ function drawTrade(
   lastExitX: number,
   focused = false,
   drawMarkers = true,
+  cursorTime: number | null = null,
 ): { drew: boolean; entryX: number | null; exitX: number | null } {
   const win = trade.pnl >= 0;
   const segColor = win ? colors.upColor : colors.downColor;
 
   const entry = pointXY(trade.entryTime, trade.entryPrice, bars, range, plot, scale);
-  const exit = pointXY(trade.exitTime, trade.exitPrice, bars, range, plot, scale);
+  const showExitYet = cursorTime == null || trade.exitTime <= cursorTime;
+  const exit = showExitYet
+    ? pointXY(trade.exitTime, trade.exitPrice, bars, range, plot, scale)
+    : null;
 
   const showEntry =
     entry != null && (focused || Math.abs(entry.x - lastEntryX) >= MIN_MARKER_PX);

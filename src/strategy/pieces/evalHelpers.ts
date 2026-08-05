@@ -12,12 +12,39 @@ export interface BarSeries {
   closes: Float32Array;
 }
 
+/** Sparse geometry from structure pieces (true extents, not post-hoc pads). */
+export type ZoneHintKind =
+  | 'fvg'
+  | 'orb'
+  | 'ob'
+  | 'fib'
+  | 'donchian'
+  | 'equal'
+  | 'range'
+  | 'htf';
+
+export interface ZoneHint {
+  startIdx: number;
+  endIdx: number;
+  priceHigh: number;
+  priceLow: number;
+  kind: ZoneHintKind;
+  side?: OrderSide;
+}
+
 export interface ConditionEval {
   flags: Uint8Array;
   /** 0 none, 1 buy, 2 sell */
   sides: Uint8Array;
   side: OrderSide | null;
   label: string;
+  /** Optional zone geometry (structure / session pieces). */
+  zoneHints?: ZoneHint[];
+}
+
+export function pushZoneHint(ev: ConditionEval, hint: ZoneHint): void {
+  if (!ev.zoneHints) ev.zoneHints = [];
+  ev.zoneHints.push(hint);
 }
 
 export const BUY = 1;

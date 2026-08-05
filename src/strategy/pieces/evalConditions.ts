@@ -7,7 +7,19 @@ import { computeRsi } from '@/indicators/rsi';
 import { computeMacd } from '@/indicators/macd';
 import { computeBollinger } from '@/indicators/bollinger';
 import { computeWma } from '@/indicators/math/helpers';
-import type { CompiledPiece, PieceKind, PieceParams } from '@/strategy/graphTypes';
+import { timeframeSeconds } from '@/data/timeframeAgg';
+import type { Timeframe } from '@/types/ui';
+import {
+  aggregateSeriesToHtf,
+  mapHtfFlagsToLtf,
+} from '@/strategy/pieces/htfAggregate';
+import type {
+  CompiledPiece,
+  PieceKind,
+  PieceParams,
+  RiskKind,
+} from '@/strategy/graphTypes';
+import { isRiskKind } from '@/strategy/graphTypes';
 import type { BarSeries, ConditionEval } from '@/strategy/pieces/evalHelpers';
 import {
   BUY,
@@ -17,6 +29,7 @@ import {
   empty,
   mark,
   num,
+  pushZoneHint,
   sideFromParams,
   str,
   swingHighLow,
@@ -1103,6 +1116,7 @@ function evalSessionRangeBreak(series: BarSeries, params: PieceParams): Conditio
   let orHigh = -Infinity;
   let orLow = Infinity;
   let ready = false;
+  let zoneEmitted = false;
   for (let i = 0; i < n; i++) {
     const d = utcDay(series.times[i]!);
     if (d !== day) {
@@ -1111,16 +1125,30 @@ function evalSessionRangeBreak(series: BarSeries, params: PieceParams): Conditio
       orHigh = -Infinity;
       orLow = Infinity;
       ready = false;
+      zoneEmitted = false;
     }
     const idx = i - dayStart;
     if (idx < rangeBars) {
       orHigh = Math.max(orHigh, series.highs[i]!);
       orLow = Math.min(orLow, series.lows[i]!);
-      if (idx === rangeBars - 1) ready = true;
+      if (idx === rangeBars - 1) {
+        ready = true;
+        if (Number.isFinite(orHigh) && Number.isFinite(orLow) && orHigh > orLow) {
+          pushZoneHint(out, {
+            startIdx: dayStart,
+            endIdx: Math.min(n - 1, dayStart + rangeBars + 48),
+            priceHigh: orHigh,
+            priceLow: orLow,
+            kind: 'orb',
+          });
+          zoneEmitted = true;
+        }
+      }
       continue;
     }
     if (!ready) continue;
     mark(out, i, series.closes[i]! > orHigh, series.closes[i]! < orLow, sideWant);
+    void zoneEmitted;
   }
   return out;
 }
@@ -1406,11 +1434,17 @@ function evalFvg(series: BarSeries, params: PieceParams): ConditionEval {
   const out = empty(n, sideWant ?? 'buy', 'FVG');
   for (let i = 2; i < n; i++) {
     const px = series.closes[i]!;
+    let gapTop = 0;
+    let gapBot = 0;
+    let hitSide: 0 | 1 | 2 = 0;
     if (sideWant === 'buy' || sideWant === null) {
       const gap = findBullFvg(series, i, lookback);
       if (gap && px >= gap.bot && px <= gap.top) {
         out.flags[i] = 1;
         out.sides[i] = BUY;
+        gapTop = gap.top;
+        gapBot = gap.bot;
+        hitSide = BUY;
       }
     }
     if ((sideWant === 'sell' || sideWant === null) && !out.flags[i]) {
@@ -1418,7 +1452,20 @@ function evalFvg(series: BarSeries, params: PieceParams): ConditionEval {
       if (gap && px <= gap.top && px >= gap.bot) {
         out.flags[i] = 1;
         out.sides[i] = SELL;
+        gapTop = gap.top;
+        gapBot = gap.bot;
+        hitSide = SELL;
       }
+    }
+    if (out.flags[i] === 1 && (i === 2 || out.flags[i - 1] !== 1) && hitSide) {
+      pushZoneHint(out, {
+        startIdx: Math.max(0, i - 2),
+        endIdx: Math.min(n - 1, i + 16),
+        priceHigh: Math.max(gapTop, gapBot),
+        priceLow: Math.min(gapTop, gapBot),
+        kind: 'fvg',
+        side: hitSide === SELL ? 'sell' : 'buy',
+      });
     }
   }
   return out;
@@ -1459,20 +1506,35 @@ function evalOte(series: BarSeries, params: PieceParams): ConditionEval {
     const range = sw.hi - sw.lo;
     if (range <= 0) continue;
     const px = series.closes[i]!;
+    let zLo = 0;
+    let zHi = 0;
+    let hit = false;
     if (sideWant === 'buy') {
-      const lo = sw.hi - range * 0.79;
-      const hi = sw.hi - range * 0.62;
-      if (px >= lo && px <= hi) {
+      zLo = sw.hi - range * 0.79;
+      zHi = sw.hi - range * 0.62;
+      if (px >= zLo && px <= zHi) {
         out.flags[i] = 1;
         out.sides[i] = BUY;
+        hit = true;
       }
     } else {
-      const lo = sw.lo + range * 0.62;
-      const hi = sw.lo + range * 0.79;
-      if (px >= lo && px <= hi) {
+      zLo = sw.lo + range * 0.62;
+      zHi = sw.lo + range * 0.79;
+      if (px >= zLo && px <= zHi) {
         out.flags[i] = 1;
         out.sides[i] = SELL;
+        hit = true;
       }
+    }
+    if (hit && out.flags[i - 1] !== 1) {
+      pushZoneHint(out, {
+        startIdx: Math.max(0, i - lookback),
+        endIdx: Math.min(n - 1, i + 12),
+        priceHigh: Math.max(zHi, zLo),
+        priceLow: Math.min(zHi, zLo),
+        kind: 'fib',
+        side: sideWant === 'sell' ? 'sell' : 'buy',
+      });
     }
   }
   return out;
@@ -1532,6 +1594,18 @@ function evalEqualHL(series: BarSeries, params: PieceParams): ConditionEval {
       if (Math.abs(lo - series.lows[j]!) <= lo * tolPct) eql = true;
     }
     mark(out, i, eql, eqh, sideWant);
+    if (out.flags[i] === 1 && out.flags[i - 1] !== 1) {
+      const lvl = eqh ? hi : lo;
+      const pad = Math.max(Math.abs(lvl) * 0.00015, (hi - lo) * 0.05);
+      pushZoneHint(out, {
+        startIdx: Math.max(0, i - lookback),
+        endIdx: Math.min(n - 1, i + 8),
+        priceHigh: lvl + pad,
+        priceLow: lvl - pad,
+        kind: 'equal',
+        side: out.sides[i] === SELL ? 'sell' : 'buy',
+      });
+    }
   }
   return out;
 }
@@ -1567,6 +1641,16 @@ function evalOrderBlock(series: BarSeries, params: PieceParams): ConditionEval {
     if (px >= series.lows[obI]! && px <= series.highs[obI]!) {
       out.flags[i] = 1;
       out.sides[i] = sideWant === 'sell' ? SELL : BUY;
+      if (i === lookback || out.flags[i - 1] !== 1) {
+        pushZoneHint(out, {
+          startIdx: obI,
+          endIdx: Math.min(n - 1, i + 12),
+          priceHigh: series.highs[obI]!,
+          priceLow: series.lows[obI]!,
+          kind: 'ob',
+          side: sideWant === 'sell' ? 'sell' : 'buy',
+        });
+      }
     }
   }
   return out;
@@ -1646,18 +1730,33 @@ function evalFibTouch(series: BarSeries, params: PieceParams): ConditionEval {
     const range = sw.hi - sw.lo;
     if (range <= 0) continue;
     const px = series.closes[i]!;
+    let lvl = 0;
+    let hit = false;
     if (sideWant === 'buy') {
-      const lvl = sw.hi - range * fib;
+      lvl = sw.hi - range * fib;
       if (Math.abs(px - lvl) <= range * tol || (series.lows[i]! <= lvl && series.highs[i]! >= lvl)) {
         out.flags[i] = 1;
         out.sides[i] = BUY;
+        hit = true;
       }
     } else {
-      const lvl = sw.lo + range * fib;
+      lvl = sw.lo + range * fib;
       if (Math.abs(px - lvl) <= range * tol || (series.lows[i]! <= lvl && series.highs[i]! >= lvl)) {
         out.flags[i] = 1;
         out.sides[i] = SELL;
+        hit = true;
       }
+    }
+    if (hit && out.flags[i - 1] !== 1) {
+      const band = Math.max(range * 0.02, Math.abs(lvl) * 0.0002);
+      pushZoneHint(out, {
+        startIdx: Math.max(0, i - lookback),
+        endIdx: Math.min(n - 1, i + 10),
+        priceHigh: lvl + band,
+        priceLow: lvl - band,
+        kind: 'fib',
+        side: sideWant === 'sell' ? 'sell' : 'buy',
+      });
     }
   }
   return out;
@@ -2010,8 +2109,139 @@ function evalHourWindow(series: BarSeries, params: PieceParams): ConditionEval {
   return out;
 }
 
+
+function evalHtfMaBias(series: BarSeries, params: PieceParams): ConditionEval {
+  const htf = str(params, 'htf', '1h') as Timeframe;
+  const period = Math.max(5, Math.floor(num(params, 'period', 50)));
+  const sideWant = sideFromParams(params) ?? 'buy';
+  const out = empty(series.closes.length, sideWant, `HTF MA ${htf}`);
+  const agg = aggregateSeriesToHtf(series, htf);
+  if (agg.closes.length < period + 2) return out;
+  const ema = computeEma(agg.closes, period);
+  const hFlags = new Uint8Array(agg.closes.length);
+  const hSides = new Uint8Array(agg.closes.length);
+  for (let i = 0; i < agg.closes.length; i++) {
+    const m = ema[i]!;
+    if (!Number.isFinite(m)) continue;
+    const bull = agg.closes[i]! > m;
+    const bear = agg.closes[i]! < m;
+    if (sideWant === 'buy' && bull) {
+      hFlags[i] = 1;
+      hSides[i] = BUY;
+    } else if (sideWant === 'sell' && bear) {
+      hFlags[i] = 1;
+      hSides[i] = SELL;
+    } else if (sideWant === null) {
+      if (bull) {
+        hFlags[i] = 1;
+        hSides[i] = BUY;
+      } else if (bear) {
+        hFlags[i] = 1;
+        hSides[i] = SELL;
+      }
+    }
+  }
+  const mapped = mapHtfFlagsToLtf(
+    series.times,
+    agg.times,
+    hFlags,
+    hSides,
+    timeframeSeconds(htf),
+  );
+  out.flags = mapped.flags;
+  out.sides = mapped.sides;
+  return out;
+}
+
+function evalHtfBosBias(series: BarSeries, params: PieceParams): ConditionEval {
+  const htf = str(params, 'htf', '1h') as Timeframe;
+  const lookback = Math.max(3, Math.floor(num(params, 'swingLookback', 8)));
+  const sideWant = sideFromParams(params);
+  const out = empty(series.closes.length, sideWant, `HTF BOS ${htf}`);
+  const agg = aggregateSeriesToHtf(series, htf);
+  const hFlags = new Uint8Array(agg.closes.length);
+  const hSides = new Uint8Array(agg.closes.length);
+  for (let i = lookback; i < agg.closes.length; i++) {
+    const sw = swingHighLow(agg.highs, agg.lows, i, lookback);
+    if (!sw) continue;
+    const bull = agg.closes[i]! > sw.hi && agg.closes[i - 1]! <= sw.hi;
+    const bear = agg.closes[i]! < sw.lo && agg.closes[i - 1]! >= sw.lo;
+    if (sideWant === 'buy' && bull) {
+      hFlags[i] = 1;
+      hSides[i] = BUY;
+    } else if (sideWant === 'sell' && bear) {
+      hFlags[i] = 1;
+      hSides[i] = SELL;
+    } else if (sideWant === null) {
+      if (bull) {
+        hFlags[i] = 1;
+        hSides[i] = BUY;
+      } else if (bear) {
+        hFlags[i] = 1;
+        hSides[i] = SELL;
+      }
+    }
+  }
+  // Forward-fill last BOS direction as bias until opposite
+  let last = 0;
+  let lastSide = 0;
+  for (let i = 0; i < hFlags.length; i++) {
+    if (hFlags[i]) {
+      last = 1;
+      lastSide = hSides[i]!;
+    } else if (last) {
+      hFlags[i] = 1;
+      hSides[i] = lastSide;
+    }
+  }
+  const mapped = mapHtfFlagsToLtf(
+    series.times,
+    agg.times,
+    hFlags,
+    hSides,
+    timeframeSeconds(htf),
+  );
+  out.flags = mapped.flags;
+  out.sides = mapped.sides;
+  return out;
+}
+
+function evalHtfRsiBias(series: BarSeries, params: PieceParams): ConditionEval {
+  const htf = str(params, 'htf', '1h') as Timeframe;
+  const period = Math.max(2, Math.floor(num(params, 'period', 14)));
+  const level = num(params, 'level', 50);
+  const sideWant = sideFromParams(params) ?? 'buy';
+  const out = empty(series.closes.length, sideWant, `HTF RSI ${htf}`);
+  const agg = aggregateSeriesToHtf(series, htf);
+  const rsi = computeRsi(agg.closes, period);
+  const hFlags = new Uint8Array(agg.closes.length);
+  const hSides = new Uint8Array(agg.closes.length);
+  for (let i = 0; i < agg.closes.length; i++) {
+    const r = rsi[i]!;
+    if (!Number.isFinite(r)) continue;
+    if (sideWant === 'buy' && r <= level) {
+      hFlags[i] = 1;
+      hSides[i] = BUY;
+    } else if (sideWant === 'sell' && r >= level) {
+      hFlags[i] = 1;
+      hSides[i] = SELL;
+    }
+  }
+  const mapped = mapHtfFlagsToLtf(
+    series.times,
+    agg.times,
+    hFlags,
+    hSides,
+    timeframeSeconds(htf),
+  );
+  out.flags = mapped.flags;
+  out.sides = mapped.sides;
+  return out;
+}
+
+
 const EVALUATORS: Record<
-  Exclude<PieceKind, 'and' | 'or' | 'not' | 'xor'>,
+  Exclude<PieceKind, 'and' | 'or' | 'not' | 'xor' | RiskKind>,
   (s: BarSeries, p: PieceParams) => ConditionEval
 > = {
   sma_cross: (s, p) => evalMaCross(s, p, 'sma'),
@@ -2100,6 +2330,9 @@ const EVALUATORS: Record<
   round_number: evalRoundNumber,
   day_of_week: evalDayOfWeek,
   hour_window: evalHourWindow,
+  htf_ma_bias: evalHtfMaBias,
+  htf_bos_bias: evalHtfBosBias,
+  htf_rsi_bias: evalHtfRsiBias,
 };
 
 /** Precompute condition flags for every leaf piece. */
@@ -2109,7 +2342,13 @@ export function evalAllConditions(
 ): Map<string, ConditionEval> {
   const out = new Map<string, ConditionEval>();
   for (const p of pieces) {
-    if (p.kind === 'and' || p.kind === 'or' || p.kind === 'not' || p.kind === 'xor') {
+    if (
+      p.kind === 'and' ||
+      p.kind === 'or' ||
+      p.kind === 'not' ||
+      p.kind === 'xor' ||
+      isRiskKind(p.kind)
+    ) {
       continue;
     }
     const fn = EVALUATORS[p.kind];
@@ -2120,10 +2359,21 @@ export function evalAllConditions(
   return out;
 }
 
+/** Evaluate a single condition kind (tests / diagnostics). */
+export function evaluateCondition(
+  kind: Exclude<PieceKind, 'and' | 'or' | 'not' | 'xor' | RiskKind>,
+  series: BarSeries,
+  params: PieceParams = {},
+): ConditionEval {
+  return EVALUATORS[kind](series, params);
+}
+
 /** Runtime completeness: every registry condition kind must have an evaluator. */
 export function missingEvaluators(kinds: PieceKind[]): PieceKind[] {
   return kinds.filter((k) => {
-    if (k === 'and' || k === 'or' || k === 'not' || k === 'xor') return false;
+    if (k === 'and' || k === 'or' || k === 'not' || k === 'xor' || isRiskKind(k)) {
+      return false;
+    }
     return !(k in EVALUATORS);
   });
 }

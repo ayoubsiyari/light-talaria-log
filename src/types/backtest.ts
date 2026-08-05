@@ -31,6 +31,35 @@ export interface BacktestEvent {
   side?: OrderSide;
   /** Links to {@link BacktestTrade.id} when part of a closed trade. */
   tradeId?: string;
+  /** Full reason chain for explainability panel. */
+  explain?: string;
+  /** Contributing piece ids (graph runs). */
+  pieceIds?: string[];
+  /** A/B compare lane (default = primary run). */
+  lane?: 'a' | 'b';
+}
+
+/** Geometry overlay from a puzzle piece (FVG/ORB/OB/…). */
+export type BacktestZoneKind =
+  | 'fvg'
+  | 'orb'
+  | 'ob'
+  | 'fib'
+  | 'donchian'
+  | 'equal'
+  | 'range'
+  | 'htf';
+
+export interface BacktestZone {
+  id: string;
+  kind: BacktestZoneKind;
+  timeStart: number;
+  timeEnd: number;
+  priceHigh: number;
+  priceLow: number;
+  side?: OrderSide;
+  label?: string;
+  lane?: 'a' | 'b';
 }
 
 /** Sparse equity sample (time + equity index, start = 1). */
@@ -79,6 +108,11 @@ export interface AutomationRules {
   stopLossPct: number;
   /** Favorable move from entry as fraction (0 = off). */
   takeProfitPct: number;
+  /**
+   * Risk:reward multiple (0 = off). When &gt; 0 and stopLossPct &gt; 0,
+   * takeProfitPct is derived as stopLossPct × riskReward (unless TP already set).
+   */
+  riskReward: number;
 }
 
 export interface BacktestParams {
@@ -110,12 +144,16 @@ export interface BacktestResult {
   trades: BacktestTrade[];
   /** Condition marks for chart overlay (may be empty on older saves). */
   events: BacktestEvent[];
+  /** Optional zone geometries (FVG/ORB/…). Older saves omit. */
+  zones?: BacktestZone[];
   equity: EquityPoint[];
   /** Final equity index (start = 1). */
   finalEquity: number;
   /** Sum of trade pnl (price units). */
   totalPnl: number;
   createdAt: number;
+  /** Display name for scorecard / A-B. */
+  strategyName?: string;
 }
 
 export interface BacktestWorkerRequest {
@@ -135,6 +173,7 @@ export type BacktestWorkerResponse =
       requestId: number;
       trades: BacktestTrade[];
       events: BacktestEvent[];
+      zones?: BacktestZone[];
       equity: EquityPoint[];
       finalEquity: number;
       totalPnl: number;
@@ -155,6 +194,7 @@ export const DEFAULT_AUTOMATION_RULES: AutomationRules = {
   cooldownBars: 0,
   stopLossPct: 0,
   takeProfitPct: 0,
+  riskReward: 0,
 };
 
 export const DEFAULT_BACKTEST_PARAMS: BacktestParams = {
@@ -188,6 +228,7 @@ function normalizeRules(
     cooldownBars: Math.max(0, Math.floor(Number(raw.cooldownBars) || 0)),
     stopLossPct: Math.max(0, Number(raw.stopLossPct) || 0),
     takeProfitPct: Math.max(0, Number(raw.takeProfitPct) || 0),
+    riskReward: Math.max(0, Number(raw.riskReward) || 0),
   };
 }
 

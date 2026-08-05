@@ -30,7 +30,7 @@ import type { DrawingToolId } from '@/drawings/toolRegistry';
 import type { ChartBar, VisibleRange } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
 import type { IndicatorOverlayResult, IndicatorPaneResult } from '@/types/indicator';
-import type { BacktestResult } from '@/types/backtest';
+import type { BacktestEvent, BacktestResult } from '@/types/backtest';
 import type { ChartOrder, OrderLevelHit } from '@/types/order';
 import {
   alignIndicatorOverlays,
@@ -47,6 +47,7 @@ import {
 import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
 import { markChartPaint } from '@/perf/perfMonitor';
 import { hitTestOrderLevel, hitTestOrders } from './overlays/drawOrders';
+import { hitTestBacktestEvent } from './overlays/drawBacktest';
 import { MAX_BARS_IN_MEMORY, VISIBLE_BARS_TARGET } from '@/utils/constants';
 import { subscribeAppearance } from './appearanceStore';
 import { getChartColors } from './chartTheme';
@@ -192,6 +193,8 @@ export interface ChartInstance {
   onOrderLevelCommit: (cb: (hit: OrderLevelHit & { price: number; cancelled?: boolean }) => void) => () => void;
   /** Strategy backtest markers / equity overlay (results only). */
   setBacktestResult: (result: BacktestResult | null) => void;
+  /** Click-to-explain: nearest strategy mark under pointer. */
+  hitTestBacktestAt: (x: number, y: number) => BacktestEvent | null;
   setSize: (width: number, height: number) => void;
   resetPriceScale: () => void;
   resetTimeScale: () => void;
@@ -1360,6 +1363,19 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     setBacktestResult(result: BacktestResult | null) {
       backtestResult = result;
       markOverlayDirty();
+    },
+
+    hitTestBacktestAt(x: number, y: number) {
+      return hitTestBacktestEvent(
+        backtestResult,
+        bars,
+        range,
+        layout.plot,
+        resolvePriceScale(),
+        x,
+        y,
+        replayCursorTime,
+      );
     },
 
     setShowVolume(show: boolean) {

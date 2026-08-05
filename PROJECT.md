@@ -809,6 +809,8 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-05 | Expanded puzzle library (~35 pieces: MA/MACD/BB/stoch/candles/structure/session); per-piece diamond detection marks on chart; day-aware ORB | Strategies → Run → diamonds = piece hits, triangles = entries |
 | 2026-08-05 | Maximized puzzle library to **90 pieces** (all Worker-evaluated); round-robin detection marks (up to 2000); denser chart labels | Strategies → drop any piece → Run → diamonds labeled per piece |
 | 2026-08-05 | Piece library docs: how-it-works + on-chart copy for all 90; SVG chart previews; builder ? / inspector / Piece library modal | Strategies → Piece library → browse previews |
+| 2026-08-05 | Strategy power pack: HTF bias + risk pieces; zone overlays; click-mark explain; replay-synced marks; scorecard HUD; tip Watch; JSON import/export; A/B compare; confidence tags; `npm run test:strategy` | Strategies → Run → tap mark / Watch / Export; Run as B for A/B |
+| 2026-08-05 | Hardened power pack to full function: true zoneHints (FVG/ORB/OB/fib/OTE/EQ); explain+pieceIds chains; Watch via replay subscribe; risk_rr; A/B lane paint; category confidence; more strategy tests | Smoke: Run → tap mark (piece list) → Watch while Play → Run as B |
 
 ---
 

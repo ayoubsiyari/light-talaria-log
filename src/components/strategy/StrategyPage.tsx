@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react';
-import { Button, Card } from '@heroui/react';
+import { useMemo, useRef, useState } from 'react';
+import { Button, Card, toast } from '@heroui/react';
 import { AppPageFrame } from '@/components/shell/AppPageFrame';
 import { PieceLibraryModal } from '@/components/strategy/PieceLibraryModal';
 import { StrategyBuilderModal } from '@/components/strategy/StrategyBuilderModal';
 import {
   deleteStrategy,
+  exportStrategiesJson,
+  importStrategiesJson,
   listStrategies,
   type StrategyRecord,
 } from '@/strategy/strategyStore';
@@ -31,6 +33,7 @@ export function StrategyPage({
   const [builderOpen, setBuilderOpen] = useState(false);
   const [edit, setEdit] = useState<StrategyRecord | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const openNew = () => {
     setEdit(null);
@@ -39,6 +42,33 @@ export function StrategyPage({
   const openEdit = (s: StrategyRecord) => {
     setEdit(s);
     setBuilderOpen(true);
+  };
+
+  const downloadExport = (ids?: string[]) => {
+    const json = exportStrategiesJson(ids);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = ids?.length === 1 ? 'talaria-strategy.json' : 'talaria-strategies.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.info('Exported template', { timeout: 3000 });
+  };
+
+  const onImportFile = async (file: File | null) => {
+    if (!file) return;
+    const text = await file.text();
+    const res = importStrategiesJson(text);
+    if (res.error) {
+      toast.info('Import failed', { description: res.error, timeout: 5000 });
+      return;
+    }
+    setTick((n) => n + 1);
+    toast.info('Import done', {
+      description: `${res.imported} imported${res.skipped ? ` · ${res.skipped} skipped` : ''}`,
+      timeout: 4500,
+    });
   };
 
   return (
@@ -60,6 +90,31 @@ export function StrategyPage({
           >
             Piece library
           </Button>
+          <Button
+            variant="secondary"
+            className="min-h-11"
+            onPress={() => downloadExport()}
+            isDisabled={strategies.length === 0}
+          >
+            Export all
+          </Button>
+          <Button
+            variant="secondary"
+            className="min-h-11"
+            onPress={() => fileRef.current?.click()}
+          >
+            Import
+          </Button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => {
+              void onImportFile(e.target.files?.[0] ?? null);
+              e.target.value = '';
+            }}
+          />
           <Button variant="primary" className="min-h-11" onPress={openNew}>
             Build strategy
           </Button>
@@ -114,6 +169,14 @@ export function StrategyPage({
                     onPress={() => openEdit(s)}
                   >
                     Edit
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="min-h-11"
+                    onPress={() => downloadExport([s.id])}
+                  >
+                    Export
                   </Button>
                   <Button
                     size="sm"

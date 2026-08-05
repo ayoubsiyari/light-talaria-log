@@ -20,6 +20,9 @@ export interface ParamField {
   options?: { value: string; label: string }[];
 }
 
+/** How battle-tested a piece's evaluator is (shown in library). */
+export type PieceConfidence = 'stable' | 'beta' | 'experimental';
+
 export interface PieceDefinition {
   kind: PieceKind;
   label: string;
@@ -30,6 +33,8 @@ export interface PieceDefinition {
   maxInputs: number;
   params: ParamField[];
   defaults: PieceParams;
+  /** Defaults to stable when omitted. */
+  confidence?: PieceConfidence;
 }
 
 const SIDE_OPTIONS = [
@@ -69,6 +74,20 @@ const DOW_OPTIONS = [
   { value: '4', label: 'Thursday' },
   { value: '5', label: 'Friday' },
 ];
+
+const HTF_OPTIONS = [
+  { value: '5m', label: '5m' },
+  { value: '15m', label: '15m' },
+  { value: '1h', label: '1h' },
+  { value: '4h', label: '4h' },
+  { value: '1D', label: '1D' },
+];
+const DIR_OPTIONS = [
+  { value: 'both', label: 'Both' },
+  { value: 'long', label: 'Long only' },
+  { value: 'short', label: 'Short only' },
+];
+
 
 function sideParam(): ParamField {
   return { key: 'side', label: 'Side', type: 'select', options: SIDE_OPTIONS };
@@ -1342,12 +1361,154 @@ export const PIECE_REGISTRY: PieceDefinition[] = [
     ],
     defaults: { fromHour: 7, toHour: 10 },
   },
+  {
+    kind: 'htf_ma_bias',
+    label: 'HTF MA bias',
+    shortLabel: 'HTF MA',
+    category: 'htf',
+    description: 'Higher-TF close vs EMA bias, mapped onto chart bars.',
+    defaultRequiredTimeframe: null,
+    maxInputs: 0,
+    confidence: 'beta',
+    params: [
+      { key: 'htf', label: 'Higher TF', type: 'select', options: HTF_OPTIONS },
+      { key: 'period', label: 'EMA period', type: 'number', min: 5, max: 200, step: 1 },
+      sideParam(),
+    ],
+    defaults: { htf: '1h', period: 50, side: 'buy' },
+  },
+  {
+    kind: 'htf_bos_bias',
+    label: 'HTF BOS bias',
+    shortLabel: 'HTF BOS',
+    category: 'htf',
+    description: 'Break of structure on a higher timeframe.',
+    defaultRequiredTimeframe: null,
+    maxInputs: 0,
+    confidence: 'experimental',
+    params: [
+      { key: 'htf', label: 'Higher TF', type: 'select', options: HTF_OPTIONS },
+      { key: 'swingLookback', label: 'Swing bars', type: 'number', min: 3, max: 40, step: 1 },
+      sideParam(),
+    ],
+    defaults: { htf: '1h', swingLookback: 8, side: 'either' },
+  },
+  {
+    kind: 'htf_rsi_bias',
+    label: 'HTF RSI bias',
+    shortLabel: 'HTF RSI',
+    category: 'htf',
+    description: 'RSI gate evaluated on higher-TF closes.',
+    defaultRequiredTimeframe: null,
+    maxInputs: 0,
+    confidence: 'beta',
+    params: [
+      { key: 'htf', label: 'Higher TF', type: 'select', options: HTF_OPTIONS },
+      { key: 'period', label: 'Period', type: 'number', min: 2, max: 50, step: 1 },
+      { key: 'level', label: 'Level', type: 'number', min: 1, max: 99, step: 1 },
+      sideParam(),
+    ],
+    defaults: { htf: '1h', period: 14, level: 50, side: 'buy' },
+  },
+  {
+    kind: 'risk_stop_loss',
+    label: 'Stop loss %',
+    shortLabel: 'SL%',
+    category: 'risk',
+    description: 'Applies stop-loss percent to the automation rules for this run.',
+    defaultRequiredTimeframe: null,
+    maxInputs: 0,
+    confidence: 'stable',
+    params: [
+      { key: 'stopLossPct', label: 'SL %', type: 'number', min: 0.05, max: 10, step: 0.05 },
+    ],
+    defaults: { stopLossPct: 0.5 },
+  },
+  {
+    kind: 'risk_take_profit',
+    label: 'Take profit %',
+    shortLabel: 'TP%',
+    category: 'risk',
+    description: 'Applies take-profit percent to the automation rules for this run.',
+    defaultRequiredTimeframe: null,
+    maxInputs: 0,
+    confidence: 'stable',
+    params: [
+      { key: 'takeProfitPct', label: 'TP %', type: 'number', min: 0.05, max: 20, step: 0.05 },
+    ],
+    defaults: { takeProfitPct: 1 },
+  },
+  {
+    kind: 'risk_cooldown',
+    label: 'Cooldown bars',
+    shortLabel: 'CD',
+    category: 'risk',
+    description: 'Bars to wait after an exit before the next entry.',
+    defaultRequiredTimeframe: null,
+    maxInputs: 0,
+    confidence: 'stable',
+    params: [
+      { key: 'cooldownBars', label: 'Bars', type: 'number', min: 0, max: 200, step: 1 },
+    ],
+    defaults: { cooldownBars: 5 },
+  },
+  {
+    kind: 'risk_direction',
+    label: 'Direction filter',
+    shortLabel: 'Dir',
+    category: 'risk',
+    description: 'Restrict automation to long, short, or both.',
+    defaultRequiredTimeframe: null,
+    maxInputs: 0,
+    confidence: 'stable',
+    params: [
+      { key: 'direction', label: 'Direction', type: 'select', options: DIR_OPTIONS },
+    ],
+    defaults: { direction: 'both' },
+  },
+  {
+    kind: 'risk_rr',
+    label: 'Risk : Reward',
+    shortLabel: 'R:R',
+    category: 'risk',
+    description:
+      'Sets take-profit as stop-loss × R:R when a Stop loss % piece is present (unless Take profit % is also set).',
+    defaultRequiredTimeframe: null,
+    maxInputs: 0,
+    confidence: 'stable',
+    params: [
+      { key: 'riskReward', label: 'R:R', type: 'number', min: 0.5, max: 10, step: 0.1 },
+    ],
+    defaults: { riskReward: 2 },
+  },
+
 ];
 
 const BY_KIND = new Map(PIECE_REGISTRY.map((p) => [p.kind, p]));
 
 export function getPieceDef(kind: PieceKind): PieceDefinition | undefined {
   return BY_KIND.get(kind);
+}
+
+/** Explicit tag, else category default (structure/session/htf = beta). */
+export function getPieceConfidence(kind: PieceKind): PieceConfidence {
+  const def = getPieceDef(kind);
+  if (def?.confidence) return def.confidence;
+  if (!def) return 'experimental';
+  switch (def.category) {
+    case 'logic':
+    case 'indicator':
+    case 'risk':
+      return 'stable';
+    case 'price':
+      return 'stable';
+    case 'structure':
+    case 'session':
+    case 'htf':
+      return 'beta';
+    default:
+      return 'stable';
+  }
 }
 
 export function isLogicKind(kind: PieceKind): boolean {
@@ -1360,6 +1521,8 @@ export const PIECE_CATEGORIES: { id: PieceCategory; label: string }[] = [
   { id: 'indicator', label: 'Indicators' },
   { id: 'structure', label: 'Structure' },
   { id: 'session', label: 'Session' },
+  { id: 'htf', label: 'Multi-TF' },
+  { id: 'risk', label: 'Risk' },
 ];
 
 export function createPieceData(kind: PieceKind): {

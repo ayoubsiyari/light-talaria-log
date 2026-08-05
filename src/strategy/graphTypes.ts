@@ -96,7 +96,17 @@ export type ConditionKind =
   | 'week_open_break'
   | 'round_number'
   | 'day_of_week'
-  | 'hour_window';
+  | 'hour_window'
+  // Multi-TF bias (aggregated from chart TF in Worker)
+  | 'htf_ma_bias'
+  | 'htf_bos_bias'
+  | 'htf_rsi_bias'
+  // Risk config nodes (not conditions — applied to automation rules)
+  | 'risk_stop_loss'
+  | 'risk_take_profit'
+  | 'risk_cooldown'
+  | 'risk_direction'
+  | 'risk_rr';
 
 export type PieceKind = LogicKind | ConditionKind;
 
@@ -105,7 +115,27 @@ export type PieceCategory =
   | 'price'
   | 'indicator'
   | 'structure'
-  | 'session';
+  | 'session'
+  | 'htf'
+  | 'risk';
+
+/** Pieces that configure risk instead of evaluating bar conditions. */
+export type RiskKind =
+  | 'risk_stop_loss'
+  | 'risk_take_profit'
+  | 'risk_cooldown'
+  | 'risk_direction'
+  | 'risk_rr';
+
+export function isRiskKind(kind: string): kind is RiskKind {
+  return (
+    kind === 'risk_stop_loss' ||
+    kind === 'risk_take_profit' ||
+    kind === 'risk_cooldown' ||
+    kind === 'risk_direction' ||
+    kind === 'risk_rr'
+  );
+}
 
 export type PieceSide = 'buy' | 'sell' | 'either';
 

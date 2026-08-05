@@ -59,6 +59,9 @@ export interface ChartPaneProps {
   marqueeZoomEnabled?: boolean;
   drawingsLocked?: boolean;
   onChartPoint: (point: CrosshairPoint, hit: HitResult | null) => void;
+  onBacktestEventSelect?: (
+    event: import('@/types/backtest').BacktestEvent | null,
+  ) => void;
   onCrosshairSample?: (point: CrosshairPoint | null) => void;
   onUserGesture?: () => void;
   onDrawingsChange?: (drawings: readonly Drawing[]) => void;
@@ -119,6 +122,7 @@ export function ChartPane({
   marqueeZoomEnabled = false,
   drawingsLocked = false,
   onChartPoint,
+  onBacktestEventSelect,
   onCrosshairSample,
   onUserGesture,
   onDrawingsChange,
@@ -252,6 +256,7 @@ export function ChartPane({
         marqueeZoomEnabled={marqueeZoomEnabled}
         drawingsLocked={drawingsLocked}
         onChartPoint={onChartPoint}
+        onBacktestEventSelect={onBacktestEventSelect}
         onUserGesture={onUserGesture}
         onDrawingsChange={onDrawingsChange}
         onDrawingSelect={onDrawingSelect}

@@ -388,6 +388,7 @@ export function paintOverlayFrame(
       scale,
       colors,
       selectedOrderId ?? null,
+      replayCursorTime ?? null,
     );
   }
 

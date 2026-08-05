@@ -20,6 +20,10 @@ export interface RawFlipSignal {
   label: string;
   /** Close any open position without opening the opposite side. */
   exitOnly?: boolean;
+  /** Contributing leaf piece ids (graph runs). */
+  pieceIds?: string[];
+  /** Full explainability text. */
+  explain?: string;
 }
 
 export interface AutomationInput {
@@ -99,6 +103,8 @@ export function runAutomation(input: AutomationInput): AutomationOutput {
   let tradeSeq = 0;
   let eventSeq = 0;
   let cooldownUntil = -1;
+  let pendingExitPieceIds: string[] | undefined;
+  let pendingEntryMeta: { pieceIds?: string[]; explain?: string } = {};
 
   const pushEvent = (partial: Omit<BacktestEvent, 'id'>): void => {
     eventSeq += 1;
@@ -139,10 +145,13 @@ export function runAutomation(input: AutomationInput): AutomationOutput {
       label: reason,
       side,
       tradeId: openTradeId,
+      explain: `Exit: ${reason}`,
+      pieceIds: pendingExitPieceIds,
     });
     equity.push({ time: t, equity: equityIdx });
     side = null;
     openTradeId = '';
+    pendingExitPieceIds = undefined;
     if (armCooldown) {
       const cd = Math.max(0, Math.floor(rules.cooldownBars));
       cooldownUntil = barIndex + cd;
@@ -168,7 +177,14 @@ export function runAutomation(input: AutomationInput): AutomationOutput {
       label: reason,
       side: next,
       tradeId: openTradeId,
+      pieceIds: pendingEntryMeta.pieceIds,
+      explain:
+        pendingEntryMeta.explain ??
+        (pendingEntryMeta.pieceIds?.length
+          ? `Entry because: ${reason}\nPieces: ${pendingEntryMeta.pieceIds.join(', ')}`
+          : `Entry because: ${reason}`),
     });
+    pendingEntryMeta = {};
   };
 
   const passesFilters = (sig: RawFlipSignal, i: number): string | null => {
@@ -235,6 +251,7 @@ export function runAutomation(input: AutomationInput): AutomationOutput {
 
     if (sig.exitOnly) {
       if (side) {
+        pendingExitPieceIds = sig.pieceIds;
         closePosition(t, px, sig.label, i, true);
       } else {
         pushEvent({
@@ -243,6 +260,8 @@ export function runAutomation(input: AutomationInput): AutomationOutput {
           kind: 'signal',
           label: `${sig.label} · flat`,
           side: sig.side,
+          pieceIds: sig.pieceIds,
+          explain: sig.explain ?? `${sig.label} · flat`,
         });
       }
       continue;
@@ -256,6 +275,10 @@ export function runAutomation(input: AutomationInput): AutomationOutput {
         kind: 'signal',
         label: `${sig.label} · ${block}`,
         side: sig.side,
+        pieceIds: sig.pieceIds,
+        explain: sig.explain
+          ? `${sig.explain}\n${block}`
+          : `${sig.label} · ${block}`,
       });
       continue;
     }
@@ -267,13 +290,17 @@ export function runAutomation(input: AutomationInput): AutomationOutput {
         kind: 'signal',
         label: sig.label,
         side: sig.side,
+        pieceIds: sig.pieceIds,
+        explain: sig.explain ?? sig.label,
       });
       continue;
     }
 
     if (side && side !== sig.side) {
+      pendingExitPieceIds = sig.pieceIds;
       closePosition(t, px, sig.label, i, false);
     }
+    pendingEntryMeta = { pieceIds: sig.pieceIds, explain: sig.explain };
     openPosition(sig.side, t, px, sig.label);
   }
 

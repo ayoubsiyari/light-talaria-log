@@ -5,6 +5,7 @@ import type { Edge, Node } from 'reactflow';
 import type { Timeframe } from '@/types/ui';
 import {
   isPieceData,
+  isRiskKind,
   isSectionData,
   type CompiledEdge,
   type CompiledGraph,
@@ -161,7 +162,7 @@ export function compileGraph(nodes: Node[], edges: Edge[]): CompileResult {
     compiledEdges.push({ source: e.source, target: e.target });
   }
 
-  // Logic arity
+  // Logic arity (skip risk config nodes)
   const preds = new Map<string, string[]>();
   for (const p of pieces) preds.set(p.id, []);
   for (const e of compiledEdges) {
@@ -172,6 +173,7 @@ export function compileGraph(nodes: Node[], edges: Edge[]): CompileResult {
     }
   }
   for (const p of pieces) {
+    if (isRiskKind(p.kind)) continue;
     const def = getPieceDef(p.kind);
     if (!def || !isLogicKind(p.kind)) continue;
     const ins = preds.get(p.id) ?? [];
@@ -202,19 +204,22 @@ export function compileGraph(nodes: Node[], edges: Edge[]): CompileResult {
     }
   }
 
-  if (entryId && pieceIds.size > 0) {
+  const conditionIds = new Set(
+    pieces.filter((p) => !isRiskKind(p.kind)).map((p) => p.id),
+  );
+  if (entryId && conditionIds.size > 0) {
     const reach = reachableFrom(entryId, compiledEdges, allIds);
-    const entryPieces = [...pieceIds].filter((id) => reach.has(id));
+    const entryPieces = [...conditionIds].filter((id) => reach.has(id));
     if (entryPieces.length === 0) {
       issues.push({
         level: 'error',
-        message: 'Connect at least one piece from Entry',
+        message: 'Connect at least one condition piece from Entry',
       });
     }
-  } else if (pieceIds.size === 0) {
+  } else if (conditionIds.size === 0) {
     issues.push({
       level: 'error',
-      message: 'Add puzzle pieces and wire them from Entry',
+      message: 'Add condition pieces and wire them from Entry',
     });
   }
 
@@ -235,11 +240,20 @@ export function compileGraph(nodes: Node[], edges: Edge[]): CompileResult {
     return { ok: false, graph: null, issues, requiredTimeframes };
   }
 
+  // Risk nodes configure rules on the main thread — strip from Worker graph.
+  const evalPieces = pieces.filter((p) => !isRiskKind(p.kind));
+  const evalIds = new Set(evalPieces.map((p) => p.id));
+  evalIds.add(entryId);
+  evalIds.add(exitId);
+  const evalEdges = compiledEdges.filter(
+    (e) => evalIds.has(e.source) && evalIds.has(e.target),
+  );
+
   return {
     ok: true,
     graph: {
-      pieces,
-      edges: compiledEdges,
+      pieces: evalPieces,
+      edges: evalEdges,
       entryId,
       exitId,
     },

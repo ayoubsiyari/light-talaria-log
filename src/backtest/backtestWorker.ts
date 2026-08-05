@@ -55,6 +55,7 @@ self.onmessage = (e: MessageEvent<BacktestWorkerRequest>) => {
       requestId: msg.requestId,
       trades: out.trades,
       events: out.events,
+      zones: 'zones' in out && Array.isArray(out.zones) ? out.zones : [],
       equity: out.equity,
       finalEquity: out.finalEquity,
       totalPnl: out.totalPnl,

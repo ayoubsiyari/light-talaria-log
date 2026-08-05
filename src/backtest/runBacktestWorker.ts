@@ -107,6 +107,7 @@ export async function runBacktest(input: RunBacktestInput): Promise<BacktestResu
         timeEnd: buffers.timeEnd,
         trades: msg.trades,
         events: Array.isArray(msg.events) ? msg.events : [],
+        zones: Array.isArray(msg.zones) ? msg.zones : [],
         equity: msg.equity,
         finalEquity: msg.finalEquity,
         totalPnl: msg.totalPnl,

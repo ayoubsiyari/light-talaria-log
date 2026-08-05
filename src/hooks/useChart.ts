@@ -84,6 +84,8 @@ export interface UseChartOptions {
   /** Global drawings lock — disables move/resize interact. */
   drawingsLocked?: boolean;
   onChartPoint?: (point: CrosshairPoint, hit: HitResult | null) => void;
+  /** Strategy mark explainability (click diamond / triangle). */
+  onBacktestEventSelect?: (event: import('@/types/backtest').BacktestEvent | null) => void;
   /** User dragged the plot/axes — detach replay camera follow. */
   onUserGesture?: () => void;
   /** Engine moved/resized a drawing — persist in React. */
@@ -197,6 +199,12 @@ export function useChart(
       const orderHit = instance.hitTestOrdersAt(point.y);
       if (orderHit) {
         optionsRef.current.onOrderSelect?.(orderHit);
+      }
+      const btHit = instance.hitTestBacktestAt(point.x, point.y);
+      if (btHit) {
+        optionsRef.current.onBacktestEventSelect?.(btHit);
+      } else {
+        optionsRef.current.onBacktestEventSelect?.(null);
       }
       const hit = instance.hitTestDrawingsAt(point.x, point.y);
       optionsRef.current.onChartPoint?.(point, hit);

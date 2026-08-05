@@ -806,6 +806,8 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-05 | Replay jump: fixed portal popover above gear (no clip by bottom bar) | Chart session → gear → Jump to date → Go |
 | 2026-08-05 | Unify routes/style: Datasets in AppShell (`#/app/datasets`); glossary Dashboard/Backtest/Trades; AppPageFrame; chart exit → Backtest; legacy hash redirects | Smoke landing→Dashboard→Backtest→Datasets→chart; refresh `#/datasets` / `#/journal` |
 | 2026-08-05 | Strategy puzzle builder: piece palette (logic/price/indicator/structure), AND/OR/NOT, compile→Worker `graph` run, TF toast+Switch TF, Run on chart, starter puzzles | Strategies → load starter → Run on chart → marks → Stop |
+| 2026-08-05 | Expanded puzzle library (~35 pieces: MA/MACD/BB/stoch/candles/structure/session); per-piece diamond detection marks on chart; day-aware ORB | Strategies → Run → diamonds = piece hits, triangles = entries |
+| 2026-08-05 | Maximized puzzle library to **90 pieces** (all Worker-evaluated); round-robin detection marks (up to 2000); denser chart labels | Strategies → drop any piece → Run → diamonds labeled per piece |
 
 ---
 

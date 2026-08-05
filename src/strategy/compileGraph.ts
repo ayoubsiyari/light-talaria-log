@@ -181,6 +181,12 @@ export function compileGraph(nodes: Node[], edges: Edge[]): CompileResult {
         message: 'NOT needs exactly one input',
         nodeId: p.id,
       });
+    } else if (p.kind === 'xor' && ins.length !== 2) {
+      issues.push({
+        level: 'error',
+        message: 'XOR needs exactly two inputs',
+        nodeId: p.id,
+      });
     } else if ((p.kind === 'and' || p.kind === 'or') && ins.length < 2) {
       issues.push({
         level: 'error',

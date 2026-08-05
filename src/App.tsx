@@ -2710,9 +2710,10 @@ export default function App() {
           setEnabledIndicators((prev) => {
             const next = [...prev];
             const upsert = (
-              id: 'sma' | 'donchian' | 'rsi',
+              id: EnabledIndicator['id'],
               period: number,
               colors?: string[],
+              extra?: Record<string, number>,
             ) => {
               const key = `${id}:${period}`;
               keys.push(key);
@@ -2723,17 +2724,120 @@ export default function App() {
                 next[i] = { ...next[i]!, visible: true };
                 return;
               }
-              next.push({ id, params: { period }, visible: true, colors });
+              next.push({
+                id,
+                params: { period, ...extra },
+                visible: true,
+                colors,
+              });
             };
             for (const p of compiled.graph!.pieces) {
               if (isLogicKind(p.kind)) continue;
-              if (p.kind === 'sma_cross') {
-                upsert('sma', Number(p.params.fastPeriod) || 10, ['#38bdf8']);
-                upsert('sma', Number(p.params.slowPeriod) || 30, ['#f472b6']);
-              } else if (p.kind === 'donchian_break') {
-                upsert('donchian', Number(p.params.period) || 20);
-              } else if (p.kind === 'rsi_gate') {
-                upsert('rsi', Number(p.params.period) || 14, ['#a78bfa']);
+              switch (p.kind) {
+                case 'sma_cross':
+                  upsert('sma', Number(p.params.fastPeriod) || 10, ['#38bdf8']);
+                  upsert('sma', Number(p.params.slowPeriod) || 30, ['#f472b6']);
+                  break;
+                case 'ema_cross':
+                  upsert('ema', Number(p.params.fastPeriod) || 9, ['#38bdf8']);
+                  upsert('ema', Number(p.params.slowPeriod) || 21, ['#f472b6']);
+                  break;
+                case 'wma_cross':
+                  upsert('wma', Number(p.params.fastPeriod) || 10);
+                  upsert('wma', Number(p.params.slowPeriod) || 30);
+                  break;
+                case 'hma_cross':
+                  upsert('hma', Number(p.params.fastPeriod) || 9);
+                  upsert('hma', Number(p.params.slowPeriod) || 16);
+                  break;
+                case 'donchian_break':
+                  upsert('donchian', Number(p.params.period) || 20);
+                  break;
+                case 'rsi_gate':
+                case 'rsi_cross':
+                  upsert('rsi', Number(p.params.period) || 14, ['#a78bfa']);
+                  break;
+                case 'macd_cross':
+                case 'macd_hist_flip':
+                  upsert(
+                    'macd',
+                    Number(p.params.slowPeriod) || 26,
+                    undefined,
+                    {
+                      fast: Number(p.params.fastPeriod) || 12,
+                      slow: Number(p.params.slowPeriod) || 26,
+                      signal: Number(p.params.signalPeriod) || 9,
+                    },
+                  );
+                  break;
+                case 'bb_touch':
+                case 'bb_squeeze':
+                case 'bb_walk':
+                  upsert('bb', Number(p.params.period) || 20, undefined, {
+                    stdDev: Number(p.params.stdDev) || 2,
+                  });
+                  break;
+                case 'keltner_break':
+                  upsert('keltner', Number(p.params.period) || 20);
+                  break;
+                case 'envelopes_touch':
+                  upsert('envelopes', Number(p.params.period) || 20);
+                  break;
+                case 'price_vs_ma':
+                case 'ma_stack':
+                case 'ma_slope': {
+                  const maType = String(p.params.maType || 'ema');
+                  const per =
+                    Number(p.params.period) ||
+                    Number(p.params.fastPeriod) ||
+                    50;
+                  upsert(maType === 'sma' ? 'sma' : 'ema', per);
+                  break;
+                }
+                case 'stoch_cross':
+                case 'stoch_gate':
+                  upsert('stoch', Number(p.params.kPeriod) || 14, undefined, {
+                    smoothK: Number(p.params.dPeriod) || 3,
+                    smoothD: Number(p.params.dPeriod) || 3,
+                  });
+                  break;
+                case 'cci_gate':
+                case 'cci_cross':
+                  upsert('cci', Number(p.params.period) || 20);
+                  break;
+                case 'willr_gate':
+                  upsert('willr', Number(p.params.period) || 14);
+                  break;
+                case 'adx_trend':
+                  upsert('adx', Number(p.params.period) || 14);
+                  break;
+                case 'ao_cross':
+                  upsert('ao', 34);
+                  break;
+                case 'supertrend_flip':
+                  upsert('supertrend', Number(p.params.period) || 10);
+                  break;
+                case 'psar_flip':
+                  upsert('psar', 2);
+                  break;
+                case 'ichimoku_tk_cross':
+                case 'ichimoku_cloud':
+                  upsert('ichimoku', Number(p.params.kijun) || 26);
+                  break;
+                case 'trix_cross':
+                  upsert('trix', Number(p.params.period) || 15);
+                  break;
+                case 'ppo_cross':
+                  upsert('ppo', Number(p.params.slowPeriod) || 26);
+                  break;
+                case 'aroon_cross':
+                  upsert('aroon', Number(p.params.period) || 25);
+                  break;
+                case 'chop_filter':
+                  upsert('chop', Number(p.params.period) || 14);
+                  break;
+                default:
+                  break;
               }
             }
             return next;

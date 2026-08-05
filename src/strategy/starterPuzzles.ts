@@ -125,4 +125,59 @@ export const STARTER_PUZZLES: StarterPuzzle[] = [
       { id: 'e5', source: 'p-exit-bos', target: 'exit' },
     ],
   },
+  {
+    id: 'macd-ema',
+    name: 'MACD + EMA cross',
+    description: 'MACD signal cross AND EMA cross for entries.',
+    timeframes: ['15m', '1h'],
+    tags: ['starter', 'indicator'],
+    nodes: [
+      ...entryExit(),
+      piece('p-macd', 'macd_cross', 220, 80, {
+        params: { fastPeriod: 12, slowPeriod: 26, signalPeriod: 9, side: 'buy' },
+      }),
+      piece('p-ema', 'ema_cross', 220, 220, {
+        params: { fastPeriod: 9, slowPeriod: 21, side: 'buy' },
+      }),
+      piece('p-and', 'and', 420, 140),
+      piece('p-exit', 'macd_cross', 420, 280, {
+        label: 'MACD exit',
+        params: { fastPeriod: 12, slowPeriod: 26, signalPeriod: 9, side: 'sell' },
+      }),
+    ],
+    edges: [
+      { id: 'e1', source: 'entry', target: 'p-and' },
+      { id: 'e2', source: 'p-macd', target: 'p-and' },
+      { id: 'e3', source: 'p-ema', target: 'p-and' },
+      { id: 'e4', source: 'p-exit', target: 'exit' },
+    ],
+  },
+  {
+    id: 'kz-engulf',
+    name: 'London KZ + engulfing',
+    description: 'Engulfing only inside London killzone.',
+    timeframes: ['5m', '15m'],
+    tags: ['starter', 'session'],
+    nodes: [
+      ...entryExit(),
+      piece('p-kz', 'killzone', 220, 80, {
+        requiredTimeframe: '5m',
+        params: { zone: 'london' },
+      }),
+      piece('p-eng', 'engulfing', 220, 220, {
+        params: { side: 'either' },
+      }),
+      piece('p-and', 'and', 420, 140),
+      piece('p-exit', 'pin_bar', 420, 280, {
+        label: 'Pin exit',
+        params: { wickRatio: 2, side: 'either' },
+      }),
+    ],
+    edges: [
+      { id: 'e1', source: 'entry', target: 'p-and' },
+      { id: 'e2', source: 'p-kz', target: 'p-and' },
+      { id: 'e3', source: 'p-eng', target: 'p-and' },
+      { id: 'e4', source: 'p-exit', target: 'exit' },
+    ],
+  },
 ];

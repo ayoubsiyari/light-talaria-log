@@ -22,8 +22,8 @@ const MIN_MARKER_PX = 6;
 /** Hard cap per paint — leftover trades still contribute via equity band. */
 const MAX_MARKERS_PER_FRAME = 400;
 /** Min gap between label chips (px). */
-const MIN_LABEL_PX = 48;
-const MAX_LABELS_PER_FRAME = 48;
+const MIN_LABEL_PX = 24;
+const MAX_LABELS_PER_FRAME = 140;
 
 export function drawBacktest(
   ctx: CanvasRenderingContext2D,
@@ -164,21 +164,27 @@ function drawEventLabels(
     const focused = focusedTradeId != null && ev.tradeId === focusedTradeId;
     if (!focused && Math.abs(pt.x - lastLabelX) < MIN_LABEL_PX) continue;
 
-    const fill =
-      ev.kind === 'exit'
+    const isDetect = ev.kind === 'signal';
+    const fill = isDetect
+      ? colors.accent
+      : ev.kind === 'exit'
         ? colors.downColor
         : ev.side === 'sell'
           ? colors.downColor
           : colors.upColor;
 
-    // Marker (events may densify beyond trade triangles)
-    drawTriangle(
-      ctx,
-      pt.x,
-      pt.y,
-      ev.kind === 'exit' || ev.side === 'sell' ? 'down' : 'up',
-      fill,
-    );
+    // Entry/exit = triangles; piece detections = diamonds (easy to tell apart)
+    if (isDetect) {
+      drawDiamond(ctx, pt.x, pt.y, fill);
+    } else {
+      drawTriangle(
+        ctx,
+        pt.x,
+        pt.y,
+        ev.kind === 'exit' || ev.side === 'sell' ? 'down' : 'up',
+        fill,
+      );
+    }
 
     const text = truncateLabel(ev.label, 28);
     const tw = ctx.measureText(text).width;
@@ -414,4 +420,23 @@ function drawTriangle(
   }
   ctx.closePath();
   ctx.fill();
+}
+
+function drawDiamond(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  color: string,
+): void {
+  const r = MARKER_R - 0.5;
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.9;
+  ctx.beginPath();
+  ctx.moveTo(x, y - r);
+  ctx.lineTo(x + r, y);
+  ctx.lineTo(x, y + r);
+  ctx.lineTo(x - r, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
 }

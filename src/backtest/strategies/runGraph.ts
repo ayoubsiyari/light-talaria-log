@@ -1,9 +1,14 @@
 /**
  * Puzzle-graph strategy — evaluates compiled piece AST per bar.
+ * Emits entry/exit trades plus per-piece detection marks (rising edges).
  * Worker-only.
  */
 import { runAutomation, type RawFlipSignal } from '@/backtest/automationEngine';
-import { evalAllConditions } from '@/strategy/pieces/evalConditions';
+import {
+  evalAllConditions,
+  sideAt,
+  type ConditionEval,
+} from '@/strategy/pieces/evalConditions';
 import type { CompiledGraph, CompiledPiece } from '@/strategy/graphTypes';
 import { isLogicKind } from '@/strategy/pieceRegistry';
 import type {
@@ -14,6 +19,9 @@ import type {
   EquityPoint,
 } from '@/types/backtest';
 import type { OrderSide } from '@/types/order';
+
+/** Cap piece-detection chips so the chart stays readable. */
+const MAX_DETECT_MARKS = 2000;
 
 export interface RunGraphInput {
   times: Float64Array;
@@ -60,6 +68,51 @@ function buildAdj(graph: CompiledGraph): {
   return { outs, ins, byId };
 }
 
+function collectDetectionMarks(
+  leaves: Map<string, ConditionEval>,
+  times: Float64Array,
+  closes: Float32Array,
+): BacktestEvent[] {
+  // Collect rising edges per piece, then round-robin so every piece can show.
+  const perPiece: BacktestEvent[][] = [];
+  for (const [, ev] of leaves) {
+    const list: BacktestEvent[] = [];
+    const n = ev.flags.length;
+    for (let i = 1; i < n; i++) {
+      if (ev.flags[i] !== 1 || ev.flags[i - 1] === 1) continue;
+      const side = sideAt(ev, i);
+      list.push({
+        id: '',
+        time: times[i]!,
+        price: closes[i]!,
+        kind: 'signal',
+        label: ev.label,
+        side: side ?? undefined,
+      });
+    }
+    if (list.length) perPiece.push(list);
+  }
+
+  const events: BacktestEvent[] = [];
+  let seq = 0;
+  let idx = 0;
+  let progress = true;
+  while (progress && seq < MAX_DETECT_MARKS) {
+    progress = false;
+    for (const list of perPiece) {
+      if (idx >= list.length) continue;
+      seq += 1;
+      const ev = list[idx]!;
+      events.push({ ...ev, id: `d${seq}` });
+      progress = true;
+      if (seq >= MAX_DETECT_MARKS) break;
+    }
+    idx += 1;
+  }
+  events.sort((a, b) => a.time - b.time);
+  return events;
+}
+
 export function runGraphStrategy(input: RunGraphInput): RunGraphOutput {
   const { times, opens, highs, lows, closes, graph, costs, rules } = input;
   const n = closes.length;
@@ -67,7 +120,7 @@ export function runGraphStrategy(input: RunGraphInput): RunGraphOutput {
     return { trades: [], events: [], equity: [], finalEquity: 1, totalPnl: 0 };
   }
 
-  const series = { opens, highs, lows, closes };
+  const series = { times, opens, highs, lows, closes };
   const leaves = evalAllConditions(graph.pieces, series);
   const { outs, ins, byId } = buildAdj(graph);
 
@@ -90,7 +143,6 @@ export function runGraphStrategy(input: RunGraphInput): RunGraphOutput {
     }
 
     if (id === graph.entryId || id === graph.exitId) {
-      // Entry: follow outgoing wires. Exit: pieces wire into Exit (incoming).
       const kids = (
         id === graph.entryId ? (outs.get(id) ?? []) : (ins.get(id) ?? [])
       ).filter((k) => byId.has(k));
@@ -109,7 +161,6 @@ export function runGraphStrategy(input: RunGraphInput): RunGraphOutput {
         if (r.ok && r.label) labels.push(r.label);
         if (r.side && !side) side = r.side;
       }
-      // Multiple roots AND-combined
       const label = labels.join(' + ');
       boolMemo.set(key, ok);
       sideMemo.set(key, side);
@@ -135,8 +186,12 @@ export function runGraphStrategy(input: RunGraphInput): RunGraphOutput {
         const ok = !r.ok;
         boolMemo.set(key, ok);
         sideMemo.set(key, r.side);
-        labelMemo.set(key, ok ? `NOT(${r.label})` : '');
-        return { ok, side: r.side, label: ok ? `NOT(${r.label})` : '' };
+        labelMemo.set(key, ok ? `NOT(${r.label || piece.label})` : '');
+        return {
+          ok,
+          side: r.side,
+          label: ok ? `NOT(${r.label || piece.label})` : '',
+        };
       }
       if (piece.kind === 'and') {
         let ok = preds.length > 0;
@@ -154,7 +209,19 @@ export function runGraphStrategy(input: RunGraphInput): RunGraphOutput {
         labelMemo.set(key, ok ? label : '');
         return { ok, side, label: ok ? label : '' };
       }
-      // or
+      if (piece.kind === 'xor') {
+        const a = preds[0] ? evalNode(preds[0], i) : null;
+        const b = preds[1] ? evalNode(preds[1], i) : null;
+        const ok = !!(a && b && a.ok !== b.ok);
+        const side = ok ? (a!.ok ? a!.side : b!.side) : null;
+        const label = ok
+          ? `XOR(${a!.ok ? a!.label : b!.label})`
+          : '';
+        boolMemo.set(key, ok);
+        sideMemo.set(key, side);
+        labelMemo.set(key, label);
+        return { ok, side, label };
+      }
       let ok = false;
       let side: OrderSide | null = null;
       const labels: string[] = [];
@@ -179,10 +246,11 @@ export function runGraphStrategy(input: RunGraphInput): RunGraphOutput {
       return { ok: false, side: null, label: piece.label };
     }
     const ok = leaf.flags[i] === 1;
+    const side = ok ? sideAt(leaf, i) : null;
     boolMemo.set(key, ok);
-    sideMemo.set(key, leaf.side);
+    sideMemo.set(key, side);
     labelMemo.set(key, ok ? leaf.label : '');
-    return { ok, side: leaf.side, label: ok ? leaf.label : '' };
+    return { ok, side, label: ok ? leaf.label : '' };
   };
 
   const signals: RawFlipSignal[] = [];
@@ -190,7 +258,6 @@ export function runGraphStrategy(input: RunGraphInput): RunGraphOutput {
   let prevExit = false;
 
   for (let i = 1; i < n; i++) {
-    // Clear per-bar memo is automatic via key including i; no need to wipe.
     const entry = evalNode(graph.entryId, i);
     const exit = evalNode(graph.exitId, i);
 
@@ -213,7 +280,7 @@ export function runGraphStrategy(input: RunGraphInput): RunGraphOutput {
     prevExit = exit.ok;
   }
 
-  return runAutomation({
+  const auto = runAutomation({
     times,
     highs,
     lows,
@@ -223,4 +290,16 @@ export function runGraphStrategy(input: RunGraphInput): RunGraphOutput {
     rules,
     trendPeriod: 30,
   });
+
+  const detects = collectDetectionMarks(leaves, times, closes);
+  // Trade entry/exit first, then piece detections (chart draws all)
+  const events = [...auto.events, ...detects];
+
+  return {
+    trades: auto.trades,
+    events,
+    equity: auto.equity,
+    finalEquity: auto.finalEquity,
+    totalPnl: auto.totalPnl,
+  };
 }

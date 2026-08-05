@@ -420,23 +420,6 @@ export function CreateSessionPage({
       >
         <header className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Backtesting</h1>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              className="shell-cta min-h-10"
-              onPress={loadServer}
-              isDisabled={remoteStatus === 'loading'}
-            >
-              {remoteStatus === 'loading' ? 'Loading…' : 'Refresh'}
-            </Button>
-            <Button
-              variant="secondary"
-              className="shell-cta min-h-10 font-semibold"
-              onPress={() => setModalOpen(true)}
-            >
-              + Create session
-            </Button>
-          </div>
         </header>
 
         {continueSession && (
@@ -448,7 +431,7 @@ export function CreateSessionPage({
               'bg-surface px-4 py-3 text-left hover:bg-background/60 transition-colors',
             ].join(' ')}
           >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-foreground/20 bg-foreground/10 text-foreground">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[color:var(--accent-foreground)]">
               <PlayIcon />
             </span>
             <div className="min-w-0 flex-1 space-y-1.5">
@@ -634,7 +617,7 @@ export function CreateSessionPage({
                           type="button"
                           aria-label={row.progress === 0 ? 'Start' : 'Resume'}
                           onClick={() => onStart(s)}
-                          className="flex h-9 w-9 items-center justify-center rounded-full border border-foreground/20 bg-foreground/10 text-foreground hover:bg-foreground/16"
+                          className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-[color:var(--accent-foreground)] hover:brightness-110"
                         >
                           <PlayIcon />
                         </button>
@@ -755,7 +738,7 @@ export function CreateSessionPage({
                         type="button"
                         aria-label="Open"
                         onClick={() => onStart(s)}
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-foreground/20 bg-foreground/10 text-foreground"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[color:var(--accent-foreground)]"
                       >
                         <PlayIcon />
                       </button>

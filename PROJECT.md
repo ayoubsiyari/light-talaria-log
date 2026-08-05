@@ -838,6 +838,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-05 | TV position overlay: bordered P&L labels (entry/PT/SL), entry-candle arrow+price, axis chips; projected SL/TP PnL; canvas-only | Place long — marker on fill bar; labels match TV screenshot |
 | 2026-08-05 | Backtesting layout: labeled sidebar + Create Session; continue bar; stats strip; All/Active/Completed table (list/grid) | Open Sessions — table rows with play + symbol chips |
 | 2026-08-05 | Fix order overlay: expand Y-scale for SL/TP; solid pills; RR band only while drag @0.2; push panes on Place/Pause | Place+Play — entry/SL/TP stay visible |
+| 2026-08-05 | Sessions UI: drop duplicate header Create/Refresh; accent play buttons; stronger shell ambient wash | Open Sessions — play pills + glow |
 | 2026-08-05 | Shell polish: neutral CTAs (no dark-blue fill); soft blue corner/side ambient wash | Open Sessions — buttons + glow background |
 
 ---

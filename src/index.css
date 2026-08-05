@@ -189,10 +189,11 @@
   .app-shell {
     background-color: var(--background);
     background-image:
-      radial-gradient(ellipse 55% 45% at 0% 0%, color-mix(in oklab, #1e3a8a 28%, transparent), transparent 70%),
-      radial-gradient(ellipse 50% 40% at 100% 0%, color-mix(in oklab, #172554 22%, transparent), transparent 68%),
-      radial-gradient(ellipse 45% 50% at 100% 100%, color-mix(in oklab, #1e3a8a 18%, transparent), transparent 70%),
-      radial-gradient(ellipse 40% 45% at 0% 100%, color-mix(in oklab, #0f172a 35%, transparent), transparent 65%);
+      radial-gradient(ellipse 85% 70% at 0% 0%, color-mix(in oklab, #1e3a8a 42%, transparent), transparent 72%),
+      radial-gradient(ellipse 75% 65% at 100% 0%, color-mix(in oklab, #1e40af 32%, transparent), transparent 70%),
+      radial-gradient(ellipse 70% 75% at 100% 100%, color-mix(in oklab, #1e3a8a 30%, transparent), transparent 72%),
+      radial-gradient(ellipse 65% 70% at 0% 100%, color-mix(in oklab, #172554 38%, transparent), transparent 68%),
+      radial-gradient(ellipse 90% 50% at 50% 120%, color-mix(in oklab, #1e3a8a 18%, transparent), transparent 60%);
   }
 
   .app-shell-aside {

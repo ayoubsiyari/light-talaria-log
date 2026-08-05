@@ -25,11 +25,14 @@ import {
   listSessions,
   validateSessionDates,
 } from '@/sessions/sessionStore';
+import { listStrategies } from '@/strategy/strategyStore';
 import type { DownloadedDataset } from '@/types/dataset';
 import type { RemoteDatasetMeta } from '@/types/remoteApi';
 import { AppPageFrame } from '@/components/shell/AppPageFrame';
 import type { BacktestSession, PairSymbol, SessionLeg } from '@/types/session';
 import type { Timeframe } from '@/types/ui';
+
+const DEFAULT_STARTING_BALANCE = 10_000;
 
 interface CreateSessionPageProps {
   onStart: (session: BacktestSession) => void;
@@ -175,14 +178,30 @@ export function CreateSessionPage({
   const sessionEnd = boundStart && boundEnd && boundStart > boundEnd ? boundStart : boundEnd;
 
   const [name, setName] = useState('');
-  const [strategyName, setStrategyName] = useState('');
+  const [strategyId, setStrategyId] = useState('');
   const [strategyDesc, setStrategyDesc] = useState('');
+  const [startingBalance, setStartingBalance] = useState(DEFAULT_STARTING_BALANCE);
+  const [strategies, setStrategies] = useState(() => listStrategies());
   const [error, setError] = useState<string | null>(null);
   const [sessions, setSessions] = useState(() => listSessions());
   const [modalOpen, setModalOpen] = useState(false);
   const [sessFilter, setSessFilter] = useState<SessFilter>('all');
   const [searchQ, setSearchQ] = useState('');
   const [menuId, setMenuId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (modalOpen) setStrategies(listStrategies());
+  }, [modalOpen]);
+
+  const selectedStrategy = useMemo(
+    () => strategies.find((s) => s.id === strategyId) ?? null,
+    [strategies, strategyId],
+  );
+
+  const availablePairs = useMemo(
+    () => pairs.filter((p) => !selectedPairs.includes(p)),
+    [pairs, selectedPairs],
+  );
 
   const filteredSessions = useMemo(() => {
     const q = searchQ.trim().toLowerCase();
@@ -201,14 +220,18 @@ export function CreateSessionPage({
     });
   }, [sessions, searchQ, sessFilter]);
 
-  const togglePair = (pair: PairSymbol) => {
+  const addPair = (pair: PairSymbol) => {
     setSelectedPairs((prev) => {
-      if (prev.includes(pair)) {
-        if (prev.length === 1) return prev;
-        return prev.filter((p) => p !== pair);
-      }
-      if (prev.length >= 4) return prev;
+      if (prev.includes(pair) || prev.length >= 4) return prev;
       return [...prev, pair];
+    });
+    setError(null);
+  };
+
+  const removePair = (pair: PairSymbol) => {
+    setSelectedPairs((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((p) => p !== pair);
     });
     setError(null);
   };
@@ -273,17 +296,25 @@ export function CreateSessionPage({
     }
 
     setError(null);
+    const bal = Number(startingBalance);
+    if (!Number.isFinite(bal) || bal <= 0) {
+      setError('Starting balance must be a positive number.');
+      return null;
+    }
     const baseName = name.trim() || defaultName;
-    const label =
-      strategyName.trim()
-        ? `${baseName} · ${strategyName.trim()}`
-        : baseName;
+    const stratName = selectedStrategy?.name?.trim() || undefined;
+    const label = stratName ? `${baseName} · ${stratName}` : baseName;
     const session = createSession({
       name: label,
       timeframe: effectiveTf,
       startDate: sessionStart,
       endDate: sessionEnd,
       legs,
+      startingBalance: bal,
+      ...(selectedStrategy
+        ? { strategyId: selectedStrategy.id, strategyName: selectedStrategy.name }
+        : {}),
+      ...(strategyDesc.trim() ? { description: strategyDesc.trim() } : {}),
     });
     refreshSessions();
     return session;
@@ -539,12 +570,22 @@ export function CreateSessionPage({
                   />
                 </Field>
                 <Field label="Strategy / playbook">
-                  <input
+                  <select
                     className={fieldClass}
-                    placeholder="Optional strategy name"
-                    value={strategyName}
-                    onChange={(e) => setStrategyName(e.target.value)}
-                  />
+                    value={strategyId}
+                    onChange={(e) => setStrategyId(e.target.value)}
+                  >
+                    <option value="">
+                      {strategies.length === 0
+                        ? 'No strategies saved yet'
+                        : 'No strategy'}
+                    </option>
+                    {strategies.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="Description">
                   <textarea
@@ -573,29 +614,54 @@ export function CreateSessionPage({
                     <Field
                       label={`Pairs (up to 4 · ${layoutHint(selectedPairs.length)})`}
                     >
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {pairs.map((p) => {
-                          const checked = selectedPairs.includes(p);
-                          return (
-                            <label
-                              key={p}
-                              className={[
-                                'flex items-center gap-2.5 min-h-11 px-3 py-2 rounded-md border text-sm cursor-pointer',
-                                checked
-                                  ? 'border-accent bg-accent/10'
-                                  : 'border-border bg-background',
-                              ].join(' ')}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => togglePair(p)}
-                                className="accent-[var(--accent)]"
-                              />
-                              <span className="truncate">{p}</span>
-                            </label>
-                          );
-                        })}
+                      <div className="space-y-2">
+                        <select
+                          className={fieldClass}
+                          value=""
+                          disabled={selectedPairs.length >= 4 || availablePairs.length === 0}
+                          onChange={(e) => {
+                            const p = e.target.value as PairSymbol;
+                            if (p) addPair(p);
+                          }}
+                        >
+                          <option value="">
+                            {selectedPairs.length >= 4
+                              ? 'Maximum 4 pairs'
+                              : availablePairs.length === 0
+                                ? 'No more pairs available'
+                                : 'Add pair…'}
+                          </option>
+                          {availablePairs.map((p) => (
+                            <option key={p} value={p}>
+                              {p}
+                            </option>
+                          ))}
+                        </select>
+                        {selectedPairs.length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {selectedPairs.map((p) => (
+                              <button
+                                key={p}
+                                type="button"
+                                className="inline-flex items-center gap-1.5 min-h-9 rounded-md border border-accent/40 bg-accent/10 px-2.5 text-sm text-foreground"
+                                onClick={() => removePair(p)}
+                                title={
+                                  selectedPairs.length <= 1
+                                    ? 'At least one pair required'
+                                    : `Remove ${p}`
+                                }
+                                disabled={selectedPairs.length <= 1}
+                              >
+                                <span>{p}</span>
+                                {selectedPairs.length > 1 && (
+                                  <span className="text-muted" aria-hidden>
+                                    ×
+                                  </span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </Field>
                     <Field label="Timeframe">
@@ -650,9 +716,18 @@ export function CreateSessionPage({
               </Section>
 
               <Section title="Options">
-                <p className="text-sm text-muted">
-                  Real-world costs and prop rules land with the chart order engine. Datasets
-                  remain the source of bars.
+                <Field label="Starting balance (USD) *">
+                  <input
+                    type="number"
+                    min={1}
+                    step={100}
+                    className={fieldClass}
+                    value={startingBalance}
+                    onChange={(e) => setStartingBalance(Number(e.target.value))}
+                  />
+                </Field>
+                <p className="text-xs text-muted">
+                  Account balance used when the session opens on the chart.
                 </p>
               </Section>
 
@@ -691,6 +766,7 @@ export function CreateSessionPage({
 }
 
 function strategyNameFromSession(s: BacktestSession): string {
+  if (s.strategyName?.trim()) return s.strategyName.trim();
   const parts = s.name.split(' · ');
   return parts.length > 1 ? parts.slice(1).join(' · ') : s.legs.map((l) => l.pair).join(' + ');
 }

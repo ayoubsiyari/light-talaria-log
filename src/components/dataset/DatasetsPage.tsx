@@ -18,21 +18,15 @@ import {
 } from '@/datasets/ingestLimits';
 import { clearChartBarCache } from '@/datasets/idbChunkGc';
 import { publishDatasetToServer } from '@/datasets/publishDataset';
-import {
-  fetchHealth,
-  fetchMe,
-  listRemoteDatasets,
-  loginRemote,
-  logoutRemote,
-  registerRemote,
-} from '@/datasets/remoteApi';
+import { useAuth } from '@/auth/AuthContext';
+import { fetchHealth, listRemoteDatasets } from '@/datasets/remoteApi';
 import { warmCache } from '@/session/warmCache';
 import {
   PAIR_OPTIONS,
   TIMEFRAME_OPTIONS,
   type PairSymbol,
 } from '@/types/session';
-import type { RemoteDatasetMeta, RemoteUser } from '@/types/remoteApi';
+import type { RemoteDatasetMeta } from '@/types/remoteApi';
 import type { Timeframe } from '@/types/ui';
 
 interface DatasetsPageProps {
@@ -66,6 +60,7 @@ export function DatasetsPage({
 }: DatasetsPageProps) {
   const goBacktest = onGoBacktest ?? onGoSessions!;
   const goTrades = onGoTrades ?? onGoJournal;
+  const { user: apiUser, signOut } = useAuth();
   const defaults = useMemo(() => defaultDates(), []);
   const [pair, setPair] = useState<PairSymbol>('EUR/USD');
   const [timeframe, setTimeframe] = useState<Timeframe>('1m');
@@ -83,12 +78,8 @@ export function DatasetsPage({
   const [remoteError, setRemoteError] = useState<string | null>(null);
   const [importingId, setImportingId] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
-  const [apiUser, setApiUser] = useState<RemoteUser | null>(null);
   const [apiMode, setApiMode] = useState<string | null>(null);
-  const [authEmail, setAuthEmail] = useState('admin@localhost');
-  const [authPassword, setAuthPassword] = useState('admin12345');
   const [authBusy, setAuthBusy] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [clearingCache, setClearingCache] = useState(false);
 
@@ -121,17 +112,11 @@ export function DatasetsPage({
       try {
         const health = await fetchHealth();
         setApiMode('mode' in health && typeof health.mode === 'string' ? health.mode : null);
-        try {
-          setApiUser(await fetchMe());
-        } catch {
-          setApiUser(null);
-        }
         const list = await listRemoteDatasets();
         setRemoteDatasets(list);
         setRemoteStatus('ready');
       } catch (err) {
         setRemoteDatasets([]);
-        setApiUser(null);
         setApiMode(null);
         setRemoteStatus('error');
         setRemoteError(
@@ -471,116 +456,36 @@ export function DatasetsPage({
           </Card.Content>
         </Card>
 
-        {remoteStatus === 'ready' && apiMode === 'saas-level-2' && (
+        {remoteStatus === 'ready' && apiUser && (
           <Card className="bg-surface border border-border">
             <Card.Header className="px-6 pt-6 pb-2">
-              <Card.Title className="text-lg">SaaS account</Card.Title>
+              <Card.Title className="text-lg">API session</Card.Title>
               <Card.Description className="text-muted text-sm">
-                Level-2 API session (cookie). Default seed: admin@localhost / admin12345
+                {apiMode === 'saas-level-2'
+                  ? 'Level-2 SaaS cookie session.'
+                  : 'Dev stub cookie session. Account: Profile → Sign out.'}
               </Card.Description>
             </Card.Header>
-            <Card.Content className="px-6 pb-6 space-y-3">
-              {apiUser ? (
-                <div className="flex flex-wrap items-center gap-3">
-                  <p className="text-sm min-w-0 flex-1">
-                    Signed in as <span className="font-medium">{apiUser.email}</span>
-                    {apiUser.displayName ? ` · ${apiUser.displayName}` : ''}
-                  </p>
-                  <Button
-                    variant="secondary"
-                    className="min-h-11"
-                    isDisabled={authBusy}
-                    onPress={() => {
-                      setAuthBusy(true);
-                      void logoutRemote()
-                        .then(() => {
-                          setApiUser(null);
-                          loadRemote();
-                        })
-                        .catch((err) =>
-                          setAuthError(err instanceof Error ? err.message : 'Logout failed'),
-                        )
-                        .finally(() => setAuthBusy(false));
-                    }}
-                  >
-                    Log out
-                  </Button>
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label>Email</Label>
-                      <input
-                        className={fieldClass}
-                        type="email"
-                        autoComplete="username"
-                        value={authEmail}
-                        onChange={(e) => setAuthEmail(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Password</Label>
-                      <input
-                        className={fieldClass}
-                        type="password"
-                        autoComplete="current-password"
-                        value={authPassword}
-                        onChange={(e) => setAuthPassword(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  {authError && (
-                    <p className="text-sm text-danger" role="alert">
-                      {authError}
-                    </p>
-                  )}
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="primary"
-                      className="min-h-11"
-                      isDisabled={authBusy}
-                      onPress={() => {
-                        setAuthBusy(true);
-                        setAuthError(null);
-                        void loginRemote(authEmail, authPassword)
-                          .then((u) => {
-                            setApiUser(u);
-                            loadRemote();
-                          })
-                          .catch((err) =>
-                            setAuthError(err instanceof Error ? err.message : 'Login failed'),
-                          )
-                          .finally(() => setAuthBusy(false));
-                      }}
-                    >
-                      Log in
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      className="min-h-11"
-                      isDisabled={authBusy}
-                      onPress={() => {
-                        setAuthBusy(true);
-                        setAuthError(null);
-                        void registerRemote(authEmail, authPassword)
-                          .then((u) => {
-                            setApiUser(u);
-                            loadRemote();
-                          })
-                          .catch((err) =>
-                            setAuthError(
-                              err instanceof Error ? err.message : 'Register failed',
-                            ),
-                          )
-                          .finally(() => setAuthBusy(false));
-                      }}
-                    >
-                      Register
-                    </Button>
-                  </div>
-                </>
-              )}
+            <Card.Content className="px-6 pb-6">
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-sm min-w-0 flex-1">
+                  Signed in as <span className="font-medium">{apiUser.email}</span>
+                  {apiUser.displayName ? ` · ${apiUser.displayName}` : ''}
+                </p>
+                <Button
+                  variant="secondary"
+                  className="min-h-11"
+                  isDisabled={authBusy}
+                  onPress={() => {
+                    setAuthBusy(true);
+                    void signOut()
+                      .then(() => loadRemote())
+                      .finally(() => setAuthBusy(false));
+                  }}
+                >
+                  Sign out
+                </Button>
+              </div>
             </Card.Content>
           </Card>
         )}

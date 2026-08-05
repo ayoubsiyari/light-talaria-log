@@ -65,6 +65,13 @@ export interface BacktestSession {
   cursorTime?: number;
   /** Last bar-count zoom (session.span). Optional camera restore. */
   span?: number;
+  /** Starting account balance for the order engine (USD). */
+  startingBalance?: number;
+  /** Linked strategy from the strategy bank (optional). */
+  strategyId?: string;
+  strategyName?: string;
+  /** Free-form notes for this run. */
+  description?: string;
 }
 
 export interface CreateSessionInput {
@@ -73,6 +80,10 @@ export interface CreateSessionInput {
   startDate: string;
   endDate: string;
   legs: SessionLeg[];
+  startingBalance?: number;
+  strategyId?: string;
+  strategyName?: string;
+  description?: string;
 }
 
 export function sessionPairs(session: BacktestSession): PairSymbol[] {

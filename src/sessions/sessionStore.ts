@@ -44,6 +44,24 @@ function normalizeSession(raw: unknown): BacktestSession | null {
     typeof s.span === 'number' && Number.isFinite(s.span) && s.span > 0
       ? s.span
       : undefined;
+  const startingBalance =
+    typeof s.startingBalance === 'number' &&
+    Number.isFinite(s.startingBalance) &&
+    s.startingBalance > 0
+      ? s.startingBalance
+      : undefined;
+  const strategyId =
+    typeof s.strategyId === 'string' && s.strategyId.trim()
+      ? s.strategyId.trim()
+      : undefined;
+  const strategyName =
+    typeof s.strategyName === 'string' && s.strategyName.trim()
+      ? s.strategyName.trim()
+      : undefined;
+  const description =
+    typeof s.description === 'string' && s.description.trim()
+      ? s.description.trim()
+      : undefined;
   return {
     id: s.id,
     name: s.name ?? `${primary.pair} ${s.timeframe}`,
@@ -56,6 +74,10 @@ function normalizeSession(raw: unknown): BacktestSession | null {
     createdAt: typeof s.createdAt === 'number' ? s.createdAt : Date.now(),
     ...(cursorTime !== undefined ? { cursorTime } : {}),
     ...(span !== undefined ? { span } : {}),
+    ...(startingBalance !== undefined ? { startingBalance } : {}),
+    ...(strategyId !== undefined ? { strategyId } : {}),
+    ...(strategyName !== undefined ? { strategyName } : {}),
+    ...(description !== undefined ? { description } : {}),
   };
 }
 
@@ -96,6 +118,15 @@ export function createSession(input: CreateSessionInput): BacktestSession {
     input.legs.length === 1
       ? `${primary.pair} ${input.timeframe}`
       : `${input.legs.map((l) => l.pair).join(' + ')} ${input.timeframe}`;
+  const startingBalance =
+    typeof input.startingBalance === 'number' &&
+    Number.isFinite(input.startingBalance) &&
+    input.startingBalance > 0
+      ? input.startingBalance
+      : undefined;
+  const strategyId = input.strategyId?.trim() || undefined;
+  const strategyName = input.strategyName?.trim() || undefined;
+  const description = input.description?.trim() || undefined;
   const session: BacktestSession = {
     id: newId(),
     name: input.name.trim() || label,
@@ -106,6 +137,10 @@ export function createSession(input: CreateSessionInput): BacktestSession {
     datasetId: primary.datasetId,
     legs: input.legs,
     createdAt: Date.now(),
+    ...(startingBalance !== undefined ? { startingBalance } : {}),
+    ...(strategyId !== undefined ? { strategyId } : {}),
+    ...(strategyName !== undefined ? { strategyName } : {}),
+    ...(description !== undefined ? { description } : {}),
   };
   const next = [session, ...readAll()].slice(0, MAX_SESSIONS);
   writeAll(next);

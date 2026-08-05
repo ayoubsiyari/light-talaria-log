@@ -9,8 +9,9 @@ import { howItWorksCopy } from '@landing-content/howItWorks';
 import { trustCopy } from '@landing-content/trust';
 
 interface MarketingHomeProps {
+  /** Sign up (or open app if already signed in). */
   onStartFree: () => void;
-  /** Open the app (sessions). No auth in Phase 1. */
+  /** Sign in (or open app if already signed in). */
   onOpenApp: () => void;
 }
 
@@ -79,7 +80,7 @@ export function MarketingHome({ onStartFree, onOpenApp }: MarketingHomeProps) {
               className="min-h-11 hidden sm:inline-flex"
               onPress={onOpenApp}
             >
-              Open app
+              Sign in
             </Button>
             <Button variant="primary" className="min-h-11" onPress={onStartFree}>
               Start free

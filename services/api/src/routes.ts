@@ -102,6 +102,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/api/v1/auth/register', rpmLimit(config.limits.authRpm), async (req, reply) => {
+    const origin = req.headers.origin;
+    if (origin && !config.corsOrigins.includes(origin)) {
+      return reply.code(403).send({ error: 'Forbidden origin' });
+    }
     const body = z
       .object({
         email: z.string().email(),
@@ -143,6 +147,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/api/v1/auth/login', rpmLimit(config.limits.authRpm), async (req, reply) => {
+    const origin = req.headers.origin;
+    if (origin && !config.corsOrigins.includes(origin)) {
+      return reply.code(403).send({ error: 'Forbidden origin' });
+    }
     const body = z
       .object({
         email: z.string().email(),

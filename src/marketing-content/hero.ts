@@ -4,7 +4,7 @@ export const heroCopy = {
   sub: "TALARIA-LOG loads historical FX bars, runs strategy backtests on a fast canvas chart, and saves every run to a local journal — so you can see whether the edge is real before you size up.",
   primaryCta: "Start free",
   secondaryCta: "See how it works",
-  footnote: "Runs locally in your browser. No account required for Phase 1.",
+  footnote: "Create a free account to open sessions and charts.",
   metrics: {
     equity: "+184.2%",
     pf: "PF 1.71",

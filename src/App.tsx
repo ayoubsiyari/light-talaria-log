@@ -135,8 +135,10 @@ import {
 import {
   formatAppRoute,
   parseAppRoute,
+  routeRequiresAuth,
   type AppTab,
   type AppView,
+  type AuthMode,
 } from '@/navigation/appRoute';
 import { AppShell } from '@/components/shell/AppShell';
 import { ProfilePage } from '@/components/shell/ProfilePage';
@@ -145,6 +147,13 @@ import { StrategyPage } from '@/components/strategy/StrategyPage';
 import { CreateSessionPage } from '@/components/session/CreateSessionPage';
 import { JournalPage } from '@/components/journal/JournalPage';
 import { ResourcesPage } from '@/components/resources/ResourcesPage';
+import { AuthFormPage } from '@/components/auth/AuthFormPage';
+import { AuthGate } from '@/components/auth/AuthGate';
+import {
+  consumeAuthNext,
+  rememberAuthNext,
+  useAuth,
+} from '@/auth/AuthContext';
 /** Throttle localStorage writes while replay is playing. */
 const REPLAY_PROGRESS_SAVE_MS = 2500;
 
@@ -153,6 +162,7 @@ type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 function bootRoute(): {
   view: AppView;
   appTab: AppTab;
+  authMode: AuthMode;
   journalSessionId: string | null;
 } {
   const route = parseAppRoute();
@@ -161,6 +171,7 @@ function bootRoute(): {
     return {
       view: route.sessionId ? 'chart' : 'app',
       appTab: 'backtest',
+      authMode: 'signin',
       journalSessionId: null,
     };
   }
@@ -168,12 +179,22 @@ function bootRoute(): {
     return {
       view: 'app',
       appTab: route.appTab ?? 'dashboard',
+      authMode: 'signin',
       journalSessionId: route.appTab === 'trades' ? route.sessionId : null,
+    };
+  }
+  if (route.view === 'auth') {
+    return {
+      view: 'auth',
+      appTab: 'dashboard',
+      authMode: route.authMode ?? 'signin',
+      journalSessionId: null,
     };
   }
   return {
     view: route.view,
     appTab: 'dashboard',
+    authMode: 'signin',
     journalSessionId: null,
   };
 }
@@ -219,10 +240,13 @@ function replayBounds(
 export default function App() {
   const { state } = useCsvImport();
   const importing = state.status === 'importing';
+  const auth = useAuth();
+  const [authBusy, setAuthBusy] = useState(false);
 
   const boot = useMemo(() => bootRoute(), []);
   const [view, setView] = useState<AppView>(boot.view);
   const [appTab, setAppTab] = useState<AppTab>(boot.appTab);
+  const [authMode, setAuthMode] = useState<AuthMode>(boot.authMode);
   const [journalSessionId, setJournalSessionId] = useState<string | null>(
     boot.journalSessionId,
   );
@@ -1207,6 +1231,7 @@ export default function App() {
     const clean = formatAppRoute({
       view: 'chart',
       appTab: null,
+      authMode: null,
       sessionId,
       focusTime: null,
       focusTradeId: null,
@@ -1477,7 +1502,12 @@ export default function App() {
           sessionId: fresh.id,
           symbol: primary.pair,
           accountCurrency: 'USD',
-          balance: 10_000,
+          balance:
+            typeof fresh.startingBalance === 'number' &&
+            Number.isFinite(fresh.startingBalance) &&
+            fresh.startingBalance > 0
+              ? fresh.startingBalance
+              : 10_000,
         });
         setOrders([]);
         setSelectedOrderId(null);
@@ -2466,8 +2496,59 @@ export default function App() {
   };
 
   const goAppTab = (tab: AppTab, journalId: string | null = null) => {
+    if (auth.status !== 'authenticated') {
+      rememberAuthNext(
+        formatAppRoute({
+          view: 'app',
+          appTab: tab,
+          authMode: null,
+          sessionId: tab === 'trades' ? journalId : null,
+        }),
+      );
+      setAuthMode('signin');
+      setView('auth');
+      return;
+    }
     setAppTab(tab);
     setJournalSessionId(tab === 'trades' ? journalId : null);
+    setView('app');
+  };
+
+  const goAuth = (mode: AuthMode) => {
+    setAuthMode(mode);
+    setView('auth');
+  };
+
+  const finishAuthRedirect = () => {
+    const next = consumeAuthNext('#/app/dashboard');
+    const route = parseAppRoute(next);
+    if (route.view === 'chart' && route.sessionId) {
+      const s = getSession(route.sessionId);
+      if (s) {
+        void loadSessionData(
+          s,
+          route.focusTime != null
+            ? {
+                time: route.focusTime,
+                tradeId: route.focusTradeId ?? null,
+              }
+            : undefined,
+        );
+        return;
+      }
+      setAppTab('backtest');
+      setView('app');
+      return;
+    }
+    if (route.view === 'app') {
+      setAppTab(route.appTab ?? 'dashboard');
+      setJournalSessionId(
+        route.appTab === 'trades' ? route.sessionId : null,
+      );
+      setView('app');
+      return;
+    }
+    setAppTab('dashboard');
     setView('app');
   };
 
@@ -3056,7 +3137,7 @@ export default function App() {
   const sessionNavRef = useRef(session);
   sessionNavRef.current = session;
 
-  // Keep the URL hash in sync so refresh restores chart / app tabs.
+  // Keep the URL hash in sync so refresh restores chart / app / auth tabs.
   useEffect(() => {
     if (view === 'chart') {
       const routeSessionId = session?.id ?? null;
@@ -3064,6 +3145,7 @@ export default function App() {
       const next = formatAppRoute({
         view: 'chart',
         appTab: null,
+        authMode: null,
         sessionId: routeSessionId,
       });
       if (window.location.hash === next) return;
@@ -3082,7 +3164,27 @@ export default function App() {
       const next = formatAppRoute({
         view: 'app',
         appTab,
+        authMode: null,
         sessionId: appTab === 'trades' ? journalSessionId : null,
+      });
+      if (window.location.hash === next) return;
+      suppressHashRef.current = true;
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${window.location.search}${next}`,
+      );
+      queueMicrotask(() => {
+        suppressHashRef.current = false;
+      });
+      return;
+    }
+    if (view === 'auth') {
+      const next = formatAppRoute({
+        view: 'auth',
+        appTab: null,
+        authMode,
+        sessionId: null,
       });
       if (window.location.hash === next) return;
       suppressHashRef.current = true;
@@ -3099,6 +3201,7 @@ export default function App() {
     const next = formatAppRoute({
       view,
       appTab: null,
+      authMode: null,
       sessionId: null,
     });
     if (window.location.hash === next) return;
@@ -3111,10 +3214,41 @@ export default function App() {
     queueMicrotask(() => {
       suppressHashRef.current = false;
     });
-  }, [view, appTab, session?.id, journalSessionId]);
+  }, [view, appTab, authMode, session?.id, journalSessionId]);
 
-  // Cold start: reopen #/chart/:sessionId after refresh.
+  // Guard: app + chart require a signed-in account.
   useEffect(() => {
+    if (auth.status === 'loading') return;
+    if (auth.status === 'authenticated') {
+      // After sign-in/up, leave #/auth/* for the saved destination once.
+      if (view === 'auth') finishAuthRedirect();
+      return;
+    }
+    // anonymous — never render app/chart chrome
+    if (view !== 'app' && view !== 'chart') return;
+    rememberAuthNext(
+      formatAppRoute({
+        view,
+        appTab: view === 'app' ? appTab : null,
+        authMode: null,
+        sessionId:
+          view === 'chart'
+            ? (session?.id ?? parseAppRoute().sessionId)
+            : appTab === 'trades'
+              ? journalSessionId
+              : null,
+      }),
+    );
+    if (view === 'chart') {
+      teardownChartSessionRef.current();
+    }
+    setAuthMode('signin');
+    setView('auth');
+  }, [auth.status, view, appTab, journalSessionId, session?.id]);
+
+  // Cold start: reopen #/chart/:sessionId after refresh (auth must be ready).
+  useEffect(() => {
+    if (auth.status !== 'authenticated') return;
     const route = parseAppRoute();
     if (route.view !== 'chart' || !route.sessionId) return;
     const s = getSession(route.sessionId);
@@ -3124,13 +3258,19 @@ export default function App() {
       return;
     }
     void loadSessionDataRef.current(s);
-  }, []);
+  }, [auth.status]);
 
   // Back / forward / manual hash edits.
   useEffect(() => {
     const onHashChange = () => {
       if (suppressHashRef.current) return;
       const route = parseAppRoute();
+      if (routeRequiresAuth(route) && auth.status !== 'authenticated') {
+        rememberAuthNext(formatAppRoute(route));
+        setAuthMode('signin');
+        setView('auth');
+        return;
+      }
       if (route.view === 'chart') {
         if (!route.sessionId) {
           teardownChartSessionRef.current();
@@ -3177,6 +3317,11 @@ export default function App() {
         setView('app');
         return;
       }
+      if (route.view === 'auth') {
+        setAuthMode(route.authMode ?? 'signin');
+        setView('auth');
+        return;
+      }
       if (sessionNavRef.current) {
         teardownChartSessionRef.current();
       }
@@ -3185,37 +3330,83 @@ export default function App() {
     };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
-  }, []);
+  }, [auth.status]);
 
   if (view === 'landing') {
     return (
-      <MarketingHome
-        onStartFree={() => goAppTab('backtest')}
-        onOpenApp={() => goAppTab('dashboard')}
-      />
+      <AuthGate>
+        <MarketingHome
+          onStartFree={() => {
+            if (auth.status === 'authenticated') goAppTab('backtest');
+            else goAuth('signup');
+          }}
+          onOpenApp={() => {
+            if (auth.status === 'authenticated') goAppTab('dashboard');
+            else goAuth('signin');
+          }}
+        />
+      </AuthGate>
+    );
+  }
+
+  if (view === 'auth') {
+    return (
+      <AuthGate>
+        <AuthFormPage
+          mode={authMode}
+          busy={authBusy}
+          error={auth.error}
+          onGoHome={() => setView('landing')}
+          onSwitchMode={(mode) => {
+            auth.clearError();
+            goAuth(mode);
+          }}
+          onSubmit={async (input) => {
+            setAuthBusy(true);
+            auth.clearError();
+            try {
+              if (authMode === 'signup') {
+                await auth.signUp(
+                  input.email,
+                  input.password,
+                  input.displayName,
+                );
+              } else {
+                await auth.signIn(input.email, input.password);
+              }
+            } finally {
+              setAuthBusy(false);
+            }
+          }}
+        />
+      </AuthGate>
     );
   }
 
   if (view === 'notFound') {
     return (
-      <NotFoundPage
-        onGoHome={() => setView('landing')}
-        onGoBacktest={() => goAppTab('backtest')}
-      />
+      <AuthGate>
+        <NotFoundPage
+          onGoHome={() => setView('landing')}
+          onGoBacktest={() => goAppTab('backtest')}
+        />
+      </AuthGate>
     );
   }
 
   // Refresh restore / session open: #/chart/:id before chart chrome is ready.
   if (view === 'chart' && (!session || loadStatus === 'loading')) {
     return (
-      <ChartLoadingScreen
-        progress={ingestPct}
-        error={loadStatus === 'error' ? (loadError ?? 'Failed to restore chart session') : null}
-        onBack={() => {
-          teardownChartSession();
-          goAppTab('backtest');
-        }}
-      />
+      <AuthGate>
+        <ChartLoadingScreen
+          progress={ingestPct}
+          error={loadStatus === 'error' ? (loadError ?? 'Failed to restore chart session') : null}
+          onBack={() => {
+            teardownChartSession();
+            goAppTab('backtest');
+          }}
+        />
+      </AuthGate>
     );
   }
 
@@ -3248,6 +3439,7 @@ export default function App() {
         const hash = formatAppRoute({
           view: 'chart',
           appTab: null,
+          authMode: null,
           sessionId: id,
           focusTime: focus.time,
           focusTradeId: focus.tradeId ?? null,
@@ -3349,25 +3541,34 @@ export default function App() {
         shellBody = <ResourcesPage />;
         break;
       case 'profile':
-        shellBody = <ProfilePage />;
+        shellBody = (
+          <ProfilePage
+            onSignedOut={() => {
+              if (session) teardownChartSession();
+              setView('landing');
+            }}
+          />
+        );
         break;
       default:
         shellBody = null;
     }
 
     return (
-      <AppShell
-        tab={appTab}
-        onTabChange={(tab) =>
-          goAppTab(tab, tab === 'trades' ? journalSessionId : null)
-        }
-        onGoHome={() => {
-          if (session) teardownChartSession();
-          setView('landing');
-        }}
-      >
-        {shellBody}
-      </AppShell>
+      <AuthGate>
+        <AppShell
+          tab={appTab}
+          onTabChange={(tab) =>
+            goAppTab(tab, tab === 'trades' ? journalSessionId : null)
+          }
+          onGoHome={() => {
+            if (session) teardownChartSession();
+            setView('landing');
+          }}
+        >
+          {shellBody}
+        </AppShell>
+      </AuthGate>
     );
   }
 
@@ -3394,6 +3595,7 @@ export default function App() {
   const pnlPositive = pnlPct == null ? null : pnlPct >= 0;
 
   return (
+    <AuthGate>
     <div className="h-full min-h-0 bg-surface text-foreground flex flex-col overflow-hidden supports-[height:100dvh]:h-dvh">
       <TopBar
         symbol={topSymbol || session.pair}
@@ -3828,5 +4030,6 @@ export default function App() {
         historyCount={orderCounts.history}
       />
     </div>
+    </AuthGate>
   );
 }

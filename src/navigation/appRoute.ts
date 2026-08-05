@@ -2,8 +2,14 @@
  * Hash routes so refresh restores the current page without a router lib.
  * Vite serves index.html for `/`; deep links live in the hash.
  *
- * Canonical shell tabs:
+ * Canonical routes (written by formatAppRoute — no duplicates):
+ *   #/                              landing
+ *   #/auth/signin                   sign in
+ *   #/auth/signup                   sign up
  *   #/app/dashboard|trades|backtest|datasets|strategy|resources|profile
+ *   #/app/trades/:sessionId         trades focused on a session
+ *   #/chart/:sessionId              chart workspace
+ *   #/404                           not found
  *
  * Compat (read only — never written by formatAppRoute):
  *   #/sessions → backtest
@@ -21,8 +27,11 @@ export type AppTab =
   | 'resources'
   | 'profile';
 
+export type AuthMode = 'signin' | 'signup';
+
 export type AppView =
   | 'landing'
+  | 'auth'
   | 'app'
   | 'chart'
   | 'notFound';
@@ -30,6 +39,7 @@ export type AppView =
 export interface AppRoute {
   view: AppView;
   appTab: AppTab | null;
+  authMode: AuthMode | null;
   sessionId: string | null;
   focusTime?: number | null;
   focusTradeId?: string | null;
@@ -48,6 +58,7 @@ const APP_TABS: readonly AppTab[] = [
 const DEFAULT_ROUTE: AppRoute = {
   view: 'landing',
   appTab: null,
+  authMode: null,
   sessionId: null,
   focusTime: null,
   focusTradeId: null,
@@ -115,6 +126,28 @@ export function parseAppRoute(hash: string = window.location.hash): AppRoute {
     return {
       view: 'landing',
       appTab: null,
+      authMode: null,
+      sessionId: null,
+      focusTime: null,
+      focusTradeId: null,
+    };
+  }
+  if (head === 'auth') {
+    const mode = parts[1];
+    if (mode === 'signin' || mode === 'signup') {
+      return {
+        view: 'auth',
+        appTab: null,
+        authMode: mode,
+        sessionId: null,
+        focusTime: null,
+        focusTradeId: null,
+      };
+    }
+    return {
+      view: 'notFound',
+      appTab: null,
+      authMode: null,
       sessionId: null,
       focusTime: null,
       focusTradeId: null,
@@ -127,6 +160,7 @@ export function parseAppRoute(hash: string = window.location.hash): AppRoute {
     return {
       view: 'app',
       appTab: tab,
+      authMode: null,
       sessionId,
       focusTime: null,
       focusTradeId: null,
@@ -136,6 +170,7 @@ export function parseAppRoute(hash: string = window.location.hash): AppRoute {
     return {
       view: 'app',
       appTab: 'backtest',
+      authMode: null,
       sessionId: null,
       focusTime: null,
       focusTradeId: null,
@@ -146,6 +181,7 @@ export function parseAppRoute(hash: string = window.location.hash): AppRoute {
     return {
       view: 'app',
       appTab: 'datasets',
+      authMode: null,
       sessionId: null,
       focusTime: null,
       focusTradeId: null,
@@ -155,6 +191,7 @@ export function parseAppRoute(hash: string = window.location.hash): AppRoute {
     return {
       view: 'app',
       appTab: 'trades',
+      authMode: null,
       sessionId: parts[1] ?? null,
       focusTime: null,
       focusTradeId: null,
@@ -164,6 +201,7 @@ export function parseAppRoute(hash: string = window.location.hash): AppRoute {
     return {
       view: 'chart',
       appTab: null,
+      authMode: null,
       sessionId: parts[1]!,
       focusTime,
       focusTradeId,
@@ -173,6 +211,7 @@ export function parseAppRoute(hash: string = window.location.hash): AppRoute {
     return {
       view: 'app',
       appTab: 'backtest',
+      authMode: null,
       sessionId: null,
       focusTime: null,
       focusTradeId: null,
@@ -182,6 +221,7 @@ export function parseAppRoute(hash: string = window.location.hash): AppRoute {
     return {
       view: 'notFound',
       appTab: null,
+      authMode: null,
       sessionId: null,
       focusTime: null,
       focusTradeId: null,
@@ -190,6 +230,7 @@ export function parseAppRoute(hash: string = window.location.hash): AppRoute {
   return {
     view: 'notFound',
     appTab: null,
+    authMode: null,
     sessionId: null,
     focusTime: null,
     focusTradeId: null,
@@ -200,6 +241,8 @@ export function formatAppRoute(route: AppRoute): string {
   switch (route.view) {
     case 'landing':
       return '#/';
+    case 'auth':
+      return route.authMode === 'signup' ? '#/auth/signup' : '#/auth/signin';
     case 'app': {
       const tab = route.appTab ?? 'dashboard';
       if (tab === 'trades' && route.sessionId) {
@@ -223,8 +266,14 @@ export function routesEqual(a: AppRoute, b: AppRoute): boolean {
   return (
     a.view === b.view &&
     (a.appTab ?? null) === (b.appTab ?? null) &&
+    (a.authMode ?? null) === (b.authMode ?? null) &&
     a.sessionId === b.sessionId &&
     (a.focusTime ?? null) === (b.focusTime ?? null) &&
     (a.focusTradeId ?? null) === (b.focusTradeId ?? null)
   );
+}
+
+/** True when the route requires a signed-in account. */
+export function routeRequiresAuth(route: AppRoute): boolean {
+  return route.view === 'app' || route.view === 'chart';
 }

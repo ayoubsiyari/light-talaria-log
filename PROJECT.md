@@ -554,6 +554,7 @@ fast-chart/
 **Status:** Done (2026-08-02) — API stub + Datasets “Import from API” + catalog/rehydrate; local Dukascopy/CSV/IDB path unchanged.  
 **Deliverables:**
 - [x] Auth + dataset list API (dev stub; seeded demo dataset — no upload UI yet)
+- [x] App sign-in / sign-up pages + protected `#/app/*` and `#/chart/*` (HttpOnly cookie; stub seed `dev@localhost` / `dev12345`)
 - [x] Chunked bar files on local disk stub (`data/chunks/…`, gitignored)
 - [x] Client fetch-by-range → same IDB ingest/cache path (`ingestRemoteChunksToIdb` / `ingestRemoteDatasetAllTfs`)
 - [x] Job queue stub for ingest (+ placeholder server backtest) — in-memory, no Redis
@@ -587,7 +588,7 @@ fast-chart/
 | Vite → API | `npm run saas:dev` (`TALARIA_API_PROXY`) |
 | Zero-Docker chart | `npm run dev` (Vite disk stub unchanged) |
 
-Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, quotas, Datasets login + Import, launch checklist + cost model.
+Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, quotas, app sign-in/sign-up + Import, launch checklist + cost model.
 
 ### Waiting on
 - Level-2 local verify (docker + import → chart). Deferred Level-3: SSO, billing, multi-region HA, full 1M stress. Call **fix Step N: …** to rewind.
@@ -816,6 +817,8 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-05 | Hardened power pack to full function: true zoneHints (FVG/ORB/OB/fib/OTE/EQ); explain+pieceIds chains; Watch via replay subscribe; risk_rr; A/B lane paint; category confidence; more strategy tests | Smoke: Run → tap mark (piece list) → Watch while Play → Run as B |
 | 2026-08-05 | Fix Play empty-left / pause flash: runway fill keeps history behind cursor (not 70% ahead); syncReplayReveal remaps by wall-clock on cache slide | Play 1m → left candles stay; Pause/Play no flash |
 | 2026-08-05 | Fix time-grid glitch: no ticks/labels on empty left pad (stopped duplicate sticky timestamps while replay scrolls) | Play → grid+labels scroll with candles, no repeated times |
+| 2026-08-05 | Full sign-in/sign-up: `#/auth/signin` + `#/auth/signup`; cookie sessions (stub + SaaS); gate `#/app/*` + `#/chart/*`; removed duplicate Datasets login form | Manual: Start free → signup → Backtest; logout → blocked chart |
+| 2026-08-05 | New session modal: pairs dropdown (≤4 chips), strategy dropdown from strategy bank, starting balance → order bridge | Backtest → New → pick strategy + balance → Start → chart equity |
 
 ---
 

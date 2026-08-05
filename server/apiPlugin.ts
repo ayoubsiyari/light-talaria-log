@@ -1,6 +1,6 @@
 /**
  * Vite middleware: /api/v1/* — Phase 11 / Step 13 scaffolding.
- * Dev auth stub + disk chunk store + in-memory job queue.
+ * Cookie-session auth + disk chunk store + in-memory job queue.
  * Does not replace Dukascopy or require Postgres/Docker.
  */
 import type { Plugin, Connect } from 'vite';
@@ -16,13 +16,21 @@ import {
   type DiskDatasetMeta,
   type DiskSeriesMeta,
 } from './chunkStore';
+import {
+  clearSessionCookie,
+  createSession,
+  destroySession,
+  loginUser,
+  originAllowed,
+  parseCookies,
+  COOKIE_NAME,
+  registerUser,
+  setSessionCookie,
+  toPublicUser,
+  userFromRequest,
+  type PublicDevUser,
+} from './devAuth';
 import { enqueueJob, getJob } from './jobQueue';
-
-const DEV_USER = {
-  id: '00000000-0000-4000-8000-000000000001',
-  email: 'dev@localhost',
-  displayName: 'Dev User',
-} as const;
 
 function sendJson(
   res: Connect.ServerResponse,
@@ -73,39 +81,10 @@ function readBinaryBody(req: Connect.IncomingMessage): Promise<Buffer> {
   });
 }
 
-/** Dev stub: always authenticated as DEV_USER; optional X-Talaria-User-Id override (display only). */
-function resolveUser(req: Connect.IncomingMessage): typeof DEV_USER {
-  const header = req.headers['x-talaria-user-id'];
-  const id = typeof header === 'string' && header.trim() ? header.trim() : DEV_USER.id;
-  if (id === DEV_USER.id) return DEV_USER;
-  return {
-    id,
-    email: `${id.slice(0, 8)}@localhost`,
-    displayName: `Dev User (${id.slice(0, 8)})`,
-  };
-}
-
 function parseUrl(req: Connect.IncomingMessage): { pathname: string; searchParams: URLSearchParams } {
   const raw = req.url ?? '/';
   const u = new URL(raw, 'http://localhost');
   return { pathname: u.pathname, searchParams: u.searchParams };
-}
-
-function requireAuth(
-  req: Connect.IncomingMessage,
-  res: Connect.ServerResponse,
-  pathname: string,
-): typeof DEV_USER | null {
-  // Public: health + login/register stubs
-  if (
-    pathname === '/api/v1/health' ||
-    pathname === '/api/v1/auth/login' ||
-    pathname === '/api/v1/auth/register'
-  ) {
-    return DEV_USER;
-  }
-  // Files and everything else: stub-auth (always ok in dev)
-  return resolveUser(req);
 }
 
 async function handleApi(
@@ -114,41 +93,89 @@ async function handleApi(
 ): Promise<void> {
   const { pathname, searchParams } = parseUrl(req);
   const method = (req.method ?? 'GET').toUpperCase();
-  const user = requireAuth(req, res, pathname);
-  if (!user) {
-    sendJson(res, 401, { error: 'Unauthorized' });
-    return;
-  }
 
   // GET /api/v1/health
   if (method === 'GET' && pathname === '/api/v1/health') {
     sendJson(res, 200, {
       ok: true,
       service: 'talaria-log-api-stub',
-      auth: 'dev-stub',
+      auth: 'cookie-session',
       storage: 'local-disk',
       chunkRoot: 'data/chunks',
     });
     return;
   }
 
-  // Auth stubs
-  if (method === 'GET' && pathname === '/api/v1/auth/me') {
-    sendJson(res, 200, { user });
-    return;
-  }
-  if (method === 'POST' && pathname === '/api/v1/auth/login') {
-    sendJson(res, 200, { user, token: 'dev-stub-token' });
-    return;
-  }
+  // Auth — register / login set HttpOnly cookie; me requires session
   if (method === 'POST' && pathname === '/api/v1/auth/register') {
-    sendJson(res, 201, { user, token: 'dev-stub-token' });
+    if (!originAllowed(req)) {
+      sendJson(res, 403, { error: 'Forbidden origin' });
+      return;
+    }
+    const body = (await readJsonBody(req)) as {
+      email?: string;
+      password?: string;
+      displayName?: string;
+    };
+    const result = registerUser({
+      email: typeof body.email === 'string' ? body.email : '',
+      password: typeof body.password === 'string' ? body.password : '',
+      displayName: typeof body.displayName === 'string' ? body.displayName : undefined,
+    });
+    if (!result.ok) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    const token = createSession(result.user.id);
+    setSessionCookie(res, token);
+    sendJson(res, 201, { user: toPublicUser(result.user) });
     return;
   }
+
+  if (method === 'POST' && pathname === '/api/v1/auth/login') {
+    if (!originAllowed(req)) {
+      sendJson(res, 403, { error: 'Forbidden origin' });
+      return;
+    }
+    const body = (await readJsonBody(req)) as { email?: string; password?: string };
+    const result = loginUser(
+      typeof body.email === 'string' ? body.email : '',
+      typeof body.password === 'string' ? body.password : '',
+    );
+    if (!result.ok) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    const token = createSession(result.user.id);
+    setSessionCookie(res, token);
+    sendJson(res, 200, { user: toPublicUser(result.user) });
+    return;
+  }
+
   if (method === 'POST' && pathname === '/api/v1/auth/logout') {
+    const token = parseCookies(req)[COOKIE_NAME];
+    destroySession(token);
+    clearSessionCookie(res);
     sendJson(res, 200, { ok: true });
     return;
   }
+
+  if (method === 'GET' && pathname === '/api/v1/auth/me') {
+    const me = userFromRequest(req);
+    if (!me) {
+      sendJson(res, 401, { error: 'Unauthorized' });
+      return;
+    }
+    sendJson(res, 200, { user: toPublicUser(me) });
+    return;
+  }
+
+  const authed = userFromRequest(req);
+  if (!authed) {
+    sendJson(res, 401, { error: 'Unauthorized' });
+    return;
+  }
+  const user: PublicDevUser = toPublicUser(authed);
 
   // GET /api/v1/datasets
   if (method === 'GET' && pathname === '/api/v1/datasets') {

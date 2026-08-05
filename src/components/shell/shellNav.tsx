@@ -9,9 +9,9 @@ export interface ShellNavItem {
 
 /** App left-rail order (Hero shell). Admin is injected for admin users only. */
 export const SHELL_NAV_MAIN: readonly ShellNavItem[] = [
+  { id: 'backtest', label: 'Sessions' },
   { id: 'dashboard', label: 'Dashboard' },
-  { id: 'trades', label: 'Trades' },
-  { id: 'backtest', label: 'Backtest' },
+  { id: 'trades', label: 'Trade View' },
   { id: 'strategy', label: 'Strategies' },
   { id: 'resources', label: 'Resources' },
 ];

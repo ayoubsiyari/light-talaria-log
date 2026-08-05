@@ -247,6 +247,8 @@ export default function App() {
   const boot = useMemo(() => bootRoute(), []);
   const [view, setView] = useState<AppView>(boot.view);
   const [appTab, setAppTab] = useState<AppTab>(boot.appTab);
+  /** Bump to open New Session modal from the shell Create button. */
+  const [createSessionNonce, setCreateSessionNonce] = useState(0);
   const [authMode, setAuthMode] = useState<AuthMode>(boot.authMode);
   const [journalSessionId, setJournalSessionId] = useState<string | null>(
     boot.journalSessionId,
@@ -3643,6 +3645,7 @@ export default function App() {
             onStart={(s) => void loadSessionData(s)}
             onGoJournal={(sessionId) => goAppTab('trades', sessionId ?? null)}
             onGoDashboard={() => goAppTab('dashboard')}
+            openCreateNonce={createSessionNonce}
           />
         );
         break;
@@ -3690,6 +3693,10 @@ export default function App() {
           onTabChange={(tab) =>
             goAppTab(tab, tab === 'trades' ? journalSessionId : null)
           }
+          onCreateSession={() => {
+            goAppTab('backtest');
+            setCreateSessionNonce((n) => n + 1);
+          }}
           onGoHome={() => {
             if (session) teardownChartSession();
             setView('landing');

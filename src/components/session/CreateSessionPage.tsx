@@ -19,6 +19,7 @@ import {
   clearOrderJournal,
   computeOrderJournalStats,
   getOrderJournalView,
+  type OrderJournalView,
 } from '@/orders/tradeJournal';
 import {
   createSession,
@@ -29,7 +30,6 @@ import {
 import { listStrategies } from '@/strategy/strategyStore';
 import type { DownloadedDataset } from '@/types/dataset';
 import type { RemoteDatasetMeta } from '@/types/remoteApi';
-import { AppPageFrame } from '@/components/shell/AppPageFrame';
 import type { BacktestSession, PairSymbol, SessionLeg } from '@/types/session';
 import type { Timeframe } from '@/types/ui';
 
@@ -40,9 +40,13 @@ interface CreateSessionPageProps {
   /** Open Trades; pass session id to prefer that entry, or omit for latest. */
   onGoJournal?: (sessionId?: string) => void;
   onGoDashboard?: (sessionId?: string) => void;
+  /** Increment to open the New Session modal (sidebar Create). */
+  openCreateNonce?: number;
 }
 
-type SessFilter = 'all' | 'not-started' | 'active' | 'completed';
+type SessFilter = 'all' | 'active' | 'completed';
+type ViewMode = 'list' | 'grid';
+type StatsMode = 'manual' | 'automatic';
 
 const fieldClass =
   'w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent';
@@ -75,6 +79,7 @@ export function CreateSessionPage({
   onStart,
   onGoJournal,
   onGoDashboard,
+  openCreateNonce = 0,
 }: CreateSessionPageProps) {
   const [remoteStatus, setRemoteStatus] = useState<'loading' | 'ready' | 'error'>(
     'loading',
@@ -186,12 +191,19 @@ export function CreateSessionPage({
   const [sessions, setSessions] = useState(() => listSessions());
   const [modalOpen, setModalOpen] = useState(false);
   const [sessFilter, setSessFilter] = useState<SessFilter>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [statsMode, setStatsMode] = useState<StatsMode>('manual');
+  const [statsOpen, setStatsOpen] = useState(true);
   const [searchQ, setSearchQ] = useState('');
   const [menuId, setMenuId] = useState<string | null>(null);
 
   useEffect(() => {
     if (modalOpen) setStrategies(listStrategies());
   }, [modalOpen]);
+
+  useEffect(() => {
+    if (openCreateNonce > 0) setModalOpen(true);
+  }, [openCreateNonce]);
 
   // Re-read after login / account switch so we never show another user's list.
   useEffect(() => {
@@ -208,22 +220,74 @@ export function CreateSessionPage({
     [pairs, selectedPairs],
   );
 
+  const sessionRows = useMemo(() => {
+    return sessions.map((s) => {
+      const view = getOrderJournalView(s.id);
+      const stats = view ? computeOrderJournalStats(view) : null;
+      const progress = sessionProgressPct(s);
+      const status: SessFilter =
+        progress >= 99.5 ? 'completed' : progress > 0 || (stats?.tradeCount ?? 0) > 0
+          ? 'active'
+          : 'all';
+      return { session: s, view, stats, progress, status };
+    });
+  }, [sessions]);
+
   const filteredSessions = useMemo(() => {
     const q = searchQ.trim().toLowerCase();
-    return sessions.filter((s) => {
+    return sessionRows.filter((row) => {
+      const s = row.session;
       if (q) {
         const hay = `${s.name} ${s.legs.map((l) => l.pair).join(' ')} ${s.timeframe}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
-      const view = getOrderJournalView(s.id);
-      const trades = view?.trades.length ?? 0;
-      const progress = trades > 0 ? Math.min(100, trades) : s.cursorTime ? 50 : 0;
-      if (sessFilter === 'not-started') return progress === 0;
-      if (sessFilter === 'active') return progress > 0 && progress < 100;
-      if (sessFilter === 'completed') return progress >= 100;
+      if (sessFilter === 'active') {
+        return row.status === 'active' || (row.progress > 0 && row.progress < 99.5);
+      }
+      if (sessFilter === 'completed') return row.status === 'completed';
       return true;
     });
-  }, [sessions, searchQ, sessFilter]);
+  }, [sessionRows, searchQ, sessFilter]);
+
+  const continueSession = useMemo(() => {
+    const withCursor = sessionRows
+      .filter((r) => r.progress > 0 && r.progress < 99.5)
+      .sort((a, b) => (b.session.cursorTime ?? 0) - (a.session.cursorTime ?? 0));
+    return withCursor[0] ?? null;
+  }, [sessionRows]);
+
+  const aggregateStats = useMemo(() => {
+    let wins = 0;
+    let trades = 0;
+    let sessionWins = 0;
+    let sessionsWithTrades = 0;
+    let timeMs = 0;
+    const rows =
+      statsMode === 'automatic'
+        ? sessionRows.filter((r) => r.session.strategyId)
+        : sessionRows.filter((r) => !r.session.strategyId);
+    const pool = rows.length > 0 ? rows : sessionRows;
+    for (const row of pool) {
+      const st = row.stats;
+      if (!st || st.tradeCount === 0) {
+        timeMs += sessionTimeSpentMs(row.session, row.view);
+        continue;
+      }
+      sessionsWithTrades += 1;
+      if (st.netPnl > 0) sessionWins += 1;
+      trades += st.tradeCount;
+      wins += row.view?.trades.filter((t) => t.pnlAccount > 0).length ?? 0;
+      timeMs += sessionTimeSpentMs(row.session, row.view);
+    }
+    return {
+      timeLabel: timeMs > 0 ? formatDuration(timeMs) : '—',
+      sessionWinPct:
+        sessionsWithTrades > 0
+          ? `${((sessionWins / sessionsWithTrades) * 100).toFixed(0)}%`
+          : '—',
+      tradeWinPct: trades > 0 ? `${((wins / trades) * 100).toFixed(1)}%` : '—',
+    };
+  }, [sessionRows, statsMode]);
 
   const addPair = (pair: PairSymbol) => {
     setSelectedPairs((prev) => {
@@ -340,41 +404,118 @@ export function CreateSessionPage({
 
   const filters: { id: SessFilter; label: string }[] = [
     { id: 'all', label: 'All' },
-    { id: 'not-started', label: 'Not started' },
     { id: 'active', label: 'Active' },
     { id: 'completed', label: 'Completed' },
   ];
 
   return (
-    <AppPageFrame
-      eyebrow="App"
-      title="Backtest"
-      description="Create a session from published server datasets, then Start or Resume to open the chart."
-      actions={
-        <>
-          <Button
-            variant="secondary"
-            className="min-h-11"
-            onPress={loadServer}
-            isDisabled={remoteStatus === 'loading'}
-          >
-            {remoteStatus === 'loading' ? 'Loading…' : 'Refresh'}
-          </Button>
-          <Button variant="primary" className="min-h-11" onPress={() => setModalOpen(true)}>
-            New session
-          </Button>
-        </>
-      }
-    >
+    <div className="min-h-full bg-background text-foreground">
+      <div
+        className={[
+          'mx-auto w-full max-w-[1400px] px-4 sm:px-6 py-5 sm:py-6 space-y-4',
+          'pl-[max(1rem,env(safe-area-inset-left))]',
+          'pr-[max(1rem,env(safe-area-inset-right))]',
+          'pb-[max(2rem,env(safe-area-inset-bottom))]',
+        ].join(' ')}
+      >
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Backtesting</h1>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              className="min-h-10"
+              onPress={loadServer}
+              isDisabled={remoteStatus === 'loading'}
+            >
+              {remoteStatus === 'loading' ? 'Loading…' : 'Refresh'}
+            </Button>
+            <Button
+              variant="primary"
+              className="min-h-10 font-semibold"
+              onPress={() => setModalOpen(true)}
+            >
+              + Create session
+            </Button>
+          </div>
+        </header>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            className={`${fieldClass} max-w-xs`}
-            placeholder="Search name or pair…"
-            value={searchQ}
-            onChange={(e) => setSearchQ(e.target.value)}
-          />
-          <div className="flex flex-wrap gap-1" role="tablist" aria-label="Filter">
+        {continueSession && (
+          <button
+            type="button"
+            onClick={() => onStart(continueSession.session)}
+            className={[
+              'w-full flex items-center gap-3 rounded-lg border border-[color:var(--tv-panel-line)]',
+              'bg-surface px-4 py-3 text-left hover:bg-background/60 transition-colors',
+            ].join(' ')}
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[color:var(--accent-foreground)]">
+              <PlayIcon />
+            </span>
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <p className="text-sm font-medium truncate">
+                Continue &lsquo;{continueSession.session.name}&rsquo;
+              </p>
+              <div className="h-1 rounded-full bg-background overflow-hidden">
+                <div
+                  className="h-full bg-accent transition-[width]"
+                  style={{ width: `${Math.round(continueSession.progress)}%` }}
+                />
+              </div>
+            </div>
+            <span className="text-xs tabular-nums text-muted shrink-0">
+              {Math.round(continueSession.progress)}%
+            </span>
+          </button>
+        )}
+
+        <div className="rounded-lg border border-[color:var(--tv-panel-line)] bg-surface">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
+                Stats
+              </span>
+              <div
+                className="inline-flex rounded-md border border-border p-0.5 bg-background"
+                role="group"
+                aria-label="Stats mode"
+              >
+                {(['manual', 'automatic'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setStatsMode(mode)}
+                    className={[
+                      'min-h-8 px-2.5 rounded text-xs font-semibold capitalize',
+                      statsMode === mode
+                        ? 'bg-accent text-[color:var(--accent-foreground)]'
+                        : 'text-muted hover:text-foreground',
+                    ].join(' ')}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {statsOpen && (
+              <>
+                <StatChip label="Time invested" value={aggregateStats.timeLabel} />
+                <StatChip label="Session win %" value={aggregateStats.sessionWinPct} />
+                <StatChip label="Trade win %" value={aggregateStats.tradeWinPct} />
+              </>
+            )}
+            <button
+              type="button"
+              className="ml-auto min-h-9 min-w-9 text-muted hover:text-foreground"
+              aria-label={statsOpen ? 'Collapse stats' : 'Expand stats'}
+              onClick={() => setStatsOpen((v) => !v)}
+            >
+              <ChevronIcon open={statsOpen} />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex gap-1 border-b border-transparent" role="tablist" aria-label="Filter">
             {filters.map((f) => (
               <button
                 key={f.id}
@@ -383,15 +524,51 @@ export function CreateSessionPage({
                 aria-selected={sessFilter === f.id}
                 onClick={() => setSessFilter(f.id)}
                 className={[
-                  'min-h-11 px-3 rounded-md text-xs font-semibold',
+                  'min-h-10 px-3 text-sm font-semibold border-b-2 -mb-px',
                   sessFilter === f.id
-                    ? 'bg-accent/15 text-accent'
-                    : 'text-muted hover:bg-background/70',
+                    ? 'border-accent text-foreground'
+                    : 'border-transparent text-muted hover:text-foreground',
                 ].join(' ')}
               >
                 {f.label}
               </button>
             ))}
+          </div>
+          <input
+            className={`${fieldClass} max-w-[14rem] min-h-9 py-1.5 ml-auto`}
+            placeholder="Search…"
+            value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)}
+          />
+          <div
+            className="inline-flex rounded-md border border-border p-0.5"
+            role="group"
+            aria-label="View mode"
+          >
+            <button
+              type="button"
+              title="List view"
+              aria-pressed={viewMode === 'list'}
+              onClick={() => setViewMode('list')}
+              className={[
+                'min-h-9 min-w-9 flex items-center justify-center rounded',
+                viewMode === 'list' ? 'bg-accent/15 text-accent' : 'text-muted',
+              ].join(' ')}
+            >
+              <ListIcon />
+            </button>
+            <button
+              type="button"
+              title="Grid view"
+              aria-pressed={viewMode === 'grid'}
+              onClick={() => setViewMode('grid')}
+              className={[
+                'min-h-9 min-w-9 flex items-center justify-center rounded',
+                viewMode === 'grid' ? 'bg-accent/15 text-accent' : 'text-muted',
+              ].join(' ')}
+            >
+              <GridIcon />
+            </button>
           </div>
         </div>
 
@@ -415,65 +592,109 @@ export function CreateSessionPage({
                   : 'No sessions match this filter.'}
               </p>
               <Button variant="primary" className="min-h-11" onPress={() => setModalOpen(true)}>
-                New session
+                + Create session
               </Button>
             </Card.Content>
           </Card>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {filteredSessions.map((s) => {
-              const view = getOrderJournalView(s.id);
-              const stats = view ? computeOrderJournalStats(view) : null;
-              const trades = stats?.tradeCount ?? 0;
-              const progress = trades > 0 ? Math.min(100, 40 + trades) : s.cursorTime ? 35 : 0;
-              const created = new Date(s.createdAt).toLocaleDateString(undefined, {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-              });
-              return (
-                <Card
-                  key={s.id}
-                  className="bg-surface border border-border overflow-hidden border-t-2 border-t-accent"
-                >
-                  <Card.Content className="p-0">
-                    <div className="flex items-center gap-2 px-3 pt-3 pb-2 border-b border-[color:var(--tv-panel-line)]">
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        className="min-h-11 min-w-11 px-0"
-                        aria-label={progress === 0 ? 'Start' : 'Resume'}
-                        onPress={() => onStart(s)}
+        ) : viewMode === 'list' ? (
+          <div className="rounded-lg border border-[color:var(--tv-panel-line)] bg-surface overflow-x-auto">
+            <table className="w-full min-w-[860px] text-sm text-left">
+              <thead>
+                <tr className="border-b border-[color:var(--tv-panel-line)] text-xs text-muted">
+                  <th className="w-12 px-3 py-2.5 font-medium" />
+                  <th className="px-3 py-2.5 font-medium">Name</th>
+                  <th className="px-3 py-2.5 font-medium">Symbol</th>
+                  <th className="px-3 py-2.5 font-medium">Strategy</th>
+                  <th className="px-3 py-2.5 font-medium text-right">Start balance</th>
+                  <th className="px-3 py-2.5 font-medium text-right">Current balance</th>
+                  <th className="px-3 py-2.5 font-medium text-right">Real. P&L</th>
+                  <th className="px-3 py-2.5 font-medium text-right">Time spent</th>
+                  <th className="w-12 px-2 py-2.5" />
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSessions.map((row) => {
+                  const s = row.session;
+                  const startBal = s.startingBalance ?? DEFAULT_STARTING_BALANCE;
+                  const curBal = row.stats?.finalBalance ?? startBal;
+                  const pnl = row.stats?.netPnl ?? 0;
+                  const trades = row.stats?.tradeCount ?? 0;
+                  const modeLabel = s.strategyId ? 'Auto' : 'Manual';
+                  return (
+                    <tr
+                      key={s.id}
+                      className="border-b border-[color:var(--tv-panel-line)] last:border-0 hover:bg-background/40"
+                    >
+                      <td className="px-3 py-3">
+                        <button
+                          type="button"
+                          aria-label={row.progress === 0 ? 'Start' : 'Resume'}
+                          onClick={() => onStart(s)}
+                          className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-[color:var(--accent-foreground)] hover:brightness-110"
+                        >
+                          <PlayIcon />
+                        </button>
+                      </td>
+                      <td className="px-3 py-3 min-w-[10rem]">
+                        <p className="font-semibold text-foreground truncate max-w-[14rem]">
+                          {s.name}
+                        </p>
+                        <p className="text-xs text-muted mt-0.5">
+                          {trades} {trades === 1 ? 'trade' : 'trades'}
+                          <span className="mx-1.5 text-accent/80">·</span>
+                          <span className="text-accent">{modeLabel}</span>
+                        </p>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {s.legs.map((l) => (
+                            <span
+                              key={l.pair}
+                              className="inline-flex items-center rounded-md border border-border bg-background px-2 py-0.5 text-[11px] font-medium tabular-nums"
+                            >
+                              {pairChip(l.pair)}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-muted truncate max-w-[10rem]">
+                        {strategyNameFromSession(s)}
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums">
+                        {formatMoney(startBal)}
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums">
+                        {formatMoney(curBal)}
+                      </td>
+                      <td
+                        className={[
+                          'px-3 py-3 text-right tabular-nums font-semibold',
+                          pnl > 0
+                            ? 'text-success'
+                            : pnl < 0
+                              ? 'text-danger'
+                              : 'text-muted',
+                        ].join(' ')}
                       >
-                        ▶
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="min-h-11 min-w-11 px-0"
-                        aria-label="Dashboard"
-                        onPress={() => onGoDashboard?.(s.id) ?? onGoJournal?.(s.id)}
-                      >
-                        ▦
-                      </Button>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-semibold truncate text-muted">{s.name}</p>
-                        <p className="text-[10px] text-muted">{created}</p>
-                      </div>
-                      <div className="relative">
+                        {formatMoney(pnl, true)}
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums text-muted">
+                        {formatDuration(sessionTimeSpentMs(s, row.view))}
+                      </td>
+                      <td className="px-2 py-3 relative">
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="min-h-11 min-w-11 px-0"
+                          className="min-h-9 min-w-9 px-0"
                           aria-label="More"
                           onPress={() => setMenuId(menuId === s.id ? null : s.id)}
                         >
                           ⋯
                         </Button>
                         {menuId === s.id && (
-                          <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-md border border-border bg-surface shadow-lg py-1">
+                          <div className="absolute right-2 top-full z-20 mt-1 w-40 rounded-md border border-border bg-surface shadow-lg py-1">
                             <MenuBtn
-                              label={progress === 0 ? 'Start' : 'Resume'}
+                              label={row.progress === 0 ? 'Start' : 'Resume'}
                               onClick={() => {
                                 setMenuId(null);
                                 onStart(s);
@@ -484,6 +705,13 @@ export function CreateSessionPage({
                               onClick={() => {
                                 setMenuId(null);
                                 onGoJournal?.(s.id);
+                              }}
+                            />
+                            <MenuBtn
+                              label="Dashboard"
+                              onClick={() => {
+                                setMenuId(null);
+                                onGoDashboard?.(s.id);
                               }}
                             />
                             <MenuBtn
@@ -499,51 +727,70 @@ export function CreateSessionPage({
                             />
                           </div>
                         )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filteredSessions.map((row) => {
+              const s = row.session;
+              const trades = row.stats?.tradeCount ?? 0;
+              const pnl = row.stats?.netPnl ?? 0;
+              return (
+                <Card
+                  key={s.id}
+                  className="bg-surface border border-border overflow-hidden"
+                >
+                  <Card.Content className="p-4 space-y-3">
+                    <div className="flex items-start gap-2">
+                      <button
+                        type="button"
+                        aria-label="Open"
+                        onClick={() => onStart(s)}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[color:var(--accent-foreground)]"
+                      >
+                        <PlayIcon />
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold truncate">{s.name}</p>
+                        <p className="text-xs text-muted">
+                          {trades} trades · {s.strategyId ? 'Auto' : 'Manual'}
+                        </p>
                       </div>
                     </div>
-                    <div className="px-3 py-3 space-y-2 text-xs">
-                      <p className="font-semibold text-foreground truncate">
-                        {strategyNameFromSession(s)}
-                      </p>
-                      <p className="text-muted truncate">
-                        {s.legs.map((l) => l.pair).join(', ')} · {s.timeframe}
-                      </p>
-                      <p className="text-muted tabular-nums">
-                        {s.startDate} → {s.endDate}
-                      </p>
-                      <div className="grid grid-cols-3 gap-2 pt-1">
-                        <Metric
-                          label="Trades"
-                          value={trades ? String(trades) : '—'}
-                        />
-                        <Metric
-                          label="Win %"
-                          value={
-                            stats?.winRate != null ? `${stats.winRate.toFixed(0)}%` : '—'
-                          }
-                        />
-                        <Metric
-                          label="P&L"
-                          value={
-                            stats
-                              ? `${stats.netPnl >= 0 ? '+' : ''}${stats.netPnl.toFixed(0)}`
-                              : '—'
-                          }
-                          tone={
-                            stats == null
-                              ? undefined
-                              : stats.netPnl >= 0
-                                ? 'success'
-                                : 'danger'
-                          }
-                        />
-                      </div>
-                      <div className="h-1.5 rounded-full bg-background overflow-hidden">
-                        <div
-                          className="h-full bg-accent"
-                          style={{ width: `${Math.min(100, progress)}%` }}
-                        />
-                      </div>
+                    <div className="flex flex-wrap gap-1">
+                      {s.legs.map((l) => (
+                        <span
+                          key={l.pair}
+                          className="rounded-md border border-border bg-background px-2 py-0.5 text-[11px]"
+                        >
+                          {pairChip(l.pair)}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted">Real. P&L</span>
+                      <span
+                        className={
+                          pnl > 0
+                            ? 'text-success font-semibold'
+                            : pnl < 0
+                              ? 'text-danger font-semibold'
+                              : 'text-muted'
+                        }
+                      >
+                        {formatMoney(pnl, true)}
+                      </span>
+                    </div>
+                    <div className="h-1 rounded-full bg-background overflow-hidden">
+                      <div
+                        className="h-full bg-accent"
+                        style={{ width: `${Math.round(row.progress)}%` }}
+                      />
                     </div>
                   </Card.Content>
                 </Card>
@@ -551,6 +798,7 @@ export function CreateSessionPage({
             })}
           </div>
         )}
+      </div>
 
       {modalOpen && (
         <div className="fixed inset-0 z-[100010] flex items-center justify-center bg-background/80 p-3">
@@ -761,14 +1009,127 @@ export function CreateSessionPage({
           </div>
         </div>
       )}
-    </AppPageFrame>
+    </div>
   );
 }
 
 function strategyNameFromSession(s: BacktestSession): string {
   if (s.strategyName?.trim()) return s.strategyName.trim();
   const parts = s.name.split(' · ');
-  return parts.length > 1 ? parts.slice(1).join(' · ') : s.legs.map((l) => l.pair).join(' + ');
+  return parts.length > 1 ? parts.slice(1).join(' · ') : '—';
+}
+
+function pairChip(pair: string): string {
+  return pair.replace(/\//g, '');
+}
+
+function sessionProgressPct(s: BacktestSession): number {
+  if (s.cursorTime == null || !(s.cursorTime > 0)) return 0;
+  const start = Date.parse(`${s.startDate}T00:00:00Z`) / 1000;
+  const end = Date.parse(`${s.endDate}T23:59:59Z`) / 1000;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return 35;
+  }
+  const t = ((s.cursorTime - start) / (end - start)) * 100;
+  return Math.min(100, Math.max(0, t));
+}
+
+function sessionTimeSpentMs(
+  s: BacktestSession,
+  view: OrderJournalView | null,
+): number {
+  const trades = view?.trades;
+  if (trades && trades.length > 0) {
+    let minT = Infinity;
+    let maxT = -Infinity;
+    for (const t of trades) {
+      if (t.entryTime < minT) minT = t.entryTime;
+      if (t.exitTime > maxT) maxT = t.exitTime;
+    }
+    if (Number.isFinite(minT) && Number.isFinite(maxT) && maxT > minT) {
+      // Replay wall span is huge; show a compact proxy from trade count.
+      return Math.max(60_000, trades.length * 8 * 60_000);
+    }
+  }
+  if (s.cursorTime) {
+    const elapsed = Date.now() - s.createdAt;
+    return Math.min(elapsed, 48 * 3600_000);
+  }
+  return 0;
+}
+
+function formatDuration(ms: number): string {
+  if (!(ms > 0)) return '—';
+  const totalMin = Math.round(ms / 60_000);
+  if (totalMin < 60) return `${totalMin} min`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h < 48) return m > 0 ? `${h} h ${m} min` : `${h} h`;
+  const d = Math.floor(h / 24);
+  return `${d}d ${h % 24}h`;
+}
+
+function formatMoney(n: number, _signed = false): string {
+  void _signed;
+  const abs = Math.abs(n);
+  const body = abs.toLocaleString(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: abs >= 100 ? 0 : 2,
+  });
+  if (n < 0) return `-${body.replace(/^-/, '')}`;
+  return body;
+}
+
+function StatChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-[6rem]">
+      <p className="text-[10px] uppercase tracking-wide text-muted">{label}</p>
+      <p className="text-sm font-semibold tabular-nums">{value}</p>
+    </div>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M8 5v14l11-7z" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={['w-4 h-4 transition-transform', open ? 'rotate-180' : ''].join(' ')}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden
+    >
+      <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ListIcon() {
+  return (
+    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+      <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function GridIcon() {
+  return (
+    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+      <rect x="4" y="4" width="7" height="7" rx="1" />
+      <rect x="13" y="4" width="7" height="7" rx="1" />
+      <rect x="4" y="13" width="7" height="7" rx="1" />
+      <rect x="13" y="13" width="7" height="7" rx="1" />
+    </svg>
+  );
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -785,30 +1146,6 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
     <div className="space-y-1.5">
       <Label className="text-xs text-muted">{label}</Label>
       {children}
-    </div>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: 'success' | 'danger';
-}) {
-  return (
-    <div>
-      <p className="text-[10px] text-muted uppercase">{label}</p>
-      <p
-        className={[
-          'font-semibold tabular-nums',
-          tone === 'success' ? 'text-success' : tone === 'danger' ? 'text-danger' : '',
-        ].join(' ')}
-      >
-        {value}
-      </p>
     </div>
   );
 }

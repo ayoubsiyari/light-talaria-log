@@ -14,19 +14,21 @@ interface AppShellProps {
   tab: AppTab;
   onTabChange: (tab: AppTab) => void;
   onGoHome?: () => void;
+  /** Opens New Session on the Backtest tab. */
+  onCreateSession?: () => void;
   /** Show Admin rail entry (dataset management). */
   showAdmin?: boolean;
   children: ReactNode;
 }
 
 /**
- * In-app shell: left rail (Dashboard / Trades / Backtest / Strategies / Resources / Profile)
- * + Admin for admin accounts only.
+ * In-app shell: labeled left rail (Sessions / Dashboard / …) + Create Session.
  */
 export function AppShell({
   tab,
   onTabChange,
   onGoHome,
+  onCreateSession,
   showAdmin = false,
   children,
 }: AppShellProps) {
@@ -43,10 +45,11 @@ export function AppShell({
 
   return (
     <div className="h-dvh min-h-0 bg-background text-foreground flex overflow-hidden">
-      {/* Desktop rail */}
+      {/* Desktop rail — labeled, TV-style */}
       <aside
         className={[
-          'hidden sm:flex flex-col shrink-0 w-16 border-r border-[color:var(--tv-panel-line)]',
+          'hidden sm:flex flex-col shrink-0 w-[13.5rem]',
+          'border-r border-[color:var(--tv-panel-line)]',
           'bg-surface pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]',
           'pl-[env(safe-area-inset-left)]',
         ].join(' ')}
@@ -56,14 +59,27 @@ export function AppShell({
           title="Talaria Log"
           aria-label="Talaria Log home"
           onClick={onGoHome}
-          className="mx-auto mt-2 mb-3 h-10 w-10 rounded-md flex items-center justify-center hover:bg-background/70"
+          className="mx-3 mt-3 mb-2 flex items-center gap-2.5 rounded-md px-1.5 py-1.5 hover:bg-background/70 text-left"
         >
-          <BrandLogo size={22} variant="raster" className="w-[22px] h-[22px]" />
+          <BrandLogo size={22} variant="raster" className="w-[22px] h-[22px] shrink-0" />
+          <span className="text-sm font-semibold tracking-tight truncate">Talaria-Log</span>
         </button>
 
-        <nav className="flex-1 flex flex-col items-center gap-1 px-1.5" aria-label="App">
+        {onCreateSession && (
+          <div className="px-3 mb-3">
+            <Button
+              variant="primary"
+              className="w-full min-h-10 justify-center text-sm font-semibold"
+              onPress={onCreateSession}
+            >
+              + Create Session
+            </Button>
+          </div>
+        )}
+
+        <nav className="flex-1 flex flex-col gap-0.5 px-2 overflow-y-auto" aria-label="App">
           {SHELL_NAV_MAIN.map((item) => (
-            <NavButton
+            <NavRow
               key={item.id}
               id={item.id}
               label={item.label}
@@ -73,9 +89,9 @@ export function AppShell({
           ))}
         </nav>
 
-        <div className="flex flex-col items-center gap-1 px-1.5 pb-2">
+        <div className="flex flex-col gap-0.5 px-2 pb-2 border-t border-[color:var(--tv-panel-line)] pt-2">
           {bottomNav.map((item) => (
-            <NavButton
+            <NavRow
               key={item.id}
               id={item.id}
               label={item.label}
@@ -83,6 +99,9 @@ export function AppShell({
               onClick={() => go(item.id)}
             />
           ))}
+          <div className="px-1 pt-1">
+            <ThemeToggle compact />
+          </div>
         </div>
       </aside>
 
@@ -114,7 +133,17 @@ export function AppShell({
             <BrandLogo size={20} variant="raster" className="w-5 h-5 shrink-0" />
             <span className="text-sm font-semibold truncate">Talaria-Log</span>
           </button>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1">
+            {onCreateSession && (
+              <Button
+                variant="primary"
+                size="sm"
+                className="min-h-9 text-xs font-semibold"
+                onPress={onCreateSession}
+              >
+                + Create
+              </Button>
+            )}
             <ThemeToggle compact />
           </div>
         </header>
@@ -132,6 +161,20 @@ export function AppShell({
               <p className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted">
                 Menu
               </p>
+              {onCreateSession && (
+                <div className="px-3 mb-2">
+                  <Button
+                    variant="primary"
+                    className="w-full min-h-11 justify-center"
+                    onPress={() => {
+                      setMobileOpen(false);
+                      onCreateSession();
+                    }}
+                  >
+                    + Create Session
+                  </Button>
+                </div>
+              )}
               <nav className="flex-1 flex flex-col gap-0.5 px-2">
                 {[...SHELL_NAV_MAIN, ...bottomNav].map((item) => {
                   const Icon = SHELL_ICONS[item.id];
@@ -142,12 +185,18 @@ export function AppShell({
                       type="button"
                       onClick={() => go(item.id)}
                       className={[
-                        'flex items-center gap-3 min-h-11 px-3 rounded-md text-sm text-left',
+                        'relative flex items-center gap-3 min-h-11 px-3 rounded-md text-sm text-left',
                         active
                           ? 'bg-accent/15 text-accent'
                           : 'text-foreground hover:bg-background/70',
                       ].join(' ')}
                     >
+                      {active && (
+                        <span
+                          className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-accent"
+                          aria-hidden
+                        />
+                      )}
                       <Icon className="w-5 h-5 shrink-0" />
                       {item.label}
                     </button>
@@ -161,17 +210,9 @@ export function AppShell({
           </div>
         )}
 
-        {/* Desktop header strip — hide on Dashboard for full-bleed analytics */}
-        {tab !== 'dashboard' && (
-          <div className="hidden sm:flex shrink-0 h-10 items-center justify-end gap-2 px-3 border-b border-[color:var(--tv-panel-line)] bg-surface">
-            <ThemeToggle compact />
-          </div>
-        )}
-
         <main
           className={[
             'flex-1 min-h-0',
-            // Dashboard is a full-bleed no-scroll analytics board.
             tab === 'dashboard' ? 'overflow-hidden' : 'overflow-auto',
           ].join(' ')}
         >
@@ -182,7 +223,7 @@ export function AppShell({
   );
 }
 
-function NavButton({
+function NavRow({
   id,
   label,
   active,
@@ -202,13 +243,20 @@ function NavButton({
       aria-current={active ? 'page' : undefined}
       onClick={onClick}
       className={[
-        'h-11 w-11 rounded-md flex items-center justify-center transition-colors',
+        'relative flex items-center gap-2.5 min-h-10 w-full px-2.5 rounded-md text-sm transition-colors text-left',
         active
-          ? 'bg-accent/15 text-accent'
+          ? 'bg-accent/15 text-accent font-semibold'
           : 'text-muted hover:text-foreground hover:bg-background/70',
       ].join(' ')}
     >
-      <Icon />
+      {active && (
+        <span
+          className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent"
+          aria-hidden
+        />
+      )}
+      <Icon className="w-[18px] h-[18px] shrink-0" />
+      <span className="truncate">{label}</span>
     </button>
   );
 }

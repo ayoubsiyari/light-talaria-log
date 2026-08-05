@@ -799,11 +799,13 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-04 | Chart chrome → V8b style: 36px tool rail + left accent bars, TF underlines, blue Place Order, bottom clock/replay/balance grid | Hard-refresh chart session; compare to V8b screenshot |
 | 2026-08-04 | ToolIcons: swapped rail/chrome SVGs for TalariaV8b `I` paths (crosshair, trendline, fib, draw, magnet, eye, etc.) | Hard-refresh; compare left-rail icons to V8b |
 | 2026-08-04 | Left rail TV ordering + section gaps: draw | measure+zoom | magnet/lock/eye | trash | Confirm divider spacing vs TV screenshot |
+| 2026-08-05 | Strategy automation: Stop clears marks/indicators; rules engine (direction, RSI gate, trend, cooldown, SL/TP); labeled blocked signals | Strategy → rules → Run → Stop |
 | 2026-08-05 | Strategy run (renamed from TopBar Backtest): long/short flips, condition event marks + labels on chart, auto SMA/Donchian overlays, costs inputs | Chart → Strategy → Run → see labeled marks |
 | 2026-08-05 | Crosshair free-Y on indicator panes; remove TopBar Exit (shell/nav exit only) | Hover volume/RSI — hair stays in that pane |
 | 2026-08-05 | TopBar: Exit label; hide light/dark toggle for dark-locked chart templates | Open dark template → no theme toggle; Exit returns to Backtest |
 | 2026-08-05 | Replay jump: fixed portal popover above gear (no clip by bottom bar) | Chart session → gear → Jump to date → Go |
 | 2026-08-05 | Unify routes/style: Datasets in AppShell (`#/app/datasets`); glossary Dashboard/Backtest/Trades; AppPageFrame; chart exit → Backtest; legacy hash redirects | Smoke landing→Dashboard→Backtest→Datasets→chart; refresh `#/datasets` / `#/journal` |
+| 2026-08-05 | Strategy puzzle builder: piece palette (logic/price/indicator/structure), AND/OR/NOT, compile→Worker `graph` run, TF toast+Switch TF, Run on chart, starter puzzles | Strategies → load starter → Run on chart → marks → Stop |
 
 ---
 

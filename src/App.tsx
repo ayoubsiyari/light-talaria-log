@@ -83,8 +83,12 @@ import { cancelBacktest, runBacktest } from '@/backtest/runBacktestWorker';
 import { getJournalRun, saveJournalResult } from '@/journal/journalStore';
 import {
   DEFAULT_BACKTEST_PARAMS,
+  normalizeBacktestParams,
   type BacktestParams,
 } from '@/types/backtest';
+import { compileGraph, firstTfMismatch } from '@/strategy/compileGraph';
+import { getStrategy } from '@/strategy/strategyStore';
+import { isLogicKind } from '@/strategy/pieceRegistry';
 import {
   createOrderSessionBridge,
   type OrderSessionBridge,
@@ -269,8 +273,11 @@ export default function App() {
       sma: { ...DEFAULT_BACKTEST_PARAMS.sma },
       donchian: { ...DEFAULT_BACKTEST_PARAMS.donchian },
       costs: { ...DEFAULT_BACKTEST_PARAMS.costs },
+      rules: { ...DEFAULT_BACKTEST_PARAMS.rules },
     }),
   );
+  /** Fingerprints of indicators auto-added by Strategy Run (cleared on Stop). */
+  const autoStrategyIndicatorKeysRef = useRef<string[]>([]);
   const [chartLayout, setChartLayout] = useState<ChartLayout>('1');
   const [layoutSync, setLayoutSync] = useState<LayoutSyncOptions>(DEFAULT_LAYOUT_SYNC);
   const layoutSyncRef = useRef(layoutSync);
@@ -2408,6 +2415,7 @@ export default function App() {
     orderBridgeRef.current = null;
     cancelBacktest();
     clearBacktestResult();
+    autoStrategyIndicatorKeysRef.current = [];
     syncStoreRef.current = null;
   };
 
@@ -2550,14 +2558,17 @@ export default function App() {
           : `${result.trades.length} trades · ${result.events.length} marks`;
         setBacktestResult(result, note);
         saveJournalResult(session.id, session.name, result);
-        // Auto-show the strategy's indicators so conditions are readable on chart
+        // Auto-show strategy indicators (+ RSI when gate on) so conditions are readable
+        const keys: string[] = [];
         setEnabledIndicators((prev) => {
           const next = [...prev];
           const upsert = (
-            id: 'sma' | 'donchian',
+            id: 'sma' | 'donchian' | 'rsi',
             period: number,
             colors?: string[],
           ) => {
+            const key = `${id}:${period}`;
+            keys.push(key);
             const i = next.findIndex(
               (e) => e.id === id && Number(e.params.period) === period,
             );
@@ -2578,8 +2589,12 @@ export default function App() {
           } else {
             upsert('donchian', backtestParams.donchian.period);
           }
+          if (backtestParams.rules.rsiEnabled) {
+            upsert('rsi', backtestParams.rules.rsiPeriod, ['#a78bfa']);
+          }
           return next;
         });
+        autoStrategyIndicatorKeysRef.current = keys;
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') {
@@ -2594,6 +2609,155 @@ export default function App() {
     cancelBacktest();
     setBacktestCancelled();
   }, []);
+
+  /** Stop: remove strategy marks + auto-added indicators from the chart. */
+  const handleStopStrategy = useCallback(() => {
+    cancelBacktest();
+    clearBacktestResult();
+    const keys = new Set(autoStrategyIndicatorKeysRef.current);
+    autoStrategyIndicatorKeysRef.current = [];
+    if (keys.size === 0) return;
+    setEnabledIndicators((prev) =>
+      prev.filter((e) => !keys.has(`${e.id}:${Number(e.params.period)}`)),
+    );
+  }, []);
+
+  /** Run a saved puzzle strategy on the open chart (Worker → marks). */
+  const handleRunGraphStrategy = useCallback(
+    (strategyId: string, opts?: { skipTfPrompt?: boolean }) => {
+      const strat = getStrategy(strategyId);
+      if (!strat) {
+        toast.info('Strategy not found', { timeout: 3500 });
+        return;
+      }
+      if (!session || loadStatus !== 'ready') {
+        toast.info('Open a chart session to run', {
+          description: 'Start a Backtest session, then Run again.',
+          timeout: 5000,
+        });
+        return;
+      }
+
+      const compiled = compileGraph(strat.nodes, strat.edges);
+      if (!compiled.ok || !compiled.graph) {
+        const msg =
+          compiled.issues.find((i) => i.level === 'error')?.message ??
+          'Puzzle is incomplete';
+        toast.info('Cannot run puzzle', { description: msg, timeout: 5500 });
+        return;
+      }
+
+      const pane =
+        panesRef.current.find((p) => p.id === activePaneId) ?? panesRef.current[0];
+      if (!pane) return;
+      const series = seriesForPane(pane);
+      if (!series) {
+        toast.info('No series on chart', { timeout: 3500 });
+        return;
+      }
+
+      const mismatch = firstTfMismatch(
+        compiled.requiredTimeframes,
+        pane.timeframe,
+      );
+      if (mismatch && !opts?.skipTfPrompt) {
+        toast.info(`This piece needs ${mismatch}`, {
+          description: `Chart is on ${pane.timeframe}. Switch timeframe, then continue.`,
+          timeout: 9000,
+          actionProps: {
+            children: 'Switch TF',
+            onPress: () => {
+              applyPaneTimeframe(pane.id, mismatch);
+              window.setTimeout(() => {
+                handleRunGraphStrategy(strategyId, { skipTfPrompt: true });
+              }, 700);
+            },
+          },
+        });
+        return;
+      }
+
+      const params: BacktestParams = {
+        ...DEFAULT_BACKTEST_PARAMS,
+        sma: { ...DEFAULT_BACKTEST_PARAMS.sma },
+        donchian: { ...DEFAULT_BACKTEST_PARAMS.donchian },
+        costs: { ...DEFAULT_BACKTEST_PARAMS.costs },
+        rules: { ...DEFAULT_BACKTEST_PARAMS.rules },
+        strategyId: 'graph',
+        graph: compiled.graph,
+      };
+
+      setView('chart');
+      setBacktestRunning();
+      const { timeStart, timeEnd } = replayBounds(session, seriesRef.current);
+
+      void runBacktest({
+        sessionId: session.id,
+        datasetId: series.datasetId,
+        timeframe: pane.timeframe,
+        timeStart,
+        timeEnd,
+        params,
+      })
+        .then((result) => {
+          const note = result.truncated
+            ? `Capped at ${MAX_BACKTEST_BARS.toLocaleString()} bars (newest)`
+            : `${result.trades.length} trades · ${result.events.length} marks`;
+          setBacktestResult(result, note);
+          saveJournalResult(session.id, session.name, result);
+
+          const keys: string[] = [];
+          setEnabledIndicators((prev) => {
+            const next = [...prev];
+            const upsert = (
+              id: 'sma' | 'donchian' | 'rsi',
+              period: number,
+              colors?: string[],
+            ) => {
+              const key = `${id}:${period}`;
+              keys.push(key);
+              const i = next.findIndex(
+                (e) => e.id === id && Number(e.params.period) === period,
+              );
+              if (i >= 0) {
+                next[i] = { ...next[i]!, visible: true };
+                return;
+              }
+              next.push({ id, params: { period }, visible: true, colors });
+            };
+            for (const p of compiled.graph!.pieces) {
+              if (isLogicKind(p.kind)) continue;
+              if (p.kind === 'sma_cross') {
+                upsert('sma', Number(p.params.fastPeriod) || 10, ['#38bdf8']);
+                upsert('sma', Number(p.params.slowPeriod) || 30, ['#f472b6']);
+              } else if (p.kind === 'donchian_break') {
+                upsert('donchian', Number(p.params.period) || 20);
+              } else if (p.kind === 'rsi_gate') {
+                upsert('rsi', Number(p.params.period) || 14, ['#a78bfa']);
+              }
+            }
+            return next;
+          });
+          autoStrategyIndicatorKeysRef.current = keys;
+        })
+        .catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            setBacktestCancelled();
+            return;
+          }
+          setBacktestError(
+            err instanceof Error ? err.message : 'Puzzle run failed',
+          );
+        });
+    },
+    [
+      session,
+      loadStatus,
+      activePaneId,
+      seriesForPane,
+      applyPaneTimeframe,
+    ],
+  );
 
   useEffect(() => {
     return () => {
@@ -2789,11 +2953,13 @@ export default function App() {
         const run = getJournalRun(focus.runId);
         if (run) {
           setBacktestResult(run.result, null);
+          const p = normalizeBacktestParams(run.result.params);
           setBacktestParams({
-            ...run.result.params,
-            sma: { ...run.result.params.sma },
-            donchian: { ...run.result.params.donchian },
-            costs: { ...run.result.params.costs },
+            ...p,
+            sma: { ...p.sma },
+            donchian: { ...p.donchian },
+            costs: { ...p.costs },
+            rules: { ...p.rules },
           });
         }
       }
@@ -2886,7 +3052,18 @@ export default function App() {
         );
         break;
       case 'strategy':
-        shellBody = <StrategyPage onGoBacktest={() => goAppTab('backtest')} />;
+        shellBody = (
+          <StrategyPage
+            onGoBacktest={() => goAppTab('backtest')}
+            onRunStrategy={(id) => handleRunGraphStrategy(id)}
+            chartReady={!!session && loadStatus === 'ready'}
+            chartTimeframe={
+              panes.find((p) => p.id === activePaneId)?.timeframe ??
+              panes[0]?.timeframe ??
+              null
+            }
+          />
+        );
         break;
       case 'resources':
         shellBody = <ResourcesPage />;
@@ -2963,6 +3140,8 @@ export default function App() {
         onBacktestParamsChange={setBacktestParams}
         onRunBacktest={loadStatus === 'ready' ? handleRunBacktest : undefined}
         onCancelBacktest={handleCancelBacktest}
+        backtestHasResult={!!btResult}
+        onStopBacktest={handleStopStrategy}
       />
 
       <div className="flex-1 min-h-0 flex">

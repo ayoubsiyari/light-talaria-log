@@ -99,23 +99,16 @@ export function emptyCanvas(): { nodes: Node[]; edges: Edge[] } {
       {
         id: 'entry',
         type: 'section',
-        position: { x: 80, y: 120 },
+        position: { x: 80, y: 160 },
         data: { label: 'Entry', kind: 'entry' },
       },
       {
         id: 'exit',
         type: 'section',
-        position: { x: 420, y: 120 },
+        position: { x: 560, y: 160 },
         data: { label: 'Exit', kind: 'exit' },
       },
     ],
-    edges: [
-      {
-        id: 'e-entry-exit',
-        source: 'entry',
-        target: 'exit',
-        type: 'default',
-      },
-    ],
+    edges: [],
   };
 }

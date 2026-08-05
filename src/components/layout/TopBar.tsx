@@ -56,6 +56,10 @@ interface TopBarProps {
   onBacktestParamsChange?: (next: BacktestParams) => void;
   onRunBacktest?: () => void;
   onCancelBacktest?: () => void;
+  /** Finished run still painted on chart. */
+  backtestHasResult?: boolean;
+  /** Clear strategy marks + auto indicators. */
+  onStopBacktest?: () => void;
 }
 
 /**
@@ -86,6 +90,8 @@ export function TopBar({
   onBacktestParamsChange,
   onRunBacktest,
   onCancelBacktest,
+  backtestHasResult = false,
+  onStopBacktest,
 }: TopBarProps) {
   const [templateId, setTemplateId] = useState<string | null>(() =>
     matchTemplateId(getAppearance()) ?? getActiveTemplateId(),
@@ -224,12 +230,14 @@ export function TopBar({
         {backtestParams && onBacktestParamsChange ? (
           <BacktestRunMenu
             running={backtestRunning}
+            hasResult={backtestHasResult}
             label={backtestLabel}
             disabled={!onRunBacktest && !backtestRunning}
             params={backtestParams}
             onParamsChange={onBacktestParamsChange}
             onRun={() => onRunBacktest?.()}
             onCancel={onCancelBacktest}
+            onStop={onStopBacktest}
           />
         ) : backtestRunning ? (
           <Button

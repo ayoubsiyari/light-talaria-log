@@ -7,15 +7,24 @@ import {
   listStrategies,
   type StrategyRecord,
 } from '@/strategy/strategyStore';
+import type { Timeframe } from '@/types/ui';
 
 interface StrategyPageProps {
   onGoBacktest?: () => void;
+  onRunStrategy?: (strategyId: string) => void;
+  chartReady?: boolean;
+  chartTimeframe?: Timeframe | null;
 }
 
 /**
- * Strategies bank + builder — Hero UI, persisted strategies (not mock community pool).
+ * Strategies bank + puzzle builder — persisted strategies (not mock community pool).
  */
-export function StrategyPage({ onGoBacktest }: StrategyPageProps) {
+export function StrategyPage({
+  onGoBacktest,
+  onRunStrategy,
+  chartReady,
+  chartTimeframe,
+}: StrategyPageProps) {
   const [tick, setTick] = useState(0);
   const strategies = useMemo(() => listStrategies(), [tick]);
   const [builderOpen, setBuilderOpen] = useState(false);
@@ -34,7 +43,7 @@ export function StrategyPage({ onGoBacktest }: StrategyPageProps) {
     <AppPageFrame
       eyebrow="App"
       title="Strategies"
-      description="Build visual strategies (General Info → Flow → Tags → Review). Saved in this browser."
+      description="Build puzzle strategies from condition and logic pieces. Save, then Run on an open chart."
       actions={
         <>
           {onGoBacktest && (
@@ -51,7 +60,9 @@ export function StrategyPage({ onGoBacktest }: StrategyPageProps) {
       {strategies.length === 0 ? (
         <Card className="bg-surface border border-border">
           <Card.Content className="px-6 py-12 text-center space-y-4">
-            <p className="text-sm text-muted">No strategies yet. Open the builder to create one.</p>
+            <p className="text-sm text-muted">
+              No strategies yet. Open the builder and snap pieces together.
+            </p>
             <Button variant="primary" className="min-h-11" onPress={openNew}>
               Build strategy
             </Button>
@@ -73,9 +84,20 @@ export function StrategyPage({ onGoBacktest }: StrategyPageProps) {
                   {(s.timeframes || []).join(', ') || '—'}
                 </p>
                 <p className="text-[11px] text-muted tabular-nums">
-                  {s.nodes?.length ?? 0} nodes · {s.edges?.length ?? 0} edges
+                  {s.nodes?.filter((n) => n.type === 'piece').length ?? 0} pieces ·{' '}
+                  {s.edges?.length ?? 0} wires
                 </p>
                 <div className="flex flex-wrap gap-2">
+                  {onRunStrategy && (
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      className="min-h-11"
+                      onPress={() => onRunStrategy(s.id)}
+                    >
+                      Run on chart
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="secondary"
@@ -110,6 +132,9 @@ export function StrategyPage({ onGoBacktest }: StrategyPageProps) {
             setTick((n) => n + 1);
             setBuilderOpen(false);
           }}
+          onRunOnChart={onRunStrategy}
+          chartReady={chartReady}
+          chartTimeframe={chartTimeframe}
         />
       )}
     </AppPageFrame>

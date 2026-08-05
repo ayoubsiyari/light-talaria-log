@@ -2,10 +2,14 @@ import type { Timeframe } from '@/types/ui';
 
 /** Wire types for Step 13 `/api/v1` stub (local disk CDN stand-in). */
 
+export type RemoteUserRole = 'user' | 'admin';
+
 export interface RemoteUser {
   id: string;
   email: string;
   displayName: string;
+  /** Present on Level-2 / stub cookie sessions; omit → treat as user. */
+  role?: RemoteUserRole;
 }
 
 export interface RemoteDatasetMeta {

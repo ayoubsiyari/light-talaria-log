@@ -9,7 +9,15 @@ import type { InstrumentSpec } from './instrumentSpec';
 import type { EngineCommand, MarketContext } from './orderTypes';
 import type { ChartBar } from '@/types/bar';
 
-const STORAGE_PREFIX = 'talaria.orderJournal.v1:';
+import { getStorageUserId, scopedKey } from '@/sync/storageScope';
+
+const LEGACY_PREFIX = 'talaria.orderJournal.v1:';
+
+export type PersistOpts = { skipCloud?: boolean };
+
+function orderJournalKey(sessionId: string): string {
+  return scopedKey(`orderJournal.v1:${sessionId}`);
+}
 
 export interface JournalEntry {
   /** Monotonic engine seq. */
@@ -60,9 +68,20 @@ export function appendEvents(
   return { ...journal, entries };
 }
 
-export function persistJournal(journal: OrderJournal): void {
+export function persistJournal(
+  journal: OrderJournal,
+  opts?: PersistOpts,
+): void {
   try {
-    localStorage.setItem(STORAGE_PREFIX + journal.sessionId, JSON.stringify(journal));
+    localStorage.setItem(
+      orderJournalKey(journal.sessionId),
+      JSON.stringify(journal),
+    );
+    if (!opts?.skipCloud) {
+      void import('@/sync/cloudSync').then((m) =>
+        m.schedulePushOrderJournal(journal),
+      );
+    }
   } catch {
     // Quota / private mode — journal stays in memory only.
   }
@@ -70,17 +89,39 @@ export function persistJournal(journal: OrderJournal): void {
 
 export function loadJournal(sessionId: string): OrderJournal | null {
   try {
-    const raw = localStorage.getItem(STORAGE_PREFIX + sessionId);
-    if (!raw) return null;
-    return JSON.parse(raw) as OrderJournal;
+    const scoped = localStorage.getItem(orderJournalKey(sessionId));
+    if (scoped) return JSON.parse(scoped) as OrderJournal;
+    if (getStorageUserId()) return null;
+    const legacy = localStorage.getItem(LEGACY_PREFIX + sessionId);
+    if (legacy) {
+      localStorage.setItem(orderJournalKey(sessionId), legacy);
+      return JSON.parse(legacy) as OrderJournal;
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-export function clearJournal(sessionId: string): void {
+export function clearJournal(sessionId: string, opts?: PersistOpts): void {
   try {
-    localStorage.removeItem(STORAGE_PREFIX + sessionId);
+    localStorage.removeItem(orderJournalKey(sessionId));
+    localStorage.removeItem(LEGACY_PREFIX + sessionId);
+    if (!opts?.skipCloud) {
+      void import('@/sync/cloudSync').then((m) =>
+        m.schedulePushOrderJournal({
+          sessionId,
+          entries: [],
+          bootstrap: {
+            symbol: '',
+            accountCurrency: 'USD',
+            balance: 0,
+            leverage: 1,
+            mode: 'netting',
+          },
+        }),
+      );
+    }
   } catch {
     /* ignore */
   }

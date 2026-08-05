@@ -33,6 +33,8 @@ export interface CreateSessionArgs {
   availableTfs: readonly Timeframe[];
   revealMode?: RevealMode;
   span?: number;
+  /** All session-leg dataset ids (order engine may step off-screen pairs). */
+  retainedDatasets?: readonly string[];
 }
 
 /**
@@ -113,6 +115,12 @@ export function createSessionController() {
 
     async configure(args: CreateSessionArgs): Promise<void> {
       const span = Math.max(1, Math.min(args.span ?? REPLAY_VISIBLE_BARS, MAX_BARS_IN_MEMORY));
+      const retainedDatasets = [
+        ...new Set([
+          ...(args.retainedDatasets ?? []),
+          ...Object.values(args.panes).map((p) => p.datasetId),
+        ]),
+      ];
       state = {
         cursorTime: args.cursorTime,
         anchorTime: args.cursorTime,
@@ -123,10 +131,14 @@ export function createSessionController() {
         bounds: { ...args.bounds },
         baseTf: args.baseTf,
         playing: false,
+        retainedDatasets,
       };
 
       // Prefetch only base + open pane TFs (other TFs load lazily on switch).
-      const datasets = new Set(Object.values(args.panes).map((p) => p.datasetId));
+      const datasets = new Set([
+        ...Object.values(args.panes).map((p) => p.datasetId),
+        ...retainedDatasets,
+      ]);
       const tfs = new Set<Timeframe>([args.baseTf]);
       for (const p of Object.values(args.panes)) {
         tfs.add(p.tf);
@@ -298,10 +310,12 @@ export function createSessionController() {
           anchorTime: Math.min(state.anchorTime, state.cursorTime),
         };
       }
-      // Evict old symbol only when no pane still references it (addendum §5).
+      // Evict old symbol only when unused by panes AND not a retained session leg
+      // (open orders still need that pair's bars while the chart shows another).
       if (prevDs !== meta.datasetId) {
         const stillUsed = Object.values(state.panes).some((p) => p.datasetId === prevDs);
-        if (!stillUsed) warmCache.clearDataset(prevDs);
+        const retained = state.retainedDatasets.includes(prevDs);
+        if (!stillUsed && !retained) warmCache.clearDataset(prevDs);
       }
       const s = state;
       // Warm the active TF (+ base) before painting — await remote for first paint.
@@ -359,7 +373,10 @@ export function createSessionController() {
     async topUpCaches(): Promise<void> {
       if (!state) return;
       const s = state;
-      const datasets = new Set(Object.values(s.panes).map((p) => p.datasetId));
+      const datasets = new Set([
+        ...Object.values(s.panes).map((p) => p.datasetId),
+        ...s.retainedDatasets,
+      ]);
       const tfs = new Set<Timeframe>([s.baseTf]);
       let coarsestSec = timeframeSeconds(s.baseTf);
       for (const p of Object.values(s.panes)) {
@@ -544,6 +561,10 @@ function extendRevealInPlace(
       Math.max(coarsestSecByDs.get(cfg.datasetId) ?? 0, sec),
     );
   }
+  // Keep off-screen session legs warm for the order engine.
+  for (const ds of s.retainedDatasets) {
+    pinKeys.push({ datasetId: ds, tf: s.baseTf });
+  }
   warmCache.setPinned(pinKeys);
 
   // One clock top-up per dataset (not per pane) — covers coarsest open bucket.
@@ -633,5 +654,20 @@ function extendRevealInPlace(
     }
 
     view.range = rangeRightAnchored(bars.length - 1, Math.max(1, s.span));
+  }
+
+  // Off-screen session legs (order engine) — keep base TF runway ahead of cursor.
+  for (const ds of s.retainedDatasets) {
+    if (Object.values(s.panes).some((p) => p.datasetId === ds)) continue;
+    const peek = warmCache.peek(ds, s.baseTf);
+    const tip = peek && peek.length > 0 ? peek[peek.length - 1]!.time : null;
+    const period = timeframeSeconds(s.baseTf);
+    const ahead =
+      tip != null && period > 0
+        ? Math.floor((tip - s.cursorTime) / period)
+        : -1;
+    if (!peek || peek.length === 0 || ahead < Math.max(120, s.span)) {
+      scheduleFillAhead(ds, s.baseTf, s.cursorTime, s.span);
+    }
   }
 }

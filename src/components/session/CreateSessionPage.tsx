@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Button, Card, Label } from '@heroui/react';
+import { useAuth } from '@/auth/AuthContext';
 import {
   registerRemoteDataset,
   remoteToDownloadedStub,
@@ -36,7 +37,6 @@ const DEFAULT_STARTING_BALANCE = 10_000;
 
 interface CreateSessionPageProps {
   onStart: (session: BacktestSession) => void;
-  onGoDatasets: () => void;
   /** Open Trades; pass session id to prefer that entry, or omit for latest. */
   onGoJournal?: (sessionId?: string) => void;
   onGoDashboard?: (sessionId?: string) => void;
@@ -73,7 +73,6 @@ function remotesToDatasets(remotes: RemoteDatasetMeta[]): DownloadedDataset[] {
 
 export function CreateSessionPage({
   onStart,
-  onGoDatasets,
   onGoJournal,
   onGoDashboard,
 }: CreateSessionPageProps) {
@@ -183,6 +182,7 @@ export function CreateSessionPage({
   const [startingBalance, setStartingBalance] = useState(DEFAULT_STARTING_BALANCE);
   const [strategies, setStrategies] = useState(() => listStrategies());
   const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
   const [sessions, setSessions] = useState(() => listSessions());
   const [modalOpen, setModalOpen] = useState(false);
   const [sessFilter, setSessFilter] = useState<SessFilter>('all');
@@ -192,6 +192,11 @@ export function CreateSessionPage({
   useEffect(() => {
     if (modalOpen) setStrategies(listStrategies());
   }, [modalOpen]);
+
+  // Re-read after login / account switch so we never show another user's list.
+  useEffect(() => {
+    setSessions(listSessions());
+  }, [user?.id]);
 
   const selectedStrategy = useMemo(
     () => strategies.find((s) => s.id === strategyId) ?? null,
@@ -344,12 +349,9 @@ export function CreateSessionPage({
     <AppPageFrame
       eyebrow="App"
       title="Backtest"
-      description="Create a session from server datasets, then Start or Resume to open the chart."
+      description="Create a session from published server datasets, then Start or Resume to open the chart."
       actions={
         <>
-          <Button variant="secondary" className="min-h-11" onPress={onGoDatasets}>
-            Datasets
-          </Button>
           <Button
             variant="secondary"
             className="min-h-11"
@@ -397,8 +399,8 @@ export function CreateSessionPage({
           <Card className="bg-surface border border-border">
             <Card.Content className="px-5 py-4 space-y-3">
               <p className="text-sm text-danger">{remoteError ?? 'Server unreachable.'}</p>
-              <Button variant="primary" className="min-h-11" onPress={onGoDatasets}>
-                Go to Datasets
+              <Button variant="primary" className="min-h-11" onPress={loadServer}>
+                Retry
               </Button>
             </Card.Content>
           </Card>
@@ -602,12 +604,10 @@ export function CreateSessionPage({
                   <p className="text-sm text-muted">Loading server datasets…</p>
                 )}
                 {remoteStatus === 'ready' && datasets.length === 0 && (
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted">No server datasets yet.</p>
-                    <Button variant="primary" className="min-h-11" onPress={onGoDatasets}>
-                      Datasets
-                    </Button>
-                  </div>
+                  <p className="text-sm text-muted">
+                    No published datasets yet. An admin must download and publish
+                    market data before you can create a session.
+                  </p>
                 )}
                 {remoteStatus === 'ready' && datasets.length > 0 && (
                   <>

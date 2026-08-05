@@ -3,13 +3,12 @@ import { Button } from '@heroui/react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
 /** Canonical page ids — matches AppTab glossary. */
-export type AppPageNavId = 'backtest' | 'datasets' | 'trades';
+export type AppPageNavId = 'backtest' | 'trades';
 
 interface AppPageNavProps {
   current: AppPageNavId;
   onGoHome?: () => void;
   onGoBacktest: () => void;
-  onGoDatasets: () => void;
   onGoTrades?: () => void;
 }
 
@@ -23,7 +22,6 @@ export function AppPageNav({
   current,
   onGoHome,
   onGoBacktest,
-  onGoDatasets,
   onGoTrades,
 }: AppPageNavProps) {
   return (
@@ -39,16 +37,6 @@ export function AppPageNav({
           Backtest
         </Button>
       )}
-      {current !== 'datasets' && (
-        <Button
-          variant={current === 'backtest' ? 'secondary' : 'ghost'}
-          size="sm"
-          className={LINK}
-          onPress={onGoDatasets}
-        >
-          Datasets
-        </Button>
-      )}
       {onGoTrades && current !== 'trades' && (
         <Button variant="ghost" size="sm" className={LINK} onPress={onGoTrades}>
           Trades
@@ -60,66 +48,39 @@ export function AppPageNav({
 
 interface AppPageHeaderProps {
   title: string;
-  description: string;
+  subtitle?: string;
   current: AppPageNavId;
   onGoHome?: () => void;
   onGoBacktest: () => void;
-  onGoDatasets: () => void;
   onGoTrades?: () => void;
-  /** Inside AppShell: hide brand + top nav (shell owns chrome). */
-  embedded?: boolean;
-  actions?: ReactNode;
-  eyebrow?: string;
+  children?: ReactNode;
 }
 
-/** @deprecated Prefer AppPageFrame for new shell pages. Kept for gradual migration. */
+/** Shared page chrome: title + AppPageNav (unused by shell pages; kept for legacy). */
 export function AppPageHeader({
   title,
-  description,
+  subtitle,
   current,
   onGoHome,
   onGoBacktest,
-  onGoDatasets,
   onGoTrades,
-  embedded = false,
-  actions,
-  eyebrow,
+  children,
 }: AppPageHeaderProps) {
   return (
-    <header className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
-      <div className="space-y-1.5 min-w-0">
-        {!embedded &&
-          (onGoHome ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="min-h-11 sm:min-h-8 -ml-2 px-2 text-xs uppercase tracking-[0.2em] text-muted"
-              onPress={onGoHome}
-            >
-              Talaria-Log
-            </Button>
-          ) : (
-            <p className="text-xs uppercase tracking-[0.2em] text-muted">
-              {eyebrow ?? 'Talaria-Log'}
-            </p>
-          ))}
-        {embedded && eyebrow && (
-          <p className="text-xs uppercase tracking-[0.2em] text-muted">{eyebrow}</p>
-        )}
-        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">{title}</h1>
-        <p className="text-sm text-muted max-w-xl">{description}</p>
-      </div>
-      {embedded ? (
-        actions
-      ) : (
+    <header className="shrink-0 border-b border-border bg-surface px-4 sm:px-6 py-3 space-y-2">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-lg font-semibold tracking-tight truncate">{title}</h1>
+          {subtitle && <p className="text-sm text-muted mt-0.5">{subtitle}</p>}
+        </div>
         <AppPageNav
           current={current}
           onGoHome={onGoHome}
           onGoBacktest={onGoBacktest}
-          onGoDatasets={onGoDatasets}
           onGoTrades={onGoTrades}
         />
-      )}
+      </div>
+      {children}
     </header>
   );
 }

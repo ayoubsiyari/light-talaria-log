@@ -1,12 +1,16 @@
 /**
- * Persist backtest runs (localStorage). Multi-run append — never OHLC bars.
+ * Persist backtest runs (scoped localStorage + cloud sync). Multi-run append — never OHLC bars.
  */
 import type { BacktestResult } from '@/types/backtest';
 import { normalizeBacktestParams } from '@/types/backtest';
 import { newId } from '@/utils/uuid';
+import { readScopedOrLegacy, writeScoped } from '@/sync/storageScope';
 
-const STORAGE_KEY = 'talaria.journal.v1';
+const STORAGE_BASE = 'journal.v1';
+const LEGACY_KEY = 'talaria.journal.v1';
 const MAX_ENTRIES = 50;
+
+export type PersistOpts = { skipCloud?: boolean };
 
 export interface JournalEntry {
   /** Unique run id (multi-run). Legacy entries may reuse sessionId. */
@@ -16,6 +20,13 @@ export interface JournalEntry {
   sessionName: string;
   result: BacktestResult;
   savedAt: number;
+}
+
+function cloudPushJournal(entry: JournalEntry): void {
+  void import('@/sync/cloudSync').then((m) => m.pushJournal(entry));
+}
+function cloudDeleteJournal(id: string): void {
+  void import('@/sync/cloudSync').then((m) => m.pushDeleteJournal(id));
 }
 
 function isBacktestResult(raw: unknown): raw is BacktestResult {
@@ -62,7 +73,7 @@ function normalizeEntry(raw: unknown): JournalEntry | null {
 
 function readAll(): JournalEntry[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = readScopedOrLegacy(STORAGE_BASE, [LEGACY_KEY]);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -73,7 +84,17 @@ function readAll(): JournalEntry[] {
 }
 
 function writeAll(entries: JournalEntry[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries.slice(0, MAX_ENTRIES)));
+  writeScoped(STORAGE_BASE, JSON.stringify(entries.slice(0, MAX_ENTRIES)));
+}
+
+/** Replace local cache from cloud pull. */
+export function replaceJournalEntries(entries: JournalEntry[]): void {
+  writeAll(
+    entries
+      .map(normalizeEntry)
+      .filter((e): e is JournalEntry => e !== null)
+      .slice(0, MAX_ENTRIES),
+  );
 }
 
 /** Latest saved result for a session, or null. */
@@ -99,6 +120,7 @@ export function saveJournalResult(
   sessionId: string,
   sessionName: string,
   result: BacktestResult,
+  opts?: PersistOpts,
 ): JournalEntry {
   const runId = result.runId && result.runId.length > 0 ? result.runId : newId();
   const withId: BacktestResult = {
@@ -115,15 +137,21 @@ export function saveJournalResult(
     savedAt: Date.now(),
   };
   writeAll([entry, ...readAll().filter((e) => e.id !== runId)]);
+  if (!opts?.skipCloud) cloudPushJournal(entry);
   return entry;
 }
 
 /** Delete one run by id. */
-export function deleteJournalRun(runId: string): void {
+export function deleteJournalRun(runId: string, opts?: PersistOpts): void {
   writeAll(readAll().filter((e) => e.id !== runId));
+  if (!opts?.skipCloud) cloudDeleteJournal(runId);
 }
 
 /** Delete all runs for a session (session teardown). */
-export function deleteJournalEntry(sessionId: string): void {
+export function deleteJournalEntry(sessionId: string, opts?: PersistOpts): void {
+  const doomed = readAll().filter((e) => e.sessionId === sessionId);
   writeAll(readAll().filter((e) => e.sessionId !== sessionId));
+  if (!opts?.skipCloud) {
+    for (const e of doomed) cloudDeleteJournal(e.id);
+  }
 }

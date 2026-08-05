@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@heroui/react';
+import { useAuth } from '@/auth/AuthContext';
 import { ensureExampleAnalyticsSession } from '@/analytics/exampleSession';
 import { AnalyticsDashboard } from '@/components/analytics/AnalyticsDashboard';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -25,12 +26,13 @@ export function DashboardPage({
   onGoTrades,
   onGoStrategy,
 }: DashboardPageProps) {
+  const { user } = useAuth();
   const [dataTick, setDataTick] = useState(0);
 
   useEffect(() => {
     ensureExampleAnalyticsSession();
     setDataTick((n) => n + 1);
-  }, []);
+  }, [user?.id]);
 
   const stats = useMemo(() => {
     void dataTick;

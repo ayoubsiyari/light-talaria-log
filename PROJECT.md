@@ -555,6 +555,7 @@ fast-chart/
 **Deliverables:**
 - [x] Auth + dataset list API (dev stub; seeded demo dataset — no upload UI yet)
 - [x] App sign-in / sign-up pages + protected `#/app/*` and `#/chart/*` (HttpOnly cookie; stub seed `dev@localhost` / `dev12345`)
+- [x] Cloud sync: sessions + drawings + journal/trades follow the account across browsers (`004_user_sync.sql` + stub `data/user-sync/`)
 - [x] Chunked bar files on local disk stub (`data/chunks/…`, gitignored)
 - [x] Client fetch-by-range → same IDB ingest/cache path (`ingestRemoteChunksToIdb` / `ingestRemoteDatasetAllTfs`)
 - [x] Job queue stub for ingest (+ placeholder server backtest) — in-memory, no Redis
@@ -819,6 +820,13 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-05 | Fix time-grid glitch: no ticks/labels on empty left pad (stopped duplicate sticky timestamps while replay scrolls) | Play → grid+labels scroll with candles, no repeated times |
 | 2026-08-05 | Full sign-in/sign-up: `#/auth/signin` + `#/auth/signup`; cookie sessions (stub + SaaS); gate `#/app/*` + `#/chart/*`; removed duplicate Datasets login form | Manual: Start free → signup → Backtest; logout → blocked chart |
 | 2026-08-05 | New session modal: pairs dropdown (≤4 chips), strategy dropdown from strategy bank, starting balance → order bridge | Backtest → New → pick strategy + balance → Start → chart equity |
+| 2026-08-05 | Cloud sync (TradingView-style): sessions/drawings/journal/order-journal → API; pull on login; per-user localStorage; stub + SaaS `004_user_sync` | Login A → session/draw/trade → login B → same data |
+| 2026-08-05 | Chart Strategy automation hidden unless Create Session picked a playbook; load wires that strategy into Run | New session with strategy → Strategy menu; without → no menu |
+| 2026-08-05 | Fix new-account session leak: no legacy localStorage migrate into signed-in users; clear cache before cloud pull | New signup → empty Backtest list |
+| 2026-08-05 | Admin page (`#/app/admin`): dataset download/publish/import/cache; role on `/auth/me`; Datasets removed from user nav | Login as admin → Admin rail; users see no Datasets |
+| 2026-08-05 | Fix symbol switch: reset price scale + filter order overlays by pane pair (no stuck JPY levels / blank chart) | Place trade on USD/JPY → switch GBP → candles + no SL/TP; switch back → trade returns |
+| 2026-08-05 | Ensure admin account on every seed/boot: `admin@localhost` / `admin12345` (SaaS + stub); Admin rail `#/app/admin` | Sign in → Admin → datasets |
+| 2026-08-05 | Off-screen orders: step engine on trade-pair bars + retain session-leg caches (SL/TP/PnL while viewing another pair) | Open JPY trade → switch GBP → Play → equity/SL/TP follow JPY |
 
 ---
 

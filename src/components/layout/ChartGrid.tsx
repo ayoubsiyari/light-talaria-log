@@ -11,7 +11,7 @@ import type { HitResult } from '@/drawings/hitTest';
 import type { MagnetMode } from '@/drawings/magnet';
 import type { EnabledIndicator } from '@/types/indicator';
 import type { BacktestResult } from '@/types/backtest';
-import type { ChartOrder } from '@/types/order';
+import { ordersForPair, type ChartOrder } from '@/types/order';
 import type { ChartPaneState } from '@/types/pane';
 import type { ChartLayout } from '@/types/ui';
 
@@ -220,7 +220,7 @@ export function ChartGrid({
               onDrawingsChange={onDrawingsChange}
               onDrawingSelect={onDrawingSelect}
               onFreehandStroke={onFreehandStroke}
-              orders={orders}
+              orders={ordersForPair(orders, pane.pair)}
               selectedOrderId={selectedOrderId}
               onOrderSelect={onOrderSelect}
               backtestResult={

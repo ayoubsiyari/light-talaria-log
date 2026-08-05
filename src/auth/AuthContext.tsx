@@ -14,6 +14,10 @@ import {
   registerRemote,
 } from '@/datasets/remoteApi';
 import type { RemoteUser } from '@/types/remoteApi';
+import { pullAll, setCloudSyncEnabled } from '@/sync/cloudSync';
+import { setStorageUserId } from '@/sync/storageScope';
+import { replaceJournalEntries } from '@/journal/journalStore';
+import { replaceSessions } from '@/sessions/sessionStore';
 
 export type AuthStatus = 'loading' | 'authenticated' | 'anonymous';
 
@@ -58,6 +62,25 @@ export function consumeAuthNext(fallback = '#/app/dashboard'): string {
   return fallback;
 }
 
+async function hydrateCloud(user: RemoteUser): Promise<void> {
+  setStorageUserId(user.id);
+  setCloudSyncEnabled(true);
+  // Empty this account's local cache first so we never show another user's
+  // leftover sessions while pull runs (or if pull fails).
+  replaceSessions([]);
+  replaceJournalEntries([]);
+  try {
+    await pullAll();
+  } catch (err) {
+    console.warn('[auth] cloud pull failed — starting empty for this account', err);
+  }
+}
+
+function clearCloudScope(): void {
+  setCloudSyncEnabled(false);
+  setStorageUserId(null);
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [user, setUser] = useState<RemoteUser | null>(null);
@@ -66,10 +89,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     try {
       const me = await fetchMe();
+      await hydrateCloud(me);
       setUser(me);
       setStatus('authenticated');
       setError(null);
     } catch {
+      clearCloudScope();
       setUser(null);
       setStatus('anonymous');
     }
@@ -83,6 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const u = await loginRemote(email, password);
+      await hydrateCloud(u);
       setUser(u);
       setStatus('authenticated');
       return u;
@@ -98,6 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setError(null);
       try {
         const u = await registerRemote(email, password, displayName);
+        await hydrateCloud(u);
         setUser(u);
         setStatus('authenticated');
         return u;
@@ -117,6 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // Clear local auth even if network fails
     }
+    clearCloudScope();
     setUser(null);
     setStatus('anonymous');
   }, []);

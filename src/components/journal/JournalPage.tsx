@@ -40,7 +40,6 @@ interface JournalPageProps {
   /** @deprecated Use onGoBacktest */
   onGoSessions?: () => void;
   onGoHome?: () => void;
-  onGoDatasets?: () => void;
   onOpenChart?: (sessionId: string, focus?: JournalChartFocus) => void;
   /** True when the chart session is still in memory (soft trades navigate). */
   canReturnToChart?: boolean;
@@ -291,7 +290,6 @@ export function JournalPage({
   liveJournal = null,
   onGoBacktest,
   onGoSessions,
-  onGoDatasets,
   onOpenChart,
   canReturnToChart = false,
 }: JournalPageProps) {
@@ -421,13 +419,7 @@ export function JournalPage({
       eyebrow="App"
       title="Trades"
       description="Order fills and strategy runs — jump to any trade on the chart."
-      actions={
-        onGoDatasets ? (
-          <Button variant="secondary" className="min-h-11" onPress={onGoDatasets}>
-            Datasets
-          </Button>
-        ) : undefined
-      }
+      actions={undefined}
     >
         <div
           className="flex rounded-lg border border-border bg-surface p-1 gap-1"

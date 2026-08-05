@@ -101,5 +101,6 @@ export function toPublicUser(user: AuthUser) {
     id: user.id,
     email: user.email,
     displayName: user.displayName,
+    role: user.role,
   };
 }

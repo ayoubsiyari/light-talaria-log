@@ -31,6 +31,7 @@ import {
   type PublicDevUser,
 } from './devAuth';
 import { enqueueJob, getJob } from './jobQueue';
+import * as userSync from './userSyncStore';
 
 function sendJson(
   res: Connect.ServerResponse,
@@ -176,6 +177,170 @@ async function handleApi(
     return;
   }
   const user: PublicDevUser = toPublicUser(authed);
+
+  // --- User cloud sync (sessions / drawings / journal) ---
+  if (method === 'GET' && pathname === '/api/v1/sessions') {
+    sendJson(res, 200, { sessions: userSync.listSessions(user.id) });
+    return;
+  }
+  if (method === 'POST' && pathname === '/api/v1/sessions') {
+    const body = (await readJsonBody(req)) as Record<string, unknown>;
+    if (!body.name || !body.timeframe || !Array.isArray(body.legs)) {
+      sendJson(res, 400, { error: 'Invalid session payload' });
+      return;
+    }
+    const session = userSync.upsertSession(user.id, {
+      id: typeof body.id === 'string' ? body.id : undefined,
+      name: String(body.name),
+      pair: String(body.pair ?? ''),
+      timeframe: String(body.timeframe),
+      startDate: String(body.startDate ?? ''),
+      endDate: String(body.endDate ?? ''),
+      datasetId: String(body.datasetId ?? ''),
+      legs: body.legs as Array<{ pair: string; datasetId: string }>,
+      createdAt: typeof body.createdAt === 'number' ? body.createdAt : undefined,
+      cursorTime: typeof body.cursorTime === 'number' ? body.cursorTime : undefined,
+      span: typeof body.span === 'number' ? body.span : undefined,
+      startingBalance:
+        typeof body.startingBalance === 'number' ? body.startingBalance : undefined,
+      strategyId: typeof body.strategyId === 'string' ? body.strategyId : undefined,
+      strategyName:
+        typeof body.strategyName === 'string' ? body.strategyName : undefined,
+      description: typeof body.description === 'string' ? body.description : undefined,
+    });
+    sendJson(res, 200, { session });
+    return;
+  }
+
+  const sessionMatch = pathname.match(/^\/api\/v1\/sessions\/([^/]+)$/);
+  if (sessionMatch) {
+    const id = decodeURIComponent(sessionMatch[1]!);
+    if (method === 'GET') {
+      const session = userSync.getSession(user.id, id);
+      if (!session) {
+        sendJson(res, 404, { error: 'Session not found' });
+        return;
+      }
+      sendJson(res, 200, { session });
+      return;
+    }
+    if (method === 'PATCH') {
+      const body = (await readJsonBody(req)) as Record<string, unknown>;
+      const session = userSync.patchSession(user.id, id, body as never);
+      if (!session) {
+        sendJson(res, 404, { error: 'Session not found' });
+        return;
+      }
+      sendJson(res, 200, { session });
+      return;
+    }
+    if (method === 'DELETE') {
+      if (!userSync.deleteSession(user.id, id)) {
+        sendJson(res, 404, { error: 'Session not found' });
+        return;
+      }
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+  }
+
+  const drawingsMatch = pathname.match(/^\/api\/v1\/sessions\/([^/]+)\/drawings$/);
+  if (drawingsMatch) {
+    const id = decodeURIComponent(drawingsMatch[1]!);
+    if (method === 'GET') {
+      const datasetId = searchParams.get('datasetId') ?? '';
+      if (!datasetId) {
+        sendJson(res, 400, { error: 'datasetId query required' });
+        return;
+      }
+      if (!userSync.getSession(user.id, id)) {
+        sendJson(res, 404, { error: 'Session not found' });
+        return;
+      }
+      sendJson(res, 200, {
+        drawings: userSync.getDrawings(user.id, id, datasetId),
+      });
+      return;
+    }
+    if (method === 'PUT') {
+      const body = (await readJsonBody(req)) as {
+        datasetId?: string;
+        drawings?: unknown[];
+      };
+      if (!body.datasetId || !Array.isArray(body.drawings)) {
+        sendJson(res, 400, { error: 'Invalid drawings payload' });
+        return;
+      }
+      try {
+        userSync.putDrawings(user.id, id, body.datasetId, body.drawings);
+        sendJson(res, 200, { ok: true, count: body.drawings.length });
+      } catch {
+        sendJson(res, 404, { error: 'Session not found' });
+      }
+      return;
+    }
+  }
+
+  const orderJournalMatch = pathname.match(
+    /^\/api\/v1\/sessions\/([^/]+)\/order-journal$/,
+  );
+  if (orderJournalMatch) {
+    const id = decodeURIComponent(orderJournalMatch[1]!);
+    if (method === 'GET') {
+      if (!userSync.getSession(user.id, id)) {
+        sendJson(res, 404, { error: 'Session not found' });
+        return;
+      }
+      sendJson(res, 200, {
+        orderJournal: userSync.getOrderJournal(user.id, id),
+      });
+      return;
+    }
+    if (method === 'PUT') {
+      const body = await readJsonBody(req);
+      if (!userSync.putOrderJournal(user.id, id, body)) {
+        sendJson(res, 404, { error: 'Session not found' });
+        return;
+      }
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+  }
+
+  if (method === 'GET' && pathname === '/api/v1/journal') {
+    sendJson(res, 200, { entries: userSync.listJournal(user.id) });
+    return;
+  }
+  if (method === 'POST' && pathname === '/api/v1/journal') {
+    const body = (await readJsonBody(req)) as Record<string, unknown>;
+    if (
+      typeof body.sessionId !== 'string' ||
+      typeof body.sessionName !== 'string' ||
+      body.result == null
+    ) {
+      sendJson(res, 400, { error: 'Invalid journal payload' });
+      return;
+    }
+    const entry = userSync.upsertJournal(user.id, {
+      id: typeof body.id === 'string' ? body.id : undefined,
+      sessionId: body.sessionId,
+      sessionName: body.sessionName,
+      result: body.result,
+      savedAt: typeof body.savedAt === 'number' ? body.savedAt : undefined,
+    });
+    sendJson(res, 200, { entry });
+    return;
+  }
+  const journalMatch = pathname.match(/^\/api\/v1\/journal\/([^/]+)$/);
+  if (method === 'DELETE' && journalMatch) {
+    const id = decodeURIComponent(journalMatch[1]!);
+    if (!userSync.deleteJournal(user.id, id)) {
+      sendJson(res, 404, { error: 'Journal run not found' });
+      return;
+    }
+    sendJson(res, 200, { ok: true });
+    return;
+  }
 
   // GET /api/v1/datasets
   if (method === 'GET' && pathname === '/api/v1/datasets') {

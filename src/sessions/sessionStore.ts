@@ -6,9 +6,26 @@ import type {
 } from '@/types/session';
 import type { Timeframe } from '@/types/ui';
 import { newId } from '@/utils/uuid';
+import { readScopedOrLegacy, writeScoped } from '@/sync/storageScope';
 
-const STORAGE_KEY = 'fast-chart.sessions.v1';
+const STORAGE_BASE = 'sessions.v1';
+const LEGACY_KEY = 'fast-chart.sessions.v1';
 const MAX_SESSIONS = 50;
+
+export type PersistOpts = { skipCloud?: boolean };
+
+function cloudPushSession(session: BacktestSession): void {
+  void import('@/sync/cloudSync').then((m) => m.pushSession(session));
+}
+function cloudPushProgress(
+  id: string,
+  patch: { cursorTime?: number; span?: number },
+): void {
+  void import('@/sync/cloudSync').then((m) => m.pushSessionProgress(id, patch));
+}
+function cloudDeleteSession(id: string): void {
+  void import('@/sync/cloudSync').then((m) => m.pushDeleteSession(id));
+}
 
 function normalizeLegs(raw: Partial<BacktestSession>): SessionLeg[] | null {
   if (Array.isArray(raw.legs) && raw.legs.length > 0) {
@@ -83,7 +100,7 @@ function normalizeSession(raw: unknown): BacktestSession | null {
 
 function readAll(): BacktestSession[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = readScopedOrLegacy(STORAGE_BASE, [LEGACY_KEY]);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -95,10 +112,20 @@ function readAll(): BacktestSession[] {
 
 function writeAll(sessions: BacktestSession[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions.slice(0, MAX_SESSIONS)));
+    writeScoped(STORAGE_BASE, JSON.stringify(sessions.slice(0, MAX_SESSIONS)));
   } catch (err) {
     console.warn('[sessions] persist failed', err);
   }
+}
+
+/** Replace local cache (cloud pull). Does not push. */
+export function replaceSessions(sessions: BacktestSession[]): void {
+  writeAll(
+    sessions
+      .map(normalizeSession)
+      .filter((s): s is BacktestSession => s !== null)
+      .slice(0, MAX_SESSIONS),
+  );
 }
 
 export function listSessions(): BacktestSession[] {
@@ -109,7 +136,10 @@ export function getSession(id: string): BacktestSession | null {
   return readAll().find((s) => s.id === id) ?? null;
 }
 
-export function createSession(input: CreateSessionInput): BacktestSession {
+export function createSession(
+  input: CreateSessionInput,
+  opts?: PersistOpts,
+): BacktestSession {
   if (input.legs.length === 0) {
     throw new Error('Session requires at least one pair.');
   }
@@ -144,23 +174,32 @@ export function createSession(input: CreateSessionInput): BacktestSession {
   };
   const next = [session, ...readAll()].slice(0, MAX_SESSIONS);
   writeAll(next);
+  if (!opts?.skipCloud) cloudPushSession(session);
   return session;
 }
 
-export function deleteSession(id: string): void {
+export function deleteSession(id: string, opts?: PersistOpts): void {
   writeAll(readAll().filter((s) => s.id !== id));
+  if (!opts?.skipCloud) cloudDeleteSession(id);
 }
 
-/** Insert or replace a session by id (example / restore paths). */
-export function upsertSession(session: BacktestSession): void {
-  const all = readAll().filter((s) => s.id !== session.id);
-  writeAll([session, ...all].slice(0, MAX_SESSIONS));
+/** Insert or replace a session by id (example / restore / cloud pull paths). */
+export function upsertSession(
+  session: BacktestSession,
+  opts?: PersistOpts,
+): void {
+  const normalized = normalizeSession(session);
+  if (!normalized) return;
+  const all = readAll().filter((s) => s.id !== normalized.id);
+  writeAll([normalized, ...all].slice(0, MAX_SESSIONS));
+  if (!opts?.skipCloud) cloudPushSession(normalized);
 }
 
 /** Persist replay progress so reopen/refresh can resume at the last candle. */
 export function updateSessionProgress(
   id: string,
   patch: { cursorTime?: number; span?: number },
+  opts?: PersistOpts,
 ): BacktestSession | null {
   const all = readAll();
   const idx = all.findIndex((s) => s.id === id);
@@ -175,6 +214,7 @@ export function updateSessionProgress(
   }
   all[idx] = next;
   writeAll(all);
+  if (!opts?.skipCloud) cloudPushProgress(id, patch);
   return next;
 }
 

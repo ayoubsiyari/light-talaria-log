@@ -1,5 +1,19 @@
 export type OrderSide = 'buy' | 'sell';
 
+/** Normalize `USD/JPY` / `USDJPY` / `usdjpy` for comparisons. */
+export function chartPairKey(pair: string): string {
+  return pair.replace(/\//g, '').toUpperCase();
+}
+
+/** Orders that belong on a pane for the given chart pair. */
+export function ordersForPair(
+  orders: readonly ChartOrder[],
+  pair: string,
+): ChartOrder[] {
+  const key = chartPairKey(pair);
+  return orders.filter((o) => chartPairKey(o.pair) === key);
+}
+
 /** Chart overlay projection of an engine position, working order, or draft ticket. */
 export interface ChartOrder {
   id: string;

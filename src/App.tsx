@@ -18,7 +18,7 @@ import {
   type DrawingPlacement,
   type SeriesType,
 } from '@/chart';
-import { DatasetsPage } from '@/components/dataset/DatasetsPage';
+import { AdminPage } from '@/components/admin/AdminPage';
 import { DrawingFloatingToolbar } from '@/components/drawings/DrawingFloatingToolbar';
 import { DrawingSettingsModal } from '@/components/drawings/DrawingSettingsModal';
 import { ObjectTreePanel } from '@/components/drawings/ObjectTreePanel';
@@ -106,7 +106,7 @@ import {
 } from '@/components/orders/OrderTicket';
 import { TradeDock, tradeDockCounts } from '@/components/orders/TradeDock';
 import type { EnabledIndicator } from '@/types/indicator';
-import type { ChartOrder } from '@/types/order';
+import { chartPairKey, ordersForPair, type ChartOrder } from '@/types/order';
 import {
   loadViewportAroundTime,
   loadViewportForTimeRange,
@@ -135,6 +135,7 @@ import {
 import {
   formatAppRoute,
   parseAppRoute,
+  routeRequiresAdmin,
   routeRequiresAuth,
   type AppTab,
   type AppView,
@@ -997,6 +998,21 @@ export default function App() {
     setOrderEngineTick((n) => n + 1);
   }, []);
 
+  /** Push engine orders to each pane, filtered to that pane's symbol. */
+  const pushOrdersToPanes = useCallback(
+    (chartOrders: readonly ChartOrder[], selectedId: string | null) => {
+      for (const pane of panesRef.current) {
+        const forPane = ordersForPair(chartOrders, pane.pair);
+        const sel =
+          selectedId && forPane.some((o) => o.id === selectedId)
+            ? selectedId
+            : null;
+        getChart(pane.id)?.setOrders(forPane, sel);
+      }
+    },
+    [],
+  );
+
   const lastOrderChromeAtRef = useRef(0);
   const selectedOrderIdRef = useRef(selectedOrderId);
   selectedOrderIdRef.current = selectedOrderId;
@@ -1004,7 +1020,17 @@ export default function App() {
     const bridge = orderBridgeRef.current;
     const sess = sessionRef.current.get();
     if (!bridge || !sess) return;
+    // Always step against the *trade* instrument's bars — not the chart you
+    // happen to be viewing (JPY position must not mark-to-market on GBP).
+    const tradeKey = chartPairKey(bridge.getState().symbol);
+    const tradeSeries = seriesRef.current.find(
+      (s) => chartPairKey(s.pair) === tradeKey,
+    );
     const ds =
+      tradeSeries?.datasetId ??
+      panesRef.current.find((p) => chartPairKey(p.pair) === tradeKey)
+        ?.datasetId ??
+      sess.retainedDatasets[0] ??
       panesRef.current.find((p) => p.id === activePaneId)?.datasetId ??
       panesRef.current[0]?.datasetId;
     if (!ds) return;
@@ -1021,10 +1047,7 @@ export default function App() {
     });
     // Always refresh chart projection — levels stay until SL/TP close, P&L marks each bar.
     const chartOrders = bridge.toChartOrders(sessionIdRef.current ?? '');
-    const sel = selectedOrderIdRef.current;
-    for (const pane of panesRef.current) {
-      getChart(pane.id)?.setOrders(chartOrders, sel);
-    }
+    pushOrdersToPanes(chartOrders, selectedOrderIdRef.current);
     if (!replayRef.current.get().playing) {
       syncOrdersFromBridge();
       return;
@@ -1210,14 +1233,18 @@ export default function App() {
     // while replayFollow blocks React → setOrders.
     const bridge = orderBridgeRef.current;
     if (bridge) {
-      const chartOrders = bridge.toChartOrders(sessionIdRef.current ?? '');
-      const sel = selectedOrderIdRef.current;
-      for (const pane of panesRef.current) {
-        getChart(pane.id)?.setOrders(chartOrders, sel);
-      }
+      pushOrdersToPanes(
+        bridge.toChartOrders(sessionIdRef.current ?? ''),
+        selectedOrderIdRef.current,
+      );
     }
     replayRef.current.play();
-  }, [commitSessionViews, syncEnginesFromSession, syncReplayClockTf]);
+  }, [
+    commitSessionViews,
+    pushOrdersToPanes,
+    syncEnginesFromSession,
+    syncReplayClockTf,
+  ]);
 
   /** Journal → chart deep link (consumed once per open / soft return). */
   const pendingJournalFocusRef = useRef<{
@@ -1342,6 +1369,49 @@ export default function App() {
       seriesRef.current = [];
       setDraftPoints([]);
 
+      // Strategy automation only when Create Session picked a playbook.
+      if (fresh.strategyId) {
+        const strat = getStrategy(fresh.strategyId);
+        if (strat) {
+          const compiled = compileGraph(strat.nodes, strat.edges);
+          if (compiled.ok && compiled.graph) {
+            setBacktestParams({
+              ...DEFAULT_BACKTEST_PARAMS,
+              sma: { ...DEFAULT_BACKTEST_PARAMS.sma },
+              donchian: { ...DEFAULT_BACKTEST_PARAMS.donchian },
+              costs: { ...DEFAULT_BACKTEST_PARAMS.costs },
+              rules: rulesFromStrategyNodes(strat.nodes, {
+                ...DEFAULT_BACKTEST_PARAMS.rules,
+              }),
+              strategyId: 'graph',
+              graph: compiled.graph,
+            });
+            lastGraphStrategyIdRef.current = fresh.strategyId;
+          } else {
+            setBacktestParams({
+              ...DEFAULT_BACKTEST_PARAMS,
+              sma: { ...DEFAULT_BACKTEST_PARAMS.sma },
+              donchian: { ...DEFAULT_BACKTEST_PARAMS.donchian },
+              costs: { ...DEFAULT_BACKTEST_PARAMS.costs },
+              rules: { ...DEFAULT_BACKTEST_PARAMS.rules },
+            });
+            lastGraphStrategyIdRef.current = null;
+          }
+        } else {
+          // Named strategy missing from bank — keep defaults but still show menu.
+          setBacktestParams({
+            ...DEFAULT_BACKTEST_PARAMS,
+            sma: { ...DEFAULT_BACKTEST_PARAMS.sma },
+            donchian: { ...DEFAULT_BACKTEST_PARAMS.donchian },
+            costs: { ...DEFAULT_BACKTEST_PARAMS.costs },
+            rules: { ...DEFAULT_BACKTEST_PARAMS.rules },
+          });
+          lastGraphStrategyIdRef.current = null;
+        }
+      } else {
+        lastGraphStrategyIdRef.current = null;
+      }
+
       try {
         // Rehydrate catalog stubs from server when localStorage was cleared.
         for (const leg of fresh.legs) {
@@ -1443,6 +1513,8 @@ export default function App() {
           availableTfs: sharedTfs,
           revealMode: 'replay',
           span: resumeSpan,
+          // Keep every session leg warm so Play can hit SL/TP off-screen.
+          retainedDatasets: seriesList.map((s) => s.datasetId),
         });
         if (loadGen !== loadSessionGenRef.current) return;
 
@@ -2091,7 +2163,31 @@ export default function App() {
 
           commitSessionViews({ adoptRangePaneIds: targets });
           syncEnginesFromSession({ paneIds: targets, applyCamera: true });
+          // Different instrument → drop previous pair's manual Y scale so candles
+          // aren't off-screen until the user double-clicks the price axis.
+          for (const id of targets) {
+            getChart(id)?.resetPriceScale();
+          }
           syncReplayClockTf(panesRef.current);
+
+          const bridge = orderBridgeRef.current;
+          if (bridge) {
+            const all = bridge.toChartOrders(sessionIdRef.current ?? '');
+            setOrders(all);
+            pushOrdersToPanes(all, selectedOrderIdRef.current);
+            // Deselect if the selected level belongs to the previous symbol.
+            const focusPair =
+              panesRef.current.find((p) => p.id === paneId)?.pair ?? pair;
+            const sel = selectedOrderIdRef.current;
+            if (
+              sel &&
+              !ordersForPair(all, focusPair).some((o) => o.id === sel)
+            ) {
+              setSelectedOrderId(null);
+            }
+          } else {
+            pushOrdersToPanes([], null);
+          }
 
           const focus = panesRef.current.find((p) => p.id === paneId);
           if (focus && focus.bars.length > 0) {
@@ -2113,6 +2209,7 @@ export default function App() {
       captureLiveCamera,
       commitSessionViews,
       markPanesLoading,
+      pushOrdersToPanes,
       syncEnginesFromSession,
       syncReplayClockTf,
     ],
@@ -2509,6 +2606,12 @@ export default function App() {
       setView('auth');
       return;
     }
+    if (tab === 'admin' && auth.user?.role !== 'admin') {
+      setAppTab('dashboard');
+      setJournalSessionId(null);
+      setView('app');
+      return;
+    }
     setAppTab(tab);
     setJournalSessionId(tab === 'trades' ? journalId : null);
     setView('app');
@@ -2560,10 +2663,14 @@ export default function App() {
 
   const chartOrdersWithDraft = useMemo(() => {
     if (!ticketDraft || !session) return orders;
+    const activePair =
+      panes.find((p) => p.id === activePaneId)?.pair ??
+      session.legs[0]?.pair ??
+      '';
     const draftOrder: ChartOrder = {
       id: '__draft__',
       sessionId: session.id,
-      pair: session.legs[0]?.pair ?? '',
+      pair: activePair,
       side: ticketDraft.side === 'BUY' ? 'buy' : 'sell',
       entry: ticketDraft.entry,
       stopLoss: ticketDraft.stopLoss,
@@ -2573,7 +2680,7 @@ export default function App() {
       working: true,
     };
     return [...orders, draftOrder];
-  }, [orders, ticketDraft, session]);
+  }, [orders, ticketDraft, session, panes, activePaneId]);
 
   const orderCounts = useMemo(
     () => tradeDockCounts(orderBridgeRef.current?.getState() ?? null),
@@ -3216,12 +3323,19 @@ export default function App() {
     });
   }, [view, appTab, authMode, session?.id, journalSessionId]);
 
-  // Guard: app + chart require a signed-in account.
+  // Guard: app + chart require a signed-in account; admin tab requires admin role.
   useEffect(() => {
     if (auth.status === 'loading') return;
     if (auth.status === 'authenticated') {
       // After sign-in/up, leave #/auth/* for the saved destination once.
       if (view === 'auth') finishAuthRedirect();
+      else if (
+        view === 'app' &&
+        appTab === 'admin' &&
+        auth.user?.role !== 'admin'
+      ) {
+        setAppTab('dashboard');
+      }
       return;
     }
     // anonymous — never render app/chart chrome
@@ -3244,7 +3358,7 @@ export default function App() {
     }
     setAuthMode('signin');
     setView('auth');
-  }, [auth.status, view, appTab, journalSessionId, session?.id]);
+  }, [auth.status, auth.user?.role, view, appTab, journalSessionId, session?.id]);
 
   // Cold start: reopen #/chart/:sessionId after refresh (auth must be ready).
   useEffect(() => {
@@ -3269,6 +3383,14 @@ export default function App() {
         rememberAuthNext(formatAppRoute(route));
         setAuthMode('signin');
         setView('auth');
+        return;
+      }
+      if (
+        routeRequiresAdmin(route) &&
+        auth.user?.role !== 'admin'
+      ) {
+        setAppTab('dashboard');
+        setView('app');
         return;
       }
       if (route.view === 'chart') {
@@ -3496,10 +3618,6 @@ export default function App() {
               if (session) teardownChartSession();
               setView('landing');
             }}
-            onGoDatasets={() => {
-              setJournalSessionId(null);
-              goAppTab('datasets');
-            }}
             onGoBacktest={() => goAppTab('backtest')}
             onOpenChart={openChartFromJournal}
           />
@@ -3509,18 +3627,14 @@ export default function App() {
         shellBody = (
           <CreateSessionPage
             onStart={(s) => void loadSessionData(s)}
-            onGoDatasets={() => goAppTab('datasets')}
             onGoJournal={(sessionId) => goAppTab('trades', sessionId ?? null)}
             onGoDashboard={() => goAppTab('dashboard')}
           />
         );
         break;
-      case 'datasets':
+      case 'admin':
         shellBody = (
-          <DatasetsPage
-            onGoBacktest={() => goAppTab('backtest')}
-            onGoTrades={() => goAppTab('trades')}
-          />
+          <AdminPage onGoBacktest={() => goAppTab('backtest')} />
         );
         break;
       case 'strategy':
@@ -3558,6 +3672,7 @@ export default function App() {
       <AuthGate>
         <AppShell
           tab={appTab}
+          showAdmin={auth.user?.role === 'admin'}
           onTabChange={(tab) =>
             goAppTab(tab, tab === 'trades' ? journalSessionId : null)
           }
@@ -3618,9 +3733,24 @@ export default function App() {
         onExitSession={handleExitSession}
         backtestRunning={btRunning}
         backtestLabel={btLabel}
-        backtestParams={backtestParams}
-        onBacktestParamsChange={setBacktestParams}
-        onRunBacktest={loadStatus === 'ready' ? handleRunBacktest : undefined}
+        backtestParams={session.strategyId ? backtestParams : undefined}
+        onBacktestParamsChange={
+          session.strategyId ? setBacktestParams : undefined
+        }
+        onRunBacktest={
+          session.strategyId && loadStatus === 'ready'
+            ? () => {
+                if (
+                  session.strategyId &&
+                  backtestParams.strategyId === 'graph'
+                ) {
+                  handleRunGraphStrategy(session.strategyId);
+                } else {
+                  handleRunBacktest();
+                }
+              }
+            : undefined
+        }
         onCancelBacktest={handleCancelBacktest}
         backtestHasResult={!!btResult}
         onStopBacktest={handleStopStrategy}

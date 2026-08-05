@@ -17,7 +17,7 @@ export function AuthGate({ children, fallback }: AuthGateProps) {
         <div className="min-h-dvh flex items-center justify-center bg-background text-foreground">
           <div className="flex flex-col items-center gap-3">
             <Spinner size="lg" />
-            <p className="text-sm text-muted">Checking session…</p>
+            <p className="text-sm text-muted">Checking session & syncing…</p>
           </div>
         </div>
       )

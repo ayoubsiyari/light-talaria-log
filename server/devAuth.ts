@@ -26,7 +26,7 @@ export interface DevUser {
   role: 'user' | 'admin';
 }
 
-export type PublicDevUser = Pick<DevUser, 'id' | 'email' | 'displayName'>;
+export type PublicDevUser = Pick<DevUser, 'id' | 'email' | 'displayName' | 'role'>;
 
 interface SessionRow {
   userId: string;
@@ -64,8 +64,20 @@ function verifyPassword(password: string, stored: string): boolean {
 function loadUsers(): void {
   if (existsSync(USERS_PATH)) {
     try {
-      const raw = JSON.parse(readFileSync(USERS_PATH, 'utf8')) as DevUser[];
-      if (Array.isArray(raw)) users = raw;
+      const raw = JSON.parse(readFileSync(USERS_PATH, 'utf8')) as Array<
+        Partial<DevUser> & { email?: string }
+      >;
+      if (Array.isArray(raw)) {
+        users = raw
+          .filter((u) => u && typeof u.email === 'string' && u.passwordHash)
+          .map((u) => ({
+            id: String(u.id ?? randomUUID()),
+            email: String(u.email).toLowerCase(),
+            displayName: String(u.displayName ?? u.email!.split('@')[0]),
+            passwordHash: String(u.passwordHash),
+            role: u.role === 'admin' ? 'admin' : 'user',
+          }));
+      }
     } catch {
       users = [];
     }
@@ -77,21 +89,48 @@ function saveUsers(): void {
   writeFileSync(USERS_PATH, JSON.stringify(users, null, 2), 'utf8');
 }
 
+function ensureSeededUser(
+  email: string,
+  password: string,
+  displayName: string,
+  id: string,
+): void {
+  const lower = email.toLowerCase();
+  const existing = users.find((u) => u.email === lower);
+  if (existing) {
+    existing.role = 'admin';
+    existing.displayName = displayName;
+    existing.passwordHash = hashPassword(password);
+    return;
+  }
+  users.push({
+    id,
+    email: lower,
+    displayName,
+    passwordHash: hashPassword(password),
+    role: 'admin',
+  });
+}
+
 function ensureSeedUser(): void {
   if (seeded) return;
   seeded = true;
   loadUsers();
-  const email = 'dev@localhost';
-  if (!users.some((u) => u.email === email)) {
-    users.push({
-      id: '00000000-0000-4000-8000-000000000001',
-      email,
-      displayName: 'Dev User',
-      passwordHash: hashPassword('dev12345'),
-      role: 'admin',
-    });
-    saveUsers();
-  }
+  const before = JSON.stringify(users);
+  // Match SaaS defaults so local stub + VPS share the same admin login.
+  ensureSeededUser(
+    'admin@localhost',
+    'admin12345',
+    'Admin',
+    '00000000-0000-4000-8000-000000000099',
+  );
+  ensureSeededUser(
+    'dev@localhost',
+    'dev12345',
+    'Dev User',
+    '00000000-0000-4000-8000-000000000001',
+  );
+  if (JSON.stringify(users) !== before) saveUsers();
 }
 
 export function toPublicUser(user: DevUser): PublicDevUser {
@@ -99,6 +138,7 @@ export function toPublicUser(user: DevUser): PublicDevUser {
     id: user.id,
     email: user.email,
     displayName: user.displayName,
+    role: user.role,
   };
 }
 

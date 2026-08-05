@@ -146,11 +146,12 @@ export function ensureExampleAnalyticsSession(opts?: {
 
   let wrote = false;
   if (needJournal) {
-    persistJournal(buildExampleOrderJournal());
+    // Local demo only — never upload the sample into a real account's cloud.
+    persistJournal(buildExampleOrderJournal(), { skipCloud: true });
     wrote = true;
   }
 
-  // Keep the labeled session row visible in Backtest / Trades.
-  upsertSession(exampleSessionRecord());
+  // Keep the labeled session row visible in Backtest / Trades (local cache only).
+  upsertSession(exampleSessionRecord(), { skipCloud: true });
   return wrote;
 }

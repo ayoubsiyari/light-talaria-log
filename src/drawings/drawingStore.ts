@@ -1,4 +1,5 @@
 import { newId } from '@/utils/uuid';
+import { getStorageUserId, scopedKey } from '@/sync/storageScope';
 import { TOOLS, defaultStyleFor, type DrawingToolId } from './toolRegistry';
 import { cloneStyle, type DrawingStyle } from './drawingStyle';
 import { getDrawingTemplate } from './drawingTemplates';
@@ -38,8 +39,14 @@ export interface Drawing {
   meta?: Record<string, unknown>;
 }
 
-const STORAGE_PREFIX = 'fast-chart.drawings.v2:';
-const LEGACY_PREFIX = 'fast-chart.drawings.v1:';
+const LEGACY_V2_PREFIX = 'fast-chart.drawings.v2:';
+const LEGACY_V1_PREFIX = 'fast-chart.drawings.v1:';
+
+export type PersistOpts = { skipCloud?: boolean };
+
+function drawingsKey(sessionKey: string): string {
+  return scopedKey(`drawings.v2:${sessionKey}`);
+}
 
 const LEGACY_TYPE_MAP: Record<string, DrawingToolId> = {
   trendLine: 'trendLine',
@@ -94,16 +101,25 @@ function normalizeDrawing(raw: unknown): Drawing | null {
 
 export function loadDrawings(sessionKey: string): Drawing[] {
   try {
-    const v2 = localStorage.getItem(STORAGE_PREFIX + sessionKey);
+    const scoped = localStorage.getItem(drawingsKey(sessionKey));
+    if (scoped) {
+      const parsed: unknown = JSON.parse(scoped);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map(normalizeDrawing).filter((d): d is Drawing => d != null);
+    }
+    // Legacy unscoped drawings only for anonymous — never into another account.
+    if (getStorageUserId()) return [];
+    const v2 = localStorage.getItem(LEGACY_V2_PREFIX + sessionKey);
     if (v2) {
+      localStorage.setItem(drawingsKey(sessionKey), v2);
       const parsed: unknown = JSON.parse(v2);
       if (!Array.isArray(parsed)) return [];
       return parsed.map(normalizeDrawing).filter((d): d is Drawing => d != null);
     }
-    const v1 = localStorage.getItem(LEGACY_PREFIX + sessionKey);
+    const v1 = localStorage.getItem(LEGACY_V1_PREFIX + sessionKey);
     if (v1) {
       const migrated = migrateLegacy(JSON.parse(v1));
-      if (migrated.length > 0) saveDrawings(sessionKey, migrated);
+      if (migrated.length > 0) saveDrawings(sessionKey, migrated, { skipCloud: true });
       return migrated;
     }
     return [];
@@ -112,8 +128,17 @@ export function loadDrawings(sessionKey: string): Drawing[] {
   }
 }
 
-export function saveDrawings(sessionKey: string, drawings: Drawing[]): void {
-  localStorage.setItem(STORAGE_PREFIX + sessionKey, JSON.stringify(drawings));
+export function saveDrawings(
+  sessionKey: string,
+  drawings: Drawing[],
+  opts?: PersistOpts,
+): void {
+  localStorage.setItem(drawingsKey(sessionKey), JSON.stringify(drawings));
+  if (!opts?.skipCloud) {
+    void import('@/sync/cloudSync').then((m) =>
+      m.schedulePushDrawings(sessionKey, drawings),
+    );
+  }
 }
 
 export function createDrawing(

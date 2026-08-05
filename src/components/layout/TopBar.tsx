@@ -227,6 +227,7 @@ export function TopBar({
           onSyncChange={onLayoutSyncChange}
         />
         {showThemeToggle && <ThemeToggle compact />}
+        {/* Only when the session was created with a strategy / playbook. */}
         {backtestParams && onBacktestParamsChange ? (
           <BacktestRunMenu
             running={backtestRunning}
@@ -249,19 +250,7 @@ export function TopBar({
           >
             Cancel
           </Button>
-        ) : (
-          <Button
-            variant="secondary"
-            size="sm"
-            className="h-7 min-h-7 [@media(hover:none)]:min-h-11 px-2 sm:px-2.5 text-xs shrink-0"
-            isDisabled={!onRunBacktest}
-            onPress={onRunBacktest}
-            aria-label={backtestLabel ?? 'Run strategy'}
-          >
-            <span className="sm:hidden">St</span>
-            <span className="hidden sm:inline">Strategy</span>
-          </Button>
-        )}
+        ) : null}
       </div>
     </header>
   );

@@ -24,6 +24,7 @@ import {
   assertDatasetQuota,
 } from './quotas.js';
 import { getObject, objectKey, publicFileUrl, putObject } from './storage.js';
+import { registerUserSyncRoutes } from './userSyncRoutes.js';
 
 const BYTES_PER_BAR = 28;
 /** UUID or disk-stub slug (e.g. firstrate-eurusd-m1). */
@@ -79,6 +80,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', async (req) => {
     await attachUser(req);
   });
+
+  await registerUserSyncRoutes(app);
 
   app.get('/api/v1/health', async () => ({
     ok: true,

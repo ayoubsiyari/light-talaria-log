@@ -34,6 +34,11 @@ export interface SessionState {
   /** Dataset base TF — replay clock grid. */
   baseTf: Timeframe;
   playing: boolean;
+  /**
+   * Session-leg datasets kept warm even when no pane shows them — so open
+   * orders on pair A still step correctly while the chart shows pair B.
+   */
+  retainedDatasets: string[];
 }
 
 export interface PaneView {

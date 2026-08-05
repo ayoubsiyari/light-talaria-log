@@ -7,7 +7,7 @@ export interface ShellNavItem {
   pinBottom?: boolean;
 }
 
-/** App left-rail order (Hero shell). Datasets is a shell tab but not rail-pinned. */
+/** App left-rail order (Hero shell). Admin is injected for admin users only. */
 export const SHELL_NAV_MAIN: readonly ShellNavItem[] = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'trades', label: 'Trades' },
@@ -18,6 +18,10 @@ export const SHELL_NAV_MAIN: readonly ShellNavItem[] = [
 
 export const SHELL_NAV_BOTTOM: readonly ShellNavItem[] = [
   { id: 'profile', label: 'Profile', pinBottom: true },
+];
+
+export const SHELL_NAV_ADMIN: readonly ShellNavItem[] = [
+  { id: 'admin', label: 'Admin', pinBottom: true },
 ];
 
 export type ShellIcon = (props: { className?: string }) => ReactNode;
@@ -80,12 +84,11 @@ export function ShellIconProfile({ className = 'w-5 h-5' }: { className?: string
   );
 }
 
-export function ShellIconDatasets({ className = 'w-5 h-5' }: { className?: string }) {
+export function ShellIconAdmin({ className = 'w-5 h-5' }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
-      <ellipse cx="12" cy="6" rx="7" ry="3" />
-      <path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" strokeLinecap="round" />
-      <path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" strokeLinecap="round" />
+      <path d="M12 3l8 4v5c0 5-3.5 8.5-8 9.5C7.5 20.5 4 17 4 12V7l8-4z" strokeLinejoin="round" />
+      <path d="M9.5 12l1.5 1.5L14.5 10" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -94,8 +97,8 @@ export const SHELL_ICONS: Record<AppTab, ShellIcon> = {
   dashboard: ShellIconDashboard,
   trades: ShellIconTrades,
   backtest: ShellIconBacktest,
-  datasets: ShellIconDatasets,
   strategy: ShellIconStrategy,
   resources: ShellIconResources,
   profile: ShellIconProfile,
+  admin: ShellIconAdmin,
 };

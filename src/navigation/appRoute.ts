@@ -6,7 +6,7 @@
  *   #/                              landing
  *   #/auth/signin                   sign in
  *   #/auth/signup                   sign up
- *   #/app/dashboard|trades|backtest|datasets|strategy|resources|profile
+ *   #/app/dashboard|trades|backtest|strategy|resources|profile|admin
  *   #/app/trades/:sessionId         trades focused on a session
  *   #/chart/:sessionId              chart workspace
  *   #/404                           not found
@@ -15,17 +15,17 @@
  *   #/sessions → backtest
  *   #/journal → trades
  *   #/journal/:id → trades + session id
- *   #/datasets → #/app/datasets
+ *   #/datasets | #/app/datasets → admin (admin-only UI)
  */
 
 export type AppTab =
   | 'dashboard'
   | 'trades'
   | 'backtest'
-  | 'datasets'
   | 'strategy'
   | 'resources'
-  | 'profile';
+  | 'profile'
+  | 'admin';
 
 export type AuthMode = 'signin' | 'signup';
 
@@ -49,10 +49,10 @@ const APP_TABS: readonly AppTab[] = [
   'dashboard',
   'trades',
   'backtest',
-  'datasets',
   'strategy',
   'resources',
   'profile',
+  'admin',
 ];
 
 const DEFAULT_ROUTE: AppRoute = {
@@ -109,6 +109,7 @@ function normalizeTab(raw: string | undefined): AppTab {
   if (raw === 'journal') return 'trades';
   if (raw === 'sessions') return 'backtest';
   if (raw === 'stratbank') return 'strategy';
+  if (raw === 'datasets') return 'admin';
   if (isAppTab(raw)) return raw;
   return 'dashboard';
 }
@@ -176,11 +177,11 @@ export function parseAppRoute(hash: string = window.location.hash): AppRoute {
       focusTradeId: null,
     };
   }
-  // Legacy orphan path → shell Datasets tab
+  // Legacy datasets path → admin (gated in App)
   if (head === 'datasets') {
     return {
       view: 'app',
-      appTab: 'datasets',
+      appTab: 'admin',
       authMode: null,
       sessionId: null,
       focusTime: null,
@@ -276,4 +277,9 @@ export function routesEqual(a: AppRoute, b: AppRoute): boolean {
 /** True when the route requires a signed-in account. */
 export function routeRequiresAuth(route: AppRoute): boolean {
   return route.view === 'app' || route.view === 'chart';
+}
+
+/** True when the route requires an admin account. */
+export function routeRequiresAdmin(route: AppRoute): boolean {
+  return route.view === 'app' && route.appTab === 'admin';
 }

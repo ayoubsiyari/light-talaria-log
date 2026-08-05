@@ -9,10 +9,20 @@ const DEMO_ID = '11111111-1111-4111-8111-111111111111';
 
 async function ensureAdmin(): Promise<string> {
   const email = config.seed.adminEmail.toLowerCase();
-  const existing = await query<{ id: string }>(`SELECT id FROM users WHERE email = $1`, [email]);
-  if (existing.rows[0]) return existing.rows[0].id;
-
   const passwordHash = await hashPassword(config.seed.adminPassword);
+  const existing = await query<{ id: string }>(`SELECT id FROM users WHERE email = $1`, [email]);
+  if (existing.rows[0]) {
+    // Always refresh password + role from SEED_ADMIN_* so deploys can recover admin access.
+    await query(
+      `UPDATE users
+       SET password_hash = $1, role = 'admin', display_name = 'Admin', updated_at = now()
+       WHERE id = $2`,
+      [passwordHash, existing.rows[0].id],
+    );
+    console.log(`[seed] admin refreshed ${email} (SEED_ADMIN_PASSWORD)`);
+    return existing.rows[0].id;
+  }
+
   const { rows } = await query<{ id: string }>(
     `INSERT INTO users (email, password_hash, display_name, role)
      VALUES ($1, $2, 'Admin', 'admin')

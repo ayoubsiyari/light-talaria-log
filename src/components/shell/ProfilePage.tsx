@@ -36,6 +36,10 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
         <Card.Content className="px-6 pb-6 space-y-3">
           <Row label="Email" value={user?.email ?? '—'} />
           <Row label="Display name" value={user?.displayName ?? '—'} />
+          <Row
+            label="Role"
+            value={user?.role === 'admin' ? 'Admin' : 'User'}
+          />
           <Row label="Plan" value="Free" />
           <Row label="Backtests stored" value={String(sessions)} />
           <Row label="Strategy runs" value={String(runs)} />

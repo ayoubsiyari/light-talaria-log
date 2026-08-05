@@ -1,10 +1,11 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Button } from '@heroui/react';
 import { BrandLogo } from '@/components/landing/BrandLogo';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import type { AppTab } from '@/navigation/appRoute';
 import {
   SHELL_ICONS,
+  SHELL_NAV_ADMIN,
   SHELL_NAV_BOTTOM,
   SHELL_NAV_MAIN,
 } from '@/components/shell/shellNav';
@@ -13,15 +14,27 @@ interface AppShellProps {
   tab: AppTab;
   onTabChange: (tab: AppTab) => void;
   onGoHome?: () => void;
+  /** Show Admin rail entry (dataset management). */
+  showAdmin?: boolean;
   children: ReactNode;
 }
 
 /**
  * In-app shell: left rail (Dashboard / Trades / Backtest / Strategies / Resources / Profile)
- * + main content. Datasets is a shell tab linked from Backtest, not the rail.
+ * + Admin for admin accounts only.
  */
-export function AppShell({ tab, onTabChange, onGoHome, children }: AppShellProps) {
+export function AppShell({
+  tab,
+  onTabChange,
+  onGoHome,
+  showAdmin = false,
+  children,
+}: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const bottomNav = useMemo(
+    () => (showAdmin ? [...SHELL_NAV_ADMIN, ...SHELL_NAV_BOTTOM] : [...SHELL_NAV_BOTTOM]),
+    [showAdmin],
+  );
 
   const go = (id: AppTab) => {
     onTabChange(id);
@@ -61,7 +74,7 @@ export function AppShell({ tab, onTabChange, onGoHome, children }: AppShellProps
         </nav>
 
         <div className="flex flex-col items-center gap-1 px-1.5 pb-2">
-          {SHELL_NAV_BOTTOM.map((item) => (
+          {bottomNav.map((item) => (
             <NavButton
               key={item.id}
               id={item.id}
@@ -120,7 +133,7 @@ export function AppShell({ tab, onTabChange, onGoHome, children }: AppShellProps
                 Menu
               </p>
               <nav className="flex-1 flex flex-col gap-0.5 px-2">
-                {[...SHELL_NAV_MAIN, ...SHELL_NAV_BOTTOM].map((item) => {
+                {[...SHELL_NAV_MAIN, ...bottomNav].map((item) => {
                   const Icon = SHELL_ICONS[item.id];
                   const active = tab === item.id;
                   return (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Button, Card, Label } from '@heroui/react';
 import { AppPageFrame } from '@/components/shell/AppPageFrame';
 import {
@@ -39,6 +39,9 @@ interface DatasetsPageProps {
   onGoJournal?: () => void;
   /** Inside AppShell — kept for call-site compat. */
   embedded?: boolean;
+  /** Admin control plane copy + optional banner. */
+  adminMode?: boolean;
+  adminBanner?: ReactNode;
 }
 
 function defaultDates(): { start: string; end: string } {
@@ -57,6 +60,8 @@ export function DatasetsPage({
   onGoSessions,
   onGoTrades,
   onGoJournal,
+  adminMode = false,
+  adminBanner,
 }: DatasetsPageProps) {
   const goBacktest = onGoBacktest ?? onGoSessions!;
   const goTrades = onGoTrades ?? onGoJournal;
@@ -280,9 +285,13 @@ export function DatasetsPage({
   return (
     <AppPageFrame
       narrow
-      eyebrow="App"
-      title="Datasets"
-      description="Download Dukascopy history and save it to the server. Create a backtest with dates — the chart fetches only that range."
+      eyebrow={adminMode ? 'Admin' : 'App'}
+      title={adminMode ? 'Dataset management' : 'Datasets'}
+      description={
+        adminMode
+          ? 'Download Dukascopy history, publish to the server, import shared datasets, and clear caches. Regular users only consume published data when creating a session.'
+          : 'Download Dukascopy history and save it to the server. Create a backtest with dates — the chart fetches only that range.'
+      }
       actions={
         <>
           <Button variant="secondary" className="min-h-11" onPress={goBacktest}>
@@ -296,6 +305,7 @@ export function DatasetsPage({
         </>
       }
     >
+        {adminBanner}
         {datasets.length > 0 && (
           <Card className="bg-surface border border-border border-l-4 border-l-accent">
             <Card.Content className="px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

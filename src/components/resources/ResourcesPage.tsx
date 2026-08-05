@@ -4,7 +4,7 @@ import { AppPageFrame } from '@/components/shell/AppPageFrame';
 const TOPICS = [
   {
     title: 'Backtest & chart',
-    body: 'Create a backtest from server datasets, Start to open the chart engine, place orders, and replay bars. Exit returns to Backtest.',
+    body: 'Create a backtest from published server datasets, Start to open the chart engine, place orders, and replay bars. Exit returns to Backtest. Admins manage datasets under Admin.',
   },
   {
     title: 'Trades',

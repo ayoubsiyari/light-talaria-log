@@ -114,6 +114,8 @@
     --chart-3: var(--accent);
     --chart-4: oklch(from var(--accent) calc(l + 0.12) c h);
     --chart-5: oklch(from var(--accent) calc(l + 0.24) c h);
+    /* TV-style entry fill marker on the open candle */
+    --chart-order-marker: #38bdf8;
   }
 
   /*

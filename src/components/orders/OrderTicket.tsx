@@ -136,16 +136,23 @@ export function OrderTicket({
     ? (tickSize * contractSize * lots) / (fillPx > 0 ? fillPx : 1)
     : tickSize * contractSize * lots;
 
-  // Seed on open / side: Market @ last price; SL/TP on the entry until dragged.
+  // Seed on open / side: Market @ last price; SL/TP at default pip offsets
+  // so Place Order always attaches brackets (TV-like visible risk/reward).
   useEffect(() => {
     if (!open) return;
     const seed = lastPx.toFixed(digits);
     setType('MARKET');
     setPrice(seed);
-    setSl(seed);
-    setTp(seed);
-    setSlPlaced(false);
-    setTpPlaced(false);
+    const slOff = slPips * pipSize;
+    const tpOff = tpPips * pipSize;
+    const slPx =
+      side === 'BUY' ? lastPx - slOff : lastPx + slOff;
+    const tpPx =
+      side === 'BUY' ? lastPx + tpOff : lastPx - tpOff;
+    setSl(slPx.toFixed(digits));
+    setTp(tpPx.toFixed(digits));
+    setSlPlaced(slOn);
+    setTpPlaced(tpOn);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, side]);
 
@@ -525,23 +532,34 @@ export function OrderTicket({
             if (lots <= 0) return;
             const slN = Number(sl);
             const tpN = Number(tp);
-            const slReady =
-              slOn &&
-              slPlaced &&
-              Number.isFinite(slN) &&
-              Math.abs(slN - entryPx) > tickSize * 0.5;
-            const tpReady =
-              tpOn &&
-              tpPlaced &&
-              Number.isFinite(tpN) &&
-              Math.abs(tpN - entryPx) > tickSize * 0.5;
+            // If toggle is on but still glued to entry, apply default pip offset.
+            const slAuto =
+              side === 'BUY'
+                ? entryPx - slPips * pipSize
+                : entryPx + slPips * pipSize;
+            const tpAuto =
+              side === 'BUY'
+                ? entryPx + tpPips * pipSize
+                : entryPx - tpPips * pipSize;
+            const slPx =
+              slOn && Number.isFinite(slN) && Math.abs(slN - entryPx) > tickSize * 0.5
+                ? slN
+                : slOn
+                  ? slAuto
+                  : NaN;
+            const tpPx =
+              tpOn && Number.isFinite(tpN) && Math.abs(tpN - entryPx) > tickSize * 0.5
+                ? tpN
+                : tpOn
+                  ? tpAuto
+                  : NaN;
             onSubmit({
               side,
               type,
               size: lots,
               price: type === 'MARKET' ? undefined : Number(price),
-              stopLoss: slReady ? slN : undefined,
-              takeProfit: tpReady ? tpN : undefined,
+              stopLoss: Number.isFinite(slPx) ? slPx : undefined,
+              takeProfit: Number.isFinite(tpPx) ? tpPx : undefined,
               tif,
             });
           }}

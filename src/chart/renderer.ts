@@ -393,7 +393,12 @@ export function paintOverlayFrame(
   }
 
   if (orders?.length) {
-    drawOrders(ctx, orders, plot, scale, colors, selectedOrderId ?? null, layout);
+    drawOrders(ctx, orders, plot, scale, colors, selectedOrderId ?? null, {
+      bars,
+      range,
+      width: layout.width,
+      priceAxisWidth: layout.priceAxisWidth,
+    });
   }
 
   if (draftDrawing) {

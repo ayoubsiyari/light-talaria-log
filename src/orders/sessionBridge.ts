@@ -366,7 +366,10 @@ export function createOrderSessionBridge(input: {
       }
 
       // Open positions keep entry + protective levels until SL/TP (or close) fills.
-      for (const pos of Object.values(state.positions)) {
+      const openPositions = Object.values(state.positions);
+      let seq = 0;
+      for (const pos of openPositions) {
+        seq += 1;
         let sl: number | null = null;
         let tp: number | null = null;
         for (const id of state.workingIds) {
@@ -375,12 +378,21 @@ export function createOrderSessionBridge(input: {
           if (o.role === 'stopLoss' && o.price != null) sl = o.price;
           if (o.role === 'takeProfit' && o.price != null) tp = o.price;
         }
+        // Fallback: brackets from the fill (if working children were cleared).
+        if (sl == null && pos.initialStopPrice != null) sl = pos.initialStopPrice;
+        if (tp == null && pos.initialTargetPrice != null) {
+          tp = pos.initialTargetPrice;
+        }
         const key = instrumentSymbolKey(pos.symbol);
         const spec = specFor(pos.symbol);
         const mark = marks.get(key);
         const bid = mark?.bid ?? 0;
         const ask =
           mark?.ask && mark.ask > 0 ? mark.ask : bid + spec.typicalSpread;
+        const fx = {
+          accountCurrency: state.account.currency,
+          instrumentPrice: bid > 0 ? bid : pos.entryPrice,
+        };
         let uPnL: number | null = null;
         if (bid > 0) {
           uPnL = unrealizedPnL(
@@ -390,12 +402,21 @@ export function createOrderSessionBridge(input: {
             ask,
             pos.size,
             spec,
-            {
-              accountCurrency: state.account.currency,
-              instrumentPrice: bid,
-            },
+            fx,
           ).amount;
         }
+        const pnlAt = (level: number | null): number | null => {
+          if (level == null || !(level > 0)) return null;
+          return unrealizedPnL(
+            pos.side,
+            pos.entryPrice,
+            level,
+            level,
+            pos.size,
+            spec,
+            { ...fx, instrumentPrice: level },
+          ).amount;
+        };
         out.push({
           id: pos.id,
           sessionId,
@@ -409,6 +430,9 @@ export function createOrderSessionBridge(input: {
           ambiguousFill: pos.ambiguousFill,
           size: pos.size,
           unrealizedPnL: uPnL,
+          stopLossPnL: pnlAt(sl),
+          takeProfitPnL: pnlAt(tp),
+          seqLabel: seq,
         });
       }
       // Working entry orders (limits/stops/markets awaiting next-bar fill)

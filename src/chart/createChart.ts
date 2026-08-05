@@ -1632,7 +1632,9 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       }
       invalidateScaleCache();
       invalidateHitCache();
+      // Keep order overlays on the same paint as the tip advance (Play).
       markSceneDirty();
+      markOverlayDirty();
 
       // Trailing tip recompute (Worker) — coalesced by the hook.
       if (

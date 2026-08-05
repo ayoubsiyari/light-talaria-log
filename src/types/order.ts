@@ -36,6 +36,11 @@ export interface ChartOrder {
   size?: number;
   /** Unrealized P&L in account currency; null/undefined = pending/draft (no P&L). */
   unrealizedPnL?: number | null;
+  /** Projected account P&L if SL / TP is hit (open positions). */
+  stopLossPnL?: number | null;
+  takeProfitPnL?: number | null;
+  /** Short ordinal for TV-style labels (`1.`, `2.`…). */
+  seqLabel?: number;
   /**
    * When true, entry line is display-only (e.g. pending market expected fill).
    * SL/TP remain draggable.

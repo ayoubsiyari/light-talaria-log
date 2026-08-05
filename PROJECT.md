@@ -833,7 +833,9 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-05 | Multi-pair trades: submit on active pane symbol; engine steps each pair on its own bars + specs | Open EUR + GBP at once → both track SL/TP/PnL |
 | 2026-08-05 | Freeze pending MARKET chart preview at submit bid/ask (no tip-chase jump on Play) | Place market → Play — line stays until fill |
 | 2026-08-05 | Order overlay TV style: axis chips + notch, left qty badge, dashed SL/TP, soft RR zones | Place trade — labels sit on price axis like TV |
+| 2026-08-05 | Fix order paint: semantic buy/sell colors (not candle grey); default pip SL/TP on Place; overlay dirty on Play | Place+Play — entry/SL/TP stay visible |
 | 2026-08-05 | Admin console sections: Overview, Datasets, Catalog, Users/roles, Jobs, System; server `/admin/*` + admin-only publish/Dukascopy | Login admin → `#/app/admin` tabs; user cannot publish |
+| 2026-08-05 | TV position overlay: bordered P&L labels (entry/PT/SL), entry-candle arrow+price, axis chips; projected SL/TP PnL; canvas-only | Place long — marker on fill bar; labels match TV screenshot |
 
 ---
 

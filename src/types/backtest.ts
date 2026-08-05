@@ -13,6 +13,23 @@ export interface BacktestTrade {
   pnl: number;
   /** Return fraction relative to entry price. */
   pnlPct: number;
+  /** Why the entry fired (user-facing). */
+  entryReason?: string;
+  /** Why the exit fired (user-facing). */
+  exitReason?: string;
+}
+
+/** Sparse chart mark for a strategy condition (entry / exit / signal). */
+export interface BacktestEvent {
+  id: string;
+  time: number;
+  price: number;
+  kind: 'entry' | 'exit' | 'signal';
+  /** Short condition label drawn on the chart. */
+  label: string;
+  side?: OrderSide;
+  /** Links to {@link BacktestTrade.id} when part of a closed trade. */
+  tradeId?: string;
 }
 
 /** Sparse equity sample (time + equity index, start = 1). */
@@ -66,6 +83,8 @@ export interface BacktestResult {
   timeStart: number;
   timeEnd: number;
   trades: BacktestTrade[];
+  /** Condition marks for chart overlay (may be empty on older saves). */
+  events: BacktestEvent[];
   equity: EquityPoint[];
   /** Final equity index (start = 1). */
   finalEquity: number;
@@ -90,6 +109,7 @@ export type BacktestWorkerResponse =
       type: 'result';
       requestId: number;
       trades: BacktestTrade[];
+      events: BacktestEvent[];
       equity: EquityPoint[];
       finalEquity: number;
       totalPnl: number;

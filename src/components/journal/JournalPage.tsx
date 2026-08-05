@@ -234,6 +234,12 @@ function BacktestTradeRow({
           <p className="text-xs text-muted tabular-nums mt-0.5">
             {trade.entryPrice.toFixed(digits)} → {trade.exitPrice.toFixed(digits)}
           </p>
+          {(trade.entryReason || trade.exitReason) && (
+            <p className="text-[11px] text-muted mt-1 leading-snug">
+              {trade.entryReason ?? 'Entry'}
+              {trade.exitReason ? ` · ${trade.exitReason}` : ''}
+            </p>
+          )}
         </div>
         <div className="text-right shrink-0 space-y-2">
           <p
@@ -444,7 +450,7 @@ export function JournalPage({
             onPress={() => setTab('backtests')}
             aria-selected={tab === 'backtests'}
           >
-            Backtests{emptyRuns ? '' : ` (${backtestRuns.length})`}
+            Strategy runs{emptyRuns ? '' : ` (${backtestRuns.length})`}
           </Button>
         </div>
 
@@ -621,7 +627,7 @@ export function JournalPage({
             <Card className="bg-surface border border-border">
               <Card.Content className="px-6 py-10 space-y-4 text-center">
                 <p className="text-sm text-muted">
-                  No strategy runs yet. Open a session, tap Backtest, choose a strategy, and Run.
+                  No strategy runs yet. Open a session, tap Strategy, choose a strategy, and Run.
                   Each run is kept here.
                 </p>
                 <Button variant="primary" className="min-h-11" onPress={goBacktest}>

@@ -33,6 +33,7 @@ self.onmessage = (e: MessageEvent<BacktestWorkerRequest>) => {
       type: 'result',
       requestId: msg.requestId,
       trades: out.trades,
+      events: out.events,
       equity: out.equity,
       finalEquity: out.finalEquity,
       totalPnl: out.totalPnl,

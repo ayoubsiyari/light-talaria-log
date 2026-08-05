@@ -18,7 +18,8 @@ interface BacktestRunMenuProps {
 }
 
 /**
- * Compact strategy + params popover + Run. Mobile: full-width sheet-like panel, ≥44px hits.
+ * Compact strategy runner — params + Run. Marks conditions on the chart.
+ * Mobile: ≥44px hits.
  */
 export function BacktestRunMenu({
   running = false,
@@ -65,7 +66,7 @@ export function BacktestRunMenu({
           size="sm"
           className="h-7 min-h-7 [@media(hover:none)]:min-h-11 px-2 sm:px-2.5 text-xs shrink-0"
           onPress={onCancel}
-          aria-label={label ?? 'Cancel backtest'}
+          aria-label={label ?? 'Cancel strategy run'}
         >
           Cancel
         </Button>
@@ -78,10 +79,10 @@ export function BacktestRunMenu({
           onPress={() => setOpen((v) => !v)}
           aria-expanded={open}
           aria-haspopup="dialog"
-          aria-label={label ?? 'Backtest strategy'}
+          aria-label={label ?? 'Run strategy'}
         >
-          <span className="sm:hidden">BT</span>
-          <span className="hidden sm:inline">Backtest</span>
+          <span className="sm:hidden">St</span>
+          <span className="hidden sm:inline">Strategy</span>
         </Button>
       )}
 
@@ -96,7 +97,7 @@ export function BacktestRunMenu({
           ].join(' ')}
         >
           <p id={titleId} className="text-xs font-semibold text-muted uppercase tracking-wide">
-            Strategy backtest
+            Run strategy
           </p>
 
           <label className="block space-y-1">
@@ -176,8 +177,52 @@ export function BacktestRunMenu({
             </label>
           )}
 
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block space-y-1">
+              <span className="text-xs text-muted">Slippage (frac)</span>
+              <input
+                type="number"
+                min={0}
+                max={0.01}
+                step={0.0001}
+                className="w-full min-h-11 rounded-md border border-border bg-background px-3 text-sm tabular-nums outline-none focus:border-accent"
+                value={params.costs.slippage}
+                onChange={(e) =>
+                  onParamsChange({
+                    ...params,
+                    costs: {
+                      ...params.costs,
+                      slippage: Math.max(0, Number(e.target.value) || 0),
+                    },
+                  })
+                }
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs text-muted">Spread (price)</span>
+              <input
+                type="number"
+                min={0}
+                step={0.00001}
+                className="w-full min-h-11 rounded-md border border-border bg-background px-3 text-sm tabular-nums outline-none focus:border-accent"
+                value={params.costs.spread}
+                onChange={(e) =>
+                  onParamsChange({
+                    ...params,
+                    costs: {
+                      ...params.costs,
+                      spread: Math.max(0, Number(e.target.value) || 0),
+                    },
+                  })
+                }
+              />
+            </label>
+          </div>
+
           <p className="text-[11px] text-muted leading-snug">
-            Caps at {MAX_BACKTEST_BARS.toLocaleString()} bars (newest). Saved to Journal.
+            Long/short flips on each signal. Marks every condition on the chart. Caps at{' '}
+            {MAX_BACKTEST_BARS.toLocaleString()} bars (newest). Saved under Trades → Strategy
+            runs.
           </p>
 
           <div className="flex gap-2">

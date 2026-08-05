@@ -2547,16 +2547,46 @@ export default function App() {
       .then((result) => {
         const note = result.truncated
           ? `Capped at ${MAX_BACKTEST_BARS.toLocaleString()} bars (newest)`
-          : null;
+          : `${result.trades.length} trades · ${result.events.length} marks`;
         setBacktestResult(result, note);
         saveJournalResult(session.id, session.name, result);
+        // Auto-show the strategy's indicators so conditions are readable on chart
+        setEnabledIndicators((prev) => {
+          const next = [...prev];
+          const upsert = (
+            id: 'sma' | 'donchian',
+            period: number,
+            colors?: string[],
+          ) => {
+            const i = next.findIndex(
+              (e) => e.id === id && Number(e.params.period) === period,
+            );
+            if (i >= 0) {
+              next[i] = { ...next[i]!, visible: true };
+              return;
+            }
+            next.push({
+              id,
+              params: { period },
+              visible: true,
+              colors,
+            });
+          };
+          if (backtestParams.strategyId === 'sma_cross') {
+            upsert('sma', backtestParams.sma.fastPeriod, ['#38bdf8']);
+            upsert('sma', backtestParams.sma.slowPeriod, ['#f472b6']);
+          } else {
+            upsert('donchian', backtestParams.donchian.period);
+          }
+          return next;
+        });
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') {
           setBacktestCancelled();
           return;
         }
-        setBacktestError(err instanceof Error ? err.message : 'Backtest failed');
+        setBacktestError(err instanceof Error ? err.message : 'Strategy run failed');
       });
   }, [session, activePaneId, seriesForPane, backtestParams]);
 

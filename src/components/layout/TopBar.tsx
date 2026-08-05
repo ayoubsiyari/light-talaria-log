@@ -237,7 +237,7 @@ export function TopBar({
             size="sm"
             className="h-7 min-h-7 [@media(hover:none)]:min-h-11 px-2 sm:px-2.5 text-xs shrink-0"
             onPress={onCancelBacktest}
-            aria-label={backtestLabel ?? 'Cancel backtest'}
+            aria-label={backtestLabel ?? 'Cancel strategy run'}
           >
             Cancel
           </Button>
@@ -248,10 +248,10 @@ export function TopBar({
             className="h-7 min-h-7 [@media(hover:none)]:min-h-11 px-2 sm:px-2.5 text-xs shrink-0"
             isDisabled={!onRunBacktest}
             onPress={onRunBacktest}
-            aria-label={backtestLabel ?? 'Run backtest'}
+            aria-label={backtestLabel ?? 'Run strategy'}
           >
-            <span className="sm:hidden">BT</span>
-            <span className="hidden sm:inline">Backtest</span>
+            <span className="sm:hidden">St</span>
+            <span className="hidden sm:inline">Strategy</span>
           </Button>
         )}
       </div>

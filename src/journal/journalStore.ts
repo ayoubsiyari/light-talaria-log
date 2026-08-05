@@ -37,6 +37,7 @@ function normalizeEntry(raw: unknown): JournalEntry | null {
   const result: BacktestResult = {
     ...e.result,
     params: normalizeBacktestParams(e.result.params),
+    events: Array.isArray(e.result.events) ? e.result.events : [],
     runId:
       typeof e.result.runId === 'string'
         ? e.result.runId
@@ -100,7 +101,12 @@ export function saveJournalResult(
   result: BacktestResult,
 ): JournalEntry {
   const runId = result.runId && result.runId.length > 0 ? result.runId : newId();
-  const withId: BacktestResult = { ...result, runId, params: normalizeBacktestParams(result.params) };
+  const withId: BacktestResult = {
+    ...result,
+    runId,
+    params: normalizeBacktestParams(result.params),
+    events: Array.isArray(result.events) ? result.events : [],
+  };
   const entry: JournalEntry = {
     id: runId,
     sessionId,

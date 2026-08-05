@@ -1,12 +1,17 @@
 /**
- * Paint backtest entry/exit markers + sparse equity polyline from results only.
+ * Paint strategy-run markers + condition labels + sparse equity polyline.
  * Engine stays dumb — no strategy math here.
  *
  * Dense-trade safe: binary-search cull by time, then skip markers closer than
  * MIN_MARKER_PX so zoomed-out overlays stay cheap.
  */
 import { logicalIndexAtTime } from '@/data/timeframeAgg';
-import type { BacktestResult, BacktestTrade, EquityPoint } from '@/types/backtest';
+import type {
+  BacktestEvent,
+  BacktestResult,
+  BacktestTrade,
+  EquityPoint,
+} from '@/types/backtest';
 import type { ChartBar, VisibleRange } from '@/types/bar';
 import type { ChartColors } from '../chartTheme';
 import { indexToX, priceToY, type PlotRect, type PriceScale } from '../scales';
@@ -16,6 +21,9 @@ const MARKER_R = 5;
 const MIN_MARKER_PX = 6;
 /** Hard cap per paint — leftover trades still contribute via equity band. */
 const MAX_MARKERS_PER_FRAME = 400;
+/** Min gap between label chips (px). */
+const MIN_LABEL_PX = 48;
+const MAX_LABELS_PER_FRAME = 48;
 
 export function drawBacktest(
   ctx: CanvasRenderingContext2D,
@@ -49,6 +57,11 @@ export function drawBacktest(
   const lo = lowerBoundTrade(trades, fromT - padSec);
   const hi = upperBoundTrade(trades, toT + padSec);
 
+  const events = result.events?.length
+    ? result.events
+    : synthesizeEventsFromTrades(trades);
+  const eventsOwnMarkers = events.length > 0;
+
   let drawn = 0;
   let lastEntryX = -Infinity;
   let lastExitX = -Infinity;
@@ -66,13 +79,160 @@ export function drawBacktest(
       lastEntryX,
       lastExitX,
       focusedTradeId != null && trade.id === focusedTradeId,
+      /* markers */ !eventsOwnMarkers,
     );
     if (painted.entryX != null) lastEntryX = painted.entryX;
     if (painted.exitX != null) lastExitX = painted.exitX;
     if (painted.drew) drawn++;
   }
 
+  drawEventLabels(
+    ctx,
+    events,
+    bars,
+    range,
+    plot,
+    scale,
+    colors,
+    fromT - padSec,
+    toT + padSec,
+    focusedTradeId,
+  );
+
   ctx.restore();
+}
+
+function synthesizeEventsFromTrades(
+  trades: readonly BacktestTrade[],
+): BacktestEvent[] {
+  const out: BacktestEvent[] = [];
+  for (const t of trades) {
+    out.push({
+      id: `${t.id}-in`,
+      time: t.entryTime,
+      price: t.entryPrice,
+      kind: 'entry',
+      label: t.entryReason ?? (t.side === 'buy' ? 'Long entry' : 'Short entry'),
+      side: t.side,
+      tradeId: t.id,
+    });
+    out.push({
+      id: `${t.id}-out`,
+      time: t.exitTime,
+      price: t.exitPrice,
+      kind: 'exit',
+      label: t.exitReason ?? 'Exit',
+      side: t.side,
+      tradeId: t.id,
+    });
+  }
+  return out;
+}
+
+function drawEventLabels(
+  ctx: CanvasRenderingContext2D,
+  events: readonly BacktestEvent[],
+  bars: readonly ChartBar[],
+  range: VisibleRange,
+  plot: PlotRect,
+  scale: PriceScale,
+  colors: ChartColors,
+  fromT: number,
+  toT: number,
+  focusedTradeId: string | null,
+): void {
+  if (events.length === 0) return;
+
+  // Sort by time for stable cull
+  const sorted = events
+    .filter((e) => e.time >= fromT && e.time <= toT)
+    .slice()
+    .sort((a, b) => a.time - b.time);
+
+  let lastLabelX = -Infinity;
+  let labels = 0;
+  let alt = 0;
+
+  ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
+  ctx.textBaseline = 'middle';
+
+  for (const ev of sorted) {
+    if (labels >= MAX_LABELS_PER_FRAME) break;
+    const pt = pointXY(ev.time, ev.price, bars, range, plot, scale);
+    if (!pt) continue;
+
+    const focused = focusedTradeId != null && ev.tradeId === focusedTradeId;
+    if (!focused && Math.abs(pt.x - lastLabelX) < MIN_LABEL_PX) continue;
+
+    const fill =
+      ev.kind === 'exit'
+        ? colors.downColor
+        : ev.side === 'sell'
+          ? colors.downColor
+          : colors.upColor;
+
+    // Marker (events may densify beyond trade triangles)
+    drawTriangle(
+      ctx,
+      pt.x,
+      pt.y,
+      ev.kind === 'exit' || ev.side === 'sell' ? 'down' : 'up',
+      fill,
+    );
+
+    const text = truncateLabel(ev.label, 28);
+    const tw = ctx.measureText(text).width;
+    const padX = 4;
+    const h = 14;
+    const w = tw + padX * 2;
+    const above = alt % 2 === 0;
+    alt += 1;
+    const bx = Math.min(
+      Math.max(plot.left + 2, pt.x - w / 2),
+      plot.left + plot.width - w - 2,
+    );
+    const by = above
+      ? Math.max(plot.top + 2, pt.y - MARKER_R - h - 4)
+      : Math.min(plot.top + plot.height - h - 2, pt.y + MARKER_R + 4);
+
+    ctx.globalAlpha = focused ? 0.95 : 0.82;
+    ctx.fillStyle = colors.background;
+    ctx.strokeStyle = focused ? colors.accent : fill;
+    ctx.lineWidth = focused ? 1.5 : 1;
+    roundRect(ctx, bx, by, w, h, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = colors.axisText;
+    ctx.textAlign = 'left';
+    ctx.fillText(text, bx + padX, by + h / 2);
+
+    lastLabelX = pt.x;
+    labels += 1;
+  }
+}
+
+function truncateLabel(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return `${s.slice(0, max - 1)}…`;
+}
+
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+): void {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
 }
 
 function lowerBoundTrade(trades: readonly BacktestTrade[], time: number): number {
@@ -92,7 +252,6 @@ function upperBoundTrade(trades: readonly BacktestTrade[], time: number): number
   let hi = trades.length;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
-    // Include trades whose exit still overlaps the window
     const t = Math.max(trades[mid]!.entryTime, trades[mid]!.exitTime);
     if (t <= time) lo = mid + 1;
     else hi = mid;
@@ -111,6 +270,7 @@ function drawTrade(
   lastEntryX: number,
   lastExitX: number,
   focused = false,
+  drawMarkers = true,
 ): { drew: boolean; entryX: number | null; exitX: number | null } {
   const win = trade.pnl >= 0;
   const segColor = win ? colors.upColor : colors.downColor;
@@ -118,16 +278,15 @@ function drawTrade(
   const entry = pointXY(trade.entryTime, trade.entryPrice, bars, range, plot, scale);
   const exit = pointXY(trade.exitTime, trade.exitPrice, bars, range, plot, scale);
 
-  // Always show focused trade even when dense-decimated.
   const showEntry =
     entry != null && (focused || Math.abs(entry.x - lastEntryX) >= MIN_MARKER_PX);
   const showExit =
     exit != null && (focused || Math.abs(exit.x - lastExitX) >= MIN_MARKER_PX);
-  if (!showEntry && !showExit) {
+  if (!entry && !exit) {
     return { drew: false, entryX: null, exitX: null };
   }
 
-  if (entry && exit && (showEntry || showExit)) {
+  if (entry && exit) {
     ctx.strokeStyle = focused ? colors.accent : segColor;
     ctx.globalAlpha = focused ? 0.9 : 0.45;
     ctx.lineWidth = focused ? 2 : 1;
@@ -140,18 +299,26 @@ function drawTrade(
     ctx.globalAlpha = 1;
   }
 
-  if (showEntry && entry) {
-    if (focused) {
-      ctx.strokeStyle = colors.accent;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(entry.x, entry.y, MARKER_R + 4, 0, Math.PI * 2);
-      ctx.stroke();
+  if (drawMarkers) {
+    if (showEntry && entry) {
+      if (focused) {
+        ctx.strokeStyle = colors.accent;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(entry.x, entry.y, MARKER_R + 4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      drawTriangle(
+        ctx,
+        entry.x,
+        entry.y,
+        trade.side === 'buy' ? 'up' : 'down',
+        colors.upColor,
+      );
     }
-    drawTriangle(ctx, entry.x, entry.y, trade.side === 'buy' ? 'up' : 'down', colors.upColor);
-  }
-  if (showExit && exit) {
-    drawTriangle(ctx, exit.x, exit.y, 'down', colors.downColor);
+    if (showExit && exit) {
+      drawTriangle(ctx, exit.x, exit.y, 'down', colors.downColor);
+    }
   }
 
   return {
@@ -161,7 +328,6 @@ function drawTrade(
   };
 }
 
-/** Equity curve in the top 18% of the plot (normalized), accent stroke. */
 function drawEquityPolyline(
   ctx: CanvasRenderingContext2D,
   equity: readonly EquityPoint[],
@@ -196,7 +362,7 @@ function drawEquityPolyline(
     const idx = logicalIndexAtTime(bars, p.time);
     if (idx < range.fromIndex - 1 || idx > range.toIndex + 1) continue;
     const x = indexToX(idx, range, plot);
-    if (started && Math.abs(x - lastX) < 1.5) continue; // decimate dense equity
+    if (started && Math.abs(x - lastX) < 1.5) continue;
     const t = (p.equity - minE) / (maxE - minE);
     const y = bandTop + bandH * (1 - t);
     if (!started) {

@@ -89,6 +89,14 @@ export interface Order {
 /** Why a position fully closed — persisted on POSITION_CLOSED for analytics. */
 export type TradeExitReason = 'TP' | 'SL' | 'MANUAL' | 'STOP_OUT' | 'TRAILING';
 
+export interface PartialCloseRecord {
+  time: number;
+  price: number;
+  size: number;
+  netPnLAccount: number;
+  exitReason: TradeExitReason;
+}
+
 export interface Position {
   id: PositionId;
   symbol: string;
@@ -120,6 +128,18 @@ export interface Position {
   /** Fill-bar extremes for entry-efficiency metric; null if unknown. */
   entryBarHigh: number | null;
   entryBarLow: number | null;
+  /** Entry order type (MARKET/LIMIT/…). */
+  orderType: OrderType;
+  entryOrderId: string;
+  /** Risk $ at open vs initial stop (frozen). */
+  originalRiskAmount: number | null;
+  /** Size at first open (before partials). */
+  originalSize: number;
+  spreadPipsAtEntry: number | null;
+  commissionAtEntry: number;
+  pipValueAtEntry: number | null;
+  /** Accumulated partial reduces before full close. */
+  partialCloses: PartialCloseRecord[];
 }
 
 export interface AccountState {
@@ -149,6 +169,8 @@ export interface OrderEngineState {
    */
   lastSwapUtcDay: number | null;
   symbol: string;
+  /** Dataset / CSV id for trade collect (optional). */
+  sourceFileId: string | null;
 }
 
 export type EngineEventType =

@@ -74,6 +74,115 @@ function metaOf(row: SessionRow): Record<string, unknown> {
   return row.meta && typeof row.meta === 'object' ? row.meta : {};
 }
 
+type ManualTradeRow = {
+  side: 'buy' | 'sell';
+  entryTime: number;
+  exitTime: number;
+  entryPrice: number;
+  exitPrice: number;
+  pnl: number;
+  pnlPct: number;
+  /** Full CollectedTrade (or thin fallback) for trades.meta. */
+  meta: Record<string, unknown>;
+};
+
+/** Project POSITION_OPENED/CLOSED journal events → trades table rows. */
+function closedTradesFromOrderJournal(journal: {
+  entries: Array<Record<string, unknown>>;
+}): ManualTradeRow[] {
+  const opens = new Map<
+    string,
+    { side: 'buy' | 'sell'; entryPrice: number; entryTime: number }
+  >();
+  const out: ManualTradeRow[] = [];
+
+  for (const e of journal.entries) {
+    const type = typeof e.type === 'string' ? e.type : '';
+    const payload =
+      e.payload && typeof e.payload === 'object'
+        ? (e.payload as Record<string, unknown>)
+        : {};
+    const cursorTime =
+      typeof e.cursorTime === 'number' && Number.isFinite(e.cursorTime)
+        ? e.cursorTime
+        : 0;
+
+    if (type === 'POSITION_OPENED') {
+      const id = typeof payload.positionId === 'string' ? payload.positionId : '';
+      const sideRaw = payload.side;
+      const side =
+        sideRaw === 'SELL' || sideRaw === 'sell' ? 'sell' : 'buy';
+      const entryPrice = Number(payload.entryPrice);
+      if (!id || !Number.isFinite(entryPrice)) continue;
+      opens.set(id, { side, entryPrice, entryTime: cursorTime });
+      continue;
+    }
+
+    if (type !== 'POSITION_CLOSED') continue;
+    const id = typeof payload.positionId === 'string' ? payload.positionId : '';
+    const fillPrice =
+      Number(payload.fillPrice) || Number(payload.fillsPrice);
+    const net = Number(payload.netPnLAccount);
+    if (!id || !Number.isFinite(fillPrice)) continue;
+    const open = opens.get(id);
+    opens.delete(id);
+    const sidePayload = payload.side;
+    const side: 'buy' | 'sell' =
+      sidePayload === 'SELL' || sidePayload === 'sell'
+        ? 'sell'
+        : sidePayload === 'BUY' || sidePayload === 'buy'
+          ? 'buy'
+          : (open?.side ?? 'buy');
+    const entryPrice = Number.isFinite(Number(payload.entryPrice))
+      ? Number(payload.entryPrice)
+      : (open?.entryPrice ?? fillPrice);
+    const entryTime = Number.isFinite(Number(payload.openedAt))
+      ? Number(payload.openedAt)
+      : (open?.entryTime ?? cursorTime);
+    const pnl = Number.isFinite(net) ? net : 0;
+    const pnlPct =
+      entryPrice !== 0
+        ? ((fillPrice - entryPrice) / entryPrice) *
+          100 *
+          (side === 'buy' ? 1 : -1)
+        : 0;
+    const collected =
+      payload.collected && typeof payload.collected === 'object'
+        ? (payload.collected as Record<string, unknown>)
+        : {
+            tradeId: id,
+            symbol: typeof payload.symbol === 'string' ? payload.symbol : null,
+            type: side,
+            orderType: payload.orderType ?? null,
+            status: 'closed',
+            openPrice: entryPrice,
+            closePrice: fillPrice,
+            stopLoss: payload.stopLoss ?? payload.initialStopPrice ?? null,
+            takeProfit: payload.takeProfit ?? payload.initialTargetPrice ?? null,
+            initial_sl: payload.initialStopPrice ?? null,
+            quantity: payload.size ?? null,
+            netPnL: pnl,
+            rMultiple: payload.rMultiple ?? null,
+            closeType: payload.exitReason ?? 'MANUAL',
+            mfe: payload.mfePrice ?? null,
+            mae: payload.maePrice ?? null,
+            openTime: entryTime,
+            closeTime: cursorTime,
+          };
+    out.push({
+      side,
+      entryTime,
+      exitTime: cursorTime,
+      entryPrice,
+      exitPrice: fillPrice,
+      pnl,
+      pnlPct,
+      meta: { collected },
+    });
+  }
+  return out;
+}
+
 function sessionDto(row: SessionRow) {
   const legs = Array.isArray(row.legs) ? row.legs : [];
   const primary = legs[0] as { pair?: string; datasetId?: string } | undefined;
@@ -363,19 +472,73 @@ export async function registerUserSyncRoutes(app: FastifyInstance): Promise<void
       .object({
         sessionId: z.string().uuid(),
         entries: z.array(z.record(z.unknown())).max(50000),
+        /** Command log — required to rebuild open book after sync/reload. */
+        commands: z.array(z.unknown()).max(50000).optional().default([]),
         bootstrap: z.record(z.unknown()),
       })
       .safeParse(req.body);
     if (!body.success) {
       return reply.code(400).send({ error: 'Invalid order journal payload' });
     }
-    const meta = { ...metaOf(session), orderJournal: body.data };
-    await query(
-      `UPDATE chart_sessions SET meta = $3::jsonb, updated_at = now()
-       WHERE id = $1 AND user_id = $2`,
-      [id, user.id, JSON.stringify(meta)],
-    );
-    return { ok: true };
+    const orderJournal = {
+      sessionId: body.data.sessionId,
+      entries: body.data.entries,
+      commands: body.data.commands,
+      bootstrap: body.data.bootstrap,
+    };
+    const meta = { ...metaOf(session), orderJournal };
+    const closed = closedTradesFromOrderJournal(orderJournal);
+
+    await withClient(async (client) => {
+      await client.query('BEGIN');
+      try {
+        await client.query(
+          `UPDATE chart_sessions SET meta = $3::jsonb, updated_at = now()
+           WHERE id = $1 AND user_id = $2`,
+          [id, user.id, JSON.stringify(meta)],
+        );
+        // Replace Place Order closed trades for this session (source=manual).
+        await client.query(
+          `DELETE FROM trades
+           WHERE user_id = $1 AND session_id = $2
+             AND source = 'manual' AND backtest_run_id IS NULL`,
+          [user.id, id],
+        );
+        const datasetId =
+          session.primary_dataset_id && isUuid(session.primary_dataset_id)
+            ? session.primary_dataset_id
+            : null;
+        for (const t of closed.slice(0, 5000)) {
+          await client.query(
+            `INSERT INTO trades (
+               id, user_id, session_id, dataset_id, backtest_run_id,
+               side, entry_time, exit_time, entry_price, exit_price, pnl, pnl_pct, source, meta
+             ) VALUES (
+               gen_random_uuid(), $1, $2, $3, NULL,
+               $4, $5, $6, $7, $8, $9, $10, 'manual', $11::jsonb
+             )`,
+            [
+              user.id,
+              id,
+              datasetId,
+              t.side,
+              t.entryTime,
+              t.exitTime,
+              t.entryPrice,
+              t.exitPrice,
+              t.pnl,
+              t.pnlPct,
+              JSON.stringify(t.meta),
+            ],
+          );
+        }
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      }
+    });
+    return { ok: true, tradeCount: closed.length };
   });
 
   app.get('/api/v1/sessions/:id/order-journal', async (req, reply) => {

@@ -108,6 +108,8 @@ export function createOrderSessionBridge(input: {
   balance?: number;
   leverage?: number;
   spec?: InstrumentSpec;
+  /** Dataset id stamped onto auto-collected trades. */
+  sourceFileId?: string | null;
 }): OrderSessionBridge {
   const primaryKey = instrumentSymbolKey(input.symbol);
   const specs = new Map<string, InstrumentSpec>();
@@ -142,6 +144,7 @@ export function createOrderSessionBridge(input: {
     balance: input.balance ?? 10_000,
     leverage: input.leverage ?? specFor(primaryKey).leverage,
     sessionId: input.sessionId,
+    sourceFileId: input.sourceFileId ?? null,
   });
   let journal = createJournal(input.sessionId, {
     symbol: state.symbol,
@@ -149,6 +152,7 @@ export function createOrderSessionBridge(input: {
     balance: state.account.balance,
     leverage: state.account.leverage,
     mode: state.mode,
+    sourceFileId: input.sourceFileId ?? null,
   });
   let lastSteppedTime: number | null = null;
   /** Last mark per symbol (bid = bar.close). */
@@ -215,6 +219,8 @@ export function createOrderSessionBridge(input: {
       leverage: journal.bootstrap.leverage,
       sessionId: input.sessionId,
       mode: journal.bootstrap.mode,
+      sourceFileId:
+        journal.bootstrap.sourceFileId ?? input.sourceFileId ?? null,
     });
     lastSteppedTime = null;
     marks.clear();

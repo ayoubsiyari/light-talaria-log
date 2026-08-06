@@ -5,7 +5,12 @@
 
 import { getSession, listSessions } from '@/sessions/sessionStore';
 import {
+  asCollectedTrade,
+  type CollectedTrade,
+} from './collectedTrade';
+import {
   clearJournal,
+  listPersistedJournalSessionIds,
   loadJournal,
   type JournalEntry,
   type OrderJournal,
@@ -15,8 +20,6 @@ import type { ChartOrder } from '@/types/order';
 
 /** Cap closed-trade markers on chart (oldest dropped). */
 const MAX_CLOSED_CHART_MARKS = 80;
-
-const STORAGE_PREFIX = 'talaria.orderJournal.v1:';
 
 const EXIT_REASONS = new Set<TradeExitReason>([
   'TP',
@@ -53,6 +56,8 @@ export interface OrderTrade {
   entryBarHigh: number | null;
   entryBarLow: number | null;
   balanceAfter: number;
+  /** Full auto-collected record when present on POSITION_CLOSED. */
+  collected: CollectedTrade | null;
 }
 
 export interface OrderJournalView {
@@ -257,6 +262,8 @@ export function projectOrderJournal(journal: OrderJournal): OrderJournalView {
       const mae = asNum(e.payload.maePrice) ?? entryPrice;
       const tradeSymbol = asStr(e.payload.symbol) ?? symbol;
 
+      const collected = asCollectedTrade(e.payload.collected);
+
       trades.push({
         id: `${id}-${e.seq}`,
         symbol: tradeSymbol,
@@ -283,6 +290,7 @@ export function projectOrderJournal(journal: OrderJournal): OrderJournalView {
         entryBarHigh: asNum(e.payload.entryBarHigh),
         entryBarLow: asNum(e.payload.entryBarLow),
         balanceAfter: balance,
+        collected,
       });
     }
   }
@@ -302,25 +310,14 @@ export function projectOrderJournal(journal: OrderJournal): OrderJournalView {
   };
 }
 
-function listStoredSessionIds(): string[] {
-  if (typeof localStorage === 'undefined') return [];
-  const ids: string[] = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k?.startsWith(STORAGE_PREFIX)) {
-      ids.push(k.slice(STORAGE_PREFIX.length));
-    }
-  }
-  return ids;
-}
-
 /**
  * All order journals that have at least one closed trade, newest activity first.
  * `live` (current chart session bridge) is preferred when present.
  */
 export function listOrderJournalViews(live?: OrderJournal | null): OrderJournalView[] {
   const byId = new Map<string, OrderJournal>();
-  for (const id of listStoredSessionIds()) {
+  // Scoped localStorage keys (anon / per-user) — not the legacy unscoped prefix.
+  for (const id of listPersistedJournalSessionIds()) {
     const j = loadJournal(id);
     if (j) byId.set(id, j);
   }

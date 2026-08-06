@@ -1151,12 +1151,23 @@ export default function App() {
         ask,
       });
       unsubs.push(
+        chart.onOrderLevelLive((hit) => {
+          // Draft ticket: live price/pips while dragging (rAF-coalesced).
+          if (hit.orderId === '__draft__') {
+            setTicketLevelPatch({
+              kind: hit.kind,
+              price: hit.price,
+            } satisfies OrderLevelPatch);
+          }
+        }),
+      );
+      unsubs.push(
         chart.onOrderLevelCommit((hit) => {
           if (hit.cancelled) {
             syncOrdersFromBridge();
             return;
           }
-          // Draft ticket levels → update order form (mouseup only)
+          // Draft ticket levels → final sync on mouseup
           if (hit.orderId === '__draft__') {
             setTicketLevelPatch({
               kind: hit.kind,
@@ -1652,6 +1663,7 @@ export default function App() {
           symbols: seriesList.map((s) => s.pair),
           accountCurrency: 'USD',
           balance: startingBalance,
+          sourceFileId: primary.datasetId,
         });
         orderBridgeRef.current = bridge;
 

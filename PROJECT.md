@@ -846,6 +846,9 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-05 | Closed marks: no Y-scale pin / no sticky axis pill; pending MARKET follows live tip again | Hit TP — labels at exit bar; Place→Play entry tracks tip |
 | 2026-08-05 | Closed trades stay on chart: entry/exit triangles + TP/SL label after fill (journal → toChartOrders) | Place → hit TP — marks remain; Balance updates |
 | 2026-08-05 | Order costs off for now: `ORDER_COSTS_ENABLED=false` zeros spread/commission/slippage (code kept) | Place buy — tip=ask; flip flag later for broker costs |
+| 2026-08-06 | Fix Journal missing trades after refresh: list scoped `orderJournal.v1` keys (anon/user), not legacy prefix | Place→close→refresh→Trades/Orders shows fills |
+| 2026-08-06 | Persist Place Order to DB: order-journal keeps `commands[]`; closed fills upserted into `trades` (source=manual) | Login → close TP → check meta.orderJournal + trades rows |
+| 2026-08-06 | Auto-collect full trade record on SL/TP close (`CollectedTrade` on POSITION_CLOSED + `trades.meta`) | Place→hit SL/TP → journal payload.collected + DB meta |
 | 2026-08-05 | Order drag band: `globalAlpha` so CSS tokens (`--success`/`--danger`) still tint @0.2 | Drag SL/TP — soft fill visible |
 
 ---

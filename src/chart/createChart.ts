@@ -196,6 +196,8 @@ export interface ChartInstance {
   /** Context for SL/TP drag readout + tick snap (no React during drag). */
   setOrderDragContext: (ctx: OrderDragContext | null) => void;
   onOrderLevelCommit: (cb: (hit: OrderLevelHit & { price: number; cancelled?: boolean }) => void) => () => void;
+  /** Live draft/level drag (rAF-coalesced) — ticket fields while dragging. */
+  onOrderLevelLive: (cb: (hit: OrderLevelHit & { price: number }) => void) => () => void;
   /** Strategy backtest markers / equity overlay (results only). */
   setBacktestResult: (result: BacktestResult | null) => void;
   /** Click-to-explain: nearest strategy mark under pointer. */
@@ -348,6 +350,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   const orderLevelCommitListeners = new Set<
     (hit: OrderLevelHit & { price: number; cancelled?: boolean }) => void
   >();
+  const orderLevelLiveListeners = new Set<
+    (hit: OrderLevelHit & { price: number }) => void
+  >();
+  let orderLevelLiveRaf: number | null = null;
   let backtestResult: BacktestResult | null = null;
 
   /** Layered paint: series | drawings | overlay (crosshair/draft). */
@@ -1116,6 +1122,19 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
           bid: orderDragCtx.bid,
           ask: orderDragCtx.ask,
         });
+        // Coalesce live ticket sync to 1×/frame (chart paint stays overlay-only).
+        if (orderLevelLiveListeners.size > 0 && orderLevelLiveRaf == null) {
+          orderLevelLiveRaf = requestAnimationFrame(() => {
+            orderLevelLiveRaf = null;
+            if (!levelDrag.active) return;
+            const payload = {
+              orderId: levelDrag.orderId,
+              kind: levelDrag.kind,
+              price: levelDrag.currentPrice,
+            };
+            for (const cb of orderLevelLiveListeners) cb(payload);
+          });
+        }
         markOverlayDirty();
         return;
       }
@@ -1397,6 +1416,11 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     onOrderLevelCommit(cb) {
       orderLevelCommitListeners.add(cb);
       return () => orderLevelCommitListeners.delete(cb);
+    },
+
+    onOrderLevelLive(cb) {
+      orderLevelLiveListeners.add(cb);
+      return () => orderLevelLiveListeners.delete(cb);
     },
 
     setBacktestResult(result: BacktestResult | null) {
@@ -1786,6 +1810,11 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       drawingSelectListeners.clear();
       freehandStrokeListeners.clear();
       orderLevelCommitListeners.clear();
+      orderLevelLiveListeners.clear();
+      if (orderLevelLiveRaf != null) {
+        cancelAnimationFrame(orderLevelLiveRaf);
+        orderLevelLiveRaf = null;
+      }
       drawingDrag = null;
       freehandStrokeEnabled = false;
       marqueeZoomEnabled = false;

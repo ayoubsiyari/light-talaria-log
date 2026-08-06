@@ -104,6 +104,12 @@ describe('Trade collect enrichment', () => {
     assert.ok((p.mfePrice as number) >= 1.108 - spec.tickSize);
     assert.ok((p.maePrice as number) <= 1.094 + spec.tickSize);
     assert.equal(Object.keys(state.positions).length, 0);
+    const collected = p.collected as Record<string, unknown> | undefined;
+    assert.ok(collected);
+    assert.equal(collected!.closeType, 'SL');
+    assert.equal(collected!.orderType, 'MARKET');
+    assert.ok(typeof collected!.holdingTimeHours === 'number');
+    assert.ok(typeof collected!.mfe_r === 'number');
   });
 
   it('TP close sets exitReason TP', () => {

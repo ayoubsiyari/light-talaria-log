@@ -82,6 +82,7 @@ export async function pullAll(): Promise<void> {
     try {
       const oj = await fetchRemoteOrderJournal(s.id);
       if (oj && typeof oj === 'object' && Array.isArray(oj.entries)) {
+        // normalizeJournal (via persist) fills missing commands[] from older syncs.
         persistOrderJournalLocal(oj, { skipCloud: true });
       } else {
         clearOrderJournalLocal(s.id, { skipCloud: true });
@@ -168,22 +169,54 @@ export async function pushDeleteJournal(id: string): Promise<void> {
   }
 }
 
+const pendingOrderJournals = new Map<string, OrderJournal>();
+
+async function pushOrderJournalNow(journal: OrderJournal): Promise<void> {
+  const id = journal.sessionId;
+  const session = getSession(id);
+  if (session) await upsertRemoteSession(session);
+  await putRemoteOrderJournal(id, journal);
+}
+
 export function schedulePushOrderJournal(journal: OrderJournal): void {
   if (!isCloudSyncEnabled()) return;
   const id = journal.sessionId;
+  pendingOrderJournals.set(id, journal);
   const prev = orderJournalTimers.get(id);
   if (prev) window.clearTimeout(prev);
   const t = window.setTimeout(() => {
     orderJournalTimers.delete(id);
-    void (async () => {
-      try {
-        const session = getSession(id);
-        if (session) await upsertRemoteSession(session);
-        await putRemoteOrderJournal(id, journal);
-      } catch (err) {
-        console.warn('[cloudSync] pushOrderJournal failed', err);
-      }
-    })();
+    const latest = pendingOrderJournals.get(id);
+    pendingOrderJournals.delete(id);
+    if (!latest) return;
+    void pushOrderJournalNow(latest).catch((err) => {
+      console.warn('[cloudSync] pushOrderJournal failed', err);
+    });
   }, 500);
   orderJournalTimers.set(id, t);
+}
+
+/** Flush debounced order journals (call on page hide / unload). */
+export function flushPendingOrderJournals(): void {
+  if (!isCloudSyncEnabled()) return;
+  for (const [id, timer] of orderJournalTimers) {
+    window.clearTimeout(timer);
+    orderJournalTimers.delete(id);
+  }
+  const pending = [...pendingOrderJournals.values()];
+  pendingOrderJournals.clear();
+  for (const journal of pending) {
+    void pushOrderJournalNow(journal).catch((err) => {
+      console.warn('[cloudSync] flushOrderJournal failed', err);
+    });
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => {
+    flushPendingOrderJournals();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushPendingOrderJournals();
+  });
 }

@@ -165,11 +165,15 @@ export function OrderTicket({
     if (!tpPlaced) setTp(seed);
   }, [open, type, lastPx, digits, slPlaced, tpPlaced]);
 
-  // Chart drag → ticket fields (mouseup)
+  // Chart drag → ticket fields (live while dragging + mouseup)
   useEffect(() => {
     if (!open || !levelPatch) return;
     const pxNum = levelPatch.price;
     const px = pxNum.toFixed(digits);
+    const distPips = (from: number, to: number) =>
+      pipSize > 0
+        ? Math.max(1, Math.round(Math.abs(to - from) / pipSize))
+        : 1;
     if (levelPatch.kind === 'entry') {
       setType(inferPendingType(side, pxNum, bid, ask));
       setPrice(px);
@@ -179,16 +183,20 @@ export function OrderTicket({
       setSlOn(true);
       setSlPlaced(true);
       setSl(px);
+      setSlPips(distPips(entryPx, pxNum));
     } else if (levelPatch.kind === 'tp') {
       setTpOn(true);
       setTpPlaced(true);
       setTp(px);
+      setTpPips(distPips(entryPx, pxNum));
     }
     onLevelPatchConsumed?.();
   }, [
     levelPatch,
     open,
     digits,
+    pipSize,
+    entryPx,
     onLevelPatchConsumed,
     side,
     bid,
@@ -652,11 +660,14 @@ function BracketRow({
               value={pips}
               onChange={(e) => onPips(Number(e.target.value))}
             >
-              {[10, 15, 20, 25, 40, 50, 75, 100, 150, 200].map((t) => (
-                <option key={t} value={t}>
-                  {t} pips
-                </option>
-              ))}
+              {[10, 15, 20, 25, 40, 50, 75, 100, 150, 200, pips]
+                .filter((t, i, a) => a.indexOf(t) === i)
+                .sort((a, b) => a - b)
+                .map((t) => (
+                  <option key={t} value={t}>
+                    {t} pips
+                  </option>
+                ))}
             </select>
           </div>
           {hint && <p className="text-[10px] text-muted">{hint}</p>}

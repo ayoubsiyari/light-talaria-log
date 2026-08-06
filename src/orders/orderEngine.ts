@@ -27,6 +27,12 @@ import {
   totalUsedMargin,
 } from './margin';
 import {
+  buildCollectedTrade,
+  pipValueAccount,
+  riskAmountAtEntry,
+  spreadPips,
+} from './collectedTrade';
+import {
   commissionForSide,
   grossPnL,
   notionalQty,
@@ -71,6 +77,7 @@ export function createInitialState(input: {
   leverage: number;
   sessionId: string;
   mode?: 'netting' | 'hedging';
+  sourceFileId?: string | null;
 }): OrderEngineState {
   return {
     orders: {},
@@ -87,6 +94,7 @@ export function createInitialState(input: {
     lastBarTime: null,
     lastSwapUtcDay: null,
     symbol: input.symbol,
+    sourceFileId: input.sourceFileId ?? null,
   };
 }
 
@@ -434,7 +442,23 @@ function applyFillToPosition(
   const initialStop = order.stopLoss ?? null;
   const initialTarget = order.takeProfit ?? null;
   const riskPct = riskPctAtOpen(next, fillPrice, initialStop, order.size, spec, ctx);
+  const originalRiskAmount = riskAmountAtEntry(
+    fillPrice,
+    initialStop,
+    order.size,
+    spec,
+    next.account.currency,
+    ctx.conversionRateToAccount,
+  );
   const bar = opts?.bar;
+  const spreadPipsAtEntry = spreadPips(ctx.spread, spec.pipSize);
+  const pipValueAtEntry = pipValueAccount(
+    order.size,
+    spec,
+    fillPrice,
+    next.account.currency,
+    ctx.conversionRateToAccount,
+  );
 
   const pos: Position = {
     id: posId,
@@ -457,6 +481,14 @@ function applyFillToPosition(
     tags: order.tags ? [...order.tags] : [],
     entryBarHigh: bar != null ? bar.high : null,
     entryBarLow: bar != null ? bar.low : null,
+    orderType: order.type,
+    entryOrderId: order.id,
+    originalRiskAmount,
+    originalSize: order.size,
+    spreadPipsAtEntry,
+    commissionAtEntry: entryComm.amount,
+    pipValueAtEntry,
+    partialCloses: [],
   };
 
   next = {
@@ -482,6 +514,12 @@ function applyFillToPosition(
     tags: pos.tags,
     entryBarHigh: pos.entryBarHigh,
     entryBarLow: pos.entryBarLow,
+    orderType: pos.orderType,
+    originalRiskAmount: pos.originalRiskAmount,
+    spread_pips_at_entry: pos.spreadPipsAtEntry,
+    commission_at_entry: pos.commissionAtEntry,
+    pip_value_at_entry: pos.pipValueAtEntry,
+    sourceFileId: next.sourceFileId,
   });
   next = markOrderFilled(next, order, fillPrice, cursorTime, ambiguous, events);
 
@@ -606,8 +644,27 @@ function closeOrReducePosition(
   // Credit realized gross − exit commission − swap share. Entry commission was
   // already deducted at open; its share is part of net for reporting only.
   const balanceDelta = g.grossAccount.amount - exitComm.amount - swapShare;
+  const brackets = workingBracketLevels(next, pos.id);
 
   if (remaining <= 0) {
+    const collected = buildCollectedTrade({
+      position: pos,
+      fillPrice,
+      closeTime: cursorTime,
+      closeSize,
+      grossPnLAccount: g.grossAccount.amount,
+      commissionAccount,
+      swapAccount: swapShare,
+      netPnLAccount: net,
+      rMultiple: rMult,
+      exitReason,
+      ambiguous: ambiguous || !!pos.ambiguousFill,
+      pnlApproximate,
+      accountCurrency: next.account.currency,
+      stopLossAtClose: brackets.stopLoss,
+      takeProfitAtClose: brackets.takeProfit,
+      sourceFileId: next.sourceFileId,
+    });
     const { [pos.id]: _removed, ...rest } = next.positions;
     next = {
       ...next,
@@ -641,9 +698,21 @@ function closeOrReducePosition(
       tags: pos.tags,
       entryBarHigh: pos.entryBarHigh,
       entryBarLow: pos.entryBarLow,
+      orderType: pos.orderType,
+      originalRiskAmount: pos.originalRiskAmount,
+      stopLoss: brackets.stopLoss,
+      takeProfit: brackets.takeProfit,
+      collected,
     });
     next = cancelPositionOrders(next, pos.id, cursorTime, events);
   } else {
+    const partial = {
+      time: cursorTime,
+      price: fillPrice,
+      size: closeSize,
+      netPnLAccount: net,
+      exitReason,
+    };
     const posNext: Position = {
       ...pos,
       size: remaining,
@@ -653,6 +722,7 @@ function closeOrReducePosition(
       realizedPnLAccount: pos.realizedPnLAccount + net,
       ambiguousFill: pos.ambiguousFill || ambiguous,
       pnlApproximate: pos.pnlApproximate || pnlApproximate,
+      partialCloses: [...pos.partialCloses, partial],
     };
     next = {
       ...next,
@@ -666,10 +736,30 @@ function closeOrReducePosition(
       positionId: pos.id,
       size: remaining,
       realizedPnLAccount: posNext.realizedPnLAccount,
+      partialClose: partial,
     });
   }
 
   return markOrderFilled(next, order, fillPrice, cursorTime, ambiguous, events);
+}
+
+/** Protective SL/TP prices still working on a position (before cancel). */
+function workingBracketLevels(
+  state: OrderEngineState,
+  positionId: PositionId,
+): { stopLoss: number | null; takeProfit: number | null } {
+  let stopLoss: number | null = null;
+  let takeProfit: number | null = null;
+  for (const id of state.workingIds) {
+    const o = state.orders[id];
+    if (!o || o.positionId !== positionId) continue;
+    if (o.role === 'stopLoss' || o.type === 'STOP' || o.type === 'TRAILING_STOP') {
+      if (o.price != null) stopLoss = o.price;
+    } else if (o.role === 'takeProfit' || o.type === 'LIMIT') {
+      if (o.price != null) takeProfit = o.price;
+    }
+  }
+  return { stopLoss, takeProfit };
 }
 
 /** Update MFE/MAE from bar OHLC — O(open positions), no allocations. */

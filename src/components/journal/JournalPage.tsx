@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button, Card } from '@heroui/react';
 import { AppPageFrame } from '@/components/shell/AppPageFrame';
 import {
@@ -315,6 +315,31 @@ export function JournalPage({
     }
     return listOrderJournalViews(liveJournal)[0]?.sessionId ?? initialSessionId ?? null;
   });
+
+  // After refresh, auth/storage scope may land after first paint — re-scan + select.
+  useEffect(() => {
+    setTick((n) => n + 1);
+  }, [liveJournal?.sessionId, liveJournal?.entries.length, initialSessionId]);
+
+  useEffect(() => {
+    if (selectedOrderSessionId) {
+      const still =
+        orderViews.some((v) => v.sessionId === selectedOrderSessionId) ||
+        !!getOrderJournalView(selectedOrderSessionId, liveJournal);
+      if (still) return;
+    }
+    const next =
+      (initialSessionId &&
+        getOrderJournalView(initialSessionId, liveJournal)?.sessionId) ||
+      orderViews[0]?.sessionId ||
+      null;
+    setSelectedOrderSessionId(next);
+  }, [
+    orderViews,
+    selectedOrderSessionId,
+    initialSessionId,
+    liveJournal,
+  ]);
 
   const [selectedRunId, setSelectedRunId] = useState<string | null>(() => {
     const runs = listJournalEntries();

@@ -118,6 +118,7 @@ Design controls: overlay-only dirty during drag; no React on move; engine emits 
 7. **Companion briefs** `TF-SWITCH-REFACTOR-BRIEF.md` / `PERF-MEMORY-GUARDRAILS.md` were not in-repo; followed this work order + `docs/TF-REFACTOR-REPORT.md`.
 8. **React Profiler / frame p95** — not captured here.
 9. **`binaryBar` / spread column** — left unchanged (28-byte pack).
+10. **CollectedTrade** — on full close, `POSITION_CLOSED.payload.collected` is a full auto record (identity, prices, risk, PnL, UTC timing, MFE/MAE + R, costs, closeType, partialCloses). Journal projection exposes `OrderTrade.collected`; cloud sync stores it in `trades.meta`. Notes/screenshots/`bar_*_r`/post-exit bars stay null until ticket UI / bar sampler.
 
 ---
 

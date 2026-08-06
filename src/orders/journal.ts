@@ -44,6 +44,8 @@ export interface OrderJournal {
     balance: number;
     leverage: number;
     mode: 'netting' | 'hedging';
+    /** Primary dataset / CSV id for CollectedTrade.sourceFileId. */
+    sourceFileId?: string | null;
   };
 }
 
@@ -146,6 +148,36 @@ export function loadJournal(sessionId: string): OrderJournal | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Session ids that have a persisted order journal for the active storage scope.
+ * Must match {@link orderJournalKey} / scopedKey — not the legacy unscoped prefix alone.
+ */
+export function listPersistedJournalSessionIds(): string[] {
+  if (typeof localStorage === 'undefined') return [];
+  const uid = getStorageUserId();
+  const scopedPrefix = uid
+    ? `talaria.u.${uid}.orderJournal.v1:`
+    : `talaria.anon.orderJournal.v1:`;
+  const ids = new Set<string>();
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      if (k.startsWith(scopedPrefix)) {
+        ids.add(k.slice(scopedPrefix.length));
+        continue;
+      }
+      // Anonymous only: also pick up pre-scope legacy keys.
+      if (!uid && k.startsWith(LEGACY_PREFIX)) {
+        ids.add(k.slice(LEGACY_PREFIX.length));
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return [...ids];
 }
 
 export function clearJournal(sessionId: string, opts?: PersistOpts): void {

@@ -1005,6 +1005,21 @@ export default function App() {
           Math.max(10, live.toIndex - live.fromIndex),
         );
       }
+
+      // Soft pause (Play→Pause, same cursor): keep the in-place reveal.
+      // Full rederiveSync was swapping the warm-cache window → bars[0] phase
+      // jump → grid flash. Seek/step still need a full derive.
+      if (opts?.playEdge) {
+        sessionRef.current.setCursorTime(cursorTime, {
+          follow: false,
+          react: false,
+        });
+        stepOrderEngineRef.current(cursorTime);
+        commitSessionViews();
+        syncEnginesFromSession({ applyCamera: false });
+        return;
+      }
+
       sessionRef.current.setCursorTime(cursorTime, { follow, react: true });
       stepOrderEngineRef.current(cursorTime);
       commitSessionViews();
@@ -1887,7 +1902,7 @@ export default function App() {
         });
       }
 
-      applyReplayReveal(rs.cursorTime);
+      applyReplayReveal(rs.cursorTime, { playEdge });
       // Pause / seek / step — always flush progress so exit/reopen resumes here.
       if (playEdge || cursorChanged) persistReplayProgress(true);
     });

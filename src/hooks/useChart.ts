@@ -29,6 +29,7 @@ import { computeIndicators } from '@/indicators/runIndicatorWorker';
 import { colorsForIndicator } from '@/indicators/themeColors';
 import {
   INDICATOR_TIP_EVERY_BARS,
+  INDICATOR_TIP_FORMING_MIN_MS,
   INDICATOR_TIP_MIN_MS,
   needsFullIndicatorRecompute,
   stitchTipOverlays,
@@ -388,17 +389,19 @@ export function useChart(
       const now = performance.now();
       const barsSince = pending.length - lastTipAtLen;
       const msSince = now - lastTipAtMs;
+      const minMs =
+        barsSince <= 0 ? INDICATOR_TIP_FORMING_MIN_MS : INDICATOR_TIP_MIN_MS;
       if (
         optionsRef.current.replayFollow &&
         barsSince < INDICATOR_TIP_EVERY_BARS &&
-        msSince < INDICATOR_TIP_MIN_MS
+        msSince < minMs
       ) {
-        const wait = Math.max(0, INDICATOR_TIP_MIN_MS - msSince);
+        const wait = Math.max(0, minMs - msSince);
         if (tipTimer == null) {
           tipTimer = setTimeout(() => {
             tipTimer = null;
             drainTip();
-          }, wait || INDICATOR_TIP_MIN_MS);
+          }, wait || minMs);
         }
         return;
       }
@@ -441,11 +444,11 @@ export function useChart(
     const scheduleTip = (bars: readonly ChartBar[]) => {
       tipPending = bars;
       if (tipTimer != null || tipInFlight) return;
-      // Coalesce; actual Worker gated by INDICATOR_TIP_EVERY_BARS / MIN_MS.
+      // Coalesce to next macrotask; drainTip applies the replay gate.
       tipTimer = setTimeout(() => {
         tipTimer = null;
         drainTip();
-      }, INDICATOR_TIP_MIN_MS);
+      }, 0);
     };
 
     instance.onIndicatorReveal((bars) => {
@@ -454,11 +457,17 @@ export function useChart(
       scheduleTip(bars);
     });
 
-    // Pause / seek / load: full window. Play: hold-extend + sparse tip Worker.
-    if (!options.replayFollow) {
+    // Seed / catch-up. Play toggles must NOT re-run this effect (that tore down
+    // tip wiring and forced a full Worker pass → grid/indicator flash).
+    // Follow flag is read from optionsRef inside drainTip.
+    if (!optionsRef.current.replayFollow) {
       runFull(options.bars ?? EMPTY_BARS);
     } else if (instance.getIndicatorOverlays().length === 0) {
       runFull(options.bars ?? EMPTY_BARS);
+    } else {
+      // Already have overlays mid-play (effect re-ran from bars/indicators) —
+      // schedule a tip catch-up instead of blanking.
+      scheduleTip(options.bars ?? EMPTY_BARS);
     }
 
     return () => {
@@ -468,7 +477,6 @@ export function useChart(
     };
   }, [
     options.bars,
-    options.replayFollow,
     JSON.stringify(options.enabledIndicators ?? []),
   ]);
 
@@ -595,6 +603,12 @@ export function useChart(
       liveBars[liveBars.length - 1]!.time ===
         options.bars[options.bars.length - 1]!.time;
 
+    // Critical: skip setViewportBars when the engine already has this series —
+    // re-applying on Play↔Pause was clearRect-flashing the grid every toggle.
+    if (sameSeries) {
+      return;
+    }
+
     const reactIsStaleIndexCamera =
       rangeFrom != null &&
       rangeTo != null &&
@@ -602,10 +616,6 @@ export function useChart(
       Math.abs(liveRange.toIndex - rangeTo) < 1e-4;
 
     setViewportData(instance, options.bars);
-
-    if (sameSeries) {
-      return;
-    }
 
     if (
       keepTime &&

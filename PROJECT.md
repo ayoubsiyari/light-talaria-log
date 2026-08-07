@@ -852,6 +852,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-05 | Order drag band: `globalAlpha` so CSS tokens (`--success`/`--danger`) still tint @0.2 | Drag SL/TP — soft fill visible |
 | 2026-08-07 | **V9 chrome port:** copy Obsidian CSS/theme/icons + Live reference into `src/v9/`; chart shell `data-v9-app`; restyle TopBar / LeftToolbar / BottomBar / TradeDock (Canvas engine kept; Live not mounted) | Hard-refresh chart session — Obsidian chrome; pan/zoom unchanged; check ~390px |
 | 2026-08-07 | **Drawings E1–E5 (Talaria parity on Canvas):** stroke-only hit, multi-select, copy/paste/z-order, axis badges, fib zones/label modes, RR level handles, inline text, floating More menu, object-tree multi bulk | Matrix: place/select/move FULL tools; Shift+click multi; Cmd+C/V; fib zones; edit text |
+| 2026-08-07 | Fix replay indicator shake + Play/Pause grid flash: soft pause (no rederive), skip same-series setViewport, no dirty on follow flag, Y-scale hysteresis, tip slide remap + tighter tip Worker | Add SMA → Play — overlays steady; toggle Pause/Play — grid no flash |
 
 ---
 

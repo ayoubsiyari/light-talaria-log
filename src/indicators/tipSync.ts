@@ -10,11 +10,14 @@ export const INDICATOR_TIP_WINDOW = 320;
 
 /**
  * Replay isolation budget:
- * - syncReplayReveal only grows buffers (O(series), no Worker) so candles never wait.
+ * - syncReplayReveal only grows/shifts buffers (O(series), no Worker) so candles never wait.
  * - Tip Worker runs at most every N new bars AND min interval — keeps replay FPS free.
+ * Kept tight so hold→stitch jumps stay small (flat tip hold was visible shake).
  */
-export const INDICATOR_TIP_EVERY_BARS = 8;
-export const INDICATOR_TIP_MIN_MS = 150;
+export const INDICATOR_TIP_EVERY_BARS = 2;
+export const INDICATOR_TIP_MIN_MS = 48;
+/** Forming tip (same bar count) — refresh a bit faster so overlays track OHLC. */
+export const INDICATOR_TIP_FORMING_MIN_MS = 32;
 
 function growValues(prev: Float32Array, len: number): Float32Array {
   if (prev.length === len) return prev;
@@ -33,10 +36,51 @@ function growValues(prev: Float32Array, len: number): Float32Array {
   return next;
 }
 
+/**
+ * Warm-cache slide: drop `srcOffset` values from the front, copy the overlap,
+ * hold-fill any new tip. Keeps history aligned until the Worker catch-up lands.
+ */
+function shiftValues(
+  prev: Float32Array,
+  srcOffset: number,
+  newLen: number,
+): Float32Array {
+  if (newLen <= 0) return new Float32Array(0);
+  if (srcOffset <= 0) return growValues(prev, newLen);
+  const next = new Float32Array(newLen);
+  next.fill(Number.NaN);
+  const srcStart = Math.min(srcOffset, prev.length);
+  const copyCount = Math.min(prev.length - srcStart, newLen);
+  if (copyCount > 0) {
+    next.set(prev.subarray(srcStart, srcStart + copyCount), 0);
+  }
+  let fill = Number.NaN;
+  for (let i = copyCount - 1; i >= 0; i--) {
+    const v = next[i]!;
+    if (Number.isFinite(v)) {
+      fill = v;
+      break;
+    }
+  }
+  for (let i = Math.max(0, copyCount); i < newLen; i++) next[i] = fill;
+  return next;
+}
+
 function mapSeries(series: IndicatorSeries[], len: number): IndicatorSeries[] {
   return series.map((s) => ({
     ...s,
     values: growValues(s.values, len),
+  }));
+}
+
+function shiftSeries(
+  series: IndicatorSeries[],
+  srcOffset: number,
+  len: number,
+): IndicatorSeries[] {
+  return series.map((s) => ({
+    ...s,
+    values: shiftValues(s.values, srcOffset, len),
   }));
 }
 
@@ -60,6 +104,51 @@ export function alignIndicatorPanes(
   return panes.map((p) => ({
     ...p,
     series: mapSeries(p.series, len),
+  }));
+}
+
+/**
+ * How many bars dropped from the front of `prev` to reach `next[0]`.
+ * Returns 0 when prefixes match (append/patch path).
+ */
+export function slideOffset(
+  prev: readonly ChartBar[],
+  next: readonly ChartBar[],
+): number {
+  if (prev.length === 0 || next.length === 0) return 0;
+  if (prev[0]!.time === next[0]!.time) return 0;
+  const nextStart = next[0]!.time;
+  let i = 0;
+  while (i < prev.length && prev[i]!.time < nextStart) i++;
+  if (i < prev.length && prev[i]!.time === nextStart) return i;
+  // Seek / unrelated window — caller should runFull, not shift.
+  return -1;
+}
+
+/** Remap overlay series after a warm-cache slide (index space changed). */
+export function shiftIndicatorOverlays(
+  overlays: readonly IndicatorOverlayResult[],
+  srcOffset: number,
+  len: number,
+): IndicatorOverlayResult[] {
+  if (len <= 0) return [];
+  if (srcOffset <= 0) return alignIndicatorOverlays(overlays, len);
+  return overlays.map((o) => ({
+    ...o,
+    series: shiftSeries(o.series, srcOffset, len),
+  }));
+}
+
+export function shiftIndicatorPanes(
+  panes: readonly IndicatorPaneResult[],
+  srcOffset: number,
+  len: number,
+): IndicatorPaneResult[] {
+  if (len <= 0) return [];
+  if (srcOffset <= 0) return alignIndicatorPanes(panes, len);
+  return panes.map((p) => ({
+    ...p,
+    series: shiftSeries(p.series, srcOffset, len),
   }));
 }
 

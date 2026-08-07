@@ -39,6 +39,9 @@ import type { ChartOrder, OrderLevelHit } from '@/types/order';
 import {
   alignIndicatorOverlays,
   alignIndicatorPanes,
+  shiftIndicatorOverlays,
+  shiftIndicatorPanes,
+  slideOffset,
 } from '@/indicators/tipSync';
 import {
   beginLevelDrag,
@@ -377,6 +380,12 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   /** Cached auto price scale — invalidated when bars/range/cursor change. */
   let cachedAutoScale: PriceScale | null = null;
   let scaleCacheKey = '';
+  /**
+   * Sticky auto scale used while replayFollow is on. Forming-tip extremes used
+   * to recompute nice ticks every paint → horizontal grid + overlays shook.
+   * Expand immediately; shrink only with hysteresis.
+   */
+  let stickyAutoScale: PriceScale | null = null;
 
   /** Shared hit-test for cursor + hover in the same move. */
   let hitCacheX = Number.NaN;
@@ -396,6 +405,42 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   const invalidateScaleCache = () => {
     cachedAutoScale = null;
     scaleCacheKey = '';
+  };
+
+  /** Clear sticky follow scale (manual reset / leaving follow / hard replace). */
+  const clearStickyAutoScale = () => {
+    stickyAutoScale = null;
+  };
+
+  /**
+   * During Play, damp vertical bounce from forming tip high/low churn.
+   * Expand to fit new extremes immediately; shrink only when the natural
+   * range sits well inside the sticky window (~12% slack).
+   */
+  const applyFollowScaleHysteresis = (next: PriceScale): PriceScale => {
+    if (!replayFollow) {
+      stickyAutoScale = next;
+      return next;
+    }
+    const prev = stickyAutoScale;
+    if (!prev || !(prev.max > prev.min)) {
+      stickyAutoScale = next;
+      return next;
+    }
+    let min = prev.min;
+    let max = prev.max;
+    if (next.min < min) min = next.min;
+    if (next.max > max) max = next.max;
+    const span = Math.max(next.max - next.min, Math.abs(next.max) * 1e-6, 1e-9);
+    const slack = span * 0.12;
+    if (next.min > min + slack) min = next.min;
+    if (next.max < max - slack) max = next.max;
+    if (!(max > min)) {
+      stickyAutoScale = next;
+      return next;
+    }
+    stickyAutoScale = { min, max };
+    return stickyAutoScale;
   };
 
   const invalidateHitCache = () => {
@@ -485,7 +530,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         ? indexAtOrBeforeBars(bars, replayCursorTime)
         : null;
     const base = computePriceScale(bars, range, maxBarIndex);
-    cachedAutoScale = expandPriceScale(base, orderLevelPrices());
+    const expanded = expandPriceScale(base, orderLevelPrices());
+    cachedAutoScale = applyFollowScaleHysteresis(expanded);
     scaleCacheKey = key;
     return cachedAutoScale;
   };
@@ -732,6 +778,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   const resetPriceScale = () => {
     priceScaleMode = 'auto';
     manualPriceScale = null;
+    clearStickyAutoScale();
     invalidateScaleCache();
     markSceneDirty();
   };
@@ -1317,6 +1364,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     canvas,
 
     setViewportBars(nextBars: readonly ChartBar[]) {
+      const prevFirst = bars[0]?.time;
       if (nextBars.length > MAX_BARS_IN_MEMORY) {
         console.warn(
           `setViewportBars: ${nextBars.length} exceeds MAX_BARS_IN_MEMORY (${MAX_BARS_IN_MEMORY}); truncating`,
@@ -1334,6 +1382,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       }
       // Do not auto-recenter here — React applies the preserved range after TF/buffer swaps.
       // Replay follow recenters via setReplayCursorTime / setReplayFollow instead.
+      if (bars[0]?.time !== prevFirst) clearStickyAutoScale();
       invalidateScaleCache();
       invalidateHitCache();
       updateCrosshairFromHover();
@@ -1700,6 +1749,12 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         bars[0]!.time === nextBars[0]!.time &&
         bars[prevLen - 1]!.time === nextBars[prevLen - 1]!.time;
 
+      // Warm-cache slide offset — remap indicator index space before replace.
+      const indSlide =
+        !canAppend && prevLen > 0 && nextLen > 0
+          ? slideOffset(bars, nextBars)
+          : 0;
+
       if (prevLen === 0 || nextLen < prevLen || !canAppend) {
         bars =
           nextLen > MAX_BARS_IN_MEMORY
@@ -1728,15 +1783,25 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
 
       replayCursorTime = cursorTime;
 
-      // Keep indicator buffers length-aligned so paint never blanks the series.
+      // Keep indicator buffers aligned so paint never blanks the series.
+      // On a slid warm-cache, shift by wall-clock overlap (not just grow) so
+      // history doesn't paint on the wrong candles until the Worker returns.
       if (indicatorOverlays.length > 0) {
-        indicatorOverlays = alignIndicatorOverlays(indicatorOverlays, bars.length);
+        indicatorOverlays =
+          indSlide > 0
+            ? shiftIndicatorOverlays(indicatorOverlays, indSlide, bars.length)
+            : alignIndicatorOverlays(indicatorOverlays, bars.length);
       }
       if (indicatorPanes.length > 0) {
-        indicatorPanes = alignIndicatorPanes(indicatorPanes, bars.length);
+        indicatorPanes =
+          indSlide > 0
+            ? shiftIndicatorPanes(indicatorPanes, indSlide, bars.length)
+            : alignIndicatorPanes(indicatorPanes, bars.length);
       }
 
       const didReplace = prevLen === 0 || nextLen < prevLen || !canAppend;
+      // Seek / unrelated window — drop sticky scale so Y snaps to the new view.
+      if (didReplace && indSlide < 0) clearStickyAutoScale();
       if (replayFollow) {
         const tip =
           cursorTime != null && bars.length > 0
@@ -1807,9 +1872,15 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     setReplayFollow(follow) {
       if (replayFollow === follow) return;
       replayFollow = follow;
+      // Leaving follow: keep sticky scale until the next natural recompute so
+      // Pause doesn't flash a different horizontal grid for one frame.
+      if (!follow) {
+        // Flag-only — camera + scale already match the last play tick.
+        return;
+      }
       // Enabling follow must not hard-snap if we are already right-anchored —
       // that was shifting vertical grid / time labels on every Play press.
-      if (follow && replayCursorTime != null && bars.length > 0) {
+      if (replayCursorTime != null && bars.length > 0) {
         const tip = indexAtOrBeforeBars(bars, replayCursorTime);
         const target = rangeRightAnchored(tip, currentSpan());
         const drift = Math.max(
@@ -1820,7 +1891,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
           centerOnReplayCursor(false);
         }
       }
-      markDirty();
+      // No markDirty — flipping the flag alone must not clearRect-flash the grid.
     },
 
     hitTestDrawingsAt(x, y) {

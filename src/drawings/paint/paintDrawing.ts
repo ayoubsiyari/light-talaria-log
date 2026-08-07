@@ -1,4 +1,5 @@
 import { getChartColors, type ChartColors } from '@/chart/chartTheme';
+import { formatPrice } from '@/chart/format';
 import { priceToY } from '@/chart/scales';
 import type { ChartBar } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
@@ -305,7 +306,7 @@ function paintFibLevels(
     if (showLabels || showPrices) {
       const parts: string[] = [];
       if (showLabels) parts.push(formatFibCoeff(lv.coeff));
-      if (showPrices) parts.push(price.toFixed(2));
+      if (showPrices) parts.push(formatPrice(price));
       labelSlots.push({ y, text: parts.join('  '), color: ls.color });
     }
   }
@@ -1091,7 +1092,7 @@ export function paintDrawing(
         const { ctx, plot, colors } = pc;
         const y = xy[0].y;
         const price = d.points[0].price;
-        const label = price.toFixed(Math.abs(price) < 1 ? 5 : 2);
+        const label = formatPrice(price);
         const right = plot.left + plot.width;
         // Leader to plot edge — chip sits on the price axis (outside plot).
         applyStrokeStyle(ctx, { ...style, width: 1, lineStyle: 'dashed' });
@@ -1421,6 +1422,12 @@ export function paintAllDrawings(
   hoveredId: string | null = null,
   colors?: ChartColors,
   paneTf?: Timeframe | null,
+  axisLayout?: {
+    width: number;
+    height: number;
+    priceAxisWidth: number;
+    timeAxisHeight: number;
+  } | null,
 ): void {
   if (hidden || bars.length === 0) return;
   const selectedSet = new Set(
@@ -1452,7 +1459,7 @@ export function paintAllDrawings(
     // Always show anchors while placing
     paintDrawing(pc, draft, { selected: true });
   }
-  if (selectedSet.size > 0) {
+  if (selectedSet.size > 0 && axisLayout) {
     paintAxisBadges(
       ctx,
       drawings,
@@ -1462,6 +1469,7 @@ export function paintAllDrawings(
       plot,
       priceScale,
       pc.colors,
+      axisLayout,
     );
   }
 }

@@ -19,6 +19,12 @@ export function drawDrawings(
   hidden = false,
   hoveredId: string | null = null,
   paneTf: Timeframe | null = null,
+  axisLayout?: {
+    width: number;
+    height: number;
+    priceAxisWidth: number;
+    timeAxisHeight: number;
+  } | null,
 ): void {
   const ids =
     typeof selectedIds === 'string'
@@ -37,5 +43,6 @@ export function drawDrawings(
     hoveredId,
     _colors,
     paneTf,
+    axisLayout,
   );
 }

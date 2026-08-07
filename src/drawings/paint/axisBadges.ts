@@ -1,31 +1,22 @@
 import { logicalIndexAtTime } from '@/data/timeframeAgg';
 import { indexToX, priceToY, type PlotRect, type PriceScale } from '@/chart/scales';
 import type { ChartColors } from '@/chart/chartTheme';
+import { formatPrice, formatTime } from '@/chart/format';
 import type { ChartBar, VisibleRange } from '@/types/bar';
 import type { Drawing } from '../drawingStore';
 
-function formatPrice(price: number): string {
-  const abs = Math.abs(price);
-  if (abs >= 1000) return price.toFixed(2);
-  if (abs >= 1) return price.toFixed(2);
-  if (abs >= 0.01) return price.toFixed(4);
-  return price.toFixed(5);
-}
-
-function formatTime(ms: number): string {
-  try {
-    const d = new Date(ms);
-    const hh = String(d.getUTCHours()).padStart(2, '0');
-    const mm = String(d.getUTCMinutes()).padStart(2, '0');
-    return `${hh}:${mm}`;
-  } catch {
-    return '';
-  }
+export interface AxisBadgeLayout {
+  /** Full canvas CSS width. */
+  width: number;
+  /** Full canvas CSS height. */
+  height: number;
+  priceAxisWidth: number;
+  timeAxisHeight: number;
 }
 
 /**
  * Price (Y-axis) + time (X-axis) badges for selected drawing anchors.
- * Painted in the drawings layer so drag stays overlay-cheap.
+ * Matches crosshair / last-price chip placement (below volume on the time axis).
  */
 export function paintAxisBadges(
   ctx: CanvasRenderingContext2D,
@@ -36,6 +27,7 @@ export function paintAxisBadges(
   plot: PlotRect,
   priceScale: PriceScale,
   colors: ChartColors,
+  layout: AxisBadgeLayout,
 ): void {
   if (selectedIds.size === 0 || bars.length === 0) return;
 
@@ -54,58 +46,71 @@ export function paintAxisBadges(
   ctx.save();
   ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif';
 
-  const right = plot.left + plot.width;
-  const bottom = plot.top + plot.height;
+  const plotRight = plot.left + plot.width;
+  const plotBottom = plot.top + plot.height;
   const labelH = 18;
+  const axisX =
+    layout.priceAxisWidth > 0
+      ? layout.width - layout.priceAxisWidth
+      : plotRight;
+  const timeAxisY =
+    layout.timeAxisHeight > 0
+      ? layout.height - layout.timeAxisHeight + 4
+      : plotBottom + 4;
 
   for (const price of prices) {
     const y = priceToY(price, priceScale, plot);
-    if (y < plot.top - 2 || y > bottom + 2) continue;
+    if (y < plot.top - 2 || y > plotBottom + 2) continue;
+    // Chart times/prices are Unix seconds + native price — same as last-price chip.
     const label = formatPrice(price);
-    const chipW = Math.max(44, ctx.measureText(label).width + 12);
+    const chipW = Math.max(
+      layout.priceAxisWidth > 0 ? layout.priceAxisWidth : 48,
+      ctx.measureText(label).width + 12,
+    );
     const labelY = Math.min(
       Math.max(y - labelH / 2, plot.top),
-      bottom - labelH,
+      plotBottom - labelH,
     );
-    const axisX = right;
+    const notch = 4;
     ctx.fillStyle = colors.accent;
     ctx.beginPath();
-    ctx.moveTo(axisX - 4, labelY + labelH / 2);
+    ctx.moveTo(axisX - notch, labelY + labelH / 2);
     ctx.lineTo(axisX, labelY);
     ctx.lineTo(axisX, labelY + labelH);
     ctx.closePath();
     ctx.fill();
-    ctx.fillRect(axisX, labelY, Math.min(chipW, 72), labelH);
+    ctx.fillRect(axisX, labelY, chipW, labelH);
     ctx.fillStyle = colors.onSolid;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(label, axisX + 5, labelY + labelH / 2);
+    ctx.fillText(label, axisX + 6, labelY + labelH / 2);
   }
 
   for (const time of times) {
+    // Drawing anchors store Unix seconds (same as ChartBar.time).
     const idx = logicalIndexAtTime(bars, time);
     const x = indexToX(idx, range, plot);
-    if (x < plot.left - 2 || x > right + 2) continue;
+    if (x < plot.left - 2 || x > plotRight + 2) continue;
     const label = formatTime(time);
     if (!label) continue;
-    const chipW = Math.max(40, ctx.measureText(label).width + 10);
+    const chipW = Math.max(48, ctx.measureText(label).width + 12);
     const labelX = Math.min(
       Math.max(x - chipW / 2, plot.left),
-      right - chipW,
+      plotRight - chipW,
     );
-    const labelY = bottom;
+    // Sit on the real time axis under volume / indicator panes — not on plot bottom.
     ctx.fillStyle = colors.accent;
-    ctx.fillRect(labelX, labelY, chipW, labelH);
+    ctx.fillRect(labelX, timeAxisY, chipW, labelH);
     ctx.beginPath();
-    ctx.moveTo(x, labelY);
-    ctx.lineTo(x - 4, labelY);
-    ctx.lineTo(x + 4, labelY);
+    ctx.moveTo(x, timeAxisY);
+    ctx.lineTo(x - 4, timeAxisY);
+    ctx.lineTo(x + 4, timeAxisY);
     ctx.closePath();
     ctx.fill();
     ctx.fillStyle = colors.onSolid;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(label, labelX + chipW / 2, labelY + labelH / 2);
+    ctx.fillText(label, labelX + chipW / 2, timeAxisY + labelH / 2);
   }
 
   ctx.restore();

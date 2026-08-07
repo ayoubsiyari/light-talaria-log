@@ -350,6 +350,12 @@ export function paintDrawingsFrame(
     false,
     hoveredDrawingId ?? null,
     paneTimeframe ?? null,
+    {
+      width: layout.width,
+      height: layout.height,
+      priceAxisWidth: layout.priceAxisWidth,
+      timeAxisHeight: layout.timeAxisHeight,
+    },
   );
 }
 

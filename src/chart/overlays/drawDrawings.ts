@@ -15,11 +15,15 @@ export function drawDrawings(
   priceScale: PriceScale,
   _colors: ChartColors,
   draft: Drawing | null,
-  selectedId: string | null = null,
+  selectedIds: readonly string[] | string | null = null,
   hidden = false,
   hoveredId: string | null = null,
   paneTf: Timeframe | null = null,
 ): void {
+  const ids =
+    typeof selectedIds === 'string'
+      ? [selectedIds]
+      : selectedIds ?? [];
   paintAllDrawings(
     ctx,
     drawings,
@@ -28,7 +32,7 @@ export function drawDrawings(
     plot,
     priceScale,
     draft,
-    selectedId,
+    ids,
     hidden,
     hoveredId,
     _colors,

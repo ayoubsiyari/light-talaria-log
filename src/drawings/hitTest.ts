@@ -228,20 +228,7 @@ function hitPaintedBody(
         return true;
       }
     }
-    // Interior of the infinite band (easy grab on fill)
-    const abx = dx;
-    const aby = dy;
-    const len2 = abx * abx + aby * aby;
-    if (len2 > 1e-6) {
-      const crossA = (x - a!.x) * aby - (y - a!.y) * abx;
-      const crossC = (x - c!.x) * aby - (y - c!.y) * abx;
-      // Same-side of both rails? Between rails when signs differ (or near zero).
-      if (crossA * crossC <= 0) {
-        // Also require roughly between the extended span along the plot.
-        const along = ((x - a!.x) * abx + (y - a!.y) * aby) / len2;
-        if (along > -2 && along < 3) return true;
-      }
-    }
+    // Stroke-only: channel fill does not steal clicks (Talaria parity).
     return false;
   }
 
@@ -346,12 +333,21 @@ function hitPaintedBody(
     if (nearBoxEdge(x, y, pts[0]!.x, pts[0]!.y, pts[1]!.x, pts[1]!.y, hitPx)) {
       return true;
     }
-    // Interior fill — easy grab on large boxes (ellipse/circle use bbox approx)
-    const left = Math.min(pts[0]!.x, pts[1]!.x);
-    const right = Math.max(pts[0]!.x, pts[1]!.x);
-    const top = Math.min(pts[0]!.y, pts[1]!.y);
-    const bottom = Math.max(pts[0]!.y, pts[1]!.y);
-    if (x >= left && x <= right && y >= top && y <= bottom) return true;
+    // Fill hit for solid shapes (not measure boxes — stroke/edge only).
+    if (
+      type === 'rectangle' ||
+      type === 'ellipse' ||
+      type === 'circle' ||
+      type === 'gannBox' ||
+      type === 'gannSquare' ||
+      type === 'gannSquareFixed'
+    ) {
+      const left = Math.min(pts[0]!.x, pts[1]!.x);
+      const right = Math.max(pts[0]!.x, pts[1]!.x);
+      const top = Math.min(pts[0]!.y, pts[1]!.y);
+      const bottom = Math.max(pts[0]!.y, pts[1]!.y);
+      if (x >= left && x <= right && y >= top && y <= bottom) return true;
+    }
   }
 
   if (type === 'brush' || type === 'highlighter' || type === 'path' || type === 'polyline') {
@@ -387,16 +383,15 @@ function hitPaintedBody(
   if (type === 'priceLabel' && pts[0] && d.points[0]) {
     const y0 = pts[0].y;
     const right = plot.left + plot.width;
-    // Stub or axis chip
     if (nearSeg(x, y, pts[0].x, y0, right, y0, hitPx)) return true;
     const label = d.points[0].price.toFixed(2);
     const chipW = Math.max(48, label.length * 7 + 14);
     const labelH = 18;
-    const axisX = right - chipW;
+    const axisX = right;
     const labelY = y0 - labelH / 2;
     if (
       x >= axisX - 4 - hitPx &&
-      x <= right + hitPx &&
+      x <= axisX + chipW + hitPx &&
       y >= labelY - hitPx &&
       y <= labelY + labelH + hitPx
     ) {
@@ -464,6 +459,9 @@ export function cursorForDrawingHit(
   if (drawing.type === 'hline') return 'ns-resize';
   if (drawing.type === 'vline') return 'ew-resize';
   if (drawing.type === 'crossLine') return 'move';
+  if (drawing.type === 'longPosition' || drawing.type === 'shortPosition') {
+    return 'ns-resize';
+  }
 
   if (isRectEdgeHandle(hit.handleIndex) && isRectLikeTool(drawing.type)) {
     if (hit.handleIndex === 2 || hit.handleIndex === 4) return 'ns-resize';
@@ -494,8 +492,6 @@ export function cursorForDrawingHit(
       drawing.type === 'gannBox' ||
       drawing.type === 'gannSquare' ||
       drawing.type === 'gannSquareFixed' ||
-      drawing.type === 'longPosition' ||
-      drawing.type === 'shortPosition' ||
       drawing.type === 'fibRetracement' ||
       drawing.type === 'fibExtension')
   ) {
@@ -529,36 +525,53 @@ export function hitTestDrawings(
   priceScale: PriceScale,
   paneTf?: Timeframe | null,
 ): HitResult | null {
-  const HIT_PX = drawingHitPx();
   const HANDLE_PX = drawingHandleHitPx();
   // Reverse so last-drawn is on top
   for (let i = drawings.length - 1; i >= 0; i--) {
     const d = drawings[i]!;
+    if (d.visible === false) continue;
     if (!isDrawingVisibleOnTf(d, paneTf)) continue;
+    // Locked: no handle grab; body still hittable for selection (pan passthrough via beginDrag).
+    const HIT_PX = drawingHitPx(d.style.width ?? 1);
     const pts: Array<{ x: number; y: number }> = [];
     for (const p of d.points) {
       const xy = toXY(p, bars, range, plot, priceScale);
       if (xy) pts.push(xy);
     }
     // Brush: only endpoints are handles (body drag moves the stroke).
+    // Positions: hit right-edge level handles (entry/SL/TP).
+    let handlePts = pts;
+    if (
+      (d.type === 'longPosition' || d.type === 'shortPosition') &&
+      pts.length >= 3
+    ) {
+      const right = Math.max(pts[0]!.x, pts[1]!.x, pts[2]!.x) + 40;
+      handlePts = [
+        { x: right, y: pts[0]!.y },
+        { x: right, y: pts[1]!.y },
+        { x: right, y: pts[2]!.y },
+      ];
+    }
     const handleIdxs: number[] =
       (d.type === 'brush' || d.type === 'highlighter') && pts.length > 2
         ? [0, pts.length - 1]
-        : pts.map((_, i) => i);
-    for (const h of handleIdxs) {
-      const p = pts[h];
-      if (p && Math.hypot(x - p.x, y - p.y) <= HANDLE_PX) {
-        return { drawingId: d.id, handleIndex: h };
+        : handlePts.map((_, i) => i);
+    if (!d.locked) {
+      for (const h of handleIdxs) {
+        const p = handlePts[h];
+        if (p && Math.hypot(x - p.x, y - p.y) <= HANDLE_PX) {
+          return { drawingId: d.id, handleIndex: h };
+        }
       }
     }
-    if (isRectLikeTool(d.type) && pts.length >= 2) {
+    if (!d.locked && isRectLikeTool(d.type) && pts.length >= 2) {
       for (const edge of rectEdgeMidpoints(pts[0]!.x, pts[0]!.y, pts[1]!.x, pts[1]!.y)) {
         if (Math.hypot(x - edge.x, y - edge.y) <= HANDLE_PX) {
           return { drawingId: d.id, handleIndex: edge.handleIndex };
         }
       }
     }
-    if (isChannelTool(d.type) && pts.length >= 3) {
+    if (!d.locked && isChannelTool(d.type) && pts.length >= 3) {
       const wh = channelWidthHandleXY(
         pts[0]!,
         pts[1]!,

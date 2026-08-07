@@ -65,6 +65,7 @@ export interface UseChartOptions {
   /** Active drawing placement (rubber-band / freehand) — engine paints overlay. */
   placement?: DrawingPlacement | null;
   selectedDrawingId?: string | null;
+  selectedDrawingIds?: readonly string[] | null;
   drawingsHidden?: boolean;
   /** Pane TF for per-interval drawing visibility. */
   paneTimeframe?: Timeframe;
@@ -90,8 +91,8 @@ export interface UseChartOptions {
   onUserGesture?: () => void;
   /** Engine moved/resized a drawing — persist in React. */
   onDrawingsChange?: (drawings: readonly Drawing[]) => void;
-  /** Engine started interacting with a drawing (select it). */
-  onDrawingSelect?: (drawingId: string) => void;
+  /** Engine selection changed (full id set; empty = none). */
+  onDrawingSelect?: (drawingIds: readonly string[]) => void;
   /** Brush / highlighter press-drag phases. */
   onFreehandStroke?: (
     phase: 'start' | 'move' | 'end',
@@ -163,8 +164,13 @@ export function useChart(
       instance.setVolumeOpacity(optionsRef.current.volumeOpacity);
     }
     if (optionsRef.current.drawings) {
+      const ids =
+        optionsRef.current.selectedDrawingIds ??
+        (optionsRef.current.selectedDrawingId
+          ? [optionsRef.current.selectedDrawingId]
+          : []);
       instance.setDrawings(optionsRef.current.drawings, null, {
-        selectedId: optionsRef.current.selectedDrawingId ?? null,
+        selectedIds: ids,
         hidden: optionsRef.current.drawingsHidden ?? false,
         paneTimeframe: optionsRef.current.paneTimeframe ?? null,
       });
@@ -218,8 +224,8 @@ export function useChart(
       optionsRef.current.onDrawingsChange?.(next);
     });
 
-    const unsubSelect = instance.onDrawingSelect((id) => {
-      optionsRef.current.onDrawingSelect?.(id);
+    const unsubSelect = instance.onDrawingSelect((ids) => {
+      optionsRef.current.onDrawingSelect?.(ids);
     });
 
     const unsubFreehand = instance.onFreehandStroke((phase, point) => {
@@ -469,14 +475,18 @@ export function useChart(
   useEffect(() => {
     const instance = instanceRef.current;
     if (!instance) return;
+    const ids =
+      options.selectedDrawingIds ??
+      (options.selectedDrawingId ? [options.selectedDrawingId] : []);
     instance.setDrawings(options.drawings ?? [], null, {
-      selectedId: options.selectedDrawingId ?? null,
+      selectedIds: ids,
       hidden: options.drawingsHidden ?? false,
       paneTimeframe: options.paneTimeframe ?? null,
     });
   }, [
     options.drawings,
     options.selectedDrawingId,
+    options.selectedDrawingIds,
     options.drawingsHidden,
     options.paneTimeframe,
   ]);

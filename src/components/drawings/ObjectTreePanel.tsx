@@ -13,28 +13,34 @@ export interface ObjectTreePanelProps {
   open: boolean;
   onClose: () => void;
   drawings: readonly Drawing[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
+  selectedIds: readonly string[];
+  onSelect: (id: string, additive?: boolean) => void;
   onToggleVisible: (id: string) => void;
   onToggleLock: (id: string) => void;
   onDelete: (id: string) => void;
   onDeleteAll: () => void;
+  onBulkHide?: (ids: readonly string[]) => void;
+  onBulkLock?: (ids: readonly string[], locked: boolean) => void;
+  onBulkDelete?: (ids: readonly string[]) => void;
 }
 
 /**
- * Object tree — list all drawings; show/hide, lock, delete, select.
+ * Object tree — list all drawings; show/hide, lock, delete, multi-select.
  * Mobile: bottom sheet. Desktop: centered dialog.
  */
 export function ObjectTreePanel({
   open,
   onClose,
   drawings,
-  selectedId,
+  selectedIds,
   onSelect,
   onToggleVisible,
   onToggleLock,
   onDelete,
   onDeleteAll,
+  onBulkHide,
+  onBulkLock,
+  onBulkDelete,
 }: ObjectTreePanelProps) {
   useEffect(() => {
     if (!open) return;
@@ -49,6 +55,9 @@ export function ObjectTreePanel({
     // Newest on top (match paint z-order intuition)
     return [...drawings].reverse();
   }, [drawings]);
+
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const multi = selectedIds.length > 1;
 
   if (!open) return null;
 
@@ -70,7 +79,9 @@ export function ObjectTreePanel({
             <p className="text-xs text-muted">
               {drawings.length === 0
                 ? 'No drawings yet'
-                : `${drawings.length} drawing${drawings.length === 1 ? '' : 's'}`}
+                : multi
+                  ? `${selectedIds.length} selected · ${drawings.length} total`
+                  : `${drawings.length} drawing${drawings.length === 1 ? '' : 's'}`}
             </p>
           </div>
           <Button
@@ -84,6 +95,43 @@ export function ObjectTreePanel({
           </Button>
         </header>
 
+        {multi && (
+          <div className="shrink-0 flex flex-wrap gap-1 px-3 py-2 border-b border-border">
+            <Button
+              size="sm"
+              variant="secondary"
+              className="min-h-11"
+              onPress={() => onBulkHide?.(selectedIds)}
+            >
+              Hide
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="min-h-11"
+              onPress={() => onBulkLock?.(selectedIds, true)}
+            >
+              Lock
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="min-h-11"
+              onPress={() => onBulkLock?.(selectedIds, false)}
+            >
+              Unlock
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="min-h-11 text-danger"
+              onPress={() => onBulkDelete?.(selectedIds)}
+            >
+              Delete
+            </Button>
+          </div>
+        )}
+
         <ul className="flex-1 min-h-0 overflow-y-auto overscroll-contain py-1">
           {rows.length === 0 ? (
             <li className="px-4 py-8 text-sm text-muted text-center">
@@ -92,7 +140,7 @@ export function ObjectTreePanel({
           ) : (
             rows.map((d) => {
               const tool = getTool(d.type);
-              const selected = d.id === selectedId;
+              const selected = selectedSet.has(d.id);
               const hidden = d.visible === false;
               const locked = !!d.locked;
               const label = d.name?.trim() || d.text?.trim() || tool.label;
@@ -106,7 +154,7 @@ export function ObjectTreePanel({
                   >
                     <button
                       type="button"
-                      onClick={() => onSelect(d.id)}
+                      onClick={(e) => onSelect(d.id, e.shiftKey || e.metaKey || e.ctrlKey)}
                       className={[
                         'flex-1 min-w-0 min-h-11 px-2 text-left rounded-md',
                         hidden ? 'opacity-50' : '',

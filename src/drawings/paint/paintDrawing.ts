@@ -25,6 +25,7 @@ import {
 import { isRectLikeTool, rectEdgeMidpoints } from '../rectHandles';
 import { asBool, asNumber } from '../toolSettings';
 import { drawCalloutBubble } from './calloutBubble';
+import { paintAxisBadges } from './axisBadges';
 import {
   barIndexAtTime,
   clipToPlot,
@@ -50,6 +51,21 @@ function handleXYForDrawing(
 ): Array<{ x: number; y: number }> {
   if ((d.type === 'brush' || d.type === 'highlighter') && xy.length > 2) {
     return [xy[0]!, xy[xy.length - 1]!];
+  }
+  // Position RR: handles on the right of each level line (entry / SL / TP).
+  if (
+    (d.type === 'longPosition' || d.type === 'shortPosition') &&
+    xy.length >= 3
+  ) {
+    const entry = xy[0]!;
+    const stop = xy[1]!;
+    const target = xy[2]!;
+    const right = Math.max(entry.x, stop.x, target.x) + 40;
+    return [
+      { x: right, y: entry.y },
+      { x: right, y: stop.y },
+      { x: right, y: target.y },
+    ];
   }
   if (selected && isRectLikeTool(d.type) && xy.length >= 2) {
     const edges = rectEdgeMidpoints(xy[0]!.x, xy[0]!.y, xy[1]!.x, xy[1]!.y);
@@ -231,12 +247,21 @@ function paintFibLevels(
     reverse?: boolean;
     showLabels?: boolean;
     showPrices?: boolean;
+    showZones?: boolean;
+    /** values | percent | both */
+    labelMode?: 'values' | 'percent' | 'both';
   },
 ): void {
   const levels = visibleFibLevels(opts.levels);
   const reverse = opts.reverse ?? false;
-  const showLabels = opts.showLabels !== false;
-  const showPrices = !!opts.showPrices;
+  const labelMode = opts.labelMode ?? 'both';
+  const showLabels =
+    opts.showLabels !== false &&
+    (labelMode === 'percent' || labelMode === 'both');
+  const showPrices =
+    (!!opts.showPrices || labelMode === 'values' || labelMode === 'both') &&
+    labelMode !== 'percent';
+  const showZones = opts.showZones !== false;
   const { ctx, plot } = pc;
   // Anchor order: coeff 0 @ price0, coeff 1 @ price1 (Reverse swaps).
   const base = reverse ? price1 : price0;
@@ -250,8 +275,8 @@ function paintFibLevels(
 
   const priceAt = (coeff: number) => base + (tip - base) * coeff;
 
-  // Optional fill between consecutive levels (TV background).
-  if (style.fill && levels.length >= 2) {
+  // Zone fills between consecutive levels (Talaria/TV background).
+  if (showZones && (style.fill || opts.showZones) && levels.length >= 2) {
     const sorted = [...levels].sort((a, b) => a.coeff - b.coeff);
     for (let i = 0; i < sorted.length - 1; i++) {
       const a = sorted[i]!;
@@ -259,13 +284,15 @@ function paintFibLevels(
       const y0 = yPrice(priceAt(a.coeff), pc);
       const y1 = yPrice(priceAt(b.coeff), pc);
       ctx.save();
-      ctx.globalAlpha = style.fillOpacity * style.opacity * 0.55;
+      ctx.globalAlpha = (style.fillOpacity ?? 0.2) * style.opacity * 0.55;
       ctx.fillStyle = a.color || style.fillColor || style.color;
       ctx.fillRect(left, Math.min(y0, y1), Math.max(1, right - left), Math.abs(y1 - y0));
       ctx.restore();
     }
   }
 
+  // Collision-aware Y stagger for labels on the same side.
+  const labelSlots: Array<{ y: number; text: string; color: string }> = [];
   for (const lv of levels) {
     const price = priceAt(lv.coeff);
     const y = yPrice(price, pc);
@@ -279,15 +306,33 @@ function paintFibLevels(
       const parts: string[] = [];
       if (showLabels) parts.push(formatFibCoeff(lv.coeff));
       if (showPrices) parts.push(price.toFixed(2));
-      drawTextLabel(
-        pc,
-        labelX,
-        y,
-        parts.join('  '),
-        { ...ls, textColor: ls.color, textAlignH: labelAlign },
-        false,
-      );
+      labelSlots.push({ y, text: parts.join('  '), color: ls.color });
     }
+  }
+
+  const fontSize = Math.max(10, style.fontSize || 11);
+  const row = fontSize + 2;
+  labelSlots.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < labelSlots.length; i++) {
+    const prev = labelSlots[i - 1]!;
+    const cur = labelSlots[i]!;
+    if (cur.y - prev.y < row) cur.y = prev.y + row;
+  }
+  for (const slot of labelSlots) {
+    drawTextLabel(
+      pc,
+      labelX,
+      slot.y,
+      slot.text,
+      {
+        ...style,
+        color: slot.color,
+        textColor: slot.color,
+        textAlignH: labelAlign,
+        fontSize,
+      },
+      false,
+    );
   }
   ctx.setLineDash([]);
   ctx.globalAlpha = 1;
@@ -655,6 +700,8 @@ export function paintDrawing(
           reverse: fib.reverse,
           showLabels: fib.showLabels,
           showPrices: fib.showPrices,
+          showZones: fib.showZones,
+          labelMode: fib.labelMode,
         });
         strokeLine(pc, xy[0]!.x, xy[0]!.y, xy[1]!.x, xy[1]!.y, {
           ...style,
@@ -1046,14 +1093,13 @@ export function paintDrawing(
         const price = d.points[0].price;
         const label = price.toFixed(Math.abs(price) < 1 ? 5 : 2);
         const right = plot.left + plot.width;
-        // Stub to plot edge
+        // Leader to plot edge — chip sits on the price axis (outside plot).
         applyStrokeStyle(ctx, { ...style, width: 1, lineStyle: 'dashed' });
         ctx.beginPath();
         ctx.moveTo(xy[0].x, y + 0.5);
         ctx.lineTo(right, y + 0.5);
         ctx.stroke();
         ctx.setLineDash([]);
-        // Axis-style chip at right edge (inside plot)
         ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif';
         const labelH = 18;
         const chipW = Math.max(48, ctx.measureText(label).width + 14);
@@ -1061,7 +1107,7 @@ export function paintDrawing(
           Math.max(y - labelH / 2, plot.top),
           plot.top + plot.height - labelH,
         );
-        const axisX = right - chipW;
+        const axisX = right;
         const notch = 4;
         ctx.fillStyle = style.color || colors.accent;
         ctx.beginPath();
@@ -1370,13 +1416,18 @@ export function paintAllDrawings(
   plot: import('@/chart/scales').PlotRect,
   priceScale: import('@/chart/scales').PriceScale,
   draft: Drawing | null,
-  selectedId: string | null,
+  selectedIds: readonly string[] | string | null,
   hidden: boolean,
   hoveredId: string | null = null,
   colors?: ChartColors,
   paneTf?: Timeframe | null,
 ): void {
   if (hidden || bars.length === 0) return;
+  const selectedSet = new Set(
+    typeof selectedIds === 'string'
+      ? [selectedIds]
+      : selectedIds ?? [],
+  );
   const pc: PaintCtx = {
     ctx,
     bars,
@@ -1386,8 +1437,9 @@ export function paintAllDrawings(
     colors: colors ?? getChartColors(),
   };
   for (const d of drawings) {
+    if (d.visible === false) continue;
     if (!isDrawingVisibleOnTf(d, paneTf)) continue;
-    const isSelected = d.id === selectedId;
+    const isSelected = selectedSet.has(d.id);
     const isHovered = d.id === hoveredId;
     paintDrawing(pc, d, { selected: isSelected });
     // Hover handles when near (TV); selected already drew handles above
@@ -1399,5 +1451,17 @@ export function paintAllDrawings(
   if (draft) {
     // Always show anchors while placing
     paintDrawing(pc, draft, { selected: true });
+  }
+  if (selectedSet.size > 0) {
+    paintAxisBadges(
+      ctx,
+      drawings,
+      selectedSet,
+      bars,
+      range,
+      plot,
+      priceScale,
+      pc.colors,
+    );
   }
 }

@@ -167,6 +167,8 @@ export interface PaintState {
   drawings?: readonly Drawing[];
   draftDrawing?: Drawing | null;
   selectedDrawingId?: string | null;
+  /** Multi-select (preferred). Falls back to selectedDrawingId. */
+  selectedDrawingIds?: readonly string[] | null;
   hoveredDrawingId?: string | null;
   drawingsHidden?: boolean;
   /** Pane TF — filters drawings with per-interval visibility. */
@@ -298,6 +300,7 @@ export function paintDrawingsFrame(
     priceScale,
     drawings,
     selectedDrawingId,
+    selectedDrawingIds,
     hoveredDrawingId,
     drawingsHidden,
     paneTimeframe,
@@ -327,6 +330,13 @@ export function paintDrawingsFrame(
       ? priceScale
       : computePriceScale(bars, range, maxBarIndex);
 
+  const ids =
+    selectedDrawingIds && selectedDrawingIds.length > 0
+      ? selectedDrawingIds
+      : selectedDrawingId
+        ? [selectedDrawingId]
+        : [];
+
   drawDrawings(
     ctx,
     drawings,
@@ -336,7 +346,7 @@ export function paintDrawingsFrame(
     scale,
     colors,
     null,
-    selectedDrawingId ?? null,
+    ids,
     false,
     hoveredDrawingId ?? null,
     paneTimeframe ?? null,

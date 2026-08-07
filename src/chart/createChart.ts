@@ -118,7 +118,8 @@ export type PlotClickListener = (point: CrosshairPoint) => void;
 export type UserGestureListener = () => void;
 export type ContextMenuListener = (x: number, y: number) => void;
 export type DrawingsChangeListener = (drawings: readonly Drawing[]) => void;
-export type DrawingSelectListener = (drawingId: string) => void;
+/** Full selection set (primary = last id). Empty = deselect. */
+export type DrawingSelectListener = (drawingIds: readonly string[]) => void;
 export type FreehandStrokePhase = 'start' | 'move' | 'end';
 export type FreehandStrokeListener = (
   phase: FreehandStrokePhase,
@@ -127,9 +128,13 @@ export type FreehandStrokeListener = (
 
 interface DrawingDragState {
   id: string;
+  /** Bodies moved together on multi-select body drag. */
+  moveIds: string[];
   mode: 'handle' | 'body';
   handleIndex: number | null;
   originPoints: DrawingPoint[];
+  /** Snapshot of points for every id in moveIds. */
+  originById: Map<string, DrawingPoint[]>;
   anchorTime: number;
   anchorPrice: number;
   cursor: string;
@@ -218,6 +223,7 @@ export interface ChartInstance {
     draft?: Drawing | null,
     opts?: {
       selectedId?: string | null;
+      selectedIds?: readonly string[] | null;
       hidden?: boolean;
       paneTimeframe?: Timeframe | null;
     },
@@ -326,7 +332,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   let drawings: readonly Drawing[] = [];
   let draftDrawing: Drawing | null = null;
   let placement: DrawingPlacement | null = null;
-  let selectedDrawingId: string | null = null;
+  let selectedDrawingIds: string[] = [];
   let hoveredDrawingId: string | null = null;
   let drawingsHidden = false;
   let paneTimeframe: Timeframe | null = null;
@@ -660,7 +666,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     crosshair,
     drawings,
     draftDrawing,
-    selectedDrawingId,
+    selectedDrawingIds,
     hoveredDrawingId,
     drawingsHidden,
     paneTimeframe,
@@ -994,9 +1000,49 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         }
       }
       const hit = hitDrawingAt(x, y);
-      if (!hit) return false;
+      if (!hit) {
+        if (!opts?.additive) {
+          selectedDrawingIds = [];
+          for (const cb of drawingSelectListeners) cb([]);
+          markDrawingsDirty();
+        }
+        return false;
+      }
       let d = drawings.find((dr) => dr.id === hit.drawingId);
-      if (!d || d.locked) return false;
+      if (!d) return false;
+
+      // Selection (additive = Shift/Ctrl/Meta). Locked drawings select but do not drag.
+      let nextIds: string[];
+      if (opts?.additive) {
+        const set = new Set(selectedDrawingIds);
+        if (set.has(d.id)) set.delete(d.id);
+        else set.add(d.id);
+        nextIds = [...set];
+      } else if (
+        selectedDrawingIds.includes(d.id) &&
+        selectedDrawingIds.length > 1 &&
+        hit.handleIndex == null
+      ) {
+        // Preserve multi-select when body-dragging an already-selected member.
+        nextIds = [...selectedDrawingIds];
+      } else {
+        nextIds = [d.id];
+      }
+      selectedDrawingIds = nextIds;
+      hoveredDrawingId = d.id;
+      for (const cb of drawingSelectListeners) cb(nextIds);
+
+      // Additive toggle-off: select only, no drag.
+      if (opts?.additive && !nextIds.includes(d.id)) {
+        markDrawingsDirty();
+        return false;
+      }
+
+      if (d.locked) {
+        markDrawingsDirty();
+        return false; // pan passthrough
+      }
+
       const logical = mediaToLogical(x, y);
       if (!logical) return false;
 
@@ -1017,6 +1063,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         );
         drawings = [...drawings, clone];
         d = clone;
+        selectedDrawingIds = [d.id];
+        for (const cb of drawingSelectListeners) cb([d.id]);
       }
 
       const cursor = cursorForDrawingHit(
@@ -1028,19 +1076,31 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         resolvePriceScale(),
         { dragging: true },
       );
+      const mode = hit.handleIndex != null ? 'handle' : 'body';
+      const moveIds =
+        mode === 'body'
+          ? selectedDrawingIds.filter((id) => {
+              const dr = drawings.find((x) => x.id === id);
+              return dr && !dr.locked;
+            })
+          : [d.id];
+      const originById = new Map<string, DrawingPoint[]>();
+      for (const id of moveIds) {
+        const dr = drawings.find((x) => x.id === id);
+        if (dr) originById.set(id, dr.points.map((p) => ({ ...p })));
+      }
       drawingDrag = {
         id: d.id,
-        mode: hit.handleIndex != null ? 'handle' : 'body',
+        moveIds,
+        mode,
         handleIndex: hit.handleIndex,
         originPoints: d.points.map((p) => ({ ...p })),
+        originById,
         anchorTime: logical.time,
         anchorPrice: logical.price,
         cursor,
       };
-      selectedDrawingId = d.id;
-      hoveredDrawingId = d.id;
-      for (const cb of drawingSelectListeners) cb(d.id);
-      markDirty();
+      markDrawingsDirty();
       return true;
     },
     beginMarqueeZoom: (x, y) => {
@@ -1144,12 +1204,12 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       const current = drawings.find((dr) => dr.id === drawingDrag!.id);
       if (!current || current.locked) return;
 
-      let nextPoints: DrawingPoint[];
-      let nextMeta = current.meta;
       if (drawingDrag.mode === 'handle' && drawingDrag.handleIndex != null) {
         // Magnet on handles only (body move keeps shape rigid).
         let tip = magnetSnap(logical, bars, drawingMagnetMode);
         const hi = drawingDrag.handleIndex;
+        let nextPoints: DrawingPoint[];
+        let nextMeta = current.meta;
         if (
           isRectLikeTool(current.type) &&
           isRectEdgeHandle(hi) &&
@@ -1171,6 +1231,15 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
             resolvePriceScale(),
             current.type === 'flatTopBottom',
           );
+        } else if (
+          (current.type === 'longPosition' || current.type === 'shortPosition') &&
+          hi >= 0 &&
+          hi < drawingDrag.originPoints.length
+        ) {
+          // RR level handles: price-only (keep anchor times).
+          nextPoints = drawingDrag.originPoints.map((p, i) =>
+            i === hi ? { time: p.time, price: tip.price } : { ...p },
+          );
         } else {
           // Constrain vs the other anchor (not always point 0).
           const otherIdx = hi === 0 ? 1 : 0;
@@ -1191,22 +1260,30 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         if (current.type === 'longPosition' || current.type === 'shortPosition') {
           nextMeta = syncRiskRewardMeta(current.type, nextPoints, current.meta);
         }
+        drawings = drawings.map((dr) =>
+          dr.id === drawingDrag!.id
+            ? { ...dr, points: nextPoints, meta: nextMeta }
+            : dr,
+        );
       } else {
         const dt = logical.time - drawingDrag.anchorTime;
         const dp = logical.price - drawingDrag.anchorPrice;
-        nextPoints = drawingDrag.originPoints.map((p) => ({
-          time: p.time + dt,
-          price: p.price + dp,
-        }));
+        const moveSet = new Set(drawingDrag.moveIds);
+        drawings = drawings.map((dr) => {
+          if (!moveSet.has(dr.id) || dr.locked) return dr;
+          const origin = drawingDrag!.originById.get(dr.id) ?? dr.points;
+          return {
+            ...dr,
+            points: origin.map((p) => ({
+              time: p.time + dt,
+              price: p.price + dp,
+            })),
+          };
+        });
       }
 
-      // Mid-drag: update engine only (overlay dirty). Persist on pointer-up.
-      drawings = drawings.map((dr) =>
-        dr.id === drawingDrag!.id
-          ? { ...dr, points: nextPoints, meta: nextMeta }
-          : dr,
-      );
-      markDirty();
+      // Mid-drag: drawings layer only (no series rebuild).
+      markDrawingsDirty();
     },
     endDrawingDrag: () => {
       if (orderLevelDragging) {
@@ -1226,11 +1303,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         return;
       }
       if (drawingDrag) {
-        const id = drawingDrag.id;
+        const ids = [...selectedDrawingIds];
         drawingDrag = null;
         emitDrawingsChange(drawings);
-        // Ensure React selection stays on the edited drawing
-        for (const cb of drawingSelectListeners) cb(id);
+        for (const cb of drawingSelectListeners) cb(ids);
       } else {
         drawingDrag = null;
       }
@@ -1490,18 +1566,30 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     setDrawings(next, draft = null, opts) {
       // Don't clobber in-flight drag geometry with a stale React snapshot.
       if (drawingDrag) {
-        const live = drawings.find((d) => d.id === drawingDrag!.id);
-        drawings = next.map((d) =>
-          live && d.id === live.id
-            ? { ...d, points: live.points, meta: live.meta }
-            : d,
+        const liveById = new Map(
+          drawings
+            .filter((d) => drawingDrag!.moveIds.includes(d.id))
+            .map((d) => [d.id, d] as const),
         );
+        drawings = next.map((d) => {
+          const live = liveById.get(d.id);
+          return live
+            ? { ...d, points: live.points, meta: live.meta }
+            : d;
+        });
       } else {
         drawings = next;
       }
       // Placement owns rubber-band draft; React draft only when not placing
       if (!placement) draftDrawing = draft;
-      if (opts?.selectedId !== undefined) selectedDrawingId = opts.selectedId;
+      if (opts?.selectedIds !== undefined) {
+        selectedDrawingIds = opts.selectedIds ? [...opts.selectedIds] : [];
+      } else if (opts?.selectedId !== undefined) {
+        selectedDrawingIds = opts.selectedId ? [opts.selectedId] : [];
+      }
+      selectedDrawingIds = selectedDrawingIds.filter((id) =>
+        next.some((d) => d.id === id),
+      );
       if (opts?.hidden !== undefined) {
         drawingsHidden = opts.hidden;
         if (drawingsHidden) hoveredDrawingId = null;

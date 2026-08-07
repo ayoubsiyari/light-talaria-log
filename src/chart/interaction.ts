@@ -27,11 +27,12 @@ export interface InteractionCallbacks {
   /**
    * Start move/resize on a drawing. Return true to claim the pointer (no chart pan).
    * `altKey` — Alt/Option+drag clones the drawing then moves the clone.
+   * `additive` — Shift/Ctrl/Meta+click toggles multi-select.
    */
   beginDrawingDrag?: (
     x: number,
     y: number,
-    opts?: { altKey?: boolean },
+    opts?: { altKey?: boolean; additive?: boolean },
   ) => boolean;
   /** Pointer moved while a drawing drag is active. */
   moveDrawingDrag?: (x: number, y: number) => void;
@@ -352,7 +353,10 @@ export function attachInteraction(
       dragMode = 'timeZoom';
     } else if (
       zone === 'plot' &&
-      callbacks.beginDrawingDrag?.(x, y, { altKey: e.altKey })
+      callbacks.beginDrawingDrag?.(x, y, {
+        altKey: e.altKey,
+        additive: e.shiftKey || e.ctrlKey || e.metaKey,
+      })
     ) {
       dragMode = 'drawing';
     } else if (zone === 'plot' && callbacks.beginFreehandStroke?.(x, y)) {

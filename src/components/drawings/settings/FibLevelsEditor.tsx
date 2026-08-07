@@ -192,6 +192,31 @@ export function FibLevelsEditor({ type, meta, onMetaChange }: FibLevelsEditorPro
           onChange={(v) => onMetaChange({ showPrices: v })}
         />
       )}
+      <ToggleRow
+        label="Show zones"
+        checked={meta.showZones !== false}
+        onChange={(v) => onMetaChange({ showZones: v })}
+      />
+      <div className="flex items-center justify-between gap-2 min-h-11 px-0.5">
+        <span className="text-sm text-foreground">Label mode</span>
+        <select
+          className="min-h-11 sm:min-h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+          value={
+            meta.labelMode === 'values' || meta.labelMode === 'percent'
+              ? meta.labelMode
+              : 'both'
+          }
+          onChange={(e) =>
+            onMetaChange({
+              labelMode: e.target.value as 'values' | 'percent' | 'both',
+            })
+          }
+        >
+          <option value="both">Values + %</option>
+          <option value="percent">Percent</option>
+          <option value="values">Prices</option>
+        </select>
+      </div>
       {showReverse && (
         <ToggleRow
           label="Reverse"

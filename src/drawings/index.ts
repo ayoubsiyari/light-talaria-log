@@ -2,6 +2,7 @@ export * from './drawingStore';
 export * from './drawingStyle';
 export * from './toolRegistry';
 export * from './drawingInteraction';
+export * from './drawingClipboard';
 export * from './hitTest';
 export * from './magnet';
 export * from './constrain';

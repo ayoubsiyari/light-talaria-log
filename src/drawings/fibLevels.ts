@@ -12,6 +12,8 @@ export interface FibLevel {
   lineStyle: LineStyleKind;
 }
 
+export type FibLabelMode = 'values' | 'percent' | 'both';
+
 export interface FibMeta {
   levels: FibLevel[];
   /** Show coefficient labels (0.618, …). */
@@ -21,6 +23,10 @@ export interface FibMeta {
   reverse: boolean;
   extendLeft: boolean;
   extendRight: boolean;
+  /** Fill bands between consecutive levels. */
+  showZones: boolean;
+  /** Label content: price values, coeffs, or both. */
+  labelMode: FibLabelMode;
 }
 
 /** Classic retracement / extension coeffs with TV-ish colors. */
@@ -195,6 +201,8 @@ export function defaultFibMetaFor(type: DrawingToolId): FibMeta {
     reverse: false,
     extendLeft: false,
     extendRight: extend,
+    showZones: true,
+    labelMode: 'both',
   };
 }
 
@@ -214,6 +222,11 @@ export function resolveFibMeta(
     extendLeft = meta.extendLines;
     extendRight = meta.extendLines;
   }
+  const labelModeRaw = meta.labelMode;
+  const labelMode: FibLabelMode =
+    labelModeRaw === 'values' || labelModeRaw === 'percent' || labelModeRaw === 'both'
+      ? labelModeRaw
+      : base.labelMode;
   return {
     levels,
     showLabels: typeof meta.showLabels === 'boolean' ? meta.showLabels : base.showLabels,
@@ -221,6 +234,8 @@ export function resolveFibMeta(
     reverse: typeof meta.reverse === 'boolean' ? meta.reverse : base.reverse,
     extendLeft,
     extendRight,
+    showZones: typeof meta.showZones === 'boolean' ? meta.showZones : base.showZones,
+    labelMode,
   };
 }
 

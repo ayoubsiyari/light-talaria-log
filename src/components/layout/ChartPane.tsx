@@ -46,6 +46,7 @@ export interface ChartPaneProps {
   drawings: readonly Drawing[];
   placement?: DrawingPlacement | null;
   selectedDrawingId?: string | null;
+  selectedDrawingIds?: readonly string[] | null;
   drawingsHidden?: boolean;
   drawingMagnetMode?: MagnetMode;
   drawingShiftHeld?: boolean;
@@ -65,7 +66,7 @@ export interface ChartPaneProps {
   onCrosshairSample?: (point: CrosshairPoint | null) => void;
   onUserGesture?: () => void;
   onDrawingsChange?: (drawings: readonly Drawing[]) => void;
-  onDrawingSelect?: (drawingId: string) => void;
+  onDrawingSelect?: (drawingIds: readonly string[]) => void;
   onFreehandStroke?: (
     phase: 'start' | 'move' | 'end',
     point: DrawingPoint | null,
@@ -110,6 +111,7 @@ export function ChartPane({
   drawings,
   placement = null,
   selectedDrawingId = null,
+  selectedDrawingIds = null,
   drawingsHidden = false,
   drawingMagnetMode = 'off',
   drawingShiftHeld = false,
@@ -246,6 +248,7 @@ export function ChartPane({
         drawings={drawings}
         placement={placement}
         selectedDrawingId={selectedDrawingId}
+        selectedDrawingIds={selectedDrawingIds}
         drawingsHidden={drawingsHidden}
         paneTimeframe={timeframe}
         drawingMagnetMode={drawingMagnetMode}

@@ -851,6 +851,23 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-06 | Auto-collect full trade record on SL/TP close (`CollectedTrade` on POSITION_CLOSED + `trades.meta`) | Place→hit SL/TP → journal payload.collected + DB meta |
 | 2026-08-05 | Order drag band: `globalAlpha` so CSS tokens (`--success`/`--danger`) still tint @0.2 | Drag SL/TP — soft fill visible |
 | 2026-08-07 | **V9 chrome port:** copy Obsidian CSS/theme/icons + Live reference into `src/v9/`; chart shell `data-v9-app`; restyle TopBar / LeftToolbar / BottomBar / TradeDock (Canvas engine kept; Live not mounted) | Hard-refresh chart session — Obsidian chrome; pan/zoom unchanged; check ~390px |
+| 2026-08-07 | **Drawings E1–E5 (Talaria parity on Canvas):** stroke-only hit, multi-select, copy/paste/z-order, axis badges, fib zones/label modes, RR level handles, inline text, floating More menu, object-tree multi bulk | Matrix: place/select/move FULL tools; Shift+click multi; Cmd+C/V; fib zones; edit text |
+
+---
+
+## Next Work Plan — Drawings Full Function E1–E5 (2026-08-07)
+
+**Goal:** Tier 1–2 (FULL) tools feel like Talaria-log — interaction + depth on Canvas (no D3/SVG import).
+
+| Step | Status |
+|---|---|
+| E1 Selection / edit feel | **Done** — fat stroke hit; channel stroke-only; multi-select; locked pan passthrough; copy/paste/duplicate; z-order |
+| E2 Axis badges + live drag | **Done** — price/time badges on select; body/handle drag → drawings layer only; priceLabel axis chip |
+| E3 Tool depth | **Done** — fib zones + labelMode + collision labels; channel 3rd-point place; RR level handles; inline text; brush thinning |
+| E4 Chrome | **Done** — floating More (clone/copy/hide/z-order/edit text); object-tree multi + bulk; ≥44px / fat hit targets |
+| E5 Docs | **Done** — this section + session log |
+
+**Out of scope (unchanged):** Gann/Elliott/harmonics/spirals/pitchforks/emoji; per-pane drawing storage; raising ~40 beta tools.
 
 ---
 
@@ -1048,7 +1065,8 @@ Fib extension, path, note, flag, anchored VWAP.
 **Done when:** Docs + UI don’t claim full TV parity for stubs.
 
 ### Suggested order
-`D1 → D2 → D3 → D4 → D5 → D6` — drawings wave complete.
+`D1 → D2 → D3 → D4 → D5 → D6` — drawings wave complete.  
+Follow-on: **E1–E5** (Talaria interaction parity) — see section above (2026-08-07).
 
 ### Out of scope this wave
 Gann, Elliott, harmonics, fib spiral/arcs/circles/wedge, pitchforks, emoji/stickers, ghost feed, sync-drawings toggle across layouts, cloud drawing sync, per-pane drawing storage.

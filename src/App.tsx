@@ -21,6 +21,7 @@ import {
 import { AdminPage } from '@/components/admin/AdminPage';
 import { DrawingFloatingToolbar } from '@/components/drawings/DrawingFloatingToolbar';
 import { DrawingSettingsModal } from '@/components/drawings/DrawingSettingsModal';
+import { InlineTextEditor } from '@/components/drawings/InlineTextEditor';
 import { ObjectTreePanel } from '@/components/drawings/ObjectTreePanel';
 import { ChartContextMenu, type ChartContextMenuState } from '@/components/chart/ChartContextMenu';
 import { ChartSettingsModal } from '@/components/chart/ChartSettingsModal';
@@ -53,6 +54,13 @@ import {
   type Drawing,
   type DrawingPoint,
 } from '@/drawings/drawingStore';
+import {
+  bringDrawingsToFront,
+  copyDrawings,
+  duplicateDrawings,
+  pasteDrawingsFromClipboard,
+  sendDrawingsToBack,
+} from '@/drawings/drawingClipboard';
 import { applyShiftConstrainIfNeeded } from '@/drawings/constrain';
 import { placeDrawingPoint } from '@/drawings/drawingInteraction';
 import type { HitResult } from '@/drawings/hitTest';
@@ -346,7 +354,11 @@ export default function App() {
 
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [draftPoints, setDraftPoints] = useState<DrawingPoint[]>([]);
-  const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
+  const [selectedDrawingIds, setSelectedDrawingIds] = useState<string[]>([]);
+  const selectedDrawingId =
+    selectedDrawingIds.length > 0
+      ? selectedDrawingIds[selectedDrawingIds.length - 1]!
+      : null;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [chartSettingsOpen, setChartSettingsOpen] = useState(false);
   const [chartContextMenu, setChartContextMenu] = useState<ChartContextMenuState | null>(null);
@@ -356,6 +368,7 @@ export default function App() {
   const [drawingsLocked, setDrawingsLocked] = useState(false);
   const [drawingsHidden, setDrawingsHidden] = useState(false);
   const [objectTreeOpen, setObjectTreeOpen] = useState(false);
+  const [inlineTextId, setInlineTextId] = useState<string | null>(null);
   const [replayTick, setReplayTick] = useState(0);
   const freehandActiveRef = useRef(false);
   /** Mirror of draftPoints for press-drag end (React state may lag a frame). */
@@ -626,6 +639,10 @@ export default function App() {
   }, [activeTool, draftPoints]);
 
   const selectedDrawing = drawings.find((d) => d.id === selectedDrawingId) ?? null;
+  const selectedDrawings = useMemo(
+    () => drawings.filter((d) => selectedDrawingIds.includes(d.id)),
+    [drawings, selectedDrawingIds],
+  );
 
   const persistDrawings = useCallback(
     (next: Drawing[]) => {
@@ -1947,20 +1964,31 @@ export default function App() {
     };
   }, [catalog, syncStore, applyTimeWindowToPanes]);
 
-  /** After placing a drawing: select it; open Text settings for text tools. */
+  /** After placing a drawing: select it; inline-edit text tools. */
   const finishPlacedDrawing = useCallback((drawing: Drawing) => {
     setDraftPoints([]);
-    setSelectedDrawingId(drawing.id);
-    setSettingsOpen(!!getTool(drawing.type).needsText);
+    setSelectedDrawingIds([drawing.id]);
+    if (getTool(drawing.type).needsText || drawing.type === 'callout') {
+      setInlineTextId(drawing.id);
+      setSettingsOpen(false);
+    } else {
+      setSettingsOpen(false);
+    }
     if (!stayInDrawingMode) setActiveTool('cursor');
   }, [stayInDrawingMode]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable);
       if (e.key === 'Escape') {
         setDraftPoints([]);
         freehandActiveRef.current = false;
-        setSelectedDrawingId(null);
+        setSelectedDrawingIds([]);
         setSettingsOpen(false);
         setActiveTool('cursor');
       }
@@ -1976,11 +2004,39 @@ export default function App() {
           }
         }
       }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedDrawingId && !drawingsLocked) {
-        const cur = drawings.find((d) => d.id === selectedDrawingId);
-        if (cur?.locked) return;
-        persistDrawings(drawings.filter((d) => d.id !== selectedDrawingId));
-        setSelectedDrawingId(null);
+      if (typing) return;
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && (e.key === 'c' || e.key === 'C') && selectedDrawingIds.length > 0) {
+        e.preventDefault();
+        copyDrawings(selectedDrawings);
+      }
+      if (mod && (e.key === 'v' || e.key === 'V') && !drawingsLocked) {
+        e.preventDefault();
+        const pasted = pasteDrawingsFromClipboard();
+        if (pasted.length === 0) return;
+        persistDrawings([...drawings, ...pasted]);
+        setSelectedDrawingIds(pasted.map((d) => d.id));
+      }
+      if (mod && (e.key === 'd' || e.key === 'D') && selectedDrawingIds.length > 0 && !drawingsLocked) {
+        e.preventDefault();
+        const dupes = duplicateDrawings(selectedDrawings);
+        persistDrawings([...drawings, ...dupes]);
+        setSelectedDrawingIds(dupes.map((d) => d.id));
+      }
+      if (
+        (e.key === 'Delete' || e.key === 'Backspace') &&
+        selectedDrawingIds.length > 0 &&
+        !drawingsLocked
+      ) {
+        const locked = new Set(
+          drawings.filter((d) => d.locked).map((d) => d.id),
+        );
+        const remove = new Set(
+          selectedDrawingIds.filter((id) => !locked.has(id)),
+        );
+        if (remove.size === 0) return;
+        persistDrawings(drawings.filter((d) => !remove.has(d.id)));
+        setSelectedDrawingIds([]);
         setSettingsOpen(false);
       }
     };
@@ -1993,7 +2049,8 @@ export default function App() {
     drawingsLocked,
     finishPlacedDrawing,
     persistDrawings,
-    selectedDrawingId,
+    selectedDrawingIds,
+    selectedDrawings,
   ]);
 
   const handleLayoutChange = (layout: ChartLayout) => {
@@ -2339,10 +2396,10 @@ export default function App() {
       // Move/resize is handled by the chart engine (pointer drag + cursors).
       if (activeTool === 'cursor' || activeTool === 'zoom' || drawingsLocked) {
         if (hit) {
-          setSelectedDrawingId(hit.drawingId);
+          setSelectedDrawingIds([hit.drawingId]);
           setSettingsOpen(false);
         } else {
-          setSelectedDrawingId(null);
+          setSelectedDrawingIds([]);
           setSettingsOpen(false);
         }
         return;
@@ -2352,7 +2409,7 @@ export default function App() {
 
       // Clicking an existing drawing while a tool is active → select instead
       if (hit && draftPoints.length === 0) {
-        setSelectedDrawingId(hit.drawingId);
+        setSelectedDrawingIds([hit.drawingId]);
         setSettingsOpen(false);
         setActiveTool('cursor');
         return;
@@ -2552,7 +2609,7 @@ export default function App() {
       freehandRafRef.current = 0;
     }
     if (tool !== 'cursor') {
-      setSelectedDrawingId(null);
+      setSelectedDrawingIds([]);
       setSettingsOpen(false);
     }
   };
@@ -2564,15 +2621,15 @@ export default function App() {
     [persistDrawings],
   );
 
-  const handleEngineDrawingSelect = useCallback((drawingId: string) => {
-    setSelectedDrawingId(drawingId);
+  const handleEngineDrawingSelect = useCallback((drawingIds: readonly string[]) => {
+    setSelectedDrawingIds([...drawingIds]);
     setSettingsOpen(false);
   }, []);
 
   const clearDrawings = () => {
     persistDrawings([]);
     setDraftPoints([]);
-    setSelectedDrawingId(null);
+    setSelectedDrawingIds([]);
     setSettingsOpen(false);
     setObjectTreeOpen(false);
   };
@@ -2601,7 +2658,7 @@ export default function App() {
         }
         return next;
       });
-      setSelectedDrawingId((cur) => (cur === id ? null : cur));
+      setSelectedDrawingIds((cur) => cur.filter((x) => x !== id));
       setSettingsOpen(false);
     },
     [session, catalog],
@@ -2609,18 +2666,29 @@ export default function App() {
 
   const patchSelectedDrawing = useCallback(
     (patch: Partial<Drawing>) => {
-      if (!selectedDrawingId) return;
+      if (selectedDrawingIds.length === 0) return;
+      const idSet = new Set(selectedDrawingIds);
       setDrawings((prev) => {
-        const next = prev.map((d) =>
-          d.id === selectedDrawingId ? { ...d, ...patch } : d,
-        );
+        const next = prev.map((d) => (idSet.has(d.id) ? { ...d, ...patch } : d));
         if (session && catalog) {
           saveDrawings(`${session.id}:${catalog.datasetId}`, next);
         }
         return next;
       });
     },
-    [selectedDrawingId, session, catalog],
+    [selectedDrawingIds, session, catalog],
+  );
+
+  const reorderSelected = useCallback(
+    (dir: 'front' | 'back') => {
+      if (selectedDrawingIds.length === 0) return;
+      const next =
+        dir === 'front'
+          ? bringDrawingsToFront(drawings, selectedDrawingIds)
+          : sendDrawingsToBack(drawings, selectedDrawingIds);
+      persistDrawings(next);
+    },
+    [drawings, persistDrawings, selectedDrawingIds],
   );
 
   const replaceSelectedDrawing = useCallback(
@@ -2637,11 +2705,12 @@ export default function App() {
   );
 
   const deleteSelectedDrawing = () => {
-    if (!selectedDrawingId) return;
-    const cur = drawings.find((d) => d.id === selectedDrawingId);
-    if (cur?.locked) return;
-    persistDrawings(drawings.filter((d) => d.id !== selectedDrawingId));
-    setSelectedDrawingId(null);
+    if (selectedDrawingIds.length === 0) return;
+    const locked = new Set(drawings.filter((d) => d.locked).map((d) => d.id));
+    const remove = new Set(selectedDrawingIds.filter((id) => !locked.has(id)));
+    if (remove.size === 0) return;
+    persistDrawings(drawings.filter((d) => !remove.has(d.id)));
+    setSelectedDrawingIds([]);
     setSettingsOpen(false);
   };
 
@@ -2677,7 +2746,7 @@ export default function App() {
     seriesRef.current = [];
     setDrawings([]);
     setDraftPoints([]);
-    setSelectedDrawingId(null);
+    setSelectedDrawingIds([]);
     setSettingsOpen(false);
     setEnabledIndicators([]);
     setOrders([]);
@@ -3987,6 +4056,7 @@ export default function App() {
               drawings={drawings}
               placement={placement}
               selectedDrawingId={selectedDrawingId}
+              selectedDrawingIds={selectedDrawingIds}
               drawingsHidden={drawingsHidden}
               drawingMagnetMode={magnetMode}
               drawingShiftHeld={drawingShiftHeld}
@@ -4061,7 +4131,10 @@ export default function App() {
             </>
           )}
 
-          {selectedDrawing && selectedDrawing.visible !== false && !settingsOpen && (
+          {selectedDrawing &&
+            selectedDrawing.visible !== false &&
+            !settingsOpen &&
+            inlineTextId == null && (
             <div className="pointer-events-none absolute top-2 left-2 right-2 z-40 sm:left-1/2 sm:right-auto sm:top-3 sm:-translate-x-1/2 flex justify-center sm:block">
               <DrawingFloatingToolbar
                 drawing={selectedDrawing}
@@ -4069,9 +4142,47 @@ export default function App() {
                 onChange={patchSelectedDrawing}
                 onOpenSettings={() => setSettingsOpen(true)}
                 onDelete={deleteSelectedDrawing}
+                onCopy={() => copyDrawings(selectedDrawings)}
+                onClone={() => {
+                  const dupes = duplicateDrawings(selectedDrawings);
+                  persistDrawings([...drawings, ...dupes]);
+                  setSelectedDrawingIds(dupes.map((d) => d.id));
+                }}
+                onHide={() => {
+                  for (const id of selectedDrawingIds) {
+                    patchDrawingById(id, { visible: false });
+                  }
+                  setSelectedDrawingIds([]);
+                }}
+                onBringToFront={() => reorderSelected('front')}
+                onSendToBack={() => reorderSelected('back')}
+                onEditText={() => {
+                  if (selectedDrawingId) setInlineTextId(selectedDrawingId);
+                }}
               />
             </div>
           )}
+
+          {inlineTextId &&
+            (() => {
+              const d = drawings.find((x) => x.id === inlineTextId);
+              if (!d) return null;
+              return (
+                <InlineTextEditor
+                  drawing={d}
+                  anchor={{
+                    clientX:
+                      typeof window !== 'undefined' ? window.innerWidth / 2 - 80 : 80,
+                    clientY: typeof window !== 'undefined' ? 96 : 96,
+                  }}
+                  onCommit={(text) => {
+                    patchDrawingById(d.id, { text: text.trim() || d.text || 'Text' });
+                    setInlineTextId(null);
+                  }}
+                  onCancel={() => setInlineTextId(null)}
+                />
+              );
+            })()}
 
           {settingsOpen && selectedDrawing && (
             <DrawingSettingsModal
@@ -4092,9 +4203,17 @@ export default function App() {
             open={objectTreeOpen}
             onClose={() => setObjectTreeOpen(false)}
             drawings={drawings}
-            selectedId={selectedDrawingId}
-            onSelect={(id) => {
-              setSelectedDrawingId(id);
+            selectedIds={selectedDrawingIds}
+            onSelect={(id, additive) => {
+              setSelectedDrawingIds((prev) => {
+                if (additive) {
+                  const set = new Set(prev);
+                  if (set.has(id)) set.delete(id);
+                  else set.add(id);
+                  return [...set];
+                }
+                return [id];
+              });
               setSettingsOpen(false);
               // Selecting a hidden drawing keeps it hidden — unhide via eye.
               setActiveTool('cursor');
@@ -4111,6 +4230,38 @@ export default function App() {
             }}
             onDelete={deleteDrawingById}
             onDeleteAll={clearDrawings}
+            onBulkHide={(ids) => {
+              setDrawings((prev) => {
+                const idSet = new Set(ids);
+                const next = prev.map((d) =>
+                  idSet.has(d.id) ? { ...d, visible: false } : d,
+                );
+                if (session && catalog) {
+                  saveDrawings(`${session.id}:${catalog.datasetId}`, next);
+                }
+                return next;
+              });
+            }}
+            onBulkLock={(ids, locked) => {
+              setDrawings((prev) => {
+                const idSet = new Set(ids);
+                const next = prev.map((d) =>
+                  idSet.has(d.id) ? { ...d, locked } : d,
+                );
+                if (session && catalog) {
+                  saveDrawings(`${session.id}:${catalog.datasetId}`, next);
+                }
+                return next;
+              });
+            }}
+            onBulkDelete={(ids) => {
+              const locked = new Set(
+                drawings.filter((d) => d.locked).map((d) => d.id),
+              );
+              const remove = new Set(ids.filter((id) => !locked.has(id)));
+              persistDrawings(drawings.filter((d) => !remove.has(d.id)));
+              setSelectedDrawingIds((cur) => cur.filter((id) => !remove.has(id)));
+            }}
           />
 
           {chartContextMenu && (

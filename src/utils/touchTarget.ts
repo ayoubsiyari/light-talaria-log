@@ -8,14 +8,18 @@ export function isCoarsePointer(): boolean {
   }
 }
 
-/** Line / body hit radius for drawings (media px). */
-export function drawingHitPx(): number {
-  return isCoarsePointer() ? 20 : 12;
+/**
+ * Line / body hit radius for drawings (media px).
+ * Fat invisible stroke (~Talaria max(16, stroke*5)) so lines are easy to grab.
+ */
+export function drawingHitPx(strokeWidth = 1): number {
+  const fat = Math.max(16, strokeWidth * 5);
+  return isCoarsePointer() ? Math.max(24, fat) : fat;
 }
 
-/** Handle hit radius for drawings (media px). */
+/** Handle hit radius for drawings (media px). Coarse ≈44px diameter. */
 export function drawingHandleHitPx(): number {
-  return isCoarsePointer() ? 24 : 12;
+  return isCoarsePointer() ? 22 : 14;
 }
 
 /** Horizontal order line hit radius (media px). */

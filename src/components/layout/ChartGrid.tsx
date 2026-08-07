@@ -32,6 +32,7 @@ interface ChartGridProps {
   drawings: readonly Drawing[];
   placement?: DrawingPlacement | null;
   selectedDrawingId?: string | null;
+  selectedDrawingIds?: readonly string[] | null;
   drawingsHidden?: boolean;
   drawingMagnetMode?: MagnetMode;
   drawingShiftHeld?: boolean;
@@ -51,7 +52,7 @@ interface ChartGridProps {
   onCrosshairSample?: (point: CrosshairPoint | null) => void;
   onUserGesture?: (paneId: string) => void;
   onDrawingsChange?: (drawings: readonly Drawing[]) => void;
-  onDrawingSelect?: (drawingId: string) => void;
+  onDrawingSelect?: (drawingIds: readonly string[]) => void;
   onFreehandStroke?: (
     phase: 'start' | 'move' | 'end',
     point: DrawingPoint | null,
@@ -102,6 +103,7 @@ export function ChartGrid({
   drawings,
   placement = null,
   selectedDrawingId = null,
+  selectedDrawingIds = null,
   drawingsHidden = false,
   drawingMagnetMode = 'off',
   drawingShiftHeld = false,
@@ -200,6 +202,7 @@ export function ChartGrid({
               drawings={drawings}
               placement={placement}
               selectedDrawingId={selectedDrawingId}
+              selectedDrawingIds={selectedDrawingIds}
               drawingsHidden={drawingsHidden}
               drawingMagnetMode={drawingMagnetMode}
               drawingShiftHeld={drawingShiftHeld}

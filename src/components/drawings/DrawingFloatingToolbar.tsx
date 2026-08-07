@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { IconLock, IconSettings, IconTrash } from '@/components/icons/ToolIcons';
 import type { Drawing } from '@/drawings/drawingStore';
 import type { DrawingStyle } from '@/drawings/drawingStyle';
@@ -17,11 +17,17 @@ interface DrawingFloatingToolbarProps {
   disabled?: boolean;
   /** When true, style flyout is suppressed (settings modal owns style). */
   suppressStyleFlyout?: boolean;
+  onClone?: () => void;
+  onCopy?: () => void;
+  onHide?: () => void;
+  onBringToFront?: () => void;
+  onSendToBack?: () => void;
+  onEditText?: () => void;
 }
 
 /**
  * TradingView-style floating bar above a selected drawing:
- * style picker · settings · lock · delete
+ * style picker · settings · lock · delete · more
  */
 export function DrawingFloatingToolbar({
   drawing,
@@ -30,11 +36,31 @@ export function DrawingFloatingToolbar({
   onDelete,
   disabled = false,
   suppressStyleFlyout = false,
+  onClone,
+  onCopy,
+  onHide,
+  onBringToFront,
+  onSendToBack,
+  onEditText,
 }: DrawingFloatingToolbarProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const styleBtnRef = useRef<HTMLButtonElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
   const tool = getTool(drawing.type);
   const style = drawing.style;
+  const canEditText = !!tool.needsText || drawing.type === 'callout';
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDoc = (e: PointerEvent) => {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
+        setMoreOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onDoc, true);
+    return () => document.removeEventListener('pointerdown', onDoc, true);
+  }, [moreOpen]);
 
   const patchStyle = (partial: Partial<DrawingStyle>) => {
     const next = { ...style, ...partial };
@@ -54,9 +80,12 @@ export function DrawingFloatingToolbar({
           : 'text-muted hover:text-foreground hover:bg-background/80',
     ].join(' ');
 
+  const menuItem =
+    'w-full min-h-11 px-3 text-left text-sm text-foreground hover:bg-background/80 disabled:opacity-40';
+
   return (
     <div
-      className="pointer-events-auto flex items-center gap-0.5 rounded-lg border border-border bg-surface text-foreground shadow-xl px-1.5 py-1 max-w-full overflow-x-auto overscroll-x-contain"
+      className="pointer-events-auto relative flex items-center gap-0.5 rounded-lg border border-border bg-surface text-foreground shadow-xl px-1.5 py-1 max-w-full overflow-x-auto overscroll-x-contain"
       onPointerDown={(e) => e.stopPropagation()}
     >
       <span className="px-1 text-muted/50 select-none text-xs tracking-widest" title={tool.label}>
@@ -108,6 +137,96 @@ export function DrawingFloatingToolbar({
       >
         <IconTrash />
       </button>
+
+      <div className="relative" ref={moreRef}>
+        <button
+          type="button"
+          title="More"
+          className={btn(moreOpen)}
+          onClick={() => setMoreOpen((v) => !v)}
+        >
+          ···
+        </button>
+        {moreOpen && (
+          <div className="absolute right-0 top-full mt-1 z-50 min-w-[11rem] rounded-lg border border-border bg-surface shadow-xl py-1">
+            {canEditText && onEditText && (
+              <button
+                type="button"
+                className={menuItem}
+                onClick={() => {
+                  setMoreOpen(false);
+                  onEditText();
+                }}
+              >
+                Edit text
+              </button>
+            )}
+            {onClone && (
+              <button
+                type="button"
+                className={menuItem}
+                disabled={disabled}
+                onClick={() => {
+                  setMoreOpen(false);
+                  onClone();
+                }}
+              >
+                Clone
+              </button>
+            )}
+            {onCopy && (
+              <button
+                type="button"
+                className={menuItem}
+                onClick={() => {
+                  setMoreOpen(false);
+                  onCopy();
+                }}
+              >
+                Copy
+              </button>
+            )}
+            {onHide && (
+              <button
+                type="button"
+                className={menuItem}
+                onClick={() => {
+                  setMoreOpen(false);
+                  onHide();
+                }}
+              >
+                Hide
+              </button>
+            )}
+            {onBringToFront && (
+              <button
+                type="button"
+                className={menuItem}
+                disabled={disabled}
+                onClick={() => {
+                  setMoreOpen(false);
+                  onBringToFront();
+                }}
+              >
+                Bring to front
+              </button>
+            )}
+            {onSendToBack && (
+              <button
+                type="button"
+                className={menuItem}
+                disabled={disabled}
+                onClick={() => {
+                  setMoreOpen(false);
+                  onSendToBack();
+                }}
+              >
+                Send to back
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       {!suppressStyleFlyout && (
         <LineStylePickerFlyout

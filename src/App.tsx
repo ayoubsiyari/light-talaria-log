@@ -38,12 +38,19 @@ import { LoadingProgress } from '@/components/LoadingProgress';
 import { ChartLoadingScreen } from '@/components/ChartLoadingScreen';
 import { PerfOverlay } from '@/components/perf/PerfOverlay';
 import { getChart } from '@/chart';
-/** Per-switch camera preserve: tip candle screen fraction + bar-count zoom. */
-type LiveCamera = { anchorTime: number; span: number; tipRatio: number };
+/** Per-switch camera preserve: wall-clock window + tip fraction fallback. */
+type LiveCamera = {
+  anchorTime: number;
+  span: number;
+  tipRatio: number;
+  fromTime?: number;
+  toTime?: number;
+};
 import {
   canAggregateFrom,
   smallestTimeframe,
   timeframeSeconds,
+  visibleRangeFromTimeWindow,
 } from '@/data/timeframeAgg';
 import { createSessionController } from '@/session';
 import { ledgerAssertTeardown } from '@/dev/resourceLedger';
@@ -533,9 +540,36 @@ export default function App() {
         chart.syncReplayReveal(v.bars, tipTime);
 
         if (applyCamera) {
-          const tipIndex = v.bars.length - 1;
-          const fromIndex = tipIndex - tipRatio * span;
-          chart.setVisibleRange(fromIndex, fromIndex + span, { silent: true });
+          // Prefer wall-clock remap so TF switch keeps the same time window
+          // (bar-count span from 1m onto 1h left a thin tip / empty pad).
+          if (
+            preserved?.fromTime != null &&
+            preserved?.toTime != null &&
+            preserved.toTime > preserved.fromTime
+          ) {
+            const mapped = visibleRangeFromTimeWindow(
+              v.bars,
+              preserved.fromTime,
+              preserved.toTime,
+            );
+            if (mapped.toIndex > mapped.fromIndex) {
+              chart.setVisibleRange(mapped.fromIndex, mapped.toIndex, {
+                silent: true,
+              });
+            } else {
+              const tipIndex = v.bars.length - 1;
+              const fromIndex = tipIndex - tipRatio * span;
+              chart.setVisibleRange(fromIndex, fromIndex + span, {
+                silent: true,
+              });
+            }
+          } else {
+            const tipIndex = v.bars.length - 1;
+            const fromIndex = tipIndex - tipRatio * span;
+            chart.setVisibleRange(fromIndex, fromIndex + span, {
+              silent: true,
+            });
+          }
         }
 
         if (replay.playing && !detachedPanesRef.current.has(pane.id)) {
@@ -568,11 +602,11 @@ export default function App() {
       // While following replay, the tip time IS the cursor (last revealed candle).
       const following =
         replay.playing && !detachedPanesRef.current.has(paneId);
+      const tr = bars.length > 0 ? timeRangeFromVisible(bars, liveRange) : null;
       let anchorTime: number;
       if (following && Number.isFinite(cursor)) {
         anchorTime = cursor;
       } else {
-        const tr = bars.length > 0 ? timeRangeFromVisible(bars, liveRange) : null;
         anchorTime =
           tr?.toTime ??
           bars[bars.length - 1]?.time ??
@@ -581,7 +615,13 @@ export default function App() {
           anchorTime = Math.min(anchorTime, cursor);
         }
       }
-      return { anchorTime, span, tipRatio };
+      return {
+        anchorTime,
+        span,
+        tipRatio,
+        fromTime: tr?.fromTime,
+        toTime: tr?.toTime,
+      };
     },
     [catalog?.timeEnd],
   );
@@ -2226,6 +2266,9 @@ export default function App() {
       markPanesLoading(targets, true);
 
       void (async () => {
+        // Hold session→React commits for the whole TF await so mid-fill
+        // notify() cannot race Play ticks and blank the chart.
+        suppressSessionCommitRef.current = true;
         try {
           for (const id of targets) {
             if (switchGen !== paneSwitchGenRef.current) return;
@@ -2254,6 +2297,7 @@ export default function App() {
             replayBufferRef.current.set(paneId, focus.bars);
           }
         } finally {
+          suppressSessionCommitRef.current = false;
           if (switchGen === paneSwitchGenRef.current) {
             markPanesLoading(targets, false);
           }

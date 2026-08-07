@@ -38,6 +38,12 @@ export interface CreateSessionArgs {
 }
 
 /**
+ * Panes mid TF/symbol switch — Play must not rebuild their view.bars from a
+ * half-filled new-TF cache (that wiped candles mid-replay).
+ */
+const switchingPanes = new Set<string>();
+
+/**
  * Plain TypeScript session controller — no React.
  * State transitions + derivation. App subscribes and pushes to engines.
  */
@@ -237,8 +243,9 @@ export function createSessionController() {
     },
 
     /**
-     * TF switch — fill the target series first, then derive/notify.
-     * Avoids a blank frame that wiped candles when the new TF was not cached.
+     * TF switch — fill the target series first, then flip TF + derive/notify.
+     * Keep the old TF in state during the await so Play ticks do not rebuild
+     * view.bars from a half-ready new-TF cache (candles vanishing mid-replay).
      */
     async setPaneTimeframe(paneId: string, tf: Timeframe): Promise<void> {
       if (!state) return;
@@ -246,52 +253,66 @@ export function createSessionController() {
       if (!pane) return;
       if (pane.tf === tf && pane.selectedTf === tf) return;
 
-      state = {
-        ...state,
-        panes: {
-          ...state.panes,
-          [paneId]: { ...pane, tf, selectedTf: tf },
-        },
-      };
-      // Right edge stays on cursor while in replay reveal (never look ahead).
-      if (state.revealMode === 'replay') {
+      switchingPanes.add(paneId);
+      try {
+        // Right edge stays on cursor while in replay reveal (never look ahead).
+        if (state.revealMode === 'replay') {
+          state = {
+            ...state,
+            anchorTime: Math.min(state.anchorTime, state.cursorTime),
+          };
+        }
+        const datasetId = pane.datasetId;
+        const anchor = state.anchorTime;
+        const span = state.span;
+
+        // Await remote chunks so the first TF click paints the new series.
+        // State still has the *old* TF — Play keeps extending previous candles.
+        await warmCache.fill(datasetId, tf, anchor, span, {
+          awaitRemote: true,
+        });
+        if (!state) return;
+
+        if (tf !== state.baseTf) {
+          // Base clock needs enough 1m bars to cover the higher-TF viewport
+          // (span is in *pane* bars — 120×1h ≈ 7200×1m).
+          const baseSpan = Math.min(
+            MAX_BARS_IN_MEMORY,
+            Math.max(
+              state.span,
+              Math.ceil(
+                (state.span * timeframeSeconds(tf)) /
+                  timeframeSeconds(state.baseTf),
+              ),
+            ),
+          );
+          await warmCache.fill(
+            datasetId,
+            state.baseTf,
+            state.cursorTime,
+            baseSpan,
+            { awaitRemote: true },
+          );
+        }
+        if (!state) return;
+
+        const cur = state.panes[paneId];
+        if (!cur) return;
+        // Flip TF only after fills succeed — then one atomic derive/notify.
         state = {
           ...state,
-          anchorTime: Math.min(state.anchorTime, state.cursorTime),
+          panes: {
+            ...state.panes,
+            [paneId]: { ...cur, tf, selectedTf: tf },
+          },
         };
+        rederivePaneSync(paneId);
+        notify();
+        // Second pass after any late IDB write (no remote wait).
+        void rederiveAsync([paneId]);
+      } finally {
+        switchingPanes.delete(paneId);
       }
-      const s = state;
-      // Await remote chunks so the first TF click paints the new series.
-      await warmCache.fill(s.panes[paneId]!.datasetId, tf, s.anchorTime, s.span, {
-        awaitRemote: true,
-      });
-      if (!state) return;
-      if (tf !== state.baseTf) {
-        // Base clock needs enough 1m bars to cover the higher-TF viewport
-        // (span is in *pane* bars — 120×1h ≈ 7200×1m).
-        const baseSpan = Math.min(
-          MAX_BARS_IN_MEMORY,
-          Math.max(
-            state.span,
-            Math.ceil(
-              (state.span * timeframeSeconds(tf)) /
-                timeframeSeconds(state.baseTf),
-            ),
-          ),
-        );
-        await warmCache.fill(
-          state.panes[paneId]!.datasetId,
-          state.baseTf,
-          state.cursorTime,
-          baseSpan,
-          { awaitRemote: true },
-        );
-      }
-      if (!state) return;
-      rederivePaneSync(paneId);
-      notify();
-      // Second pass after any late IDB write (no remote wait).
-      void rederiveAsync([paneId]);
     },
 
     /**
@@ -308,6 +329,8 @@ export function createSessionController() {
       if (pane.datasetId === meta.datasetId && pane.pair === meta.pair) return;
       const prevDs = pane.datasetId;
       const keepTf = pane.tf;
+      switchingPanes.add(paneId);
+      try {
       state = {
         ...state,
         panes: {
@@ -368,6 +391,9 @@ export function createSessionController() {
       void warmCache
         .prefetchAll(meta.datasetId, availableTfs, state.cursorTime, state.span)
         .then(() => rederiveAsync([paneId]));
+      } finally {
+        switchingPanes.delete(paneId);
+      }
     },
 
     /**
@@ -498,18 +524,19 @@ const fillAheadPending = new Map<
  */
 function paneRunwayFillOpts(span: number): WarmCacheFillOpts {
   const spanSafe = Math.max(1, span);
-  // ~2× visible span of history + buffer; short forward runway only.
+  // History behind tip + modest runway. Keep window modest so fills don't
+  // constantly slide the buffer (that was hitching Play after the left-pad fix).
   const windowBars = Math.min(
     MAX_BARS_IN_MEMORY,
     Math.max(
-      spanSafe * 2 + BUFFER_BARS + 200,
-      spanSafe * 3 + 400,
+      spanSafe * 2 + BUFFER_BARS + 100,
+      spanSafe * 3 + 300,
       REPLAY_VISIBLE_BARS * 2 + BUFFER_BARS,
-      1400,
+      1100,
     ),
   );
-  const aheadBars = Math.min(160, Math.max(80, Math.floor(spanSafe * 0.75)));
-  const aheadRatio = Math.min(0.12, aheadBars / windowBars);
+  const aheadBars = Math.min(180, Math.max(100, Math.floor(spanSafe)));
+  const aheadRatio = Math.min(0.15, aheadBars / windowBars);
   return { aheadRatio, windowBars };
 }
 
@@ -617,6 +644,9 @@ function extendRevealInPlace(
     const view = views[id];
     if (!cfg || !view) continue;
 
+    // Mid TF/symbol switch — freeze this pane's reveal until the swap commits.
+    if (switchingPanes.has(id)) continue;
+
     const tfPeriod = timeframeSeconds(cfg.tf);
     const rawPeek = warmCache.peek(cfg.datasetId, cfg.tf);
     const raw =
@@ -640,12 +670,14 @@ function extendRevealInPlace(
         : -1;
     const needBehind = Math.max(s.span, REPLAY_VISIBLE_BARS);
     const needAhead = Math.max(120, s.span);
-    // Top up when runway OR history is short — high speed burns both edges.
+    // Hysteresis on history: only refill when we drop below ~55% of target so
+    // we don't slide the warm-cache every few ticks (Play hitch).
+    const behindCritical = Math.floor(needBehind * 0.55);
     if (
       !raw ||
       raw.length === 0 ||
       aheadBars < needAhead ||
-      behindBars < needBehind
+      behindBars < behindCritical
     ) {
       scheduleFillAhead(cfg.datasetId, cfg.tf, s.cursorTime, s.span);
     }
@@ -691,17 +723,46 @@ function extendRevealInPlace(
     );
 
     const bars = view.bars as ChartBar[];
-    bars.length = 0;
-    for (let i = 0; i < rebuilt.length; i++) {
-      const b = rebuilt[i]!;
-      bars.push({
-        time: b.time,
-        open: b.open,
-        high: b.high,
-        low: b.low,
-        close: b.close,
-        volume: b.volume,
-      });
+    const prevLen = bars.length;
+    // Same-prefix grow/patch — avoid O(n) wipe every tick (smooth Play).
+    const canPatch =
+      prevLen > 0 &&
+      rebuilt.length >= prevLen &&
+      bars[0]!.time === rebuilt[0]!.time &&
+      bars[prevLen - 1]!.time === rebuilt[prevLen - 1]!.time;
+
+    if (!canPatch) {
+      bars.length = 0;
+      for (let i = 0; i < rebuilt.length; i++) {
+        const b = rebuilt[i]!;
+        bars.push({
+          time: b.time,
+          open: b.open,
+          high: b.high,
+          low: b.low,
+          close: b.close,
+          volume: b.volume,
+        });
+      }
+    } else {
+      const srcTip = rebuilt[prevLen - 1]!;
+      const dstTip = bars[prevLen - 1]!;
+      dstTip.open = srcTip.open;
+      dstTip.high = srcTip.high;
+      dstTip.low = srcTip.low;
+      dstTip.close = srcTip.close;
+      dstTip.volume = srcTip.volume;
+      for (let i = prevLen; i < rebuilt.length; i++) {
+        const b = rebuilt[i]!;
+        bars.push({
+          time: b.time,
+          open: b.open,
+          high: b.high,
+          low: b.low,
+          close: b.close,
+          volume: b.volume,
+        });
+      }
     }
 
     if (bars.length === 0) {

@@ -1,0 +1,184 @@
+/**
+ * Bridge our existing v8b-* chart chrome classes onto Obsidian V9 grammar
+ * when inside [data-v9-app]. Flat CTA, solid underlines, no glow (DESIGN.md bans).
+ */
+
+[data-v9-app] .chrome-topbar,
+[data-v9-app] .chrome-bottombar,
+[data-v9-app] .chrome-toolbar {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--line);
+  font-family: var(--font-ui);
+}
+
+[data-v9-app] .v8b-rail {
+  width: var(--rail-w, 48px);
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+
+[data-v9-app] .v8b-rail-divider {
+  margin: 8px 10px;
+  background: var(--line);
+}
+
+[data-v9-app] .v8b-tool {
+  height: var(--icon-hit, 36px);
+  min-height: 44px;
+  border-radius: var(--radius-control, 6px);
+  color: var(--text-muted);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-v9-app] .v8b-tool {
+    min-height: var(--icon-hit, 36px);
+  }
+}
+
+[data-v9-app] .v8b-tool:hover {
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+[data-v9-app] .v8b-tool[aria-pressed='true'],
+[data-v9-app] .v8b-tool[data-active='true'] {
+  color: var(--accent);
+  background: var(--accent-quiet);
+}
+
+/* Solid accent bar — no gradient / glow */
+[data-v9-app] .v8b-tool[aria-pressed='true']::before,
+[data-v9-app] .v8b-tool[data-active='true']::before {
+  left: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  box-shadow: none;
+}
+
+[data-v9-app] .v8b-tool:hover:not([aria-pressed='true']):not([data-active='true'])::before {
+  background: var(--line-strong);
+  box-shadow: none;
+}
+
+[data-v9-app] .v8b-tool svg {
+  width: var(--icon-glyph, 18px);
+  height: var(--icon-glyph, 18px);
+}
+
+[data-v9-app] .v8b-chrome-btn {
+  height: 36px;
+  min-height: 44px;
+  padding: 0 10px;
+  border-radius: var(--radius-control, 6px);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-v9-app] .v8b-chrome-btn {
+    min-height: 36px;
+  }
+}
+
+[data-v9-app] .v8b-chrome-btn:hover {
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+[data-v9-app] .v8b-chrome-btn[data-active='true'],
+[data-v9-app] .v8b-chrome-btn[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-quiet);
+  font-weight: 700;
+}
+
+[data-v9-app] .v8b-chrome-btn[data-active='true']::after,
+[data-v9-app] .v8b-chrome-btn[aria-pressed='true']::after {
+  left: 12%;
+  right: 12%;
+  bottom: 0;
+  height: 2px;
+  background: var(--accent);
+  box-shadow: none;
+}
+
+/* Primary CTA — inverted flat (white/black), never blue fill */
+[data-v9-app] .v8b-place-order {
+  height: 36px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--radius-cta, 6px);
+  background: var(--cta-bg);
+  color: var(--cta-fg);
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: none;
+  filter: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-v9-app] .v8b-place-order {
+    min-height: 36px;
+  }
+}
+
+[data-v9-app] .v8b-place-order:hover {
+  background: var(--cta-hover);
+  filter: none;
+  box-shadow: none;
+}
+
+[data-v9-app] .v8b-place-order:active {
+  transform: scale(0.98);
+}
+
+[data-v9-app] .v8b-tf {
+  height: 36px;
+  min-height: 44px;
+  border-radius: var(--radius-control, 6px);
+  color: var(--text-muted);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-v9-app] .v8b-tf {
+    min-height: 36px;
+  }
+}
+
+[data-v9-app] .v8b-tf:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+[data-v9-app] .v8b-tf[data-active='true'] {
+  color: var(--accent);
+  background: var(--accent-quiet);
+  font-weight: 700;
+}
+
+[data-v9-app] .v8b-tf[data-active='true']::after {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+[data-v9-app] .v8b-sep {
+  height: 18px;
+  background: var(--line);
+}
+
+/* Flyouts / menus inside chrome */
+[data-v9-app] [data-v9-chrome][data-sdrop='1'],
+[data-v9-app] .v9-flyout {
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel, 8px);
+  box-shadow: none;
+  color: var(--text);
+}
+
+[data-v9-app] .v9-flyout-accent {
+  display: none; /* ban gradient accent strips */
+}

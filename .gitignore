@@ -9,5 +9,7 @@ dist
 /data/
 # Standalone Vite landing package (local only; chart app uses src/marketing-content)
 /landing/
+# Local Talaria-log reference dump (large; not part of the app)
+/Talaria-log/
 services/api/node_modules
 services/api/dist

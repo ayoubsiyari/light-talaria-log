@@ -147,6 +147,7 @@ import {
 import { AppShell } from '@/components/shell/AppShell';
 import { ProfilePage } from '@/components/shell/ProfilePage';
 import { DashboardPage } from '@/components/dashboard/DashboardPage';
+import { useChromeTheme } from '@/v9/useChromeTheme';
 import { StrategyPage } from '@/components/strategy/StrategyPage';
 import { CreateSessionPage } from '@/components/session/CreateSessionPage';
 import { JournalPage } from '@/components/journal/JournalPage';
@@ -341,6 +342,7 @@ export default function App() {
   const [layoutSync, setLayoutSync] = useState<LayoutSyncOptions>(DEFAULT_LAYOUT_SYNC);
   const layoutSyncRef = useRef(layoutSync);
   layoutSyncRef.current = layoutSync;
+  const { themeAttr: chromeThemeAttr, presetId: chromePresetId } = useChromeTheme();
 
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [draftPoints, setDraftPoints] = useState<DrawingPoint[]>([]);
@@ -3838,7 +3840,13 @@ export default function App() {
 
   return (
     <AuthGate>
-    <div className="h-full min-h-0 bg-surface text-foreground flex flex-col overflow-hidden supports-[height:100dvh]:h-dvh">
+    <div
+      data-v9-app="1"
+      data-chrome-theme={chromeThemeAttr}
+      data-chrome-preset={String(chromePresetId)}
+      className="h-full min-h-0 bg-surface text-foreground flex flex-col overflow-hidden supports-[height:100dvh]:h-dvh"
+      style={{ background: 'var(--bg)', color: 'var(--text)', fontFamily: 'var(--font-ui)' }}
+    >
       <TopBar
         symbol={topSymbol || session.pair}
         symbolOptions={symbolOptions}

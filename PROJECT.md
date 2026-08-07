@@ -850,6 +850,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-06 | Persist Place Order to DB: order-journal keeps `commands[]`; closed fills upserted into `trades` (source=manual) | Login → close TP → check meta.orderJournal + trades rows |
 | 2026-08-06 | Auto-collect full trade record on SL/TP close (`CollectedTrade` on POSITION_CLOSED + `trades.meta`) | Place→hit SL/TP → journal payload.collected + DB meta |
 | 2026-08-05 | Order drag band: `globalAlpha` so CSS tokens (`--success`/`--danger`) still tint @0.2 | Drag SL/TP — soft fill visible |
+| 2026-08-07 | **V9 chrome port:** copy Obsidian CSS/theme/icons + Live reference into `src/v9/`; chart shell `data-v9-app`; restyle TopBar / LeftToolbar / BottomBar / TradeDock (Canvas engine kept; Live not mounted) | Hard-refresh chart session — Obsidian chrome; pan/zoom unchanged; check ~390px |
 
 ---
 

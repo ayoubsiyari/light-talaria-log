@@ -110,19 +110,24 @@ export function LayoutPicker({
       <Popover.Trigger
         title="Layout"
         aria-label="Chart layout"
-        className="h-7 w-7 min-h-7 min-w-7 [@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11 rounded-[3px] inline-flex items-center justify-center text-foreground hover:bg-background/70"
+        data-tb-item="layout"
+        className="v8b-chrome-btn !h-9 !min-h-11 sm:!min-h-9 !w-9 !min-w-11 sm:!min-w-9 !px-0 justify-center rounded-[var(--radius-control,6px)]"
       >
         <LayoutGlyph cells={cellsForLayout(layout)} selected={false} size={16} />
       </Popover.Trigger>
       <Popover.Content placement="bottom end" className="p-0 z-[100]">
-        <Popover.Dialog className="w-[13.5rem] bg-surface border border-[color:var(--tv-panel-line)] rounded-md shadow-[0_2px_8px_rgba(0,0,0,0.14)] overflow-hidden">
+        <Popover.Dialog
+          data-v9-chrome="1"
+          data-sdrop="1"
+          className="v9-flyout w-[13.5rem] bg-[color:var(--surface-raised)] border border-[color:var(--line)] rounded-[var(--radius-panel,8px)] overflow-hidden shadow-none"
+        >
           <div className="max-h-[min(55dvh,18rem)] overflow-y-auto overscroll-contain">
             {LAYOUT_ROWS.map((row, rowIdx) => (
               <div
                 key={row.panes}
                 className={[
                   'flex items-center gap-1.5 px-2 py-1.5',
-                  rowIdx > 0 ? 'border-t border-[color:var(--tv-panel-line)]' : '',
+                  rowIdx > 0 ? 'border-t border-[color:var(--line)]' : '',
                 ].join(' ')}
               >
                 <span className="w-3.5 shrink-0 text-[11px] text-muted tabular-nums">
@@ -142,14 +147,14 @@ export function LayoutPicker({
             ))}
           </div>
 
-          <div className="border-t border-[color:var(--tv-panel-line)] px-2 py-1.5 space-y-0.5">
+          <div className="border-t border-[color:var(--line)] px-2 py-1.5 space-y-0.5">
             <p className="text-[9px] font-semibold uppercase tracking-wide text-muted px-0.5 pb-0.5">
               Sync in layout
             </p>
             {SYNC_ROWS.map((row) => (
               <div
                 key={row.key}
-                className="flex items-center justify-between gap-2 h-6 px-0.5"
+                className="flex items-center justify-between gap-2 min-h-9 px-0.5"
               >
                 <span className="text-[11px] text-foreground truncate">{row.label}</span>
                 <TvToggle
@@ -161,7 +166,7 @@ export function LayoutPicker({
             ))}
             <button
               type="button"
-              className="text-[10px] text-muted hover:text-foreground px-0.5 pt-0.5"
+              className="text-[10px] text-muted hover:text-foreground px-0.5 pt-0.5 min-h-9"
               onClick={() => onSyncChange({ ...DEFAULT_LAYOUT_SYNC })}
             >
               Reset
@@ -189,8 +194,10 @@ function LayoutIconButton({
       aria-pressed={selected}
       onClick={onSelect}
       className={[
-        'h-7 w-7 rounded-[3px] flex items-center justify-center transition-colors',
-        selected ? 'bg-background/80' : 'hover:bg-background/60',
+        'h-9 w-9 min-h-9 min-w-9 rounded-[var(--radius-control,6px)] flex items-center justify-center transition-colors',
+        selected
+          ? 'bg-[color:var(--accent-quiet)] text-[color:var(--accent)]'
+          : 'hover:bg-[color:var(--surface-sunken)]',
       ].join(' ')}
     >
       <LayoutGlyph cells={option.cells} selected={selected} size={18} />
@@ -216,14 +223,14 @@ function TvToggle({
       aria-label={label}
       onClick={() => onChange(!checked)}
       className={[
-        'relative h-3.5 w-6 rounded-full transition-colors shrink-0',
-        checked ? 'bg-foreground' : 'bg-muted/35',
+        'relative h-4 w-7 rounded-full transition-colors shrink-0',
+        checked ? 'bg-[color:var(--accent)]' : 'bg-[color:var(--line-strong)]',
       ].join(' ')}
     >
       <span
         className={[
-          'absolute top-[2px] h-2.5 w-2.5 rounded-full bg-surface shadow-sm transition-transform',
-          checked ? 'left-[11px]' : 'left-[2px]',
+          'absolute top-[3px] h-2.5 w-2.5 rounded-full bg-[color:var(--cta-bg)] transition-transform',
+          checked ? 'left-[14px]' : 'left-[3px]',
         ].join(' ')}
       />
     </button>

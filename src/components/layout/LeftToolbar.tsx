@@ -3,13 +3,8 @@ import {
   IconBrush,
   IconChannel,
   IconChevron,
-  IconCursor,
-  IconEye,
-  IconEyeOff,
   IconFib,
   IconGann,
-  IconLock,
-  IconMagnet,
   IconMeasure,
   IconObjectTree,
   IconPattern,
@@ -17,10 +12,10 @@ import {
   IconShapes,
   IconStayDraw,
   IconText,
-  IconTrash,
   IconTrendLine,
   IconZoom,
 } from '@/components/icons/ToolIcons';
+import { ChromeIcon } from '@/v9/chromeIcons.jsx';
 import {
   magnetModeLabel,
   nextMagnetMode,
@@ -314,10 +309,21 @@ export function LeftToolbar({
     );
   };
 
+  const magnetIcon =
+    magnetMode === 'off'
+      ? 'magnetOff'
+      : magnetMode === 'weak'
+        ? 'magnetWeak'
+        : magnetMode === 'strong'
+          ? 'magnetStrong'
+          : 'magnet';
+
   return (
     <aside
       ref={rootRef}
-      className="chrome-toolbar v8b-rail relative shrink-0 z-40 overflow-visible [@media(hover:none)]:w-11"
+      data-v9-chrome="1"
+      data-v9-rail="1"
+      className="chrome-toolbar v8b-rail relative shrink-0 z-40 overflow-visible [@media(hover:none)]:w-12"
     >
       <div className="h-full w-full flex flex-col items-stretch py-1 px-0.5 overflow-y-auto overscroll-contain">
         {/* 1 — Cursor + drawing tools */}
@@ -326,13 +332,14 @@ export function LeftToolbar({
             type="button"
             title="Cursor"
             aria-pressed={activeTool === 'cursor'}
+            data-brand-icon="1"
             onClick={() => {
               onToolChange('cursor');
               setOpenGroup(null);
             }}
             className="v8b-tool"
           >
-            <IconCursor />
+            <ChromeIcon n="crosshair" s={18} />
           </button>
           {drawGroups.map(renderGroupButton)}
         </div>
@@ -346,6 +353,7 @@ export function LeftToolbar({
             type="button"
             title="Zoom marquee — drag a region to zoom"
             aria-pressed={activeTool === 'zoom'}
+            data-brand-icon="1"
             onClick={() => {
               onToolChange('zoom');
               setOpenGroup(null);
@@ -366,25 +374,17 @@ export function LeftToolbar({
             title={`${magnetModeLabel(magnetMode)} (click to cycle)`}
             aria-pressed={magnetMode !== 'off'}
             aria-label={magnetModeLabel(magnetMode)}
+            data-brand-icon="1"
             onClick={() => onMagnetModeChange(nextMagnetMode(magnetMode))}
             className="v8b-tool"
           >
-            <IconMagnet />
-            {magnetMode === 'weak' && (
-              <span className="absolute bottom-0.5 right-0.5 text-[8px] font-semibold leading-none text-accent">
-                W
-              </span>
-            )}
-            {magnetMode === 'strong' && (
-              <span className="absolute bottom-0.5 right-0.5 text-[8px] font-semibold leading-none text-accent">
-                S
-              </span>
-            )}
+            <ChromeIcon n={magnetIcon} s={18} />
           </button>
           <button
             type="button"
             title="Stay in drawing mode"
             aria-pressed={stayInDrawingMode}
+            data-brand-icon="1"
             onClick={() => onStayInDrawingModeChange(!stayInDrawingMode)}
             className="v8b-tool"
           >
@@ -394,24 +394,27 @@ export function LeftToolbar({
             type="button"
             title={drawingsLocked ? 'Unlock drawings' : 'Lock drawings'}
             aria-pressed={drawingsLocked}
+            data-brand-icon="1"
             onClick={() => onDrawingsLockedChange(!drawingsLocked)}
             className="v8b-tool"
           >
-            <IconLock />
+            <ChromeIcon n="lock" s={18} />
           </button>
           <button
             type="button"
             title={drawingsHidden ? 'Show drawings' : 'Hide drawings'}
             aria-pressed={drawingsHidden}
+            data-brand-icon="1"
             onClick={() => onDrawingsHiddenChange(!drawingsHidden)}
             className="v8b-tool"
           >
-            {drawingsHidden ? <IconEyeOff /> : <IconEye />}
+            <ChromeIcon n={drawingsHidden ? 'eyeHide' : 'eye'} s={18} />
           </button>
           <button
             type="button"
             title="Object tree"
             aria-label="Object tree"
+            data-brand-icon="1"
             onClick={() => {
               onOpenObjectTree?.();
               setOpenGroup(null);
@@ -438,13 +441,14 @@ export function LeftToolbar({
             title="Remove drawings"
             aria-expanded={removeMenuOpen}
             data-active={removeMenuOpen ? 'true' : undefined}
+            data-brand-icon="1"
             onClick={() => {
               setRemoveMenuOpen((v) => !v);
               setOpenGroup(null);
             }}
-            className="v8b-tool hover:!text-danger"
+            className="v8b-tool hover:!text-[color:var(--down)]"
           >
-            <IconTrash />
+            <ChromeIcon n="trash" s={18} />
           </button>
         </div>
 
@@ -452,8 +456,12 @@ export function LeftToolbar({
       </div>
 
       {removeMenuOpen && (
-        <div className="absolute left-full bottom-2 z-50 ml-1 w-[min(14rem,calc(100vw-4rem))] rounded-sm border border-[color:var(--tv-panel-line)] bg-surface shadow-[0_8px_28px_rgba(0,0,0,0.55)] py-1 overflow-hidden">
-          <div className="h-0.5 bg-gradient-to-r from-accent via-[color-mix(in_oklab,var(--accent)_50%,white)] to-accent" />
+        <div
+          data-v9-chrome="1"
+          data-sdrop="1"
+          className="v9-flyout absolute left-full bottom-2 z-50 ml-1 w-[min(14rem,calc(100vw-4rem))] rounded-[var(--radius-panel,8px)] border border-[color:var(--line)] bg-[color:var(--surface-raised)] py-1 overflow-hidden"
+        >
+          <div className="v9-flyout-accent" aria-hidden />
           <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted">
             Remove
           </p>
@@ -464,9 +472,9 @@ export function LeftToolbar({
               onClearDrawings?.();
               setRemoveMenuOpen(false);
             }}
-            className="w-full flex items-center gap-2 px-3 min-h-11 text-left text-[13px] text-danger hover:bg-background/80 disabled:opacity-40 disabled:pointer-events-none"
+            className="w-full flex items-center gap-2 px-3 min-h-11 text-left text-[13px] text-[color:var(--down)] hover:bg-[color:var(--surface-sunken)] disabled:opacity-40 disabled:pointer-events-none"
           >
-            <IconTrash className="w-4 h-4 shrink-0" />
+            <ChromeIcon n="trash" s={16} />
             <span>
               Remove all drawings
               {drawingCount > 0 ? ` (${drawingCount})` : ''}
@@ -477,10 +485,12 @@ export function LeftToolbar({
 
       {openGroup && openCategories.length > 0 && (
         <div
-          className="absolute left-full z-50 ml-1 w-[min(16rem,calc(100vw-4rem))] max-h-[min(80vh,640px)] flex flex-col rounded-sm border border-[color:var(--tv-panel-line)] bg-surface shadow-[0_8px_28px_rgba(0,0,0,0.55)] overflow-hidden"
+          data-v9-chrome="1"
+          data-sdrop="1"
+          className="v9-flyout absolute left-full z-50 ml-1 w-[min(16rem,calc(100vw-4rem))] max-h-[min(80vh,640px)] flex flex-col rounded-[var(--radius-panel,8px)] border border-[color:var(--line)] bg-[color:var(--surface-raised)] overflow-hidden"
           style={{ top: menuTop }}
         >
-          <div className="h-0.5 shrink-0 bg-gradient-to-r from-accent via-[color-mix(in_oklab,var(--accent)_50%,white)] to-accent" />
+          <div className="v9-flyout-accent shrink-0" aria-hidden />
           <div className="overflow-y-auto overscroll-contain py-1 min-h-0 flex-1">
             {openCategories.map((cat, idx) => {
               const primary = cat.sections.flatMap((s) =>
@@ -499,7 +509,7 @@ export function LeftToolbar({
                   <div
                     className={[
                       'px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted',
-                      idx > 0 ? 'border-t border-[color:var(--tv-panel-line)] mt-1' : '',
+                      idx > 0 ? 'border-t border-[color:var(--line)] mt-1' : '',
                     ].join(' ')}
                   >
                     {cat.label}
@@ -514,7 +524,7 @@ export function LeftToolbar({
                   ))}
                   {shownExtra.length > 0 && (
                     <>
-                      <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted border-t border-[color:var(--tv-panel-line)] mt-1">
+                      <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted border-t border-[color:var(--line)] mt-1">
                         More — approximate
                       </div>
                       {shownExtra.map((tid) => (
@@ -532,21 +542,21 @@ export function LeftToolbar({
               );
             })}
           </div>
-          <div className="shrink-0 border-t border-[color:var(--tv-panel-line)] px-2 py-1.5">
+          <div className="shrink-0 border-t border-[color:var(--line)] px-2 py-1.5">
             <button
               type="button"
               role="switch"
               aria-checked={showMoreTools}
               onClick={() => setShowMore(!showMoreTools)}
-              className="w-full min-h-11 px-2 rounded-md flex items-center justify-between gap-2 text-left text-[12px] text-muted hover:text-foreground hover:bg-background/70"
+              className="w-full min-h-11 px-2 rounded-[var(--radius-control,6px)] flex items-center justify-between gap-2 text-left text-[12px] text-muted hover:text-foreground hover:bg-[color:var(--surface-sunken)]"
             >
               <span>More tools (approx / beta)</span>
               <span
                 className={[
                   'text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded',
                   showMoreTools
-                    ? 'bg-accent/20 text-accent'
-                    : 'bg-background text-muted',
+                    ? 'bg-[color:var(--accent-quiet)] text-[color:var(--accent)]'
+                    : 'bg-[color:var(--surface-sunken)] text-muted',
                 ].join(' ')}
               >
                 {showMoreTools ? 'On' : 'Off'}
@@ -579,25 +589,20 @@ function ToolFlyoutRow({
       className={[
         'relative w-full flex items-center gap-2.5 px-3 h-9 [@media(hover:none)]:min-h-11 text-left text-[13px]',
         selected
-          ? 'bg-accent/10 text-[color-mix(in_oklab,var(--accent)_55%,white)] font-semibold'
-          : 'text-foreground hover:bg-background/80',
+          ? 'bg-[color:var(--accent-quiet)] text-[color:var(--accent)] font-semibold'
+          : 'text-foreground hover:bg-[color:var(--surface-sunken)]',
       ].join(' ')}
     >
       {selected && (
         <span
-          className="absolute left-0 top-[15%] bottom-[15%] w-0.5 rounded-sm"
-          style={{
-            background:
-              'linear-gradient(180deg, transparent, color-mix(in oklab, var(--accent) 70%, white), transparent)',
-            boxShadow: '0 0 6px color-mix(in oklab, var(--accent) 45%, transparent)',
-          }}
+          className="absolute left-0 top-[15%] bottom-[15%] w-0.5 rounded-sm bg-[color:var(--accent)]"
           aria-hidden
         />
       )}
       <Icon className="w-[17px] h-[17px] shrink-0 opacity-80" />
       <span className="truncate flex-1 min-w-0">{def.label}</span>
       {badge && (
-        <span className="shrink-0 text-[9px] uppercase tracking-wide text-muted border border-[color:var(--tv-panel-line)] rounded px-1 py-0.5">
+        <span className="shrink-0 text-[9px] uppercase tracking-wide text-muted border border-[color:var(--line)] rounded px-1 py-0.5">
           {badge}
         </span>
       )}

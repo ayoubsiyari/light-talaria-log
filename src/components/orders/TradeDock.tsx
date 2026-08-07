@@ -37,8 +37,8 @@ function unrealizedAccount(
 }
 
 /**
- * TradingView-style bottom trade list — shown under the chrome tabs.
- * Compact rows, no bulky card stack.
+ * V9 Obsidian bottom trade list — shown under the chrome tabs.
+ * Compact rows driven by our order engine (not window.chart.orderManager).
  */
 export function TradeDock({
   activeTab,
@@ -75,9 +75,14 @@ export function TradeDock({
     (!showHistory || history.length === 0);
 
   return (
-    <div className="shrink-0 border-t border-[color:var(--tv-panel-line)] bg-surface max-h-[28vh] sm:max-h-[22vh] overflow-y-auto">
+    <div
+      data-v9-chrome="1"
+      data-trades-dock="1"
+      data-tc-body=""
+      className="shrink-0 border-t border-[color:var(--line)] bg-[color:var(--surface)] max-h-[28vh] sm:max-h-[22vh] overflow-y-auto"
+    >
       {state && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-1.5 text-[11px] font-mono tabular-nums border-b border-border/50">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-1.5 text-[11px] font-mono tabular-nums border-b border-[color:var(--line)]">
           <span>
             <span className="text-muted mr-1">Balance</span>
             {fmt(state.account.balance)}
@@ -106,8 +111,8 @@ export function TradeDock({
         </p>
       ) : (
         <table className="w-full text-[12px] text-left">
-          <thead className="sticky top-0 bg-surface text-[10px] uppercase tracking-wide text-muted">
-            <tr className="border-b border-border/40">
+          <thead className="sticky top-0 bg-[color:var(--surface)] text-[10px] uppercase tracking-wide text-muted z-[1]">
+            <tr className="border-b border-[color:var(--line)]">
               <th className="px-3 py-1.5 font-medium">Symbol</th>
               <th className="px-2 py-1.5 font-medium">Side</th>
               <th className="px-2 py-1.5 font-medium">Qty</th>
@@ -137,14 +142,18 @@ export function TradeDock({
                 return (
                   <tr
                     key={p.id}
-                    className="border-b border-border/30 hover:bg-background/50 cursor-pointer min-h-11"
+                    data-tc-status="open"
+                    className="border-b border-[color:var(--line)] hover:bg-[color:var(--surface-raised)] cursor-pointer min-h-11"
                     onClick={() => onSelectPosition?.(p.id)}
                   >
                     <td className="px-3 py-2 font-mono">{p.symbol}</td>
                     <td
+                      data-tc-side={p.side === 'BUY' ? 'long' : 'short'}
                       className={[
                         'px-2 py-2 font-medium',
-                        p.side === 'BUY' ? 'text-success' : 'text-danger',
+                        p.side === 'BUY'
+                          ? 'text-[color:var(--up)]'
+                          : 'text-[color:var(--down)]',
                       ].join(' ')}
                     >
                       {p.side}
@@ -153,16 +162,18 @@ export function TradeDock({
                     <td className="px-2 py-2 font-mono tabular-nums">
                       {fmt(p.entryPrice, digits)}
                     </td>
-                    <td className="px-2 py-2 font-mono tabular-nums hidden sm:table-cell text-danger">
+                    <td className="px-2 py-2 font-mono tabular-nums hidden sm:table-cell text-[color:var(--down)]">
                       {sl?.price != null ? fmt(sl.price, digits) : '—'}
                     </td>
-                    <td className="px-2 py-2 font-mono tabular-nums hidden sm:table-cell text-success">
+                    <td className="px-2 py-2 font-mono tabular-nums hidden sm:table-cell text-[color:var(--up)]">
                       {tp?.price != null ? fmt(tp.price, digits) : '—'}
                     </td>
                     <td
                       className={[
                         'px-2 py-2 font-mono tabular-nums',
-                        upnl >= 0 ? 'text-success' : 'text-danger',
+                        upnl >= 0
+                          ? 'text-[color:var(--up)]'
+                          : 'text-[color:var(--down)]',
                       ].join(' ')}
                     >
                       {fmt(upnl)}
@@ -173,6 +184,7 @@ export function TradeDock({
                           size="sm"
                           variant="ghost"
                           className="min-h-11 sm:min-h-7 h-7 px-2"
+                          data-brand-btn="ghost"
                           onPress={() => onClosePosition(p.id)}
                         >
                           Close
@@ -185,12 +197,19 @@ export function TradeDock({
 
             {showPending &&
               pending.map((o) => (
-                <tr key={o.id} className="border-b border-border/30 hover:bg-background/50">
+                <tr
+                  key={o.id}
+                  data-tc-status="pending"
+                  className="border-b border-[color:var(--line)] hover:bg-[color:var(--surface-raised)]"
+                >
                   <td className="px-3 py-2 font-mono">{o.symbol}</td>
                   <td
+                    data-tc-side={o.side === 'BUY' ? 'long' : 'short'}
                     className={[
                       'px-2 py-2 font-medium',
-                      o.side === 'BUY' ? 'text-success' : 'text-danger',
+                      o.side === 'BUY'
+                        ? 'text-[color:var(--up)]'
+                        : 'text-[color:var(--down)]',
                     ].join(' ')}
                   >
                     {o.side} {o.type}
@@ -199,10 +218,10 @@ export function TradeDock({
                   <td className="px-2 py-2 font-mono tabular-nums">
                     {o.price != null ? fmt(o.price, digits) : 'MKT'}
                   </td>
-                  <td className="px-2 py-2 font-mono tabular-nums hidden sm:table-cell text-danger">
+                  <td className="px-2 py-2 font-mono tabular-nums hidden sm:table-cell text-[color:var(--down)]">
                     {o.stopLoss != null ? fmt(o.stopLoss, digits) : '—'}
                   </td>
-                  <td className="px-2 py-2 font-mono tabular-nums hidden sm:table-cell text-success">
+                  <td className="px-2 py-2 font-mono tabular-nums hidden sm:table-cell text-[color:var(--up)]">
                     {o.takeProfit != null ? fmt(o.takeProfit, digits) : '—'}
                   </td>
                   <td className="px-2 py-2 text-muted">—</td>
@@ -211,6 +230,7 @@ export function TradeDock({
                       size="sm"
                       variant="ghost"
                       className="min-h-11 sm:min-h-7 h-7 px-2"
+                      data-brand-btn="ghost"
                       onPress={() => onCancel(o.id)}
                     >
                       Cancel
@@ -221,7 +241,11 @@ export function TradeDock({
 
             {showHistory &&
               history.map((o) => (
-                <tr key={`${o.id}-${o.filledAt}`} className="border-b border-border/20 text-muted">
+                <tr
+                  key={`${o.id}-${o.filledAt}`}
+                  data-tc-status="closed"
+                  className="border-b border-[color:var(--line)] text-muted"
+                >
                   <td className="px-3 py-2 font-mono">{o.symbol}</td>
                   <td className="px-2 py-2">{o.side}</td>
                   <td className="px-2 py-2 font-mono tabular-nums">{o.size}</td>

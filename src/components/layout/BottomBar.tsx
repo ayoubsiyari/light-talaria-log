@@ -6,9 +6,8 @@ import {
   IconPause,
   IconPlay,
   IconSettings,
-  IconStepBack,
-  IconStepForward,
 } from '@/components/icons/ToolIcons';
+import { ChromeIcon } from '@/v9/chromeIcons.jsx';
 import type { ReplayState } from '@/replay/replayStore';
 import type { BottomTabId } from '@/types/ui';
 
@@ -174,7 +173,10 @@ function ReplayControls({
   }, [jumpOpen, onCloseJump]);
 
   return (
-    <div className="relative flex items-center h-full justify-center gap-0.5 shrink-0">
+    <div
+      data-v9-replaybar="1"
+      className="relative flex items-center h-full justify-center gap-0.5 shrink-0"
+    >
       <span className="v8b-sep !mx-1" aria-hidden />
       <button
         ref={gearRef}
@@ -185,6 +187,7 @@ function ReplayControls({
         aria-expanded={jumpOpen}
         aria-haspopup="dialog"
         data-active={jumpOpen ? 'true' : undefined}
+        data-brand-icon="1"
         onClick={onToggleJump}
       >
         <IconSettings className="w-[18px] h-[18px]" />
@@ -196,9 +199,13 @@ function ReplayControls({
             ref={panelRef}
             role="dialog"
             aria-label="Jump to date"
+            data-v9-chrome="1"
+            data-sdrop="1"
+            data-chrome-win="goto"
             className={[
-              'fixed z-[100020] w-[min(calc(100vw-1.5rem),18rem)]',
-              'rounded-lg border border-border bg-surface text-foreground shadow-xl',
+              'v9-flyout fixed z-[100020] w-[min(calc(100vw-1.5rem),18rem)]',
+              'rounded-[var(--radius-panel,8px)] border border-[color:var(--line)]',
+              'bg-[color:var(--surface-raised)] text-[color:var(--text)]',
               'p-3 space-y-2',
             ].join(' ')}
             style={{
@@ -215,7 +222,8 @@ function ReplayControls({
               type="datetime-local"
               value={jumpValue}
               onChange={(e) => onJumpValueChange(e.target.value)}
-              className="w-full min-h-11 rounded-md border border-border bg-background px-2 py-2 text-sm text-foreground outline-none focus:border-accent"
+              data-brand-field="1"
+              className="w-full min-h-11 rounded-[var(--radius-control,6px)] border border-[color:var(--line)] bg-[color:var(--surface-sunken)] px-2 py-2 text-sm text-foreground outline-none focus:border-[color:var(--accent)]"
               aria-label="Jump to date"
             />
             <div className="flex gap-2">
@@ -223,6 +231,7 @@ function ReplayControls({
                 variant="primary"
                 size="sm"
                 className="min-h-11 flex-1"
+                data-brand-btn="primary"
                 onPress={onApplyJump}
               >
                 Go
@@ -231,6 +240,7 @@ function ReplayControls({
                 variant="ghost"
                 size="sm"
                 className="min-h-11 px-3"
+                data-brand-btn="ghost"
                 onPress={onCloseJump}
               >
                 Close
@@ -245,28 +255,24 @@ function ReplayControls({
         onClick={onToggle}
         title={replay.playing ? 'Pause replay' : 'Play replay'}
         data-active={replay.playing ? 'true' : undefined}
+        data-brand-icon="1"
       >
         {replay.playing ? (
-          <IconPause className="w-[18px] h-[18px] text-[color:#FF8C42]" />
+          <IconPause className="w-[18px] h-[18px] text-[color:var(--warn)]" />
         ) : (
-          <IconPlay className="w-[18px] h-[18px] text-success" />
+          <IconPlay className="w-[18px] h-[18px] text-[color:var(--up)]" />
         )}
       </button>
       <div className="flex items-center gap-1.5 px-1.5 w-[8.5rem] shrink-0">
-        <span className="text-[13px] font-extrabold text-[color-mix(in_oklab,var(--accent)_55%,white)] tabular-nums w-7 text-right leading-none">
+        <span className="text-[13px] font-extrabold text-[color:var(--accent)] tabular-nums w-7 text-right leading-none">
           {SPEED_STEPS[si]}
           <span className="text-[15px] ml-px">×</span>
         </span>
         <div className="relative flex-1 h-9 flex items-center">
-          <div className="absolute inset-x-0 h-[3px] rounded-full bg-[color-mix(in_oklab,var(--foreground)_8%,transparent)]">
+          <div className="absolute inset-x-0 h-[3px] rounded-full bg-[color:var(--line)]">
             <div
-              className="h-full rounded-full"
-              style={{
-                width: `${pct}%`,
-                background:
-                  'linear-gradient(90deg, color-mix(in oklab, var(--accent) 35%, transparent), color-mix(in oklab, var(--accent) 55%, white))',
-                boxShadow: '0 0 5px color-mix(in oklab, var(--accent) 40%, transparent)',
-              }}
+              className="h-full rounded-full bg-[color:var(--accent)]"
+              style={{ width: `${pct}%` }}
             />
           </div>
           <input
@@ -287,23 +293,25 @@ function ReplayControls({
         className="v8b-chrome-btn !px-1.5"
         onClick={() => onStep(-1)}
         title="Step back"
+        data-brand-icon="1"
       >
-        <IconStepBack className="w-[18px] h-[18px]" />
+        <ChromeIcon n="stepBack" s={18} />
       </button>
       <button
         type="button"
         className="v8b-chrome-btn !px-1.5"
         onClick={() => onStep(1)}
         title="Step forward"
+        data-brand-icon="1"
       >
-        <IconStepForward className="w-[18px] h-[18px]" />
+        <ChromeIcon n="stepFwd" s={18} />
       </button>
       <span className="v8b-sep !mx-1" aria-hidden />
     </div>
   );
 }
 
-/** V8b-style bottom chrome: clock · replay · balance, then trade tabs. */
+/** V9 Obsidian bottom chrome: clock · replay · balance, then trade tabs. */
 export function BottomBar({
   activeTab,
   onTabChange,
@@ -404,10 +412,12 @@ export function BottomBar({
   if (!expanded) {
     return (
       <footer
+        data-v9-chrome="1"
+        data-v9-replaybar="1"
         className={[
           'chrome-bottombar shrink-0 flex items-center justify-between gap-1.5 overflow-visible',
-          'h-9 [@media(hover:none)]:h-11 px-2 pb-[env(safe-area-inset-bottom)] text-xs',
-          'border-t border-[color-mix(in_oklab,var(--accent)_22%,transparent)]',
+          'h-12 min-h-12 px-2 pb-[env(safe-area-inset-bottom)] text-xs',
+          'border-t border-[color:var(--line)]',
         ].join(' ')}
       >
         <button
@@ -417,6 +427,7 @@ export function BottomBar({
           title="Expand trade panel"
           aria-label="Expand trade panel"
           aria-expanded={false}
+          data-brand-icon="1"
         >
           <IconChevron className="w-3.5 h-3.5 -rotate-90" />
         </button>
@@ -435,13 +446,18 @@ export function BottomBar({
 
   return (
     <footer
+      data-v9-chrome="1"
+      data-trades-panel="1"
       className={[
         'chrome-bottombar shrink-0 flex flex-col overflow-visible pb-[env(safe-area-inset-bottom)] text-xs',
-        'border-t border-[color-mix(in_oklab,var(--accent)_22%,transparent)]',
+        'border-t border-[color:var(--line)]',
       ].join(' ')}
     >
       {/* Scrub — thin progress under the chart */}
-      <div className="flex items-center gap-1.5 h-6 px-2 border-b border-[color:var(--tv-panel-line)]">
+      <div
+        data-v9-replaybar="1"
+        className="flex items-center gap-1.5 h-6 px-2 border-b border-[color:var(--line)]"
+      >
         <input
           ref={scrubRef}
           id="replay-scrub"
@@ -465,8 +481,11 @@ export function BottomBar({
         </span>
       </div>
 
-      {/* Status + replay — V8b 3-column grid */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center h-9 px-2.5">
+      {/* Status + replay — 3-column grid */}
+      <div
+        data-v9-replaybar="1"
+        className="grid grid-cols-[1fr_auto_1fr] items-center h-12 min-h-12 px-2.5"
+      >
         <div className="flex flex-col items-start justify-center gap-1 min-w-0 w-[10.75rem]">
           <span className="text-[9px] font-semibold text-muted tracking-[0.08em] uppercase tabular-nums leading-none whitespace-nowrap">
             {formatClockDate(now)}
@@ -503,9 +522,9 @@ export function BottomBar({
               className={[
                 'text-[12px] font-bold tabular-nums leading-none',
                 pnlPositive === true
-                  ? 'text-success'
+                  ? 'text-[color:var(--up)]'
                   : pnlPositive === false
-                    ? 'text-danger'
+                    ? 'text-[color:var(--down)]'
                     : 'text-foreground',
               ].join(' ')}
             >
@@ -515,12 +534,13 @@ export function BottomBar({
           <span className="v8b-sep" aria-hidden />
           <button
             type="button"
-            className="v8b-chrome-btn !w-9 !px-0 justify-center"
+            className="v8b-chrome-btn !w-11 !min-w-11 !px-0 justify-center"
             onClick={() => onExpandedChange(false)}
             title="Collapse trade panel"
             aria-label="Collapse trade panel"
             aria-expanded={true}
             data-active="true"
+            data-brand-icon="1"
           >
             <IconChevron className="w-3 h-3 rotate-90" />
           </button>
@@ -528,21 +548,27 @@ export function BottomBar({
       </div>
 
       {/* Trade tabs */}
-      <div className="relative flex items-center border-t border-[color:var(--tv-panel-line)] pl-2.5 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div
+        data-trades-tabs="1"
+        className="relative flex items-center border-t border-[color:var(--line)] pl-2.5 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={{ minHeight: 'var(--tabstrip-h, 36px)' }}
+      >
         {tabs.map((tab) => {
           const active = tab.id === activeTab;
           return (
             <button
               key={tab.id}
               type="button"
+              role="tab"
+              aria-selected={active}
               data-active={active ? 'true' : undefined}
               onClick={() => onTabChange(tab.id)}
               className={[
                 'relative shrink-0 px-3 py-[7px] text-[11px] whitespace-nowrap transition-colors',
-                '[@media(hover:none)]:min-h-11',
+                'min-h-11 sm:min-h-9',
                 active
-                  ? 'text-[color-mix(in_oklab,var(--accent)_55%,white)] font-bold'
-                  : 'text-muted font-medium hover:text-foreground hover:bg-[color-mix(in_oklab,var(--foreground)_4%,transparent)]',
+                  ? 'text-[color:var(--accent)] font-bold'
+                  : 'text-muted font-medium hover:text-foreground hover:bg-[color:var(--surface-raised)]',
               ].join(' ')}
             >
               <span className="sm:hidden">{tab.short}</span>
@@ -551,9 +577,7 @@ export function BottomBar({
                 <span
                   className={[
                     'ml-1 font-semibold',
-                    active
-                      ? 'text-[color-mix(in_oklab,var(--accent)_55%,white)]'
-                      : 'text-muted',
+                    active ? 'text-[color:var(--accent)]' : 'text-muted',
                   ].join(' ')}
                 >
                   {tab.count}
@@ -561,12 +585,7 @@ export function BottomBar({
               ) : null}
               {active && (
                 <span
-                  className="absolute bottom-0 left-[15%] right-[15%] h-0.5 pointer-events-none"
-                  style={{
-                    background:
-                      'linear-gradient(90deg, transparent, color-mix(in oklab, var(--accent) 70%, white), transparent)',
-                    boxShadow: '0 0 6px color-mix(in oklab, var(--accent) 45%, transparent)',
-                  }}
+                  className="absolute bottom-0 left-[15%] right-[15%] h-0.5 pointer-events-none bg-[color:var(--accent)]"
                   aria-hidden
                 />
               )}
@@ -577,7 +596,8 @@ export function BottomBar({
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 min-h-7 px-2.5 mr-1 text-[11px] shrink-0"
+          className="h-9 min-h-11 sm:min-h-9 px-2.5 mr-1 text-[11px] shrink-0"
+          data-brand-btn="ghost"
           isDisabled
         >
           ↑ Export

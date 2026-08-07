@@ -1,0 +1,15 @@
+/**
+ * V9 Obsidian chrome — single entry for Vite.
+ * Scope: [data-v9-app] / [data-v9-chrome] (see chrome-tokens.css).
+ */
+@import './chrome-tokens.css';
+@import './chrome-kit.css';
+@import './chrome-rebuild.css';
+@import './chrome-obsidian-surfaces.css';
+@import './chrome-obsidian-shell.css';
+@import './chrome-order-ticket.css';
+@import './chrome-alert-modal.css';
+@import './chrome-goto.css';
+@import './chrome-trade-card.css';
+@import './chrome-settings.css';
+@import './chrome-bridge.css';

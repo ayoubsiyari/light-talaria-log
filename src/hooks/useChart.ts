@@ -31,7 +31,13 @@ import {
   INDICATOR_TIP_EVERY_BARS,
   INDICATOR_TIP_FORMING_MIN_MS,
   INDICATOR_TIP_MIN_MS,
+  alignIndicatorOverlays,
+  alignIndicatorPanes,
+  indicatorHistorySparse,
   needsFullIndicatorRecompute,
+  shiftIndicatorOverlays,
+  shiftIndicatorPanes,
+  slideOffset,
   stitchTipOverlays,
   stitchTipPanes,
   tipWindowBars,
@@ -350,6 +356,13 @@ export function useChart(
     let lastTipAtLen = 0;
     let lastTipAtMs = 0;
 
+    /** Prefer live engine bars — React props go stale while Play is imperative. */
+    const seedBars = (): readonly ChartBar[] => {
+      const live = instance.getBars();
+      if (live.length > 0) return live;
+      return options.bars ?? EMPTY_BARS;
+    };
+
     const runFull = (bars: readonly ChartBar[]) => {
       if (bars.length === 0) {
         instance.setIndicatorOverlays([]);
@@ -358,14 +371,40 @@ export function useChart(
         lastTipAtLen = bars.length;
         return;
       }
-      void computeIndicators(bars, instances)
+      const computeBars = bars;
+      void computeIndicators(computeBars, instances)
         .then(({ overlays, panes }) => {
           if (cancelled) return;
-          lastFullBars = bars;
-          lastTipAtLen = bars.length;
+          const live = instance.getBars();
+          if (live.length === 0) return;
+
+          let nextOverlays = withWidth(overlays);
+          let nextPanes = withWidth(panes);
+
+          // Buffer may have slid while the Worker ran — remap, don't paint
+          // obsolete index space (that looked like MAs "deleted" from history).
+          const off = slideOffset(computeBars, live);
+          if (off > 0) {
+            nextOverlays = shiftIndicatorOverlays(nextOverlays, off, live.length);
+            nextPanes = shiftIndicatorPanes(nextPanes, off, live.length);
+          } else if (off < 0) {
+            // Unrelated window (seek) — recompute against live bars.
+            tipPending = live;
+            tipTimer = setTimeout(() => {
+              tipTimer = null;
+              drainTip();
+            }, 0);
+            return;
+          } else if (nextOverlays[0]?.series[0]?.values.length !== live.length) {
+            nextOverlays = alignIndicatorOverlays(nextOverlays, live.length);
+            nextPanes = alignIndicatorPanes(nextPanes, live.length);
+          }
+
+          lastFullBars = live;
+          lastTipAtLen = live.length;
           lastTipAtMs = performance.now();
-          instance.setIndicatorOverlays(withWidth(overlays));
-          instance.setIndicatorPanes(withWidth(panes));
+          instance.setIndicatorOverlays(nextOverlays);
+          instance.setIndicatorPanes(nextPanes);
         })
         .catch(() => {
           if (cancelled) return;
@@ -378,16 +417,31 @@ export function useChart(
       const pending = tipPending;
       if (!pending || pending.length === 0) return;
 
-      if (needsFullIndicatorRecompute(lastFullBars, pending)) {
+      const liveNow = instance.getBars();
+      const target =
+        liveNow.length > 0 &&
+        (pending[0]?.time !== liveNow[0]?.time ||
+          pending.length !== liveNow.length)
+          ? liveNow
+          : pending;
+
+      if (
+        needsFullIndicatorRecompute(lastFullBars, target) ||
+        indicatorHistorySparse(
+          instance.getIndicatorOverlays(),
+          instance.getIndicatorPanes(),
+          target.length,
+        )
+      ) {
         tipPending = null;
-        runFull(pending);
+        runFull(target);
         return;
       }
 
       // Replay isolation: skip Worker until enough new bars OR min interval.
       // Buffers already length-aligned (hold tip) so candles never wait.
       const now = performance.now();
-      const barsSince = pending.length - lastTipAtLen;
+      const barsSince = target.length - lastTipAtLen;
       const msSince = now - lastTipAtMs;
       const minMs =
         barsSince <= 0 ? INDICATOR_TIP_FORMING_MIN_MS : INDICATOR_TIP_MIN_MS;
@@ -396,6 +450,7 @@ export function useChart(
         barsSince < INDICATOR_TIP_EVERY_BARS &&
         msSince < minMs
       ) {
+        tipPending = target;
         const wait = Math.max(0, minMs - msSince);
         if (tipTimer == null) {
           tipTimer = setTimeout(() => {
@@ -408,24 +463,41 @@ export function useChart(
 
       tipPending = null;
       tipInFlight = true;
-      const slice = tipWindowBars(pending);
+      const slice = tipWindowBars(target);
+      const tipSource = target;
       void computeIndicators(slice, instances)
         .then(({ overlays, panes }) => {
           if (cancelled) return;
-          lastTipAtLen = pending.length;
+          const live = instance.getBars();
+          if (live.length === 0) return;
+          // Drop stale tip if the warm-cache slid under this Worker job.
+          if (
+            tipSource[0]?.time !== live[0]?.time &&
+            needsFullIndicatorRecompute(tipSource, live)
+          ) {
+            tipPending = live;
+            return;
+          }
+          const barsLen = live.length;
+          lastTipAtLen = barsLen;
           lastTipAtMs = performance.now();
           const nextOverlays = stitchTipOverlays(
             instance.getIndicatorOverlays(),
             withWidth(overlays),
-            pending.length,
+            barsLen,
           );
           const nextPanes = stitchTipPanes(
             instance.getIndicatorPanes(),
             withWidth(panes),
-            pending.length,
+            barsLen,
           );
           instance.setIndicatorOverlays(nextOverlays);
           instance.setIndicatorPanes(nextPanes);
+
+          // Tip-only materialization still needs a full history pass.
+          if (indicatorHistorySparse(nextOverlays, nextPanes, barsLen)) {
+            runFull(live);
+          }
         })
         .catch(() => {
           /* keep aligned hold-values */
@@ -457,17 +529,19 @@ export function useChart(
       scheduleTip(bars);
     });
 
-    // Seed / catch-up. Play toggles must NOT re-run this effect (that tore down
-    // tip wiring and forced a full Worker pass → grid/indicator flash).
-    // Follow flag is read from optionsRef inside drainTip.
-    if (!optionsRef.current.replayFollow) {
-      runFull(options.bars ?? EMPTY_BARS);
-    } else if (instance.getIndicatorOverlays().length === 0) {
-      runFull(options.bars ?? EMPTY_BARS);
+    // Seed / catch-up from live engine bars (React props are stale during Play).
+    // Play toggles must NOT re-run this effect — follow is read via optionsRef.
+    const seed = seedBars();
+    const overlaysNow = instance.getIndicatorOverlays();
+    const panesNow = instance.getIndicatorPanes();
+    if (
+      !optionsRef.current.replayFollow ||
+      overlaysNow.length === 0 ||
+      indicatorHistorySparse(overlaysNow, panesNow, seed.length)
+    ) {
+      runFull(seed);
     } else {
-      // Already have overlays mid-play (effect re-ran from bars/indicators) —
-      // schedule a tip catch-up instead of blanking.
-      scheduleTip(options.bars ?? EMPTY_BARS);
+      scheduleTip(seed);
     }
 
     return () => {

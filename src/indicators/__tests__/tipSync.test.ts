@@ -5,8 +5,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  indicatorHistorySparse,
   shiftIndicatorOverlays,
   slideOffset,
+  stitchTipOverlays,
   stitchTipSeries,
 } from '@/indicators/tipSync';
 import type { ChartBar } from '@/types/bar';
@@ -75,5 +77,73 @@ describe('stitchTipSeries', () => {
     const tip = new Float32Array([30, 40, 50]);
     const out = stitchTipSeries(full, tip, 5);
     assert.deepEqual([...out], [1, 2, 30, 40, 50]);
+  });
+
+  it('does not overwrite history with tip warmup NaNs', () => {
+    const full = new Float32Array([1, 2, 3, 4, 5, 6, 7, 8]);
+    const tip = new Float32Array([Number.NaN, Number.NaN, 60, 70, 80]);
+    const out = stitchTipSeries(full, tip, 8);
+    assert.equal(out[3], 4); // preserved — tip NaN must not erase
+    assert.equal(out[4], 5); // preserved
+    assert.equal(out[5], 60);
+    assert.equal(out[6], 70);
+    assert.equal(out[7], 80);
+  });
+
+  it('parks orphan tip-sized buffers on the trailing edge', () => {
+    const orphan = new Float32Array([10, 20, 30]); // tip-sized, not full history
+    const tip = new Float32Array([7, 8, 9]);
+    const out = stitchTipSeries(orphan, tip, 10);
+    assert.equal(out.length, 10);
+    assert.ok(Number.isNaN(out[0]!));
+    assert.ok(Number.isNaN(out[6]!));
+    assert.equal(out[7], 7);
+    assert.equal(out[8], 8);
+    assert.equal(out[9], 9);
+  });
+});
+
+describe('stitchTipOverlays empty current', () => {
+  it('materializes tip on the right, not the left', () => {
+    const tip: IndicatorOverlayResult[] = [
+      {
+        instanceKey: 'sma',
+        id: 'sma',
+        label: 'SMA',
+        placement: 'overlay',
+        series: [
+          {
+            key: 'sma',
+            style: 'line',
+            color: '#fff',
+            values: new Float32Array([1, 2, 3]),
+          },
+        ],
+      },
+    ];
+    const out = stitchTipOverlays([], tip, 8);
+    const v = out[0]!.series[0]!.values;
+    assert.equal(v.length, 8);
+    assert.ok(Number.isNaN(v[0]!));
+    assert.equal(v[5], 1);
+    assert.equal(v[7], 3);
+  });
+});
+
+describe('indicatorHistorySparse', () => {
+  it('detects tip-only series', () => {
+    const values = new Float32Array(100);
+    values.fill(Number.NaN);
+    for (let i = 70; i < 100; i++) values[i] = i;
+    const overlays: IndicatorOverlayResult[] = [
+      {
+        instanceKey: 'sma',
+        id: 'sma',
+        label: 'SMA',
+        placement: 'overlay',
+        series: [{ key: 'sma', style: 'line', color: '#fff', values }],
+      },
+    ];
+    assert.equal(indicatorHistorySparse(overlays, [], 100), true);
   });
 });

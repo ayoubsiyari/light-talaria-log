@@ -853,6 +853,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-07 | **V9 chrome port:** copy Obsidian CSS/theme/icons + Live reference into `src/v9/`; chart shell `data-v9-app`; restyle TopBar / LeftToolbar / BottomBar / TradeDock (Canvas engine kept; Live not mounted) | Hard-refresh chart session — Obsidian chrome; pan/zoom unchanged; check ~390px |
 | 2026-08-07 | **Drawings E1–E5 (Talaria parity on Canvas):** stroke-only hit, multi-select, copy/paste/z-order, axis badges, fib zones/label modes, RR level handles, inline text, floating More menu, object-tree multi bulk | Matrix: place/select/move FULL tools; Shift+click multi; Cmd+C/V; fib zones; edit text |
 | 2026-08-07 | Fix replay indicator shake + Play/Pause grid flash: soft pause (no rederive), skip same-series setViewport, no dirty on follow flag, Y-scale hysteresis, tip slide remap + tighter tip Worker | Add SMA → Play — overlays steady; toggle Pause/Play — grid no flash |
+| 2026-08-07 | Fix indicators vanishing on old candles: tip stitch no longer writes warmup NaNs over history; orphan tip parks on trailing edge; sparse-history forces full Worker recompute | Play with SMA — lines cover full visible history, not only tip window |
 | 2026-08-07 | Axis badges: place on real price/time axes (shared formatPrice/formatTime); pass layout from paintDrawingsFrame | Select drawing — chips align with crosshair/last-price |
 
 ---

@@ -298,12 +298,16 @@ export function useChart(
     instance.setVolumeOpacity(options.volumeOpacity);
   }, [options.volumeOpacity]);
 
+  // Indicators: depend ONLY on enabled set — never on play/pause or React bars.
+  // Re-running on replayFollow tore down tip sync mid-Play and could stall replay.
   useEffect(() => {
     const instance = instanceRef.current;
     if (!instance) return;
 
     const theme = getChartColors();
-    const enabled = (options.enabledIndicators ?? []).filter((e) => e.visible !== false);
+    const enabled = (optionsRef.current.enabledIndicators ?? []).filter(
+      (e) => e.visible !== false,
+    );
     const instances: IndicatorInstance[] = enabled.map((e) => {
       const def = getIndicatorDef(e.id);
       const themeColors = colorsForIndicator(e.id, theme);
@@ -319,7 +323,9 @@ export function useChart(
       };
     });
     const lineWidthByKey = new Map(
-      (options.enabledIndicators ?? []).map((e) => [e.id, e.lineWidth ?? 1.5] as const),
+      (optionsRef.current.enabledIndicators ?? []).map(
+        (e) => [e.id, e.lineWidth ?? 1.5] as const,
+      ),
     );
 
     const withWidth = <T extends { instanceKey: string; series: { lineWidth?: number }[] }>(
@@ -348,6 +354,15 @@ export function useChart(
     /** Last bar count when tip Worker actually ran — gates replay isolation. */
     let lastTipAtLen = 0;
     let lastTipAtMs = 0;
+    /** Prevent stacking full recomputes while one is already in flight. */
+    let fullInFlight = false;
+
+    /** Engine bars win — React props go stale while Play is imperative. */
+    const seedBars = (): readonly ChartBar[] => {
+      const live = instance.getBars();
+      if (live.length > 0) return live;
+      return optionsRef.current.bars ?? EMPTY_BARS;
+    };
 
     const runFull = (bars: readonly ChartBar[]) => {
       if (bars.length === 0) {
@@ -357,6 +372,11 @@ export function useChart(
         lastTipAtLen = bars.length;
         return;
       }
+      if (fullInFlight) {
+        tipPending = bars;
+        return;
+      }
+      fullInFlight = true;
       void computeIndicators(bars, instances)
         .then(({ overlays, panes }) => {
           if (cancelled) return;
@@ -369,11 +389,30 @@ export function useChart(
         .catch(() => {
           if (cancelled) return;
           // Keep previous series — don't blank on transient Worker errors.
+        })
+        .finally(() => {
+          fullInFlight = false;
+          // Catch up if Play advanced / slid while the full pass ran.
+          if (!cancelled && tipPending) {
+            const pending = tipPending;
+            tipPending = null;
+            if (needsFullIndicatorRecompute(lastFullBars, pending)) {
+              runFull(pending);
+            } else {
+              tipPending = pending;
+              if (tipTimer == null && !tipInFlight) {
+                tipTimer = setTimeout(() => {
+                  tipTimer = null;
+                  drainTip();
+                }, 0);
+              }
+            }
+          }
         });
     };
 
     const drainTip = () => {
-      if (cancelled || tipInFlight) return;
+      if (cancelled || tipInFlight || fullInFlight) return;
       const pending = tipPending;
       if (!pending || pending.length === 0) return;
 
@@ -406,20 +445,23 @@ export function useChart(
       tipPending = null;
       tipInFlight = true;
       const slice = tipWindowBars(pending);
+      const tipLen = pending.length;
       void computeIndicators(slice, instances)
         .then(({ overlays, panes }) => {
           if (cancelled) return;
-          lastTipAtLen = pending.length;
+          lastTipAtLen = tipLen;
           lastTipAtMs = performance.now();
+          // Stitch to the live engine length (may have grown during the Worker).
+          const liveLen = instance.getBars().length || tipLen;
           const nextOverlays = stitchTipOverlays(
             instance.getIndicatorOverlays(),
             withWidth(overlays),
-            pending.length,
+            liveLen,
           );
           const nextPanes = stitchTipPanes(
             instance.getIndicatorPanes(),
             withWidth(panes),
-            pending.length,
+            liveLen,
           );
           instance.setIndicatorOverlays(nextOverlays);
           instance.setIndicatorPanes(nextPanes);
@@ -440,12 +482,12 @@ export function useChart(
 
     const scheduleTip = (bars: readonly ChartBar[]) => {
       tipPending = bars;
-      if (tipTimer != null || tipInFlight) return;
+      if (tipTimer != null || tipInFlight || fullInFlight) return;
       // Coalesce; actual Worker gated by INDICATOR_TIP_EVERY_BARS / MIN_MS.
       tipTimer = setTimeout(() => {
         tipTimer = null;
         drainTip();
-      }, INDICATOR_TIP_MIN_MS);
+      }, 0);
     };
 
     instance.onIndicatorReveal((bars) => {
@@ -454,23 +496,17 @@ export function useChart(
       scheduleTip(bars);
     });
 
-    // Pause / seek / load: full window. Play: hold-extend + sparse tip Worker.
-    if (!options.replayFollow) {
-      runFull(options.bars ?? EMPTY_BARS);
-    } else if (instance.getIndicatorOverlays().length === 0) {
-      runFull(options.bars ?? EMPTY_BARS);
-    }
+    // Initial / indicator-change seed from live engine bars.
+    runFull(seedBars());
 
     return () => {
       cancelled = true;
       instance.onIndicatorReveal(null);
       if (tipTimer != null) clearTimeout(tipTimer);
     };
-  }, [
-    options.bars,
-    options.replayFollow,
-    JSON.stringify(options.enabledIndicators ?? []),
-  ]);
+    // Intentionally NOT depending on replayFollow / bars — Play must not tear
+    // down tip wiring (that stalled replay when indicators were enabled).
+  }, [JSON.stringify(options.enabledIndicators ?? [])]);
 
   useEffect(() => {
     const instance = instanceRef.current;

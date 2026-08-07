@@ -856,6 +856,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-07 | Fix indicators vanishing on old candles: tip stitch no longer writes warmup NaNs over history; orphan tip parks on trailing edge; sparse-history forces full Worker recompute | Play with SMA — lines cover full visible history, not only tip window |
 | 2026-08-07 | **Revert** aggressive replay/indicator changes that emptied the viewport on Play; keep only tip-stitch NaN guard + never apply empty React bars over a live engine | Set SMA/EMA → Play — candles stay; MAs on history |
 | 2026-08-07 | Indicator effect deps: only enabled set (not play/bars); seed from engine; single full-in-flight — Play no longer tears tip sync | Set SMA → Play — clock advances, candles+MAs stay |
+| 2026-08-07 | Fix empty-left on Play: fill-ahead also tops up history behind cursor; stronger lookback bias in paneRunwayFillOpts (30×) | Play 1m @30× — left candles stay filled |
 | 2026-08-07 | Axis badges: place on real price/time axes (shared formatPrice/formatTime); pass layout from paintDrawingsFrame | Select drawing — chips align with crosshair/last-price |
 
 ---

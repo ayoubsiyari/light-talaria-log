@@ -492,16 +492,24 @@ const fillAheadPending = new Map<
  * Must keep enough bars *behind* the cursor so right-anchored follow
  * (span + 10% pad) does not leave an empty left pad. Forward runway stays
  * modest — higher-TF forming still uses {@link formingClockFillOpts}.
+ *
+ * At high speed (20×–30×) a tip-heavy window races ahead and starves history
+ * → huge empty left pad. Bias hard toward lookback.
  */
 function paneRunwayFillOpts(span: number): WarmCacheFillOpts {
   const spanSafe = Math.max(1, span);
-  // History: visible span + buffer; runway: ~150–200 bars ahead.
+  // ~2× visible span of history + buffer; short forward runway only.
   const windowBars = Math.min(
     MAX_BARS_IN_MEMORY,
-    Math.max(spanSafe + BUFFER_BARS + 200, spanSafe * 3 + 400, 900),
+    Math.max(
+      spanSafe * 2 + BUFFER_BARS + 200,
+      spanSafe * 3 + 400,
+      REPLAY_VISIBLE_BARS * 2 + BUFFER_BARS,
+      1400,
+    ),
   );
-  const aheadBars = Math.min(220, Math.max(120, spanSafe));
-  const aheadRatio = Math.min(0.2, aheadBars / windowBars);
+  const aheadBars = Math.min(160, Math.max(80, Math.floor(spanSafe * 0.75)));
+  const aheadRatio = Math.min(0.12, aheadBars / windowBars);
   return { aheadRatio, windowBars };
 }
 
@@ -619,12 +627,26 @@ function extendRevealInPlace(
 
     const openBucket = bucketStart(s.cursorTime, tfPeriod);
     const rawEnd = raw && raw.length > 0 ? raw[raw.length - 1]!.time : null;
+    const rawStart = raw && raw.length > 0 ? raw[0]!.time : null;
     const aheadBars =
       rawEnd != null && tfPeriod > 0
         ? Math.floor((rawEnd - openBucket) / tfPeriod)
         : -1;
-    // Top up pane TF runway before the tip freezes — high speed burns ~speed bars/sec.
-    if (!raw || raw.length === 0 || aheadBars < Math.max(120, s.span)) {
+    // How much history sits behind the open bucket — short lookback is what
+    // paints the empty left pad under right-anchored follow.
+    const behindBars =
+      rawStart != null && tfPeriod > 0
+        ? Math.floor((openBucket - rawStart) / tfPeriod)
+        : -1;
+    const needBehind = Math.max(s.span, REPLAY_VISIBLE_BARS);
+    const needAhead = Math.max(120, s.span);
+    // Top up when runway OR history is short — high speed burns both edges.
+    if (
+      !raw ||
+      raw.length === 0 ||
+      aheadBars < needAhead ||
+      behindBars < needBehind
+    ) {
       scheduleFillAhead(cfg.datasetId, cfg.tf, s.cursorTime, s.span);
     }
 

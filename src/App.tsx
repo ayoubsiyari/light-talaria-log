@@ -2276,9 +2276,14 @@ export default function App() {
           }
           if (switchGen !== paneSwitchGenRef.current) return;
 
-          // If sync derive was still empty, force a full refresh once.
+          // Empty OR tip-only (1–few bars) — force another history fill.
+          // 1m→5m often painted a single forming candle until Play topped up.
           const views = sessionRef.current.getViews();
-          if (targets.some((id) => (views[id]?.bars.length ?? 0) === 0)) {
+          const span = Math.max(10, sessionRef.current.get()?.span ?? 120);
+          const minBars = Math.min(24, Math.max(8, Math.floor(span * 0.15)));
+          if (
+            targets.some((id) => (views[id]?.bars.length ?? 0) < minBars)
+          ) {
             await sessionRef.current.refreshViews(targets);
           }
           if (switchGen !== paneSwitchGenRef.current) return;
@@ -4385,82 +4390,6 @@ export default function App() {
         </div>
       </div>
 
-      {loadStatus === 'ready' && tradeChromeExpanded && activeTab === 'analytics' && (
-        <div className="shrink-0 border-t border-border h-[min(55vh,520px)] min-h-[280px]">
-          <AnalyticsDashboard
-            liveJournal={orderBridgeRef.current?.getJournal() ?? null}
-            sessionId={session.id}
-            onOpenJournal={() => openJournalView(session.id)}
-          />
-        </div>
-      )}
-      {loadStatus === 'ready' && tradeChromeExpanded && activeTab !== 'analytics' && (
-        <TradeDock
-          key={orderEngineTick}
-          activeTab={activeTab}
-          state={orderBridgeRef.current?.getState() ?? null}
-          spec={
-            orderBridgeRef.current?.getSpec(
-              (panes.find((p) => p.id === activePaneId) ?? panes[0])?.pair,
-            ) ?? null
-          }
-          bid={liveBidAsk.bid}
-          ask={liveBidAsk.ask}
-          onCancel={(orderId) => {
-            const bridge = orderBridgeRef.current;
-            if (!bridge) return;
-            bridge.cancel(orderId, replayRef.current.get().cursorTime);
-            syncOrdersFromBridge();
-          }}
-          onSelectPosition={(id) => setSelectedOrderId(id)}
-          onClosePosition={(positionId) => {
-            const bridge = orderBridgeRef.current;
-            if (!bridge) return;
-            const pos = bridge.getState().positions[positionId];
-            if (!pos) return;
-            // Close against that position's own pair bars (may not be the active pane).
-            const key = chartPairKey(pos.symbol);
-            const pane = panesRef.current.find(
-              (p) => chartPairKey(p.pair) === key,
-            );
-            const series = seriesRef.current.find(
-              (s) => chartPairKey(s.pair) === key,
-            );
-            const sess = sessionRef.current.get();
-            const ds = pane?.datasetId ?? series?.datasetId;
-            const cursorTime = replayRef.current.get().cursorTime;
-            let bid = pane?.bars[pane.bars.length - 1]?.close ?? 0;
-            if (!(bid > 0) && ds && sess) {
-              const raw = warmCache.peek(ds, sess.baseTf) ?? [];
-              for (let i = raw.length - 1; i >= 0; i--) {
-                const b = raw[i]!;
-                if (b.time <= cursorTime) {
-                  bid = b.close;
-                  break;
-                }
-              }
-            }
-            if (!(bid > 0) || !(cursorTime > 0)) return;
-            const spread = bridge.getSpec(pos.symbol).typicalSpread;
-            const id = `close-${cursorTime}-${bridge.getState().seq + 1}`;
-            bridge.submit({
-              cursorTime,
-              bid,
-              ask: bid + spread,
-              order: {
-                id,
-                symbol: pos.symbol,
-                side: pos.side === 'BUY' ? 'SELL' : 'BUY',
-                type: 'MARKET',
-                size: pos.size,
-                tif: 'IOC',
-                createdAt: cursorTime,
-              },
-            });
-            syncOrdersFromBridge();
-          }}
-        />
-      )}
       <BottomBar
         activeTab={activeTab}
         onTabChange={(tab) => {
@@ -4565,7 +4494,140 @@ export default function App() {
         pendingCount={orderCounts.pending}
         openCount={orderCounts.open}
         historyCount={orderCounts.history}
-      />
+        onExportTrades={() => {
+          const bridge = orderBridgeRef.current;
+          if (!bridge) return;
+          const st = bridge.getState();
+          const rows: string[] = [
+            'id,symbol,side,status,size,type,entry,filledAt',
+          ];
+          for (const o of Object.values(st.orders)) {
+            if (!o || o.role) continue;
+            if (activeTab === 'pending' && o.status !== 'WORKING') continue;
+            if (activeTab === 'open') continue;
+            if (
+              activeTab === 'history' &&
+              !(o.status === 'FILLED' && !o.role)
+            ) {
+              continue;
+            }
+            if (activeTab === 'analytics') continue;
+            rows.push(
+              [
+                o.id,
+                o.symbol,
+                o.side,
+                o.status,
+                o.size,
+                o.type,
+                o.fillPrice ?? o.price ?? '',
+                o.filledAt ?? o.createdAt ?? '',
+              ].join(','),
+            );
+          }
+          for (const p of Object.values(st.positions)) {
+            if (activeTab === 'pending' || activeTab === 'history') continue;
+            if (activeTab === 'analytics') continue;
+            rows.push(
+              [
+                p.id,
+                p.symbol,
+                p.side,
+                'OPEN',
+                p.size,
+                'POSITION',
+                p.entryPrice,
+                p.openedAt ?? '',
+              ].join(','),
+            );
+          }
+          const blob = new Blob([rows.join('\n')], {
+            type: 'text/csv;charset=utf-8',
+          });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `talaria-trades-${activeTab}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }}
+      >
+        {loadStatus === 'ready' && activeTab === 'analytics' ? (
+          <div className="flex-1 min-h-0 h-full overflow-auto">
+            <AnalyticsDashboard
+              liveJournal={orderBridgeRef.current?.getJournal() ?? null}
+              sessionId={session.id}
+              onOpenJournal={() => openJournalView(session.id)}
+            />
+          </div>
+        ) : null}
+        {loadStatus === 'ready' && activeTab !== 'analytics' ? (
+          <TradeDock
+            key={orderEngineTick}
+            activeTab={activeTab}
+            state={orderBridgeRef.current?.getState() ?? null}
+            spec={
+              orderBridgeRef.current?.getSpec(
+                (panes.find((p) => p.id === activePaneId) ?? panes[0])?.pair,
+              ) ?? null
+            }
+            bid={liveBidAsk.bid}
+            ask={liveBidAsk.ask}
+            onCancel={(orderId) => {
+              const bridge = orderBridgeRef.current;
+              if (!bridge) return;
+              bridge.cancel(orderId, replayRef.current.get().cursorTime);
+              syncOrdersFromBridge();
+            }}
+            onSelectPosition={(id) => setSelectedOrderId(id)}
+            onClosePosition={(positionId) => {
+              const bridge = orderBridgeRef.current;
+              if (!bridge) return;
+              const pos = bridge.getState().positions[positionId];
+              if (!pos) return;
+              const key = chartPairKey(pos.symbol);
+              const pane = panesRef.current.find(
+                (p) => chartPairKey(p.pair) === key,
+              );
+              const series = seriesRef.current.find(
+                (s) => chartPairKey(s.pair) === key,
+              );
+              const sess = sessionRef.current.get();
+              const ds = pane?.datasetId ?? series?.datasetId;
+              const cursorTime = replayRef.current.get().cursorTime;
+              let bid = pane?.bars[pane.bars.length - 1]?.close ?? 0;
+              if (!(bid > 0) && ds && sess) {
+                const raw = warmCache.peek(ds, sess.baseTf) ?? [];
+                for (let i = raw.length - 1; i >= 0; i--) {
+                  const b = raw[i]!;
+                  if (b.time <= cursorTime) {
+                    bid = b.close;
+                    break;
+                  }
+                }
+              }
+              if (!(bid > 0) || !(cursorTime > 0)) return;
+              const spread = bridge.getSpec(pos.symbol).typicalSpread;
+              const id = `close-${cursorTime}-${bridge.getState().seq + 1}`;
+              bridge.submit({
+                cursorTime,
+                bid,
+                ask: bid + spread,
+                order: {
+                  id,
+                  symbol: pos.symbol,
+                  side: pos.side === 'BUY' ? 'SELL' : 'BUY',
+                  type: 'MARKET',
+                  size: pos.size,
+                  tif: 'IOC',
+                  createdAt: cursorTime,
+                },
+              });
+              syncOrdersFromBridge();
+            }}
+          />
+        ) : null}
+      </BottomBar>
     </div>
     </AuthGate>
   );

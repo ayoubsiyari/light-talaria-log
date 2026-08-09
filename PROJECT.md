@@ -860,6 +860,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-07 | Smooth Play + TF mid-replay: fill TF before flipping state; freeze switching panes; patch append in extendReveal; wall-clock camera on TF switch; behind-fill hysteresis | Play → switch 1m↔5m — candles stay; Play feels smooth again |
 | 2026-08-07 | Axis badges: place on real price/time axes (shared formatPrice/formatTime); pass layout from paintDrawingsFrame | Select drawing — chips align with crosshair/last-price |
 | 2026-08-09 | **V9 design on our shell:** OrderTicket → `data-order-v2` Obsidian markup; TradeDock → `data-trades-v2` table (engine/wiring unchanged; Live not mounted) | Place Order — BUY/SELL + STOP/TARGET blocks; expand trades strip — ID/Side/Status/Close |
+| 2026-08-09 | **Bottom chrome Obsidian parity:** BottomBar → `data-replay-v2` + Go To portal + pill `data-trades-v2` toolbar; TradeDock/Analytics nested inside panel; drag-resize; Export CSV | Hard-refresh chart — no old scrub/underline tabs; Go To + History table match Live |
 
 ---
 

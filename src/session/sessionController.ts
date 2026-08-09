@@ -264,13 +264,21 @@ export function createSessionController() {
         }
         const datasetId = pane.datasetId;
         const anchor = state.anchorTime;
-        const span = state.span;
+        const span = Math.max(1, state.span);
+        // History-biased window — tip-heavy fills left only the forming 5m/1h
+        // candle until the user hit Play (which then top-filled history).
+        const switchOpts: WarmCacheFillOpts = {
+          awaitRemote: true,
+          aheadRatio: 0.06,
+          windowBars: Math.min(
+            MAX_BARS_IN_MEMORY,
+            Math.max(span * 2 + BUFFER_BARS, span * 3 + 200, 900),
+          ),
+        };
 
         // Await remote chunks so the first TF click paints the new series.
         // State still has the *old* TF — Play keeps extending previous candles.
-        await warmCache.fill(datasetId, tf, anchor, span, {
-          awaitRemote: true,
-        });
+        await warmCache.fill(datasetId, tf, anchor, span, switchOpts);
         if (!state) return;
 
         if (tf !== state.baseTf) {
@@ -279,11 +287,10 @@ export function createSessionController() {
           const baseSpan = Math.min(
             MAX_BARS_IN_MEMORY,
             Math.max(
-              state.span,
+              span,
               Math.ceil(
-                (state.span * timeframeSeconds(tf)) /
-                  timeframeSeconds(state.baseTf),
-              ),
+                (span * timeframeSeconds(tf)) / timeframeSeconds(state.baseTf),
+              ) + 64,
             ),
           );
           await warmCache.fill(
@@ -291,7 +298,11 @@ export function createSessionController() {
             state.baseTf,
             state.cursorTime,
             baseSpan,
-            { awaitRemote: true },
+            {
+              awaitRemote: true,
+              aheadRatio: 0.1,
+              windowBars: Math.min(MAX_BARS_IN_MEMORY, baseSpan + 200),
+            },
           );
         }
         if (!state) return;
@@ -307,9 +318,51 @@ export function createSessionController() {
           },
         };
         rederivePaneSync(paneId);
+
+        // Sparse = only forming tip (classic 1m→5m with empty higher-TF IDB).
+        // Retry a heavier history fill + awaited async derive before paint.
+        const minPaint = Math.min(32, Math.max(8, Math.floor(span * 0.2)));
+        let painted = views[paneId]?.bars.length ?? 0;
+        if (painted < minPaint) {
+          await warmCache.fill(datasetId, tf, state.cursorTime, span, {
+            ...switchOpts,
+            aheadRatio: 0.05,
+            windowBars: Math.min(
+              MAX_BARS_IN_MEMORY,
+              Math.max(span * 3 + BUFFER_BARS, 1200),
+            ),
+          });
+          if (!state) return;
+          if (tf !== state.baseTf) {
+            const baseSpan = Math.min(
+              MAX_BARS_IN_MEMORY,
+              Math.max(
+                span,
+                Math.ceil(
+                  (span * timeframeSeconds(tf)) /
+                    timeframeSeconds(state.baseTf),
+                ) + 64,
+              ),
+            );
+            await warmCache.fill(
+              datasetId,
+              state.baseTf,
+              state.cursorTime,
+              baseSpan,
+              { awaitRemote: true, aheadRatio: 0.08 },
+            );
+          }
+          if (!state) return;
+          rederivePaneSync(paneId);
+          await rederiveAsync([paneId]);
+          painted = views[paneId]?.bars.length ?? 0;
+        }
+
         notify();
-        // Second pass after any late IDB write (no remote wait).
-        void rederiveAsync([paneId]);
+        // Late IDB/remote catch-up (no remote wait) if still thin.
+        if (painted < minPaint) {
+          void rederiveAsync([paneId]);
+        }
       } finally {
         switchingPanes.delete(paneId);
       }

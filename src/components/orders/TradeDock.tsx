@@ -134,18 +134,11 @@ export function TradeDock({
     (!showPending || pending.length === 0) &&
     (!showHistory || history.length === 0);
 
-  const totalRows =
-    (showOpen ? positions.length : 0) +
-    (showPending ? pending.length : 0) +
-    (showHistory ? history.length : 0);
-
   return (
     <div
-      data-v9-chrome="1"
-      data-trades-v2="1"
       data-trades-dock="1"
       data-tc-body=""
-      className="shrink-0 border-t border-[color:var(--line)] bg-[color:var(--surface)] max-h-[28vh] sm:max-h-[22vh] flex flex-col min-h-0"
+      className="flex-1 min-h-0 flex flex-col tlr-scroll"
     >
       <div data-trades-table="" className="flex-1 min-h-0 overflow-auto">
         <div data-trades-hdr="" style={{ gridTemplateColumns: TRADES_COLS }}>
@@ -157,7 +150,7 @@ export function TradeDock({
         </div>
 
         {empty ? (
-          <div data-trades-empty="" className="px-3 py-4">
+          <div data-trades-empty="">
             <strong>No trades here</strong>
             <em>
               {activeTab === 'pending'
@@ -360,12 +353,6 @@ export function TradeDock({
               })}
           </>
         )}
-      </div>
-
-      <div className="shrink-0 flex items-center justify-between px-3 py-1.5 border-t border-[color:var(--line)] text-[11px] text-[color:var(--text-faint)]">
-        <span>
-          {totalRows} trade{totalRows === 1 ? '' : 's'}
-        </span>
       </div>
     </div>
   );

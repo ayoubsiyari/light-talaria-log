@@ -1,33 +1,36 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Button } from '@heroui/react';
 import {
-  IconChevron,
-  IconPause,
-  IconPlay,
-  IconSettings,
-} from '@/components/icons/ToolIcons';
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { createPortal } from 'react-dom';
 import { ChromeIcon } from '@/v9/chromeIcons.jsx';
+import { formatV9HudDateLineTitle } from '@/v9/chromeTheme.js';
 import type { ReplayState } from '@/replay/replayStore';
 import type { BottomTabId } from '@/types/ui';
+import {
+  buildGotoTimestampMs,
+  loadGotoState,
+  resolveGotoTimestampMs,
+  saveGotoState,
+  type GotoItem,
+} from '@/v9/gotoMenuHelpers.js';
 
 function buildTabs(counts: {
   all?: number;
   pending?: number;
   open?: number;
   history?: number;
-}): {
-  id: BottomTabId;
-  label: string;
-  short: string;
-  count?: number;
-}[] {
+}): { id: BottomTabId; label: string; count?: number | null }[] {
   return [
-    { id: 'all', label: 'All', short: 'All', count: counts.all },
-    { id: 'pending', label: 'Pending', short: 'Pend', count: counts.pending ?? 0 },
-    { id: 'open', label: 'Open', short: 'Open', count: counts.open ?? 0 },
-    { id: 'history', label: 'History', short: 'Hist', count: counts.history ?? 0 },
-    { id: 'analytics', label: 'Analytics', short: 'Anal' },
+    { id: 'all', label: 'All', count: counts.all ?? 0 },
+    { id: 'pending', label: 'Pending', count: counts.pending ?? 0 },
+    { id: 'open', label: 'Open', count: counts.open ?? 0 },
+    { id: 'history', label: 'History', count: counts.history ?? 0 },
+    { id: 'analytics', label: 'Analytics', count: null },
   ];
 }
 
@@ -41,7 +44,6 @@ interface BottomBarProps {
   onStep: (deltaBars: number) => void;
   onSpeed: (speed: number) => void;
   onSeek: (time: number) => void;
-  /** From last backtest result (equity index, start = 1). */
   equityLabel?: string;
   pnlLabel?: string;
   pnlPositive?: boolean | null;
@@ -50,45 +52,12 @@ interface BottomBarProps {
   openCount?: number;
   historyCount?: number;
   balanceLabel?: string;
-  /** When false, only the compact replay strip is shown. */
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
-}
-
-function formatClockDate(d: Date): string {
-  const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-  const dd = String(d.getDate()).padStart(2, '0');
-  const yy = String(d.getFullYear()).slice(-2);
-  return `${days[d.getDay()]} ${dd} ${months[d.getMonth()]} '${yy}`;
-}
-
-function formatClockTime(d: Date): string {
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  return `${hh}:${mm}:${ss}`;
-}
-
-function toDatetimeLocalValue(unixSec: number): string {
-  if (!unixSec) return '';
-  const d = new Date(unixSec * 1000);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function fromDatetimeLocalValue(value: string): number | null {
-  if (!value) return null;
-  const ms = Date.parse(value);
-  if (!Number.isFinite(ms)) return null;
-  return Math.floor(ms / 1000);
-}
-
-function formatCursorLabel(unixSec: number): string {
-  if (!unixSec) return '—';
-  const d = new Date(unixSec * 1000);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  /** TradeDock / Analytics body when expanded. */
+  children?: ReactNode;
+  /** Optional CSV export (History / All). */
+  onExportTrades?: () => void;
 }
 
 const SPEED_STEPS = [1, 2, 3, 5, 10, 15, 20, 25, 30, 50, 60, 70, 80, 90, 100] as const;
@@ -96,222 +65,34 @@ const SPEED_STEPS = [1, 2, 3, 5, 10, 15, 20, 25, 30, 50, 60, 70, 80, 90, 100] as
 function nearestSpeedIndex(speed: number): number {
   let best = 0;
   for (let i = 1; i < SPEED_STEPS.length; i++) {
-    if (Math.abs(SPEED_STEPS[i] - speed) < Math.abs(SPEED_STEPS[best] - speed)) best = i;
+    if (Math.abs(SPEED_STEPS[i]! - speed) < Math.abs(SPEED_STEPS[best]! - speed)) {
+      best = i;
+    }
   }
   return best;
 }
 
-function ReplayControls({
-  replay,
-  onToggle,
-  onStep,
-  onSpeed,
-  jumpOpen,
-  jumpValue,
-  onToggleJump,
-  onJumpValueChange,
-  onApplyJump,
-  onCloseJump,
-}: {
-  replay: ReplayState;
-  onToggle: () => void;
-  onStep: (deltaBars: number) => void;
-  onSpeed: (speed: number) => void;
-  jumpOpen: boolean;
-  jumpValue: string;
-  onToggleJump: () => void;
-  onJumpValueChange: (value: string) => void;
-  onApplyJump: () => void;
-  onCloseJump: () => void;
-}) {
-  const si = nearestSpeedIndex(replay.speed);
-  const pct = (si / (SPEED_STEPS.length - 1)) * 100;
-  const gearRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(
-    null,
-  );
-
-  useLayoutEffect(() => {
-    if (!jumpOpen) {
-      setMenuPos(null);
-      return;
-    }
-    const place = () => {
-      const el = gearRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const width = Math.min(window.innerWidth - 24, 288);
-      const left = Math.min(
-        Math.max(12, r.left + r.width / 2 - width / 2),
-        window.innerWidth - width - 12,
-      );
-      const top = Math.max(12, r.top - 8);
-      setMenuPos({ top, left });
-    };
-    place();
-    window.addEventListener('resize', place);
-    return () => window.removeEventListener('resize', place);
-  }, [jumpOpen]);
-
-  useEffect(() => {
-    if (!jumpOpen) return;
-    const onPointer = (e: PointerEvent) => {
-      const t = e.target as Node;
-      if (panelRef.current?.contains(t) || gearRef.current?.contains(t)) return;
-      onCloseJump();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCloseJump();
-    };
-    document.addEventListener('pointerdown', onPointer, true);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onPointer, true);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [jumpOpen, onCloseJump]);
-
-  return (
-    <div
-      data-v9-replaybar="1"
-      className="relative flex items-center h-full justify-center gap-0.5 shrink-0"
-    >
-      <span className="v8b-sep !mx-1" aria-hidden />
-      <button
-        ref={gearRef}
-        type="button"
-        className="v8b-chrome-btn !px-1.5"
-        title="Replay settings"
-        aria-label="Replay settings"
-        aria-expanded={jumpOpen}
-        aria-haspopup="dialog"
-        data-active={jumpOpen ? 'true' : undefined}
-        data-brand-icon="1"
-        onClick={onToggleJump}
-      >
-        <IconSettings className="w-[18px] h-[18px]" />
-      </button>
-      {jumpOpen &&
-        menuPos &&
-        createPortal(
-          <div
-            ref={panelRef}
-            role="dialog"
-            aria-label="Jump to date"
-            data-v9-chrome="1"
-            data-sdrop="1"
-            data-chrome-win="goto"
-            className={[
-              'v9-flyout fixed z-[100020] w-[min(calc(100vw-1.5rem),18rem)]',
-              'rounded-[var(--radius-panel,8px)] border border-[color:var(--line)]',
-              'bg-[color:var(--surface-raised)] text-[color:var(--text)]',
-              'p-3 space-y-2',
-            ].join(' ')}
-            style={{
-              top: menuPos.top,
-              left: menuPos.left,
-              transform: 'translateY(-100%)',
-            }}
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-              Jump to date
-            </p>
-            <input
-              type="datetime-local"
-              value={jumpValue}
-              onChange={(e) => onJumpValueChange(e.target.value)}
-              data-brand-field="1"
-              className="w-full min-h-11 rounded-[var(--radius-control,6px)] border border-[color:var(--line)] bg-[color:var(--surface-sunken)] px-2 py-2 text-sm text-foreground outline-none focus:border-[color:var(--accent)]"
-              aria-label="Jump to date"
-            />
-            <div className="flex gap-2">
-              <Button
-                variant="primary"
-                size="sm"
-                className="min-h-11 flex-1"
-                data-brand-btn="primary"
-                onPress={onApplyJump}
-              >
-                Go
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="min-h-11 px-3"
-                data-brand-btn="ghost"
-                onPress={onCloseJump}
-              >
-                Close
-              </Button>
-            </div>
-          </div>,
-          document.body,
-        )}
-      <button
-        type="button"
-        className="v8b-chrome-btn !px-1.5 relative"
-        onClick={onToggle}
-        title={replay.playing ? 'Pause replay' : 'Play replay'}
-        data-active={replay.playing ? 'true' : undefined}
-        data-brand-icon="1"
-      >
-        {replay.playing ? (
-          <IconPause className="w-[18px] h-[18px] text-[color:var(--warn)]" />
-        ) : (
-          <IconPlay className="w-[18px] h-[18px] text-[color:var(--up)]" />
-        )}
-      </button>
-      <div className="flex items-center gap-1.5 px-1.5 w-[8.5rem] shrink-0">
-        <span className="text-[13px] font-extrabold text-[color:var(--accent)] tabular-nums w-7 text-right leading-none">
-          {SPEED_STEPS[si]}
-          <span className="text-[15px] ml-px">×</span>
-        </span>
-        <div className="relative flex-1 h-9 flex items-center">
-          <div className="absolute inset-x-0 h-[3px] rounded-full bg-[color:var(--line)]">
-            <div
-              className="h-full rounded-full bg-[color:var(--accent)]"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-          <input
-            type="range"
-            min={0}
-            max={SPEED_STEPS.length - 1}
-            step={1}
-            value={si}
-            onChange={(e) => onSpeed(SPEED_STEPS[Number(e.target.value)] ?? 1)}
-            className="absolute inset-0 w-full opacity-0 cursor-pointer"
-            title="Replay speed"
-            aria-label="Replay speed"
-          />
-        </div>
-      </div>
-      <button
-        type="button"
-        className="v8b-chrome-btn !px-1.5"
-        onClick={() => onStep(-1)}
-        title="Step back"
-        data-brand-icon="1"
-      >
-        <ChromeIcon n="stepBack" s={18} />
-      </button>
-      <button
-        type="button"
-        className="v8b-chrome-btn !px-1.5"
-        onClick={() => onStep(1)}
-        title="Step forward"
-        data-brand-icon="1"
-      >
-        <ChromeIcon n="stepFwd" s={18} />
-      </button>
-      <span className="v8b-sep !mx-1" aria-hidden />
-    </div>
-  );
+function formatClockHms(unixSec: number): string {
+  if (!(unixSec > 0)) return '—';
+  const d = new Date(unixSec * 1000);
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  const ss = String(d.getUTCSeconds()).padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
 }
 
-/** V9 Obsidian bottom chrome: clock · replay · balance, then trade tabs. */
+function cursorDateIso(unixSec: number): string {
+  if (!(unixSec > 0)) {
+    const n = new Date();
+    return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, '0')}-${String(n.getUTCDate()).padStart(2, '0')}`;
+  }
+  const d = new Date(unixSec * 1000);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+type GotoTab = 'pinned' | 'preset' | 'create';
+
+/** V9 Obsidian bottom chrome: replay-v2 bar · trades-v2 toolbar · dock body. */
 export function BottomBar({
   activeTab,
   onTabChange,
@@ -330,45 +111,51 @@ export function BottomBar({
   balanceLabel,
   expanded,
   onExpandedChange,
+  children,
+  onExportTrades,
 }: BottomBarProps) {
-  const [now, setNow] = useState(() => new Date());
-  const [jumpOpen, setJumpOpen] = useState(false);
-  const [jumpValue, setJumpValue] = useState('');
-  const scrubRef = useRef<HTMLInputElement>(null);
-  const cursorLabelRef = useRef<HTMLSpanElement>(null);
-  const compactLabelRef = useRef<HTMLSpanElement>(null);
+  const [balVis, setBalVis] = useState(true);
+  const [gotoOpen, setGotoOpen] = useState(false);
+  const [gotoTab, setGotoTab] = useState<GotoTab>('pinned');
+  const [gotoQuery, setGotoQuery] = useState('');
+  const [gotoItems, setGotoItems] = useState(() => loadGotoState().pinned);
+  const [gotoPresets] = useState(() => loadGotoState().presets);
+  const [createDate, setCreateDate] = useState('');
+  const [createTime, setCreateTime] = useState('09:00');
+  const [createName, setCreateName] = useState('');
+  const [panelH, setPanelH] = useState(() => {
+    try {
+      const n = Number(localStorage.getItem('talaria.tradeChrome.height'));
+      if (Number.isFinite(n) && n >= 120) return Math.min(n, 520);
+    } catch {
+      /* ignore */
+    }
+    return 220;
+  });
+  const [resizing, setResizing] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef({ startY: 0, startH: 0, curH: 0 });
+  const gotoBtnRef = useRef<HTMLButtonElement>(null);
+  const gotoPanelRef = useRef<HTMLDivElement>(null);
+  const [gotoPos, setGotoPos] = useState<{
+    bottom: number;
+    left: number;
+    maxH: number;
+  } | null>(null);
 
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  const span = Math.max(1, replay.endTime - replay.startTime);
-  const progress = Math.min(
-    1,
-    Math.max(0, (replay.cursorTime - replay.startTime) / span),
-  );
-  const scrubValue = Math.round(progress * 1000);
-
-  const cursorLabel = useMemo(
-    () => formatCursorLabel(replay.cursorTime),
-    [replay.cursorTime],
-  );
-
-  useEffect(() => {
-    if (replay.playing) return;
-    const scrub = scrubRef.current;
-    if (scrub) scrub.value = String(scrubValue);
-    const label = cursorLabelRef.current;
-    if (label) label.textContent = cursorLabel;
-    const compact = compactLabelRef.current;
-    if (compact) compact.textContent = cursorLabel;
-  }, [replay.playing, scrubValue, cursorLabel, expanded]);
+  const si = nearestSpeedIndex(replay.speed);
+  const speedPct = (si / (SPEED_STEPS.length - 1)) * 100;
+  const cursorMs = replay.cursorTime > 0 ? replay.cursorTime * 1000 : Date.now();
+  const dateLine = formatV9HudDateLineTitle(cursorMs);
+  const clock = formatClockHms(replay.cursorTime);
 
   const tabs = useMemo(
     () =>
       buildTabs({
-        all: (openCount ?? 0) + (pendingCount ?? 0) + (historyCount ?? tradeCount ?? 0),
+        all:
+          (openCount ?? 0) +
+          (pendingCount ?? 0) +
+          (historyCount ?? tradeCount ?? 0),
         pending: pendingCount,
         open: openCount,
         history: historyCount ?? tradeCount,
@@ -376,233 +163,679 @@ export function BottomBar({
     [openCount, pendingCount, historyCount, tradeCount],
   );
 
-  const toggleJump = () => {
-    if (jumpOpen) {
-      setJumpOpen(false);
+  useEffect(() => {
+    saveGotoState(gotoItems, gotoPresets);
+  }, [gotoItems, gotoPresets]);
+
+  useLayoutEffect(() => {
+    if (!gotoOpen) {
+      setGotoPos(null);
       return;
     }
-    setJumpValue(toDatetimeLocalValue(replay.cursorTime || replay.startTime));
-    setJumpOpen(true);
+    const place = () => {
+      const btn = gotoBtnRef.current;
+      const r = btn?.getBoundingClientRect();
+      if (!r) return;
+      const w = 300;
+      const pad = 8;
+      const gap = 6;
+      const maxH = Math.max(200, Math.min(420, r.top - pad - gap));
+      let left = r.right - w;
+      left = Math.max(pad, Math.min(left, window.innerWidth - w - pad));
+      const bottom = Math.max(pad, window.innerHeight - r.top + gap);
+      setGotoPos({ bottom, left, maxH });
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [gotoOpen]);
+
+  useEffect(() => {
+    if (!gotoOpen) return;
+    const onPointer = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (gotoPanelRef.current?.contains(t) || gotoBtnRef.current?.contains(t)) {
+        return;
+      }
+      setGotoOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setGotoOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointer, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [gotoOpen]);
+
+  const seekFromItem = (item: GotoItem) => {
+    if (item.type === 'price') return;
+    const playheadMs =
+      replay.cursorTime > 0 ? replay.cursorTime * 1000 : Date.now();
+    const ms = resolveGotoTimestampMs(item, {
+      fallbackDateIso: cursorDateIso(replay.cursorTime),
+      playheadMs,
+    });
+    if (ms == null || !Number.isFinite(ms)) return;
+    onSeek(Math.floor(ms / 1000));
+    setGotoOpen(false);
   };
 
-  const closeJump = () => setJumpOpen(false);
-
-  const applyJump = () => {
-    const t = fromDatetimeLocalValue(jumpValue);
-    if (t == null) return;
-    onSeek(t);
-    setJumpOpen(false);
+  const q = gotoQuery.trim().toLowerCase();
+  const matchQ = (label?: string, time?: string) => {
+    if (!q) return true;
+    return `${label || ''} ${time || ''}`.toLowerCase().includes(q);
   };
-
-  const replayControls = (
-    <ReplayControls
-      replay={replay}
-      onToggle={onToggle}
-      onStep={onStep}
-      onSpeed={onSpeed}
-      jumpOpen={jumpOpen}
-      jumpValue={jumpValue}
-      onToggleJump={toggleJump}
-      onJumpValueChange={setJumpValue}
-      onApplyJump={applyJump}
-      onCloseJump={closeJump}
-    />
+  const pinnedList = gotoItems.filter((x) => x.pinned);
+  const filteredPinned = pinnedList.filter((item) =>
+    matchQ(item.label, item.time),
   );
+  const filteredPresets = gotoPresets.filter((s) => matchQ(s.label, s.time));
 
-  if (!expanded) {
-    return (
-      <footer
-        data-v9-chrome="1"
-        data-v9-replaybar="1"
-        className={[
-          'chrome-bottombar shrink-0 flex items-center justify-between gap-1.5 overflow-visible',
-          'h-12 min-h-12 px-2 pb-[env(safe-area-inset-bottom)] text-xs',
-          'border-t border-[color:var(--line)]',
-        ].join(' ')}
-      >
-        <button
-          type="button"
-          className="v8b-chrome-btn !px-2"
-          onClick={() => onExpandedChange(true)}
-          title="Expand trade panel"
-          aria-label="Expand trade panel"
-          aria-expanded={false}
-          data-brand-icon="1"
-        >
-          <IconChevron className="w-3.5 h-3.5 -rotate-90" />
-        </button>
-        <span
-          ref={compactLabelRef}
-          id="replay-cursor-label"
-          className="text-[11px] text-muted tabular-nums truncate min-w-0"
-        >
-          {cursorLabel}
-        </span>
-        <div className="flex-1" />
-        {replayControls}
-      </footer>
+  const mask = (v: string | undefined) => {
+    if (balVis) return v ?? '—';
+    if (!v || v === '—') return '—';
+    return '••••';
+  };
+
+  const openGoto = () => {
+    setGotoTab('pinned');
+    setGotoQuery('');
+    setCreateDate(cursorDateIso(replay.cursorTime || replay.startTime));
+    setCreateTime(
+      replay.cursorTime > 0
+        ? formatClockHms(replay.cursorTime).slice(0, 5)
+        : '09:00',
     );
-  }
+    setGotoOpen((o) => !o);
+  };
 
   return (
-    <footer
-      data-v9-chrome="1"
-      data-trades-panel="1"
-      className={[
-        'chrome-bottombar shrink-0 flex flex-col overflow-visible pb-[env(safe-area-inset-bottom)] text-xs',
-        'border-t border-[color:var(--line)]',
-      ].join(' ')}
-    >
-      {/* Scrub — thin progress under the chart */}
+    <div className="shrink-0 flex flex-col overflow-visible pb-[env(safe-area-inset-bottom)]">
+      {/* ── Replay bar ── */}
       <div
+        data-v9-chrome="1"
         data-v9-replaybar="1"
-        className="flex items-center gap-1.5 h-6 px-2 border-b border-[color:var(--line)]"
+        data-replay-v2="1"
+        data-sdrop="1"
+        className="flex items-center min-w-0 overflow-hidden"
+        style={{ height: 44, flexShrink: 0 }}
       >
-        <input
-          ref={scrubRef}
-          id="replay-scrub"
-          type="range"
-          min={0}
-          max={1000}
-          defaultValue={scrubValue}
-          onChange={(e) => {
-            const t = replay.startTime + (Number(e.target.value) / 1000) * span;
-            onSeek(t);
-          }}
-          className="flex-1 min-w-0 h-1 accent-[var(--accent)]"
-          title="Scrub replay"
-          aria-label="Scrub replay progress"
-        />
-        <span
-          ref={cursorLabelRef}
-          className="shrink-0 text-[10px] text-muted tabular-nums"
+        <div
+          data-rp-zone="date"
+          className="flex flex-col items-start justify-center h-full flex-shrink-0 overflow-hidden box-border"
         >
-          {cursorLabel}
-        </span>
-      </div>
-
-      {/* Status + replay — 3-column grid */}
-      <div
-        data-v9-replaybar="1"
-        className="grid grid-cols-[1fr_auto_1fr] items-center h-12 min-h-12 px-2.5"
-      >
-        <div className="flex flex-col items-start justify-center gap-1 min-w-0 w-[10.75rem]">
-          <span className="text-[9px] font-semibold text-muted tracking-[0.08em] uppercase tabular-nums leading-none whitespace-nowrap">
-            {formatClockDate(now)}
-          </span>
-          <div className="flex items-baseline gap-2 whitespace-nowrap">
-            <span className="text-[14px] font-bold text-foreground tabular-nums tracking-[0.04em] leading-none">
-              {formatClockTime(now)}
-            </span>
-            <span className="text-[10px] font-semibold text-muted tracking-[0.06em] leading-none">
-              UTC
-            </span>
+          <span data-rp-date="">{dateLine}</span>
+          <div className="flex items-baseline gap-1.5 whitespace-nowrap max-w-full overflow-hidden">
+            <span data-rp-clock="">{clock}</span>
+            <span data-rp-tz="">UTC</span>
           </div>
         </div>
 
-        {replayControls}
-
-        <div className="flex items-center justify-end gap-0 min-w-0">
-          <div className="hidden md:grid grid-cols-3 gap-x-4 gap-y-0.5 justify-items-end px-3">
-            {(['BALANCE', 'EQUITY', 'P&L'] as const).map((l) => (
-              <span
-                key={l}
-                className="text-[9px] font-semibold text-muted tracking-[0.07em] leading-none"
-              >
-                {l}
-              </span>
-            ))}
-            <span className="text-[12px] font-bold text-foreground tabular-nums leading-none">
-              {balanceLabel ?? '—'}
-            </span>
-            <span className="text-[12px] font-bold text-foreground tabular-nums leading-none">
-              {equityLabel ?? '—'}
-            </span>
-            <span
-              className={[
-                'text-[12px] font-bold tabular-nums leading-none',
-                pnlPositive === true
-                  ? 'text-[color:var(--up)]'
-                  : pnlPositive === false
-                    ? 'text-[color:var(--down)]'
-                    : 'text-foreground',
-              ].join(' ')}
+        <div
+          data-rp-zone="controls"
+          className="flex-1 min-w-0 h-full flex items-center justify-center overflow-x-auto overflow-y-hidden"
+        >
+          <div data-rp-cluster="" data-rp-transport="1">
+            <button
+              type="button"
+              data-rp-btn=""
+              data-rp-play=""
+              data-tone={replay.playing ? 'pause' : 'play'}
+              data-active={replay.playing ? '1' : undefined}
+              aria-label={replay.playing ? 'Pause' : 'Play'}
+              onClick={onToggle}
             >
-              {pnlLabel ?? '—'}
-            </span>
+              <ChromeIcon n={replay.playing ? 'pause' : 'play'} s={18} />
+            </button>
+
+            <i data-rp-sep="" aria-hidden />
+
+            <div data-rp-speed="" data-no-tip="1">
+              <span data-rp-speed-val="">
+                {SPEED_STEPS[si]}×
+              </span>
+              <div data-rp-speed-track="">
+                <div data-rp-speed-rail="">
+                  <i style={{ width: `${speedPct}%` }} />
+                </div>
+                <b
+                  data-rp-speed-thumb=""
+                  style={{ left: `calc(${speedPct}% - 5px)` }}
+                />
+                <input
+                  type="range"
+                  min={0}
+                  max={SPEED_STEPS.length - 1}
+                  step={1}
+                  value={si}
+                  aria-label="Replay speed"
+                  onChange={(e) =>
+                    onSpeed(SPEED_STEPS[Number(e.target.value)] ?? 1)
+                  }
+                  onPointerDown={(e) => e.stopPropagation()}
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              data-rp-btn=""
+              aria-label="Step back"
+              onClick={() => onStep(-1)}
+            >
+              <ChromeIcon n="stepBack" s={18} />
+            </button>
+            <button
+              type="button"
+              data-rp-btn=""
+              aria-label="Next step"
+              onClick={() => onStep(1)}
+            >
+              <ChromeIcon n="stepFwd" s={18} />
+            </button>
+
+            <i data-rp-sep="" aria-hidden />
+
+            <div className="relative" data-rp-goto-root="1">
+              <button
+                ref={gotoBtnRef}
+                type="button"
+                data-rp-btn=""
+                data-active={gotoOpen ? '1' : undefined}
+                aria-label="Go to"
+                aria-expanded={gotoOpen}
+                onClick={openGoto}
+              >
+                <ChromeIcon n="goto" s={18} />
+              </button>
+            </div>
           </div>
-          <span className="v8b-sep" aria-hidden />
+        </div>
+
+        <div
+          data-rp-zone="account"
+          className="flex items-center justify-end flex-shrink-0 min-w-0"
+        >
+          <div className="flex items-center gap-2 px-2 min-w-0 overflow-hidden">
+            <button
+              type="button"
+              data-balance-toggle="1"
+              aria-label={balVis ? 'Hide balance' : 'Show balance'}
+              aria-pressed={balVis}
+              onClick={() => setBalVis((v) => !v)}
+              className="w-8 h-8 inline-flex items-center justify-center rounded-md"
+            >
+              <ChromeIcon n="eye" s={16} />
+            </button>
+            <div className="flex items-end gap-3.5 min-w-0 overflow-hidden">
+              <div data-rp-metric="bal">
+                <span>Balance</span>
+                <span>{mask(balanceLabel)}</span>
+              </div>
+              <div data-rp-metric="eq">
+                <span>Equity</span>
+                <span>{mask(equityLabel)}</span>
+              </div>
+              <div data-rp-metric="pnl">
+                <span>P&L</span>
+                <span
+                  style={{
+                    color: !balVis
+                      ? 'var(--text-faint)'
+                      : pnlPositive === true
+                        ? 'var(--up)'
+                        : pnlPositive === false
+                          ? 'var(--down)'
+                          : 'var(--text-muted)',
+                  }}
+                >
+                  {mask(pnlLabel)}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div
+            className="w-px h-5 bg-[color:var(--line)] flex-shrink-0"
+            aria-hidden
+          />
           <button
             type="button"
-            className="v8b-chrome-btn !w-11 !min-w-11 !px-0 justify-center"
-            onClick={() => onExpandedChange(false)}
-            title="Collapse trade panel"
-            aria-label="Collapse trade panel"
-            aria-expanded={true}
-            data-active="true"
-            data-brand-icon="1"
+            data-rp-panel-tog=""
+            data-active={expanded ? '1' : undefined}
+            aria-label={expanded ? 'Collapse trade panel' : 'Expand trade panel'}
+            aria-expanded={expanded}
+            onClick={() => onExpandedChange(!expanded)}
+            className="w-[30px] h-[30px] inline-flex items-center justify-center"
           >
-            <IconChevron className="w-3 h-3 rotate-90" />
+            <span
+              style={{
+                transform: expanded ? 'rotate(0deg)' : 'rotate(180deg)',
+                transition: 'transform var(--motion)',
+                lineHeight: 0,
+              }}
+            >
+              <svg width={10} height={6} viewBox="0 0 10 6" aria-hidden>
+                <path
+                  d="M1,1 L5,5 L9,1"
+                  stroke={expanded ? 'var(--accent)' : 'var(--text-muted)'}
+                  strokeWidth={1.8}
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
           </button>
         </div>
       </div>
 
-      {/* Trade tabs */}
+      {/* ── Trades strip ── */}
       <div
-        data-trades-tabs="1"
-        className="relative flex items-center border-t border-[color:var(--line)] pl-2.5 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        style={{ minHeight: 'var(--tabstrip-h, 36px)' }}
+        data-v9-chrome="1"
+        data-v9-tabstrip="1"
+        data-trades-v2="1"
+        className="relative flex-shrink-0 bg-[color:var(--surface)] border-t border-[color:var(--line)]"
+        style={{ minHeight: 40 }}
       >
-        {tabs.map((tab) => {
-          const active = tab.id === activeTab;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              data-active={active ? 'true' : undefined}
-              onClick={() => onTabChange(tab.id)}
-              className={[
-                'relative shrink-0 px-3 py-[7px] text-[11px] whitespace-nowrap transition-colors',
-                'min-h-11 sm:min-h-9',
-                active
-                  ? 'text-[color:var(--accent)] font-bold'
-                  : 'text-muted font-medium hover:text-foreground hover:bg-[color:var(--surface-raised)]',
-              ].join(' ')}
-            >
-              <span className="sm:hidden">{tab.short}</span>
-              <span className="hidden sm:inline">{tab.label}</span>
-              {typeof tab.count === 'number' ? (
-                <span
-                  className={[
-                    'ml-1 font-semibold',
-                    active ? 'text-[color:var(--accent)]' : 'text-muted',
-                  ].join(' ')}
-                >
-                  {tab.count}
-                </span>
-              ) : null}
-              {active && (
-                <span
-                  className="absolute bottom-0 left-[15%] right-[15%] h-0.5 pointer-events-none bg-[color:var(--accent)]"
-                  aria-hidden
-                />
-              )}
-            </button>
-          );
-        })}
-        <div className="flex-1" />
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-9 min-h-11 sm:min-h-9 px-2.5 mr-1 text-[11px] shrink-0"
-          data-brand-btn="ghost"
-          isDisabled
+        <div
+          data-trades-resize=""
+          aria-label={
+            expanded
+              ? 'Drag to resize trades panel'
+              : 'Drag up or double-click to expand trades panel'
+          }
+          onDoubleClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onExpandedChange(!expanded);
+          }}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+            const startY = e.clientY;
+            const startH = expanded ? panelH : 0;
+            const maxH = Math.floor(window.innerHeight / 2 - 36);
+            dragRef.current = { startY, startH, curH: startH };
+            setResizing(true);
+            if (!expanded) onExpandedChange(true);
+            if (panelRef.current) {
+              panelRef.current.style.height = `${startH}px`;
+              panelRef.current.style.transition = 'none';
+            }
+            const onMove = (ev: PointerEvent) => {
+              const delta = startY - ev.clientY;
+              const newH = Math.max(0, Math.min(maxH, startH + delta));
+              dragRef.current.curH = newH;
+              if (panelRef.current) {
+                panelRef.current.style.height = `${newH}px`;
+              }
+            };
+            const onUp = () => {
+              const finalH = dragRef.current.curH;
+              window.removeEventListener('pointermove', onMove);
+              window.removeEventListener('pointerup', onUp);
+              if (finalH < 40) {
+                onExpandedChange(false);
+                setResizing(false);
+                if (panelRef.current) panelRef.current.style.height = '0px';
+                return;
+              }
+              setPanelH(finalH);
+              onExpandedChange(true);
+              setResizing(false);
+              try {
+                localStorage.setItem(
+                  'talaria.tradeChrome.height',
+                  String(finalH),
+                );
+              } catch {
+                /* ignore */
+              }
+            };
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
+          }}
         >
-          ↑ Export
-        </Button>
+          <i />
+        </div>
+
+        <div
+          data-trades-toolbar=""
+          role="tablist"
+          aria-label="Trades"
+          onClick={(e) => {
+            if (expanded) return;
+            if ((e.target as HTMLElement).closest('button')) return;
+            onExpandedChange(true);
+          }}
+        >
+          <div data-trades-tabs="">
+            {tabs.map((tab) => {
+              const active = tab.id === activeTab;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  data-btmtab={tab.id}
+                  data-active={active ? '1' : undefined}
+                  className="min-h-11 sm:min-h-7"
+                  onClick={() => {
+                    onTabChange(tab.id);
+                    if (!expanded) onExpandedChange(true);
+                  }}
+                >
+                  <span>{tab.label}</span>
+                  {tab.count != null ? <em>{tab.count}</em> : null}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            data-trades-export=""
+            aria-label="Export trades"
+            className="min-h-11 sm:min-h-7"
+            disabled={!onExportTrades}
+            onClick={(e) => {
+              e.stopPropagation();
+              onExportTrades?.();
+            }}
+          >
+            <ChromeIcon n="download" s={13} />
+            Export
+          </button>
+        </div>
+
+        <div
+          ref={panelRef}
+          className="flex flex-col min-h-0 overflow-hidden"
+          style={{
+            height: resizing
+              ? dragRef.current.curH
+              : expanded
+                ? panelH
+                : 0,
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          {expanded || resizing ? children : null}
+        </div>
       </div>
-    </footer>
+
+      {/* ── Go To portal ── */}
+      {gotoOpen &&
+        gotoPos &&
+        createPortal(
+          <div
+            ref={gotoPanelRef}
+            data-v9-chrome="1"
+            data-sdrop="1"
+            data-chrome-win="goto"
+            data-goto-v2="1"
+            data-goto-pop="1"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              bottom: gotoPos.bottom,
+              left: gotoPos.left,
+              width: 300,
+              maxHeight: gotoPos.maxH,
+              zIndex: 11000,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            <div data-win-header="">
+              <div data-win-icon="">
+                <ChromeIcon n="goto" s={16} />
+              </div>
+              <span data-win-title="">Go To</span>
+              <button
+                type="button"
+                data-brand-icon="1"
+                aria-label="Close"
+                className="ml-auto"
+                onClick={() => setGotoOpen(false)}
+              >
+                <ChromeIcon n="x" s={16} />
+              </button>
+            </div>
+
+            {gotoTab !== 'create' ? (
+              <label data-goto-search="">
+                <input
+                  value={gotoQuery}
+                  onChange={(e) => setGotoQuery(e.target.value)}
+                  placeholder="Search pins…"
+                  aria-label="Search Go To"
+                />
+              </label>
+            ) : null}
+
+            <div data-goto-body="" className="flex-1 min-h-0 overflow-y-auto">
+              {gotoTab === 'pinned' &&
+                (filteredPinned.length === 0 ? (
+                  <div data-goto-empty="">
+                    <em>No pinned times. Create one or pin a preset.</em>
+                  </div>
+                ) : (
+                  filteredPinned.map((item) => (
+                    <button
+                      key={String(item.id)}
+                      type="button"
+                      data-goto-row=""
+                      onClick={() => seekFromItem(item)}
+                    >
+                      <span
+                        data-goto-dot=""
+                        style={{ background: item.color || 'var(--accent)' }}
+                      />
+                      <span data-goto-row-main="">
+                        <strong>{item.label || '—'}</strong>
+                        {item.time ? <em>{item.time}</em> : null}
+                      </span>
+                      <span data-goto-row-acts="">
+                        <button
+                          type="button"
+                          data-gotoact=""
+                          data-pin="1"
+                          aria-label="Unpin"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setGotoItems((prev) =>
+                              prev.map((x) =>
+                                x.id === item.id
+                                  ? { ...x, pinned: false }
+                                  : x,
+                              ),
+                            );
+                          }}
+                        >
+                          <ChromeIcon n="pin" s={12} />
+                        </button>
+                      </span>
+                    </button>
+                  ))
+                ))}
+
+              {gotoTab === 'preset' &&
+                (filteredPresets.length === 0 ? (
+                  <div data-goto-empty="">
+                    <em>No presets match.</em>
+                  </div>
+                ) : (
+                  filteredPresets.map((item) => (
+                    <button
+                      key={String(item.id)}
+                      type="button"
+                      data-goto-row=""
+                      onClick={() => {
+                        seekFromItem(item as GotoItem);
+                      }}
+                    >
+                      <span
+                        data-goto-dot=""
+                        style={{ background: item.color || 'var(--accent)' }}
+                      />
+                      <span data-goto-row-main="">
+                        <strong>{item.label || '—'}</strong>
+                        {item.time ? <em>{item.time}</em> : null}
+                      </span>
+                      <span data-goto-row-acts="">
+                        <button
+                          type="button"
+                          data-gotoact=""
+                          aria-label="Pin"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const id = Date.now() + Math.random();
+                            setGotoItems((prev) => [
+                              {
+                                ...item,
+                                id,
+                                pinned: true,
+                                type: item.type || 'session',
+                              } as GotoItem,
+                              ...prev,
+                            ]);
+                          }}
+                        >
+                          <ChromeIcon n="pin" s={12} />
+                        </button>
+                      </span>
+                    </button>
+                  ))
+                ))}
+
+              {gotoTab === 'create' ? (
+                <div data-goto-create="" className="p-3 space-y-2">
+                  <label data-brand-field="1" className="block">
+                    <span className="text-[10px] text-[color:var(--text-faint)] uppercase tracking-wide">
+                      Date
+                    </span>
+                    <input
+                      type="date"
+                      value={createDate}
+                      onChange={(e) => setCreateDate(e.target.value)}
+                      className="w-full mt-1 h-9 rounded-md border border-[color:var(--line)] bg-[color:var(--surface-sunken)] px-2 text-[13px] text-[color:var(--text)]"
+                    />
+                  </label>
+                  <label data-brand-field="1" className="block">
+                    <span className="text-[10px] text-[color:var(--text-faint)] uppercase tracking-wide">
+                      Time (UTC)
+                    </span>
+                    <input
+                      type="time"
+                      value={createTime}
+                      onChange={(e) => setCreateTime(e.target.value)}
+                      className="w-full mt-1 h-9 rounded-md border border-[color:var(--line)] bg-[color:var(--surface-sunken)] px-2 text-[13px] text-[color:var(--text)]"
+                    />
+                  </label>
+                  <label data-brand-field="1" className="block">
+                    <span className="text-[10px] text-[color:var(--text-faint)] uppercase tracking-wide">
+                      Name
+                    </span>
+                    <input
+                      value={createName}
+                      onChange={(e) => setCreateName(e.target.value)}
+                      placeholder="Optional label"
+                      className="w-full mt-1 h-9 rounded-md border border-[color:var(--line)] bg-[color:var(--surface-sunken)] px-2 text-[13px] text-[color:var(--text)]"
+                    />
+                  </label>
+                  <div data-goto-actions="" className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      data-kind="add"
+                      data-brand-btn="secondary"
+                      className="flex-1 h-9 rounded-md text-[12px] font-semibold"
+                      onClick={() => {
+                        if (!createDate) return;
+                        const id = Date.now();
+                        const label =
+                          createName.trim() ||
+                          `${createDate} ${createTime || '00:00'}`;
+                        setGotoItems((prev) => [
+                          {
+                            id,
+                            type: 'datetime',
+                            label,
+                            time: createTime || '00:00',
+                            dateIso: createDate,
+                            repeat: 'none',
+                            pinned: true,
+                            color: '#3090FF',
+                          },
+                          ...prev,
+                        ]);
+                        setGotoTab('pinned');
+                      }}
+                    >
+                      Add
+                    </button>
+                    <button
+                      type="button"
+                      data-kind="go"
+                      data-brand-btn="primary"
+                      className="flex-1 h-9 rounded-md text-[12px] font-semibold"
+                      onClick={() => {
+                        if (!createDate) return;
+                        const ms = buildGotoTimestampMs(
+                          createDate,
+                          createTime || '00:00',
+                        );
+                        if (ms == null) return;
+                        onSeek(Math.floor(ms / 1000));
+                        setGotoOpen(false);
+                      }}
+                    >
+                      Go
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <p data-goto-foot-hint="">
+              {gotoTab === 'create'
+                ? 'Add saves a pin · Go jumps now'
+                : 'Click a row to jump'}
+            </p>
+            <div data-goto-tabs="" role="tablist" aria-label="Go To">
+              {(
+                [
+                  ['pinned', 'Pinned', pinnedList.length],
+                  ['preset', 'Preset', gotoPresets.length],
+                  ['create', 'Create', null],
+                ] as const
+              ).map(([id, label, cnt]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={gotoTab === id}
+                  data-active={gotoTab === id ? '1' : undefined}
+                  onClick={() => {
+                    setGotoTab(id);
+                    setGotoQuery('');
+                  }}
+                >
+                  <span>{label}</span>
+                  {cnt != null ? <em>{cnt}</em> : null}
+                </button>
+              ))}
+            </div>
+          </div>,
+          document.body,
+        )}
+    </div>
   );
 }

@@ -93,16 +93,15 @@ export function createReplayController(): ReplayController {
     const delta = period * clockBars;
     const next = Math.min(state.endTime, state.cursorTime + delta);
     const snapped = Math.min(state.endTime, snapToBar(next, period, state.startTime));
-    if (snapped === state.cursorTime && snapped >= state.endTime) {
+    // No forward snap (end not on grid, or zero-period) — stop instead of spinning rAF.
+    if (snapped === state.cursorTime) {
       state = { ...state, playing: false, cursorTime: state.endTime };
       notify();
       stopRaf();
       return false;
     }
-    if (snapped !== state.cursorTime) {
-      state = { ...state, cursorTime: snapped };
-      notify();
-    }
+    state = { ...state, cursorTime: snapped };
+    notify();
     if (state.cursorTime >= state.endTime) {
       state = { ...state, playing: false, cursorTime: state.endTime };
       notify();

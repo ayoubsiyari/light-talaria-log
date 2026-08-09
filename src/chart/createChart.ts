@@ -511,12 +511,14 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       return manualPriceScale;
     }
     const levelsKey = orderLevelsKey();
-    const key = `${bars.length}|${range.fromIndex}|${range.toIndex}|${replayCursorTime ?? ''}|${levelsKey}|${replayFollow ? 'f' : 'p'}`;
-    if (cachedAutoScale && scaleCacheKey === key) return cachedAutoScale;
-    const maxBarIndex =
+    const tipIdx =
       replayCursorTime != null && bars.length > 0
         ? indexAtOrBeforeBars(bars, replayCursorTime)
-        : null;
+        : -1;
+    // Tip index (not raw cursor seconds) — same bucket reuses the scan on Play.
+    const key = `${bars.length}|${range.fromIndex}|${range.toIndex}|${tipIdx}|${levelsKey}|${replayFollow ? 'f' : 'p'}`;
+    if (cachedAutoScale && scaleCacheKey === key) return cachedAutoScale;
+    const maxBarIndex = tipIdx >= 0 ? tipIdx : null;
     const base = computePriceScale(bars, range, maxBarIndex);
     const expanded = expandPriceScale(base, orderLevelPrices());
     if (replayFollow) {
@@ -788,16 +790,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   const centerOnReplayCursor = (emit: boolean) => {
     if (bars.length === 0 || replayCursorTime == null) return;
     const anchor = indexAtOrBeforeBars(bars, replayCursorTime);
-    let span = currentSpan();
-    // After 1m→15m bar-count zoom, span can dwarf the buffer so double-click
-    // recenters onto an empty pad. Collapse to a usable tip window.
-    if (span > (anchor + 1) * 1.5) {
-      span = Math.max(
-        DEFAULT_VISIBLE_BARS,
-        Math.min(span, Math.max(DEFAULT_VISIBLE_BARS, anchor + 1)),
-      );
-    }
-    setVisibleRangeInternal(rangeRightAnchored(anchor, span), emit);
+    setVisibleRangeInternal(rangeRightAnchored(anchor, currentSpan()), emit);
   };
 
   const notifyUserGesture = () => {
@@ -810,7 +803,16 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     if (replayCursorTime != null) {
       // Re-attach follow after double-click recenter
       replayFollow = true;
-      centerOnReplayCursor(false);
+      const anchor = indexAtOrBeforeBars(bars, replayCursorTime);
+      let span = currentSpan();
+      // Oversized span after a bad TF camera — collapse so dbl-click recovers.
+      if (span > (anchor + 1) * 1.5) {
+        span = Math.max(
+          DEFAULT_VISIBLE_BARS,
+          Math.min(span, Math.max(DEFAULT_VISIBLE_BARS, anchor + 1)),
+        );
+      }
+      setVisibleRangeInternal(rangeRightAnchored(anchor, span), false);
       return;
     }
     const anchor = bars.length - 1;

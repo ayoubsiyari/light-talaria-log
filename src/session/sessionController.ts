@@ -54,6 +54,11 @@ export interface CreateSessionArgs {
 const switchingPanes = new Set<string>();
 
 /**
+ * Bumped on dispose so in-flight fill-ahead cannot write into the next session.
+ */
+let fillSessionEpoch = 0;
+
+/**
  * Plain TypeScript session controller — no React.
  * State transitions + derivation. App subscribes and pushes to engines.
  */
@@ -260,6 +265,11 @@ export function createSessionController() {
     },
 
     dispose(): void {
+      fillSessionEpoch += 1;
+      switchingPanes.clear();
+      fillAheadPending.clear();
+      fillAheadInflight.clear();
+      neighborPrefetchInflight = false;
       state = null;
       views = {};
       listeners.clear();
@@ -764,6 +774,7 @@ function scheduleFillAhead(
 ): void {
   const k = `${datasetId}|${tf}`;
   const fillOpts = opts ?? paneRunwayFillOpts(span);
+  const epoch = fillSessionEpoch;
   fillAheadPending.set(k, { cursorTime, span, opts: fillOpts });
   if (fillAheadInflight.has(k)) return;
   fillAheadInflight.add(k);
@@ -772,13 +783,27 @@ function scheduleFillAhead(
       // Drain pending targets so a slow fill at an old cursor cannot strand
       // the tip while the clock races ahead at 20×+.
       for (;;) {
+        if (epoch !== fillSessionEpoch) {
+          fillAheadPending.delete(k);
+          break;
+        }
         const pending = fillAheadPending.get(k);
         if (pending == null) break;
         fillAheadPending.delete(k);
-        await warmCache.fill(datasetId, tf, pending.cursorTime, pending.span, pending.opts);
+        await warmCache.fill(
+          datasetId,
+          tf,
+          pending.cursorTime,
+          pending.span,
+          pending.opts,
+        );
       }
     } finally {
       fillAheadInflight.delete(k);
+      if (epoch !== fillSessionEpoch) {
+        fillAheadPending.delete(k);
+        return;
+      }
       // A request may have landed between the last fill and delete.
       const late = fillAheadPending.get(k);
       if (late != null) {

@@ -256,6 +256,22 @@ function applyPreservedCamera(
   chart.setVisibleRange(range.fromIndex, range.toIndex, { silent: true });
 }
 
+/** Convert a live camera's bar zoom into the target TF's bar count. */
+function cameraSpanForTf(
+  camera: LiveCamera,
+  fromTf: Timeframe,
+  toTf: Timeframe,
+): number {
+  const wallSec =
+    camera.fromTime != null &&
+    camera.toTime != null &&
+    camera.toTime > camera.fromTime
+      ? camera.toTime - camera.fromTime
+      : camera.span * timeframeSeconds(fromTf);
+  const toSec = Math.max(1, timeframeSeconds(toTf));
+  return Math.max(10, Math.ceil(wallSec / toSec) + 8);
+}
+
 function isDrawingTool(tool: ChartToolId): tool is DrawingToolId {
   return tool !== 'cursor' && tool !== 'zoom' && tool in TOOLS;
 }
@@ -563,6 +579,8 @@ export default function App() {
       const cursor = replay.cursorTime;
       const preserved = cameraPreserveRef.current;
       const applyCamera = opts?.applyCamera === true;
+      // Wall-clock uses from/to; tipRatio fallback uses converted preserve.span
+      // (never the pre-TF 1m bar count once cameraSpanForTf has run).
       const span = Math.max(10, preserved?.span ?? s.span);
       const tipRatio = preserved?.tipRatio ?? 0.9;
       const only =
@@ -1029,10 +1047,12 @@ export default function App() {
             }
           }
 
+          // Always cache the full IDB window — never put truncated reveal bars
+          // (that starved Play tip growth under every pane sharing the key).
           warmCache.put(
             p.datasetId,
             loadTf,
-            bars,
+            vp.bars,
             Number.isFinite(cursor) && cursor > 0
               ? Math.min(toTime, cursor)
               : toTime,
@@ -1354,6 +1374,7 @@ export default function App() {
     [],
   );
 
+  const lastOrderOverlayAtRef = useRef(0);
   const lastOrderChromeAtRef = useRef(0);
   const selectedOrderIdRef = useRef(selectedOrderId);
   selectedOrderIdRef.current = selectedOrderId;
@@ -1366,19 +1387,24 @@ export default function App() {
       cursorTime,
       makeOrderBarProvider(sess.baseTf, cursorTime),
     );
-    // Always refresh chart projection — levels stay until SL/TP close, P&L marks each bar.
-    const chartOrders = bridge.toChartOrders(sessionIdRef.current ?? '');
-    pushOrdersToPanes(chartOrders, selectedOrderIdRef.current);
-    if (!replayRef.current.get().playing) {
+    const playing = replayRef.current.get().playing;
+    if (!playing) {
+      const chartOrders = bridge.toChartOrders(sessionIdRef.current ?? '');
+      pushOrdersToPanes(chartOrders, selectedOrderIdRef.current);
       syncOrdersFromBridge();
       return;
     }
-    // Throttle BottomBar / TradeDock equity+P&L while playing (avoid chrome fight).
     const now = performance.now();
-    if (now - lastOrderChromeAtRef.current >= 200) {
-      lastOrderChromeAtRef.current = now;
-      setOrders(chartOrders);
-      setOrderEngineTick((n) => n + 1);
+    // Engine advances every bar; overlays ~10Hz, React chrome ~5Hz (Play budget).
+    if (now - lastOrderOverlayAtRef.current >= 100) {
+      lastOrderOverlayAtRef.current = now;
+      const chartOrders = bridge.toChartOrders(sessionIdRef.current ?? '');
+      pushOrdersToPanes(chartOrders, selectedOrderIdRef.current);
+      if (now - lastOrderChromeAtRef.current >= 200) {
+        lastOrderChromeAtRef.current = now;
+        setOrders(chartOrders);
+        setOrderEngineTick((n) => n + 1);
+      }
     }
   };
 
@@ -1521,14 +1547,16 @@ export default function App() {
   const armReplayPlay = useCallback(async () => {
     // Never start the clock on a half-loaded chart (wasPlayingRef desync / empty play).
     if (!viewportReloadEnabledRef.current) return;
+    // TF/symbol switch owns suppress — do not clear it or play mid-swap.
+    if (suppressSessionCommitRef.current) return;
     const s0 = sessionRef.current.get();
     if (!s0 || panesRef.current.length === 0) return;
+    const armSessionId = sessionIdRef.current;
+    const armLoadGen = loadSessionGenRef.current;
 
     detachedPanesRef.current.clear();
     cameraDetachedRef.current = false;
     setCameraDetached(false);
-    // Safety: never start play while a TF-switch suppress is stuck.
-    suppressSessionCommitRef.current = false;
     // Lock play rate to finest pane TF before the first tick.
     syncReplayClockTf();
 
@@ -1556,18 +1584,39 @@ export default function App() {
     });
     const allHaveBars = list.every((p) => (views[p.id]?.bars.length ?? 0) > 0);
 
+    // Sync session zoom to the live engine before Play so tip-follow / fills
+    // don't use a stale 1m bar-count left over from a TF switch.
+    const focusId = s.activePaneId || list[0]!.id;
+    const liveZoom = getChart(focusId)?.getVisibleRange();
+    if (liveZoom) {
+      sessionRef.current.setSpan(
+        Math.max(10, liveZoom.toIndex - liveZoom.fromIndex),
+      );
+    }
+
     try {
       if (!configsMatch || !allHaveBars || list.length !== Object.keys(s.panes).length) {
         await sessionRef.current.replacePanes(cfgs, s.activePaneId);
         const ids = list.map((p) => p.id);
         commitSessionViews({ adoptRangePaneIds: ids });
-        syncEnginesFromSession({ paneIds: ids, applyCamera: true });
+        // Bars only — do not re-apply a stale preserve / huge span camera.
+        syncEnginesFromSession({ paneIds: ids, applyCamera: false });
       } else {
-        await sessionRef.current.topUpCaches();
+        // Never block the clock on cache top-up (was freezing Play after 1m→15m).
+        void sessionRef.current.topUpCaches().catch((err) => {
+          console.warn('[replay] background top-up failed', err);
+        });
       }
     } catch (err) {
       console.warn('[replay] arm multi-pane caches failed', err);
     }
+
+    // Session may have been torn down / switched during await.
+    if (!viewportReloadEnabledRef.current) return;
+    if (sessionIdRef.current !== armSessionId) return;
+    if (loadSessionGenRef.current !== armLoadGen) return;
+    if (suppressSessionCommitRef.current) return;
+    if (!sessionRef.current.get()) return;
 
     for (const pane of panesRef.current) {
       const chart = getChart(pane.id);
@@ -2072,6 +2121,8 @@ export default function App() {
       if (!viewportReloadEnabledRef.current) return;
       // TF/symbol switch owns the commit/sync so mid-await notifies cannot revert UI.
       if (suppressSessionCommitRef.current) return;
+      // Play ticks own engines via applyReplayReveal — setPanes mid-Play hitchs rAF.
+      if (replayRef.current.get().playing) return;
       commitSessionViews();
       syncEnginesFromSession({ applyCamera: false });
     });
@@ -2524,9 +2575,19 @@ export default function App() {
       setPanes(optimistic);
 
       const camera = captureLiveCamera(paneId);
-      cameraPreserveRef.current = camera;
-      // Span/anchor for fill size only — sibling cameras are preserved in commit/sync.
-      sessionRef.current.setCamera(camera.anchorTime, camera.span);
+      const fromTf = existing.timeframe;
+      const convertedSpan = cameraSpanForTf(camera, fromTf, tf);
+      // Preserve carries converted bar zoom for camera apply; wall-clock from/to
+      // keep place. Only rewrite shared session.span when all panes switch TF.
+      cameraPreserveRef.current = { ...camera, span: convertedSpan };
+      if (syncAll) {
+        sessionRef.current.setCamera(camera.anchorTime, convertedSpan);
+      } else {
+        sessionRef.current.setCamera(
+          camera.anchorTime,
+          Math.max(10, sessionRef.current.get()?.span ?? camera.span),
+        );
+      }
       setActivePaneId(paneId);
       // Only suppress the setActivePane notify — never hold this across awaits
       // (a stuck lock freezes session commits and looks like replay is dead).
@@ -2540,10 +2601,9 @@ export default function App() {
         // notify() cannot race Play ticks and blank the chart.
         suppressSessionCommitRef.current = true;
         try {
-          for (const id of targets) {
-            if (switchGen !== paneSwitchGenRef.current) return;
-            await sessionRef.current.setPaneTimeframe(id, tf);
-          }
+          await Promise.all(
+            targets.map((id) => sessionRef.current.setPaneTimeframe(id, tf)),
+          );
           if (switchGen !== paneSwitchGenRef.current) return;
 
           // Soft completeness guard — heal tip-only / empty-left before paint.
@@ -2573,15 +2633,15 @@ export default function App() {
                   engine && engine.getBars().length > 0
                     ? engine.getBars()
                     : (v?.bars ?? []);
-                const tf =
+                const paneTf =
                   v?.timeframe ??
                   panesRef.current.find((p) => p.id === id)?.timeframe;
-                if (!tf) return false;
+                if (!paneTf) return false;
                 return needsViewportHeal({
                   bars,
                   span: Math.max(10, sessionRef.current.get()?.span ?? 120),
                   cursorTime: replayRef.current.get().cursorTime,
-                  tf,
+                  tf: paneTf,
                   range: engine?.getVisibleRange() ?? v?.range ?? null,
                 });
               });
@@ -2592,6 +2652,16 @@ export default function App() {
 
           // Final camera apply + clear preserve.
           syncEnginesFromSession({ paneIds: targets, applyCamera: true });
+          // When all panes share the TF, lock session.span to the live zoom.
+          // Per-pane TF switch must not collapse sibling zooms.
+          if (syncAll) {
+            const live = getChart(paneId)?.getVisibleRange();
+            if (live) {
+              sessionRef.current.setSpan(
+                Math.max(10, live.toIndex - live.fromIndex),
+              );
+            }
+          }
           syncReplayClockTf(panesRef.current);
 
           const focus = panesRef.current.find((p) => p.id === paneId);
@@ -2667,16 +2737,18 @@ export default function App() {
       markPanesLoading(targets, true);
 
       void (async () => {
+        suppressSessionCommitRef.current = true;
         try {
-          for (const id of targets) {
-            if (switchGen !== paneSwitchGenRef.current) return;
-            await sessionRef.current.setPaneSymbol(
-              id,
-              { datasetId: series.datasetId, pair: series.pair },
-              tfs,
-            );
-            replayBufferRef.current.delete(id);
-          }
+          await Promise.all(
+            targets.map(async (id) => {
+              await sessionRef.current.setPaneSymbol(
+                id,
+                { datasetId: series.datasetId, pair: series.pair },
+                tfs,
+              );
+              replayBufferRef.current.delete(id);
+            }),
+          );
           if (switchGen !== paneSwitchGenRef.current) return;
           await healViewportIfNeeded(targets, {
             force: true,
@@ -2721,6 +2793,7 @@ export default function App() {
             replayBufferRef.current.set(paneId, focus.bars);
           }
         } finally {
+          suppressSessionCommitRef.current = false;
           if (switchGen === paneSwitchGenRef.current) {
             markPanesLoading(targets, false);
           }

@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { indexToX } from '@/chart/scales';
 import {
+  nestedIndexStep,
   niceTimeTicks,
   resolveBarPeriod,
   type TimeLatticeSticky,
@@ -167,20 +168,67 @@ describe('niceTimeTicks', () => {
     assert.equal(resolveBarPeriod(data, 86_400), 60); // mismatch → median 1m
   });
 
-  it('holds lattice density across small zooms (sticky step)', () => {
+  it('holds lattice density across small zooms (octave hysteresis)', () => {
     const data = bars(400);
     const sticky: TimeLatticeSticky = { step: 0, span: 0 };
-    const r0 = { fromIndex: 100, toIndex: 200 }; // span 100 → step 20
+    // span 100 → raw 12.5 → nested 16
+    const r0 = { fromIndex: 100, toIndex: 200 };
     const a = niceTimeTicks(r0, data, 8, { sticky });
-    assert.equal(sticky.step, 20);
-    // Span 79 wants step 10, but ~21% zoom stays inside hysteresis → hold 20
-    const r1 = { fromIndex: 100, toIndex: 179 };
+    assert.equal(sticky.step, 16);
+    // span 120 → raw 15 — still inside √2 band around 16 → hold
+    const r1 = { fromIndex: 100, toIndex: 220 };
     const b = niceTimeTicks(r1, data, 8, { sticky });
-    assert.equal(sticky.step, 20);
+    assert.equal(sticky.step, 16);
     assert.ok(a.length >= 2 && b.length >= 2);
     const shared = a.filter((t) =>
       b.some((u) => Math.abs(u.index - t.index) < 1e-9),
     );
     assert.ok(shared.length >= 2, 'sticky zoom must keep lattice indices');
+  });
+
+  it('zoom-out keeps a nested subset of lattice indices (no teleport)', () => {
+    const data = bars(800);
+    const sticky: TimeLatticeSticky = { step: 0, span: 0 };
+    // Start dense, then zoom out through several octaves.
+    const spans = [80, 160, 320, 640];
+    let prevRange: { fromIndex: number; toIndex: number } | null = null;
+    let prev: ReturnType<typeof niceTimeTicks> | null = null;
+    let prevStep = 0;
+    for (const span of spans) {
+      const range = { fromIndex: 50, toIndex: 50 + span };
+      const ticks = niceTimeTicks(range, data, 8, { sticky });
+      assert.ok(ticks.length >= 2, `expected ticks at span ${span}`);
+      // Step is always a power of two.
+      assert.equal(sticky.step & (sticky.step - 1), 0, `not pow2: ${sticky.step}`);
+      assert.ok(
+        sticky.step >= prevStep,
+        `step shrank on zoom-out: ${prevStep} → ${sticky.step}`,
+      );
+      assert.equal(sticky.step, nestedIndexStep(span / 8));
+      if (prevStep > 0) {
+        assert.equal(
+          sticky.step % prevStep,
+          0,
+          `non-nested step ${prevStep} → ${sticky.step}`,
+        );
+      }
+      if (prev && prevRange) {
+        // Coarse ticks that were already on-screen must have been fine ticks.
+        // (Wider span adds new indices — those are not teleports.)
+        for (const t of ticks) {
+          if (t.index < prevRange.fromIndex || t.index >= prevRange.toIndex) {
+            continue;
+          }
+          const was = prev.some((p) => Math.abs(p.index - t.index) < 1e-9);
+          assert.ok(
+            was,
+            `teleport at index ${t.index}: not in previous lattice`,
+          );
+        }
+      }
+      prev = ticks;
+      prevRange = range;
+      prevStep = sticky.step;
+    }
   });
 });

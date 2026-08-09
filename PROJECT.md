@@ -877,6 +877,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-09 | Impeccable install (Cursor project + hooks); `PRODUCT.md` product init; gitignore block; detector ignore `src/chart/`; live config; baseline UI audit | Cursor Nightly + Agent Skills on; reload; `/impeccable audit` dashboard when iterating UI |
 | 2026-08-09 | Replay smooth on high TF: median bar-period grid (no weekend rephase); detach ref not overwritten; no tip right-anchor / tip fill-ahead while panning; wall-clock remap after async history | Pan 1D during Play — camera stays; grid steady |
 | 2026-08-09 | Grid harden: TF-period pin + integer phase; zoom density sticky; pixel-snapped V lines; time-label min gap | Pan/zoom 1D — no shimmer / density thrash |
+| 2026-08-09 | Grid zoom-out: power-of-two nested lattice (drop lines, never rephase/teleport); octave hysteresis | Zoom out — lines thin in place |
 
 ---
 

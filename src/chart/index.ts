@@ -39,6 +39,7 @@ export {
 } from './appearanceStore';
 export { registerChart, unregisterChart, getChart } from './chartRegistry';
 export {
+  nestedIndexStep,
   nicePriceTicks,
   niceTimeTicks,
   resolveBarPeriod,

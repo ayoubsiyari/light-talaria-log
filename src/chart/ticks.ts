@@ -53,48 +53,52 @@ export interface NiceTimeTicksOpts {
   sticky?: TimeLatticeSticky;
 }
 
-/** Nice integer steps for logical bar counts (1 / 2 / 5 × 10^n). */
-function niceIndexStep(raw: number): number {
+/**
+ * Nested lattice step: powers of two only (1, 2, 4, 8, …).
+ *
+ * 1–2–5 decades (10→20→50) do *not* nest — zoom-out rephases and lines
+ * teleport. Powers of two always nest: zoom-out only drops every other line;
+ * survivors keep the same logical index.
+ */
+export function nestedIndexStep(raw: number): number {
   const n = Math.max(1, raw);
-  const pow = Math.pow(10, Math.floor(Math.log10(n)));
-  const frac = n / pow;
-  let step: number;
-  if (frac <= 1) step = 1 * pow;
-  else if (frac <= 2) step = 2 * pow;
-  else if (frac <= 5) step = 5 * pow;
-  else step = 10 * pow;
-  return Math.max(1, Math.round(step));
+  const exp = Math.round(Math.log2(n));
+  return Math.max(1, 2 ** Math.max(0, exp));
 }
 
 /**
- * Hold lattice density unless zoom moved enough — avoids mid-drag step flips
- * that rephase every vertical line.
+ * Octave hysteresis around the current power-of-two step.
+ * Only doubles / halves (never jumps to a non-multiple), so the visible
+ * lattice is always a subset/superset of the previous frame.
  */
-function niceIndexStepSticky(
+function nestedIndexStepSticky(
   span: number,
   approxCount: number,
   sticky?: TimeLatticeSticky,
 ): number {
-  const next = niceIndexStep(span / Math.max(2, approxCount));
-  if (!sticky || sticky.step <= 0 || sticky.span <= 0) {
+  const raw = span / Math.max(2, approxCount);
+  if (!sticky || sticky.step <= 0) {
+    const step = nestedIndexStep(raw);
     if (sticky) {
-      sticky.step = next;
+      sticky.step = step;
       sticky.span = span;
     }
-    return next;
+    return step;
   }
-  if (next === sticky.step) {
-    sticky.span = span;
-    return sticky.step;
+
+  // Midpoint between octaves in log space (√2 ≈ 1.414).
+  const hi = sticky.step * Math.SQRT2;
+  const lo = sticky.step / Math.SQRT2;
+  let step = sticky.step;
+  if (raw > hi) {
+    while (raw > step * Math.SQRT2) step *= 2;
+  } else if (raw < lo) {
+    while (step > 1 && raw < step / Math.SQRT2) step = Math.max(1, step / 2);
   }
-  const ratio = span / sticky.span;
-  // Require ~30% zoom change before accepting a new density.
-  if (ratio > 0.7 && ratio < 1 / 0.7) {
-    return sticky.step;
-  }
-  sticky.step = next;
+
+  sticky.step = step;
   sticky.span = span;
-  return next;
+  return step;
 }
 
 /**
@@ -163,13 +167,11 @@ function timeAtLogicalIndex(
 /**
  * Paper-stable time grid.
  *
- * Lines sit on a fixed logical-index lattice (equal spacing). While you drag,
- * tick *indices* stay put and only their screen X moves with the camera —
- * like sliding graph paper. No bar-snapping, no wall-clock rephase mid-pan.
- *
- * Lattice phase is locked to an integer bar sequence from `bars[0]` so when the
- * replay warm-cache slides, every line shifts with the candles (no float drift).
- * Empty left/right pad is filled by extrapolating time from the bar period.
+ * Lines sit on a nested power-of-two logical lattice (equal spacing). While you
+ * drag, tick *indices* stay put and only their screen X moves with the camera.
+ * On zoom-out, density only doubles (drop every other line) — survivors never
+ * teleport. Phase locks to an integer bar sequence from `bars[0]` so warm-cache
+ * slides move the grid with the candles.
  */
 export function niceTimeTicks(
   range: VisibleRange,
@@ -180,10 +182,11 @@ export function niceTimeTicks(
   if (bars.length === 0 || range.toIndex <= range.fromIndex) return [];
 
   const span = range.toIndex - range.fromIndex;
-  const step = niceIndexStepSticky(span, approxCount, opts?.sticky);
+  const step = nestedIndexStepSticky(span, approxCount, opts?.sticky);
   const period = resolveBarPeriod(bars, opts?.barPeriod);
 
   // Integer sequence — avoids float phase jitter on long unix timestamps.
+  // Tick when (baseSeq + index) ≡ 0 (mod step) ⇒ nested under coarser steps.
   const baseSeq = Math.round(bars[0]!.time / period);
   const phase = ((baseSeq % step) + step) % step;
 

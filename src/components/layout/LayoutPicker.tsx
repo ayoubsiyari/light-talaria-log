@@ -17,6 +17,8 @@ interface LayoutPickerProps {
   onLayoutChange: (layout: ChartLayout) => void;
   sync: LayoutSyncOptions;
   onSyncChange: (next: LayoutSyncOptions) => void;
+  /** Increment to force-open from TopBar utils. */
+  openSignal?: number;
 }
 
 function LayoutThumb({
@@ -124,6 +126,7 @@ export function LayoutPicker({
   onLayoutChange,
   sync,
   onSyncChange,
+  openSignal = 0,
 }: LayoutPickerProps) {
   const [open, setOpen] = useState(false);
   const fromLayout = variantIndexForLayout(layout);
@@ -135,6 +138,16 @@ export function LayoutPicker({
     setSel(next);
     if (!open) setPickN(next.n);
   }, [layout, open]);
+
+  useEffect(() => {
+    if (openSignal > 0) setOpen(true);
+  }, [openSignal]);
+
+  useEffect(() => {
+    const openLayouts = () => setOpen(true);
+    window.addEventListener('talaria:open-layouts', openLayouts);
+    return () => window.removeEventListener('talaria:open-layouts', openLayouts);
+  }, []);
 
   const syncOnCount = useMemo(
     () => LAYOUT_SYNC_ITEMS.reduce((n, it) => n + (sync[it.key] ? 1 : 0), 0),

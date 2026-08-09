@@ -12,7 +12,10 @@ export interface InteractionCallbacks {
   getPriceScale: () => PriceScale;
   setManualPriceScale: (scale: PriceScale) => void;
   resetPriceScale: () => void;
+  /** Default bar-count / tip-anchored time scale (time-axis double-click). */
   resetTimeScale: () => void;
+  /** Default time + auto price (plot double-click). */
+  resetView?: () => void;
   /** Hover on plot (media coords). null when leave / outside plot. */
   onHover: (x: number | null, y: number | null) => void;
   /** Click on plot without a pan (drawing tools). */
@@ -339,8 +342,14 @@ export function attachInteraction(
 
     if (isDoubleTap) {
       cancelLongPress();
-      if (zone === 'timeAxis' || zone === 'plot') {
+      if (zone === 'timeAxis') {
         callbacks.resetTimeScale();
+      } else if (zone === 'plot') {
+        if (callbacks.resetView) callbacks.resetView();
+        else {
+          callbacks.resetTimeScale();
+          callbacks.resetPriceScale();
+        }
       } else if (zone === 'priceAxis') {
         callbacks.resetPriceScale();
       }
@@ -628,8 +637,17 @@ export function attachInteraction(
     const layout = callbacks.getLayout();
     const { x, y } = clientToMedia(e.clientX, e.clientY, canvas, layout.width, layout.height);
     const zone = hitTestZone(x, y, layout);
-    if (zone === 'timeAxis' || zone === 'plot') callbacks.resetTimeScale();
-    else if (zone === 'priceAxis') callbacks.resetPriceScale();
+    if (zone === 'timeAxis') {
+      callbacks.resetTimeScale();
+    } else if (zone === 'plot') {
+      if (callbacks.resetView) callbacks.resetView();
+      else {
+        callbacks.resetTimeScale();
+        callbacks.resetPriceScale();
+      }
+    } else if (zone === 'priceAxis') {
+      callbacks.resetPriceScale();
+    }
     e.preventDefault();
   };
 

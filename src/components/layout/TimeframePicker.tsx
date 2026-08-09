@@ -1,18 +1,103 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Popover } from '@heroui/react';
+import { ChromeIcon } from '@/v9/chromeIcons.jsx';
 import { usePinnedTimeframes } from '@/hooks/usePinnedTimeframes';
 import type { Timeframe } from '@/types/ui';
 
-/** All intervals offered in the pin menu (toolbar shows favorites only). */
+/** Engine-backed intervals (must match `Timeframe`). */
 export const ALL_TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D'];
 
-const TF_LABELS: Record<Timeframe, string> = {
-  '1m': '1 minute',
-  '5m': '5 minutes',
-  '15m': '15 minutes',
-  '1h': '1 hour',
-  '4h': '4 hours',
-  '1D': '1 day',
+/** UI interval id — Live uses 1H/1W; engine uses 1h. */
+export type IntervalId = string;
+
+const ENGINE_SET = new Set<string>(ALL_TIMEFRAMES);
+
+const TF_DEFAULTS: Record<string, IntervalId[]> = {
+  minutes: ['1m', '5m', '15m', '30m'],
+  hours: ['1H', '4H', '12H'],
+  days: ['1D'],
+  weeks: ['1W'],
+  months: ['1M'],
 };
+
+const CAT_ORDER = ['minutes', 'hours', 'days', 'weeks', 'months'] as const;
+const CAT_LABEL: Record<(typeof CAT_ORDER)[number], string> = {
+  minutes: 'Minutes',
+  hours: 'Hours',
+  days: 'Days',
+  weeks: 'Weeks',
+  months: 'Months',
+};
+
+const UNIT_SHORT: { u: string; lbl: string }[] = [
+  { u: 'm', lbl: 'm' },
+  { u: 'H', lbl: 'H' },
+  { u: 'D', lbl: 'D' },
+  { u: 'W', lbl: 'W' },
+  { u: 'M', lbl: 'M' },
+];
+
+const CUSTOM_MAX: Record<string, number> = { m: 60, H: 24, D: 366, W: 260, M: 120 };
+const CUSTOM_KEY = 'talaria.customIntervals.v1';
+const PIN_MAX = 8;
+
+/** Normalize Live-style labels ↔ engine Timeframe. Unsupported → null (UI stub). */
+export function toEngineTimeframe(id: IntervalId): Timeframe | null {
+  const n = id === '1H' ? '1h' : id === '4H' ? '4h' : id;
+  if (ENGINE_SET.has(n)) return n as Timeframe;
+  return null;
+}
+
+/** Display label for pin bar / menu (Live format). */
+export function formatTfLabel(id: IntervalId): string {
+  if (id.endsWith('h') && !id.endsWith('H')) return id.replace(/h$/, 'H');
+  return id;
+}
+
+/** Canonical UI id from engine timeframe. */
+function engineToUi(tf: Timeframe): IntervalId {
+  if (tf === '1h') return '1H';
+  if (tf === '4h') return '4H';
+  return tf;
+}
+
+function loadCustom(): IntervalId[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === 'string');
+  } catch {
+    return [];
+  }
+}
+
+function writeCustom(list: IntervalId[]): void {
+  try {
+    localStorage.setItem(CUSTOM_KEY, JSON.stringify(list));
+  } catch {
+    /* ignore */
+  }
+}
+
+function sortTf(items: IntervalId[]): IntervalId[] {
+  return [...items].sort((a, b) => {
+    const numA = parseInt(a, 10) || 0;
+    const numB = parseInt(b, 10) || 0;
+    return numA - numB;
+  });
+}
+
+function sortBar(items: IntervalId[]): IntervalId[] {
+  const uO: Record<string, number> = { m: 0, H: 1, h: 1, D: 2, d: 2, W: 3, w: 3, M: 4 };
+  return [...items].sort((a, b) => {
+    const uA = a.replace(/[0-9]/g, '');
+    const uB = b.replace(/[0-9]/g, '');
+    if (uO[uA] !== uO[uB]) return (uO[uA] ?? 9) - (uO[uB] ?? 9);
+    return (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0);
+  });
+}
 
 interface TimeframePickerProps {
   timeframe: Timeframe;
@@ -21,7 +106,8 @@ interface TimeframePickerProps {
 }
 
 /**
- * TradingView-style intervals: pinned favorites in the bar + dropdown with ★ pins.
+ * Obsidian Interval picker — data-tb-drop="tf" + pin bar (Live grammar).
+ * Extra / custom intervals are UI-only until aggregator supports them.
  */
 export function TimeframePicker({
   timeframe,
@@ -29,140 +115,299 @@ export function TimeframePicker({
   availableTimeframes,
 }: TimeframePickerProps) {
   const { pinned, isPinned, togglePin } = usePinnedTimeframes();
+  const [open, setOpen] = useState(false);
+  const [catsOpen, setCatsOpen] = useState<string[]>(['minutes', 'hours']);
+  const [customItems, setCustomItems] = useState<IntervalId[]>(() => loadCustom());
+  const [customVal, setCustomVal] = useState('');
+  const [customUnit, setCustomUnit] = useState('m');
+  const [customErr, setCustomErr] = useState('');
 
-  const isEnabled = (tf: Timeframe) =>
+  const activeUi = engineToUi(timeframe);
+
+  const isEngineEnabled = (tf: Timeframe) =>
     !availableTimeframes || availableTimeframes.length === 0
       ? true
       : availableTimeframes.includes(tf);
 
-  // Favorites in bar; always include active TF so the selection stays visible
-  const barTfs = (() => {
-    const list = pinned.filter((tf) => ALL_TIMEFRAMES.includes(tf));
-    if (!list.includes(timeframe)) return [...list, timeframe];
-    return list;
-  })();
+  const categories = useMemo(() => {
+    const out: Record<string, { label: string; items: IntervalId[] }> = {};
+    for (const catId of CAT_ORDER) {
+      const base = TF_DEFAULTS[catId] ?? [];
+      const customs = customItems.filter((x) => {
+        if (catId === 'minutes') return x.endsWith('m');
+        if (catId === 'hours') return x.endsWith('H');
+        if (catId === 'days') return x.endsWith('D');
+        if (catId === 'weeks') return x.endsWith('W');
+        if (catId === 'months') return x.endsWith('M') && !x.endsWith('m');
+        return false;
+      });
+      out[catId] = {
+        label: CAT_LABEL[catId],
+        items: sortTf([...base, ...customs]),
+      };
+    }
+    return out;
+  }, [customItems]);
+
+  const barItems = useMemo(() => {
+    const pinnedUi = pinned.map((p) =>
+      p === '1h' ? '1H' : p === '4h' ? '4H' : p,
+    );
+    const items = pinnedUi.includes(activeUi) ? [...pinnedUi] : [activeUi, ...pinnedUi];
+    return sortBar([...new Set(items)]);
+  }, [pinned, activeUi]);
+
+  const pinsFull = pinned.length >= PIN_MAX;
+
+  const pickInterval = (id: IntervalId) => {
+    const engine = toEngineTimeframe(id);
+    if (!engine || !isEngineEnabled(engine)) return;
+    onTimeframeChange(engine);
+    setOpen(false);
+  };
+
+  const addCustom = () => {
+    const n = parseInt(customVal, 10);
+    const max = CUSTOM_MAX[customUnit] ?? 60;
+    if (!n || n < 1) {
+      setCustomErr('Enter a value');
+      return;
+    }
+    if (n > max) {
+      setCustomErr(`Max ${max}${customUnit}`);
+      return;
+    }
+    const id = `${n}${customUnit}`;
+    const allKnown = new Set([
+      ...Object.values(TF_DEFAULTS).flat(),
+      ...customItems,
+    ]);
+    if (allKnown.has(id)) {
+      setCustomErr('Already exists');
+      return;
+    }
+    const next = [...customItems, id];
+    setCustomItems(next);
+    writeCustom(next);
+    if (!isPinned(id) && !pinsFull) togglePin(id);
+    setCustomVal('');
+    setCustomErr('');
+  };
+
+  useEffect(() => {
+    if (!open) setCustomErr('');
+  }, [open]);
 
   return (
-    <div className="flex items-center gap-0 min-w-0">
-      <div className="flex items-center gap-0 min-w-0 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {barTfs.map((tf) => {
-          const active = tf === timeframe;
-          const enabled = isEnabled(tf);
+    <div className="flex items-center gap-0 min-w-0" data-tf-bar="">
+      <div
+        data-brand-seg="1"
+        role="group"
+        aria-label="Timeframes"
+        className="flex items-center gap-0 min-w-0 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {barItems.map((id) => {
+          const active = formatTfLabel(id) === formatTfLabel(activeUi) || id === activeUi;
+          const engine = toEngineTimeframe(id);
+          const enabled = engine ? isEngineEnabled(engine) : false;
+          const ephemeral = active && !pinned.some((p) => formatTfLabel(p) === formatTfLabel(id));
           return (
             <button
-              key={tf}
+              key={id}
               type="button"
+              data-tf={id}
+              data-brand-seg-item=""
+              data-active={active ? '1' : undefined}
+              data-ephemeral={ephemeral ? '1' : undefined}
               disabled={!enabled}
-              data-active={active ? 'true' : undefined}
+              aria-pressed={active}
               title={
                 enabled
-                  ? TF_LABELS[tf]
-                  : `${tf} needs a finer base (download 1m)`
+                  ? formatTfLabel(id)
+                  : `${formatTfLabel(id)} needs a finer base (download 1m)`
               }
               onClick={() => {
-                if (enabled) onTimeframeChange(tf);
+                if (enabled) pickInterval(id);
               }}
-              className="v8b-tf shrink-0 [@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11"
+              className="shrink-0 min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 px-2.5 py-1 text-[12px] tabular-nums rounded-lg"
             >
-              {tf}
+              {formatTfLabel(id)}
             </button>
           );
         })}
       </div>
 
-      <Popover>
-        {/* Trigger is the pressable — do not nest another <button> inside */}
+      <Popover isOpen={open} onOpenChange={setOpen}>
         <Popover.Trigger
           title="All intervals"
           aria-label="All intervals"
+          data-tb-item="tfMenu"
           className="v8b-chrome-btn shrink-0 !px-1.5 [@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11"
         >
-          ▾
+          <span className="text-[11px] font-semibold hidden sm:inline mr-0.5">Interval</span>
+          <ChromeIcon n="arrowDn" s={11} />
         </Popover.Trigger>
         <Popover.Content placement="bottom end" className="p-0 z-[100]">
-          <Popover.Dialog className="w-[12.5rem] bg-surface border border-[color:var(--tv-panel-line)] rounded-md shadow-[0_2px_8px_rgba(0,0,0,0.14)] overflow-hidden">
-            <p className="px-2.5 pt-2 pb-1 text-[9px] font-semibold uppercase tracking-wide text-muted">
-              Intervals
-            </p>
-            <ul className="py-0.5 max-h-[min(50dvh,16rem)] overflow-y-auto">
-              {ALL_TIMEFRAMES.map((tf) => {
-                const active = tf === timeframe;
-                const enabled = isEnabled(tf);
-                const pinned = isPinned(tf);
+          <Popover.Dialog
+            data-v9-chrome="1"
+            data-sdrop="1"
+            data-tb-drop="tf"
+            className="w-[min(14rem,calc(100vw-1.5rem))] max-h-[min(70dvh,420px)] overflow-hidden flex flex-col bg-[color:var(--surface)] border border-[color:var(--line)] rounded-[var(--radius-panel,8px)] shadow-none"
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+          >
+            <div className="tlr-scroll flex-1 min-h-0 overflow-y-auto py-1.5">
+              {CAT_ORDER.map((catId) => {
+                const cat = categories[catId];
+                const catOpen = catsOpen.includes(catId);
                 return (
-                  <li key={tf} className="flex items-center gap-0.5 px-1">
+                  <div key={catId} data-tf-cat="" data-open={catOpen ? '1' : undefined}>
                     <button
                       type="button"
-                      disabled={!enabled}
+                      data-tf-cat-head=""
+                      data-open={catOpen ? '1' : undefined}
+                      aria-expanded={catOpen}
+                      className="min-h-11 sm:min-h-0"
                       onClick={() => {
-                        if (enabled) onTimeframeChange(tf);
+                        setCatsOpen((prev) =>
+                          prev.includes(catId)
+                            ? prev.filter((x) => x !== catId)
+                            : [...prev, catId],
+                        );
                       }}
-                      className={[
-                        'flex-1 flex items-center gap-2 h-7 px-1.5 rounded text-left text-[12px]',
-                        active
-                          ? 'bg-accent/15 text-accent font-medium'
-                          : enabled
-                            ? 'text-foreground hover:bg-background/70'
-                            : 'text-muted/40 cursor-not-allowed',
-                      ].join(' ')}
                     >
-                      <span className="w-8 tabular-nums font-medium">{tf}</span>
-                      <span className="truncate text-muted text-[11px]">
-                        {TF_LABELS[tf]}
-                      </span>
+                      <span>{cat.label}</span>
+                      <ChromeIcon n="arrowDn" s={11} cl="currentColor" />
                     </button>
-                    <button
-                      type="button"
-                      title={pinned ? 'Unpin from toolbar' : 'Pin to toolbar'}
-                      aria-label={pinned ? `Unpin ${tf}` : `Pin ${tf}`}
-                      aria-pressed={pinned}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        togglePin(tf);
-                      }}
-                      className={[
-                        'shrink-0 h-7 w-7 rounded flex items-center justify-center',
-                        pinned
-                          ? 'text-accent hover:bg-background/70'
-                          : 'text-muted/50 hover:text-muted hover:bg-background/70',
-                      ].join(' ')}
-                    >
-                      <StarIcon filled={pinned} />
-                    </button>
-                  </li>
+                    {catOpen
+                      ? cat.items.map((t) => {
+                          const pinnedOn = isPinned(t) || isPinned(t.replace('H', 'h'));
+                          const isCustom = customItems.includes(t);
+                          const isAct =
+                            formatTfLabel(t) === formatTfLabel(activeUi) || t === activeUi;
+                          const engine = toEngineTimeframe(t);
+                          const enabled = engine ? isEngineEnabled(engine) : false;
+                          return (
+                            <div
+                              key={t}
+                              data-menu-row=""
+                              data-active={isAct ? '1' : undefined}
+                              data-tf-row="1"
+                            >
+                              <button
+                                type="button"
+                                data-tf-pick=""
+                                disabled={!enabled}
+                                className="min-h-11 sm:min-h-0"
+                                onClick={() => {
+                                  if (enabled) pickInterval(t);
+                                }}
+                              >
+                                <strong>{formatTfLabel(t)}</strong>
+                              </button>
+                              {isCustom ? (
+                                <button
+                                  type="button"
+                                  data-tf-del=""
+                                  aria-label={`Remove ${t}`}
+                                  className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const next = customItems.filter((x) => x !== t);
+                                    setCustomItems(next);
+                                    writeCustom(next);
+                                    if (isPinned(t)) togglePin(t);
+                                  }}
+                                >
+                                  <ChromeIcon n="x" s={10} cl="currentColor" />
+                                </button>
+                              ) : null}
+                              <button
+                                type="button"
+                                data-tf-pin=""
+                                data-on={pinnedOn ? '1' : undefined}
+                                aria-label={
+                                  pinnedOn
+                                    ? `Unpin ${t}`
+                                    : pinsFull
+                                      ? `Pin bar full (${pinned.length}/${PIN_MAX})`
+                                      : `Pin ${t}`
+                                }
+                                disabled={!pinnedOn && pinsFull}
+                                className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  togglePin(t);
+                                }}
+                              >
+                                <ChromeIcon
+                                  n={pinnedOn ? 'pinFill' : 'pin'}
+                                  s={13}
+                                  cl="currentColor"
+                                />
+                              </button>
+                            </div>
+                          );
+                        })
+                      : null}
+                  </div>
                 );
               })}
-            </ul>
-            <p className="px-2.5 py-1.5 text-[10px] text-muted border-t border-[color:var(--tv-panel-line)]">
-              ★ Pin favorites to the toolbar
-            </p>
+            </div>
+
+            <div data-tf-compose="">
+              <div data-tf-compose-row="">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={customVal}
+                  placeholder="3"
+                  aria-label="Custom interval"
+                  data-tf-val=""
+                  className="tlr-nospinner"
+                  onChange={(e) => {
+                    setCustomVal(e.target.value.replace(/[^0-9]/g, ''));
+                    setCustomErr('');
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addCustom();
+                    }
+                  }}
+                />
+                <div data-tf-units="" role="group" aria-label="Unit">
+                  {UNIT_SHORT.map(({ u, lbl }) => (
+                    <button
+                      type="button"
+                      key={u}
+                      data-on={customUnit === u ? '1' : undefined}
+                      aria-pressed={customUnit === u}
+                      className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8"
+                      onClick={() => {
+                        setCustomUnit(u);
+                        setCustomErr('');
+                      }}
+                    >
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  data-brand-btn="primary"
+                  data-tf-add=""
+                  aria-label="Add and pin custom interval"
+                  className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-9 inline-flex items-center justify-center"
+                  onClick={addCustom}
+                >
+                  <ChromeIcon n="plus" s={14} cl="var(--cta-fg)" />
+                </button>
+              </div>
+              {customErr ? <div data-tf-err="">{customErr}</div> : null}
+            </div>
           </Popover.Dialog>
         </Popover.Content>
       </Popover>
     </div>
-  );
-}
-
-function StarIcon({ filled }: { filled: boolean }) {
-  if (filled) {
-    return (
-      <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden className="fill-current">
-        <path d="M12 2.5l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.8 6.2 20.4l1.1-6.5L2.6 9.3l6.5-.9L12 2.5z" />
-      </svg>
-    );
-  }
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      aria-hidden
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinejoin="round"
-    >
-      <path d="M12 2.5l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.8 6.2 20.4l1.1-6.5L2.6 9.3l6.5-.9L12 2.5z" />
-    </svg>
   );
 }

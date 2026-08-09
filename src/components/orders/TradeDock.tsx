@@ -154,6 +154,9 @@ function unrealizedAccount(
 }
 
 type TagMap = Record<string, { pre: string[]; post: string[] }>;
+type NotesMap = Record<string, string>;
+type ShotsMap = Record<string, string[]>;
+type SortKey = 'id' | 'time' | 'sym' | 'side' | 'status' | 'num' | 'type' | 'pnl' | 'dur';
 
 function loadTags(sessionId: string | null | undefined): TagMap {
   if (!sessionId) return {};
@@ -176,6 +179,16 @@ function saveTags(sessionId: string | null | undefined, map: TagMap): void {
   }
 }
 
+function loadJsonMap<T>(key: string): T {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return {} as T;
+    return JSON.parse(raw) as T;
+  } catch {
+    return {} as T;
+  }
+}
+
 /**
  * V9 Obsidian bottom trade list — Live column grammar + our order engine.
  */
@@ -192,6 +205,15 @@ export function TradeDock({
   onClosePosition,
 }: TradeDockProps) {
   const [tagMap, setTagMap] = useState<TagMap>(() => loadTags(sessionId));
+  const [notesMap, setNotesMap] = useState<NotesMap>(() =>
+    loadJsonMap(`talaria.tradeNotes.${sessionId ?? 'local'}`),
+  );
+  const [shotsMap, setShotsMap] = useState<ShotsMap>(() =>
+    loadJsonMap(`talaria.tradeShots.${sessionId ?? 'local'}`),
+  );
+  const [sortKey, setSortKey] = useState<SortKey>('time');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [tagDrop, setTagDrop] = useState<{
     id: string;
     type: 'pre' | 'post';
@@ -199,11 +221,35 @@ export function TradeDock({
 
   useEffect(() => {
     setTagMap(loadTags(sessionId));
+    setNotesMap(loadJsonMap(`talaria.tradeNotes.${sessionId ?? 'local'}`));
+    setShotsMap(loadJsonMap(`talaria.tradeShots.${sessionId ?? 'local'}`));
   }, [sessionId]);
 
   useEffect(() => {
     saveTags(sessionId, tagMap);
   }, [sessionId, tagMap]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        `talaria.tradeNotes.${sessionId ?? 'local'}`,
+        JSON.stringify(notesMap),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [sessionId, notesMap]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        `talaria.tradeShots.${sessionId ?? 'local'}`,
+        JSON.stringify(shotsMap),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [sessionId, shotsMap]);
 
   useEffect(() => {
     if (!tagDrop) return;
@@ -304,20 +350,63 @@ export function TradeDock({
 
   if (activeTab === 'analytics') return null;
 
-  const filtered =
-    activeTab === 'all'
-      ? rows
-      : rows.filter((r) =>
-          activeTab === 'pending'
-            ? r.status === 'pending'
-            : activeTab === 'open'
-              ? r.status === 'open'
-              : activeTab === 'history'
-                ? r.status === 'closed'
-                : false,
-        );
+  const filtered = useMemo(() => {
+    const base =
+      activeTab === 'all'
+        ? rows
+        : rows.filter((r) =>
+            activeTab === 'pending'
+              ? r.status === 'pending'
+              : activeTab === 'open'
+                ? r.status === 'open'
+                : activeTab === 'history'
+                  ? r.status === 'closed'
+                  : false,
+          );
+    const mul = sortDir === 'asc' ? 1 : -1;
+    return [...base].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case 'id':
+          cmp = a.displayId.localeCompare(b.displayId);
+          break;
+        case 'sym':
+          cmp = a.sym.localeCompare(b.sym);
+          break;
+        case 'side':
+          cmp = a.side.localeCompare(b.side);
+          break;
+        case 'status':
+          cmp = a.status.localeCompare(b.status);
+          break;
+        case 'type':
+          cmp = a.type.localeCompare(b.type);
+          break;
+        case 'num':
+          cmp = a.size - b.size;
+          break;
+        case 'pnl': {
+          const pa = parseFloat(a.pnl.replace(/[^-\d.]/g, '')) || 0;
+          const pb = parseFloat(b.pnl.replace(/[^-\d.]/g, '')) || 0;
+          cmp = pa - pb;
+          break;
+        }
+        case 'dur':
+          cmp = a.dur.localeCompare(b.dur);
+          break;
+        case 'time':
+        default:
+          cmp = a.timeSec - b.timeSec;
+          break;
+      }
+      return cmp * mul;
+    });
+  }, [rows, activeTab, sortKey, sortDir]);
 
   const empty = filtered.length === 0;
+  const detailRow = detailId
+    ? filtered.find((r) => r.id === detailId) ?? rows.find((r) => r.id === detailId)
+    : null;
 
   const setTags = (id: string, type: 'pre' | 'post', tags: string[]) => {
     setTagMap((prev) => ({
@@ -341,19 +430,38 @@ export function TradeDock({
         style={{ overflowY: 'auto' }}
       >
         <div data-trades-hdr="" style={{ gridTemplateColumns: TRADES_COLS }}>
-          {HDRS.map((h) => (
-            <button
-              type="button"
-              key={h.label}
-              data-col={h.col}
-              data-sorted={h.col === 'time' ? '1' : undefined}
-              data-dir={h.col === 'time' ? 'desc' : undefined}
-              disabled={!h.sortable}
-            >
-              <span>{h.label}</span>
-              {h.sortable ? <ChromeIcon n="chevDown" s={9} /> : null}
-            </button>
-          ))}
+          {HDRS.map((h) => {
+            const key = h.col as SortKey;
+            const sorted = h.sortable && sortKey === key;
+            return (
+              <button
+                type="button"
+                key={h.label}
+                data-col={h.col}
+                data-sorted={sorted ? '1' : undefined}
+                data-dir={sorted ? sortDir : undefined}
+                disabled={!h.sortable}
+                className="min-h-11 sm:min-h-0"
+                onClick={() => {
+                  if (!h.sortable) return;
+                  if (sortKey === key) {
+                    setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+                  } else {
+                    setSortKey(key);
+                    setSortDir(key === 'time' ? 'desc' : 'asc');
+                  }
+                }}
+              >
+                <span>{h.label}</span>
+                {h.sortable ? (
+                  <ChromeIcon
+                    n={sorted && sortDir === 'asc' ? 'arrowUp' : 'chevDown'}
+                    s={9}
+                  />
+                ) : null}
+              </button>
+            );
+          })}
         </div>
 
         {empty ? (
@@ -383,12 +491,18 @@ export function TradeDock({
                 onClick={() => {
                   if (r.status === 'open') onSelectPosition?.(r.omId);
                 }}
+                onDoubleClick={() => setDetailId(r.id)}
               >
                 <div data-cell="id" data-col="id">
                   <button
                     type="button"
                     data-trades-id=""
                     data-live={isActive ? '1' : undefined}
+                    className="min-h-11 sm:min-h-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDetailId(r.id);
+                    }}
                   >
                     {r.displayId}
                   </button>
@@ -582,11 +696,40 @@ export function TradeDock({
                     );
                   })}
                 </div>
-                <div data-cell="notes" data-col="notes">
-                  <em>—</em>
+                <div
+                  data-cell="notes"
+                  data-col="notes"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    className="min-h-11 sm:min-h-7 w-full text-left text-[11px] truncate px-0.5"
+                    title={notesMap[r.id] || 'Add note'}
+                    onClick={() => setDetailId(r.id)}
+                  >
+                    {notesMap[r.id]?.trim() ? (
+                      <span>{notesMap[r.id]}</span>
+                    ) : (
+                      <em>—</em>
+                    )}
+                  </button>
                 </div>
-                <div data-cell="shots" data-col="shots">
-                  <em>—</em>
+                <div
+                  data-cell="shots"
+                  data-col="shots"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    className="min-h-11 sm:min-h-7 inline-flex items-center gap-1 text-[11px]"
+                    onClick={() => setDetailId(r.id)}
+                  >
+                    {(shotsMap[r.id]?.length ?? 0) > 0 ? (
+                      <span>{shotsMap[r.id]!.length} shot{(shotsMap[r.id]!.length === 1 ? '' : 's')}</span>
+                    ) : (
+                      <em>—</em>
+                    )}
+                  </button>
                 </div>
                 <div data-cell="action" data-col="action">
                   {r.status === 'pending' ? (
@@ -622,6 +765,160 @@ export function TradeDock({
           })
         )}
       </div>
+
+      {detailRow ? (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-[70] bg-black/45"
+            aria-label="Close trade card"
+            onClick={() => setDetailId(null)}
+          />
+          <div
+            data-v9-chrome="1"
+            data-chrome-win="trade-card"
+            data-win=""
+            className="fixed z-[80] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(22rem,calc(100vw-1.5rem))] max-h-[min(80dvh,560px)] flex flex-col rounded-[var(--radius-panel,8px)] border border-[color:var(--line)] bg-[color:var(--surface)] shadow-none overflow-hidden"
+            role="dialog"
+            aria-label="Trade detail"
+          >
+            <div data-win-header="">
+              <div data-win-icon="">
+                <ChromeIcon n="longPos" s={16} cl="var(--accent)" />
+              </div>
+              <span data-win-title="">
+                {detailRow.displayId} · {detailRow.sym}
+              </span>
+              <div style={{ flex: 1 }} />
+              <button
+                type="button"
+                data-brand-icon="1"
+                className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 inline-flex items-center justify-center"
+                onClick={() => setDetailId(null)}
+                aria-label="Close"
+              >
+                <ChromeIcon n="x" s={16} />
+              </button>
+            </div>
+            <div className="tlr-scroll flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-3">
+              <div className="grid grid-cols-2 gap-2 text-[12px]">
+                <span className="text-[color:var(--text-muted)]">Side</span>
+                <span>{detailRow.side}</span>
+                <span className="text-[color:var(--text-muted)]">Status</span>
+                <span>{detailRow.status}</span>
+                <span className="text-[color:var(--text-muted)]">Entry</span>
+                <span className="tabular-nums">{detailRow.entry}</span>
+                <span className="text-[color:var(--text-muted)]">P&amp;L</span>
+                <span style={{ color: detailRow.pnlColor }}>{detailRow.pnl}</span>
+              </div>
+              <div>
+                <p className="text-[10px] font-extrabold tracking-wide text-[color:var(--text-muted)] mb-1">
+                  TAGS
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {(tagMap[detailRow.id]?.pre ?? []).map((t) => (
+                    <span key={`pre-${t}`} data-trades-tag="" data-kind="pre" data-on="1">
+                      {t}
+                    </span>
+                  ))}
+                  {(tagMap[detailRow.id]?.post ?? []).map((t) => (
+                    <span key={`post-${t}`} data-trades-tag="" data-kind="post" data-on="1">
+                      {t}
+                    </span>
+                  ))}
+                  {(tagMap[detailRow.id]?.pre?.length ?? 0) +
+                    (tagMap[detailRow.id]?.post?.length ?? 0) ===
+                  0 ? (
+                    <em className="text-[11px] text-[color:var(--text-faint)]">No tags</em>
+                  ) : null}
+                </div>
+              </div>
+              <div>
+                <p className="text-[10px] font-extrabold tracking-wide text-[color:var(--text-muted)] mb-1">
+                  NOTES
+                </p>
+                <textarea
+                  value={notesMap[detailRow.id] ?? ''}
+                  onChange={(e) =>
+                    setNotesMap((prev) => ({
+                      ...prev,
+                      [detailRow.id]: e.target.value,
+                    }))
+                  }
+                  rows={3}
+                  className="w-full min-h-[88px] rounded-md border border-[color:var(--line)] bg-[color:var(--surface-sunken)] px-2 py-1.5 text-[12px] outline-none"
+                  placeholder="Trade notes"
+                />
+              </div>
+              <div>
+                <p className="text-[10px] font-extrabold tracking-wide text-[color:var(--text-muted)] mb-1">
+                  SHOTS
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(shotsMap[detailRow.id] ?? []).map((src, i) => (
+                    <div
+                      key={src}
+                      className="relative h-14 w-14 rounded-md overflow-hidden border border-[color:var(--line)]"
+                    >
+                      <img src={src} alt="" className="h-full w-full object-cover" />
+                      <button
+                        type="button"
+                        className="absolute top-0 right-0 min-h-8 min-w-8 bg-black/50 text-white"
+                        aria-label="Remove shot"
+                        onClick={() =>
+                          setShotsMap((prev) => ({
+                            ...prev,
+                            [detailRow.id]: (prev[detailRow.id] ?? []).filter(
+                              (_, j) => j !== i,
+                            ),
+                          }))
+                        }
+                      >
+                        <ChromeIcon n="x" s={10} />
+                      </button>
+                    </div>
+                  ))}
+                  <label className="h-14 w-14 min-h-11 min-w-11 rounded-md border border-dashed border-[color:var(--line)] inline-flex items-center justify-center cursor-pointer">
+                    <ChromeIcon n="plus" s={14} />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        const url = URL.createObjectURL(f);
+                        setShotsMap((prev) => ({
+                          ...prev,
+                          [detailRow.id]: [...(prev[detailRow.id] ?? []), url],
+                        }));
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div data-win-foot="" className="flex justify-end gap-2 px-3 py-2 border-t border-[color:var(--line)]">
+              <button
+                type="button"
+                className="min-h-11 sm:min-h-8 px-3 rounded-md text-[12px] font-semibold"
+                onClick={() => setDetailId(null)}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                data-brand-btn="primary"
+                className="min-h-11 sm:min-h-8 px-4 rounded-md text-[12px] font-bold"
+                onClick={() => setDetailId(null)}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

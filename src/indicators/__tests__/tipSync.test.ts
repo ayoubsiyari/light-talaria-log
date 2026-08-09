@@ -6,10 +6,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   alignIndicatorOverlays,
+  landIndicatorOverlays,
   remapValuesByTime,
   stitchTipSeries,
 } from '@/indicators/tipSync';
 import type { ChartBar } from '@/types/bar';
+import type { IndicatorOverlayResult } from '@/types/indicator';
 
 function bar(time: number): ChartBar {
   return { time, open: 1, high: 1, low: 1, close: 1, volume: 1 };
@@ -92,5 +94,39 @@ describe('remapValuesByTime', () => {
     assert.ok(Number.isNaN(out[1]!));
     assert.equal(out[2], 20);
     assert.equal(out[3], 30);
+  });
+});
+
+describe('landIndicatorOverlays', () => {
+  function overlay(values: number[]): IndicatorOverlayResult {
+    return {
+      instanceKey: 'sma',
+      id: 'sma',
+      label: 'SMA',
+      placement: 'overlay',
+      series: [
+        {
+          key: 'sma',
+          style: 'line',
+          values: new Float32Array(values),
+          color: '#fff',
+        },
+      ],
+    };
+  }
+
+  it('aligns when the buffer only grew', () => {
+    const req = [bar(100), bar(160), bar(220)];
+    const live = [bar(100), bar(160), bar(220), bar(280)];
+    const out = landIndicatorOverlays([overlay([1, 2, 3])], req, live);
+    assert.equal(out[0]!.series[0]!.values.length, 4);
+    assert.equal(out[0]!.series[0]!.values[3], 3);
+  });
+
+  it('remaps by time when the warm-cache slid (no index clobber)', () => {
+    const req = [bar(100), bar(160), bar(220), bar(280)];
+    const live = [bar(160), bar(220), bar(280), bar(340)];
+    const out = landIndicatorOverlays([overlay([10, 20, 30, 40])], req, live);
+    assert.deepEqual([...out[0]!.series[0]!.values], [20, 30, 40, 40]);
   });
 });

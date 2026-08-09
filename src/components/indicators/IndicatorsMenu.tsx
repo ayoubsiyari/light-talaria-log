@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@heroui/react';
 import {
-  IconIndicators,
   IconSearch,
   IconSettings,
   IconStar,
 } from '@/components/icons/ToolIcons';
+import { ChromeIcon } from '@/v9/chromeIcons.jsx';
 import { IndicatorSettingsModal } from '@/components/indicators/IndicatorSettingsModal';
 import { getChartColors } from '@/chart/chartTheme';
 import {
@@ -203,25 +203,6 @@ export function IndicatorsMenu({
     nav === 'active' ||
     (query.trim().length > 0 && 'volume'.includes(query.trim().toLowerCase()));
 
-  const navBtn = (id: NavId, label: string) => {
-    const active = nav === id;
-    return (
-      <button
-        key={id}
-        type="button"
-        onClick={() => setNav(id)}
-        className={[
-          'w-full text-left px-3 py-2.5 min-h-11 rounded-md text-sm flex items-center gap-2 transition-colors',
-          active
-            ? 'bg-background text-foreground font-medium'
-            : 'text-muted hover:text-foreground hover:bg-background/50',
-        ].join(' ')}
-      >
-        {label}
-      </button>
-    );
-  };
-
   const filterPill = (id: FilterTab, label: string) => {
     const active = filter === id;
     return (
@@ -249,7 +230,7 @@ export function IndicatorsMenu({
         className="v8b-chrome-btn !h-7 min-h-7 [@media(hover:none)]:min-h-11 gap-1.5"
         onPress={() => setOpen(true)}
       >
-        <IconIndicators className="w-[15px] h-[15px]" />
+        <ChromeIcon n="indicator" s={15} />
         <span className="hidden sm:inline">Indicators</span>
         {enabled.length > 0 && (
           <span className="text-[10px] text-muted tabular-nums">{enabled.length}</span>
@@ -265,46 +246,80 @@ export function IndicatorsMenu({
           }}
         >
           <div
-            className="w-full sm:max-w-[720px] h-[min(88dvh,640px)] sm:h-[min(80vh,560px)] rounded-t-xl sm:rounded-xl border border-border bg-surface text-foreground shadow-2xl overflow-hidden flex flex-col"
+            data-v9-chrome="1"
+            data-ind-v2="1"
+            data-chrome-win="indicators"
+            className="w-full sm:max-w-[720px] h-[min(88dvh,640px)] sm:h-[min(80vh,560px)] rounded-t-xl sm:rounded-xl border border-[color:var(--line)] bg-[color:var(--surface)] text-foreground shadow-none overflow-hidden flex flex-col"
             onPointerDown={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-label="Indicators"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between gap-3 px-4 pt-3 pb-2 shrink-0">
-              <h2 className="text-base font-semibold truncate">
-                Indicators, metrics &amp; strategies
-              </h2>
+            <div data-win-header="">
+              <div data-win-icon="">
+                <ChromeIcon n="indicator" s={16} cl="var(--accent)" />
+              </div>
+              <div data-ind-win-titles="">
+                <span data-win-title="">Indicators</span>
+                <span data-ind-current="">
+                  {enabled.length} active
+                </span>
+              </div>
+              <div className="relative" data-nodrag="1">
+                <button
+                  type="button"
+                  className="min-h-11 sm:min-h-8 px-2 text-[11px] font-semibold text-[color:var(--text-muted)]"
+                  title="Templates (stub)"
+                >
+                  Templates
+                </button>
+              </div>
               <button
                 type="button"
-                className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 rounded-md text-muted hover:text-foreground hover:bg-background/70 flex items-center justify-center"
+                data-brand-icon="1"
+                className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 inline-flex items-center justify-center"
                 onClick={() => setOpen(false)}
                 aria-label="Close"
               >
-                ✕
+                <ChromeIcon n="x" s={16} />
               </button>
             </div>
 
-            <div className="flex flex-1 min-h-0 border-t border-border">
-              {/* Sidebar — horizontal chips on mobile */}
-              <aside className="hidden sm:flex w-[200px] shrink-0 flex-col border-r border-border overflow-y-auto py-2 px-2 gap-0.5">
-                <p className="px-3 pt-1 pb-1 text-[10px] uppercase tracking-wide text-muted">
-                  Personal
-                </p>
-                {navBtn('favorites', 'Favorites')}
-                {navBtn('active', `Active (${enabled.length})`)}
-
-                <p className="px-3 pt-3 pb-1 text-[10px] uppercase tracking-wide text-muted">
-                  Built-ins
-                </p>
-                {NAV_BUILTIN.map((n) => navBtn(n.id, n.label))}
+            <div data-ind-v2-body="" className="flex flex-1 min-h-0">
+              <aside
+                data-ind-v2-nav=""
+                className="hidden sm:flex w-[200px] shrink-0 flex-col overflow-y-auto tlr-scroll py-2 px-2 gap-0.5"
+              >
+                <button
+                  type="button"
+                  data-active={nav === 'active' ? '1' : undefined}
+                  onClick={() => setNav('active')}
+                >
+                  <span data-ind-nav-lbl="">Active</span>
+                  <span data-cnt="">{enabled.length}</span>
+                </button>
+                <button
+                  type="button"
+                  data-active={nav === 'favorites' ? '1' : undefined}
+                  onClick={() => setNav('favorites')}
+                >
+                  <span data-ind-nav-lbl="">Pinned</span>
+                </button>
+                {NAV_BUILTIN.map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    data-active={nav === n.id ? '1' : undefined}
+                    onClick={() => setNav(n.id)}
+                  >
+                    <span data-ind-nav-lbl="">{n.label}</span>
+                  </button>
+                ))}
               </aside>
 
-              {/* Main */}
-              <div className="flex-1 min-w-0 flex flex-col">
+              <div data-ind-v2-main="" className="flex-1 min-w-0 flex flex-col">
                 <div className="px-3 pt-3 pb-2 space-y-2 shrink-0">
-                  <div className="relative">
+                  <div data-ind-search="" className="relative">
                     <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
                     <input
                       type="search"
@@ -360,9 +375,13 @@ export function IndicatorsMenu({
                   <span className="w-11" />
                 </div>
 
-                <div className="flex-1 overflow-y-auto overscroll-contain">
+                <div data-ind-list="" className="flex-1 overflow-y-auto overscroll-contain tlr-scroll">
                   {showVolumeRow && (nav === 'volume' || filter !== 'overlays') && (
-                    <div className="grid grid-cols-[1fr_auto_auto] gap-2 items-center px-2 sm:px-3 min-h-11 hover:bg-background/50 border-b border-border/30">
+                    <div
+                      data-ind-row=""
+                      data-on={showVolume ? '1' : undefined}
+                      className="grid grid-cols-[1fr_auto_auto] gap-2 items-center px-2 sm:px-3 min-h-11 hover:bg-background/50 border-b border-border/30"
+                    >
                       <button
                         type="button"
                         className="flex items-center gap-2 min-w-0 text-left min-h-11 px-1"
@@ -399,6 +418,8 @@ export function IndicatorsMenu({
                     return (
                       <div
                         key={id}
+                        data-ind-row=""
+                        data-on={on ? '1' : undefined}
                         className={[
                           'grid grid-cols-[1fr_auto_auto] gap-2 items-center px-2 sm:px-3 min-h-11 border-b border-border/30',
                           on ? 'bg-accent/5' : 'hover:bg-background/50',
@@ -488,6 +509,23 @@ export function IndicatorsMenu({
                   </div>
                 )}
               </div>
+            </div>
+            <div data-win-foot="" className="flex items-center justify-end gap-2 px-3 py-2 border-t border-[color:var(--line)] shrink-0">
+              <button
+                type="button"
+                className="min-h-11 sm:min-h-8 px-3 rounded-md text-[12px] font-semibold text-[color:var(--text-muted)]"
+                onClick={() => setOpen(false)}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                data-brand-btn="primary"
+                className="min-h-11 sm:min-h-8 px-4 rounded-md text-[12px] font-bold"
+                onClick={() => setOpen(false)}
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>

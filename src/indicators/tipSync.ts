@@ -16,6 +16,8 @@ export const INDICATOR_TIP_WINDOW = 320;
  */
 export const INDICATOR_TIP_EVERY_BARS = 4;
 export const INDICATOR_TIP_MIN_MS = 100;
+/** Full Worker passes while Play+pan slides the warm-cache — coalesce to avoid flash. */
+export const INDICATOR_FULL_MIN_MS = 280;
 
 function growValues(prev: Float32Array, len: number): Float32Array {
   if (prev.length === len) return prev;
@@ -226,4 +228,39 @@ export function remapPanesByTime(
       values: remapValuesByTime(s.values, prevBars, nextBars),
     })),
   }));
+}
+
+/**
+ * Land a Worker result on the *current* engine bars.
+ * If the warm-cache slid while the Worker ran, index-align would flash/glitch —
+ * remap by wall-clock instead. Pure length growth → cheap align.
+ */
+export function landIndicatorOverlays(
+  overlays: readonly IndicatorOverlayResult[],
+  requestBars: readonly ChartBar[],
+  liveBars: readonly ChartBar[],
+): IndicatorOverlayResult[] {
+  if (liveBars.length === 0) return [];
+  if (
+    requestBars.length > 0 &&
+    liveBars[0]!.time !== requestBars[0]!.time
+  ) {
+    return remapOverlaysByTime(overlays, requestBars, liveBars);
+  }
+  return alignIndicatorOverlays(overlays, liveBars.length);
+}
+
+export function landIndicatorPanes(
+  panes: readonly IndicatorPaneResult[],
+  requestBars: readonly ChartBar[],
+  liveBars: readonly ChartBar[],
+): IndicatorPaneResult[] {
+  if (liveBars.length === 0) return [];
+  if (
+    requestBars.length > 0 &&
+    liveBars[0]!.time !== requestBars[0]!.time
+  ) {
+    return remapPanesByTime(panes, requestBars, liveBars);
+  }
+  return alignIndicatorPanes(panes, liveBars.length);
 }

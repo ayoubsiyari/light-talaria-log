@@ -21,7 +21,11 @@ export const ChartContainer = memo(function ChartContainer({
   ...chartOptions
 }: ChartContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const instanceRef = useChart(containerRef, chartOptions);
+  const instanceRef = useChart(containerRef, {
+    ...chartOptions,
+    // Time-axis dbl-click / engine reset → same clear as the Follow / Reset buttons.
+    onFollowReattach: onReattachFollow ?? chartOptions.onFollowReattach,
+  });
 
   return (
     <div className="absolute inset-0 w-full h-full">

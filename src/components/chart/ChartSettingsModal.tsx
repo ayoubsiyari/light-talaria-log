@@ -28,18 +28,22 @@ import type {
   LastPriceLineStyle,
 } from '@/types/chartAppearance';
 
-type SettingsTab = 'symbol' | 'status' | 'scales' | 'canvas' | 'layout';
+type SettingsTab = 'symbol' | 'status' | 'scales' | 'canvas' | 'layout' | 'trading' | 'buttons' | 'templates';
 
 interface ChartSettingsModalProps {
   onClose: () => void;
 }
 
+/** Live data-sett-v2 nav labels; existing panes kept + stub tabs. */
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
-  { id: 'symbol', label: 'Symbol', icon: '▮' },
-  { id: 'status', label: 'Status line', icon: '≡' },
-  { id: 'scales', label: 'Scales & lines', icon: '↕' },
+  { id: 'symbol', label: 'Candles', icon: '▮' },
   { id: 'canvas', label: 'Canvas', icon: '✎' },
-  { id: 'layout', label: 'Layout', icon: '▣' },
+  { id: 'scales', label: 'Time & scale', icon: '↕' },
+  { id: 'trading', label: 'Trading', icon: '⇄' },
+  { id: 'buttons', label: 'Buttons', icon: '▢' },
+  { id: 'templates', label: 'Templates', icon: '▣' },
+  { id: 'status', label: 'Status line', icon: '≡' },
+  { id: 'layout', label: 'Layout', icon: '◫' },
 ];
 
 const LINE_STYLES: { id: GridLineStyle; label: string }[] = [
@@ -107,17 +111,25 @@ export function ChartSettingsModal({ onClose }: ChartSettingsModalProps) {
       onClick={cancel}
     >
       <div
-        className="w-full max-w-3xl max-h-[92dvh] flex flex-col sm:flex-row overflow-hidden rounded-xl border border-border bg-surface shadow-xl"
+        data-v9-chrome="1"
+        data-sett-v2="1"
+        data-chrome-win="chart-settings"
+        className="w-full max-w-3xl max-h-[92dvh] flex flex-col sm:flex-row overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:var(--surface)] shadow-none"
         onClick={(e) => e.stopPropagation()}
       >
-        <nav className="sm:w-48 shrink-0 border-b sm:border-b-0 sm:border-r border-border bg-background/40 p-2 flex sm:flex-col gap-1 overflow-x-auto">
+        <nav
+          data-sett-nav=""
+          className="sm:w-48 shrink-0 border-b sm:border-b-0 sm:border-r border-[color:var(--line)] bg-[color:var(--surface-sunken)] p-2 flex sm:flex-col gap-1 overflow-x-auto"
+        >
           <p className="hidden sm:block px-2 py-2 text-xs font-semibold text-muted uppercase tracking-wide">
-            Settings
+            Chart settings
           </p>
           {TABS.map((t) => (
             <button
               key={t.id}
               type="button"
+              data-active={tab === t.id ? '1' : undefined}
+              data-sett-nav-item={t.id}
               onClick={() => setTab(t.id)}
               className={[
                 'flex items-center gap-2 min-h-11 px-3 rounded-md text-sm text-left shrink-0',
@@ -177,6 +189,64 @@ export function ChartSettingsModal({ onClose }: ChartSettingsModalProps) {
                   setTheme(m);
                 }}
               />
+            )}
+            {tab === 'trading' && (
+              <div className="space-y-3">
+                <SectionTitle>Trading</SectionTitle>
+                <ToggleRow
+                  label="Show order brackets"
+                  checked={true}
+                  onChange={() => {}}
+                />
+                <ToggleRow
+                  label="Confirm order placement"
+                  checked={false}
+                  onChange={() => {}}
+                />
+                <p className="text-[11px] text-muted">
+                  Stub toggles — wire to trading prefs later.
+                </p>
+              </div>
+            )}
+            {tab === 'buttons' && (
+              <div className="space-y-3">
+                <SectionTitle>Buttons</SectionTitle>
+                <ToggleRow label="Place Order CTA" checked={true} onChange={() => {}} />
+                <ToggleRow label="Replay controls" checked={true} onChange={() => {}} />
+                <ToggleRow label="Utility icons" checked={true} onChange={() => {}} />
+                <p className="text-[11px] text-muted">
+                  Stub visibility — wire to chrome prefs later.
+                </p>
+              </div>
+            )}
+            {tab === 'templates' && (
+              <div className="space-y-2">
+                <SectionTitle>Templates</SectionTitle>
+                {CHART_STYLE_TEMPLATES.map((t) => {
+                  const active = matchTemplateId(draft) === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className={[
+                        'w-full flex items-center gap-2 min-h-11 px-2 rounded-md text-left text-sm border',
+                        active
+                          ? 'border-accent bg-accent/10'
+                          : 'border-border hover:bg-background/70',
+                      ].join(' ')}
+                      onClick={() => {
+                        applyChartStyleTemplate(t.id);
+                        setDraft(getAppearance());
+                      }}
+                    >
+                      <span className="flex-1 font-medium">{t.name}</span>
+                      {active ? (
+                        <span className="text-[10px] text-accent">Active</span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
 

@@ -1171,7 +1171,11 @@ export function AnalyticsDashboard({
   );
 
   return (
-    <div className="relative flex flex-col min-h-0 h-full w-full overflow-hidden bg-background">
+    <div
+      data-trades-analytics="1"
+      data-analytics-v2="1"
+      className="relative flex flex-col min-h-0 h-full w-full overflow-hidden bg-background"
+    >
       {toolbar}
       {immersive && kpiRow}
       {chartBoard}

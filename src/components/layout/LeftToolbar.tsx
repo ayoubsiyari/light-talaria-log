@@ -1,10 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import {
-  IconChevron,
-  IconObjectTree,
-  IconStayDraw,
-  IconZoom,
-} from '@/components/icons/ToolIcons';
+import { IconChevron } from '@/components/icons/ToolIcons';
 import { ChromeIcon } from '@/v9/chromeIcons.jsx';
 import {
   magnetModeLabel,
@@ -128,6 +123,11 @@ export function LeftToolbar({
 }: LeftToolbarProps) {
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [removeMenuOpen, setRemoveMenuOpen] = useState(false);
+  const [cursorMenuOpen, setCursorMenuOpen] = useState(false);
+  const [magnetMenuOpen, setMagnetMenuOpen] = useState(false);
+  const [visMenuOpen, setVisMenuOpen] = useState(false);
+  const [cursorStyle, setCursorStyle] = useState<'cross' | 'dot' | 'arrow'>('cross');
+  const [indicatorsHidden, setIndicatorsHidden] = useState(false);
   const [showMoreTools, setShowMoreTools] = useState(() => readShowMoreTools());
   const [menuTop, setMenuTop] = useState(0);
   const [lastByCategory, setLastByCategory] = useState<Record<string, DrawingToolId>>(() => ({
@@ -172,16 +172,21 @@ export function LeftToolbar({
   );
 
   useEffect(() => {
-    if (!openGroup && !removeMenuOpen) return;
+    if (!openGroup && !removeMenuOpen && !cursorMenuOpen && !magnetMenuOpen && !visMenuOpen) {
+      return;
+    }
     const onDoc = (e: PointerEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) {
         setOpenGroup(null);
         setRemoveMenuOpen(false);
+        setCursorMenuOpen(false);
+        setMagnetMenuOpen(false);
+        setVisMenuOpen(false);
       }
     };
     document.addEventListener('pointerdown', onDoc, true);
     return () => document.removeEventListener('pointerdown', onDoc, true);
-  }, [openGroup, removeMenuOpen]);
+  }, [openGroup, removeMenuOpen, cursorMenuOpen, magnetMenuOpen, visMenuOpen]);
 
   useLayoutEffect(() => {
     if (!openGroup || !rootRef.current) return;
@@ -300,19 +305,57 @@ export function LeftToolbar({
       <div className="h-full w-full flex flex-col items-stretch py-1 px-0.5 overflow-y-auto overscroll-contain">
         {/* 1 — Cursor + drawing tools */}
         <div className="v8b-rail-section">
-          <button
-            type="button"
-            title="Cursor"
-            aria-pressed={activeTool === 'cursor'}
-            data-brand-icon="1"
-            onClick={() => {
-              onToolChange('cursor');
-              setOpenGroup(null);
-            }}
-            className="v8b-tool"
-          >
-            <ChromeIcon n="crosshair" s={18} />
-          </button>
+          <div className="group/tool relative w-full">
+            <button
+              type="button"
+              title="Cursor"
+              aria-pressed={activeTool === 'cursor'}
+              data-brand-icon="1"
+              data-rail-item="cursor"
+              onClick={() => {
+                onToolChange('cursor');
+                setOpenGroup(null);
+                setCursorMenuOpen(false);
+              }}
+              className="v8b-tool"
+            >
+              <ChromeIcon
+                n={
+                  cursorStyle === 'dot'
+                    ? 'cursorDot'
+                    : cursorStyle === 'arrow'
+                      ? 'cursorArrow'
+                      : 'crosshair'
+                }
+                s={18}
+              />
+            </button>
+            <button
+              type="button"
+              title="Cursor menu"
+              aria-label="Cursor menu"
+              aria-expanded={cursorMenuOpen}
+              data-rail-caret=""
+              onClick={(e) => {
+                e.stopPropagation();
+                setCursorMenuOpen((v) => !v);
+                setOpenGroup(null);
+                setMagnetMenuOpen(false);
+                setVisMenuOpen(false);
+                setRemoveMenuOpen(false);
+              }}
+              className={[
+                'absolute right-0 top-0 h-[34px] w-2.5 flex items-center justify-center',
+                'border-0 bg-transparent p-0 text-muted',
+                'opacity-0 pointer-events-none',
+                'group-hover/tool:opacity-80 group-hover/tool:pointer-events-auto',
+                '[@media(hover:none)]:opacity-80 [@media(hover:none)]:pointer-events-auto',
+                cursorMenuOpen ? 'opacity-100 pointer-events-auto text-accent' : '',
+              ].join(' ')}
+            >
+              <IconChevron className="w-2 h-2 shrink-0" />
+            </button>
+          </div>
           {drawGroups.map(renderGroupButton)}
         </div>
 
@@ -333,25 +376,51 @@ export function LeftToolbar({
             }}
             className="v8b-tool"
           >
-            <IconZoom />
+            <ChromeIcon n="measure" s={18} />
           </button>
         </div>
 
         <div className="v8b-rail-divider" aria-hidden />
 
-        {/* 3 — Magnet / stay / lock / hide */}
+        {/* 3 — Magnet / stay / lock / visibility / undo */}
         <div className="v8b-rail-section">
-          <button
-            type="button"
-            title={`${magnetModeLabel(magnetMode)} (click to cycle)`}
-            aria-pressed={magnetMode !== 'off'}
-            aria-label={magnetModeLabel(magnetMode)}
-            data-brand-icon="1"
-            onClick={() => onMagnetModeChange(nextMagnetMode(magnetMode))}
-            className="v8b-tool"
-          >
-            <ChromeIcon n={magnetIcon} s={18} />
-          </button>
+          <div className="group/tool relative w-full">
+            <button
+              type="button"
+              title={`${magnetModeLabel(magnetMode)} (click to cycle)`}
+              aria-pressed={magnetMode !== 'off'}
+              aria-label={magnetModeLabel(magnetMode)}
+              data-brand-icon="1"
+              onClick={() => onMagnetModeChange(nextMagnetMode(magnetMode))}
+              className="v8b-tool"
+            >
+              <ChromeIcon n={magnetIcon} s={18} />
+            </button>
+            <button
+              type="button"
+              title="Magnet menu"
+              aria-label="Magnet menu"
+              aria-expanded={magnetMenuOpen}
+              onClick={(e) => {
+                e.stopPropagation();
+                setMagnetMenuOpen((v) => !v);
+                setCursorMenuOpen(false);
+                setVisMenuOpen(false);
+                setOpenGroup(null);
+                setRemoveMenuOpen(false);
+              }}
+              className={[
+                'absolute right-0 top-0 h-[34px] w-2.5 flex items-center justify-center',
+                'border-0 bg-transparent p-0 text-muted',
+                'opacity-0 pointer-events-none',
+                'group-hover/tool:opacity-80 group-hover/tool:pointer-events-auto',
+                '[@media(hover:none)]:opacity-80 [@media(hover:none)]:pointer-events-auto',
+                magnetMenuOpen ? 'opacity-100 pointer-events-auto text-accent' : '',
+              ].join(' ')}
+            >
+              <IconChevron className="w-2 h-2 shrink-0" />
+            </button>
+          </div>
           <button
             type="button"
             title="Stay in drawing mode"
@@ -360,7 +429,7 @@ export function LeftToolbar({
             onClick={() => onStayInDrawingModeChange(!stayInDrawingMode)}
             className="v8b-tool"
           >
-            <IconStayDraw />
+            <ChromeIcon n="pin" s={18} />
           </button>
           <button
             type="button"
@@ -372,15 +441,68 @@ export function LeftToolbar({
           >
             <ChromeIcon n="lock" s={18} />
           </button>
+          <div className="group/tool relative w-full">
+            <button
+              type="button"
+              title={drawingsHidden ? 'Show drawings' : 'Hide drawings'}
+              aria-pressed={drawingsHidden || indicatorsHidden}
+              data-brand-icon="1"
+              onClick={() => onDrawingsHiddenChange(!drawingsHidden)}
+              className="v8b-tool"
+            >
+              <ChromeIcon
+                n={drawingsHidden || indicatorsHidden ? 'eyeHide' : 'eye'}
+                s={18}
+              />
+            </button>
+            <button
+              type="button"
+              title="Visibility menu"
+              aria-label="Visibility menu"
+              aria-expanded={visMenuOpen}
+              onClick={(e) => {
+                e.stopPropagation();
+                setVisMenuOpen((v) => !v);
+                setMagnetMenuOpen(false);
+                setCursorMenuOpen(false);
+                setOpenGroup(null);
+                setRemoveMenuOpen(false);
+              }}
+              className={[
+                'absolute right-0 top-0 h-[34px] w-2.5 flex items-center justify-center',
+                'border-0 bg-transparent p-0 text-muted',
+                'opacity-0 pointer-events-none',
+                'group-hover/tool:opacity-80 group-hover/tool:pointer-events-auto',
+                '[@media(hover:none)]:opacity-80 [@media(hover:none)]:pointer-events-auto',
+                visMenuOpen ? 'opacity-100 pointer-events-auto text-accent' : '',
+              ].join(' ')}
+            >
+              <IconChevron className="w-2 h-2 shrink-0" />
+            </button>
+          </div>
           <button
             type="button"
-            title={drawingsHidden ? 'Show drawings' : 'Hide drawings'}
-            aria-pressed={drawingsHidden}
+            title="Undo (⌘Z)"
+            aria-label="Undo drawings"
             data-brand-icon="1"
-            onClick={() => onDrawingsHiddenChange(!drawingsHidden)}
+            onClick={() =>
+              window.dispatchEvent(new CustomEvent('talaria:drawings-undo'))
+            }
             className="v8b-tool"
           >
-            <ChromeIcon n={drawingsHidden ? 'eyeHide' : 'eye'} s={18} />
+            <ChromeIcon n="undo" s={18} />
+          </button>
+          <button
+            type="button"
+            title="Redo (⇧⌘Z)"
+            aria-label="Redo drawings"
+            data-brand-icon="1"
+            onClick={() =>
+              window.dispatchEvent(new CustomEvent('talaria:drawings-redo'))
+            }
+            className="v8b-tool"
+          >
+            <ChromeIcon n="redo" s={18} />
           </button>
           <button
             type="button"
@@ -392,9 +514,9 @@ export function LeftToolbar({
               setOpenGroup(null);
               setRemoveMenuOpen(false);
             }}
-            className="v8b-tool"
+            className="v8b-tool relative"
           >
-            <IconObjectTree />
+            <ChromeIcon n="layers" s={18} />
             {drawingCount > 0 && (
               <span className="absolute bottom-0.5 right-0.5 min-w-[10px] text-[8px] font-semibold leading-none text-accent">
                 {drawingCount > 99 ? '99+' : drawingCount}
@@ -425,7 +547,169 @@ export function LeftToolbar({
         </div>
 
         <div className="flex-1 min-h-2" />
+
+        <div data-v9-rail-foot="" className="v8b-rail-section pb-1">
+          <button
+            type="button"
+            title="Chrome preset (stub)"
+            aria-label="Chrome preset"
+            data-brand-icon="1"
+            className="v8b-tool text-[10px] font-bold tabular-nums"
+            onClick={() => {
+              /* stub cycle */
+            }}
+          >
+            1/4
+          </button>
+        </div>
       </div>
+
+      {cursorMenuOpen && (
+        <div
+          data-v9-chrome="1"
+          data-sdrop="1"
+          className="v9-flyout absolute left-full top-2 z-50 ml-1 w-[min(12rem,calc(100vw-4rem))] rounded-[var(--radius-panel,8px)] border border-[color:var(--line)] bg-[color:var(--surface-raised)] py-1 overflow-hidden"
+        >
+          <div className="v9-flyout-accent" aria-hidden />
+          <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted">
+            Cursor
+          </p>
+          {(
+            [
+              { id: 'cross' as const, label: 'Cross', icon: 'crosshair' },
+              { id: 'dot' as const, label: 'Dot', icon: 'cursorDot' },
+              { id: 'arrow' as const, label: 'Arrow', icon: 'cursorArrow' },
+            ] as const
+          ).map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              data-menu-row=""
+              data-active={cursorStyle === row.id && activeTool === 'cursor' ? '1' : undefined}
+              className="w-full flex items-center gap-2 px-3 min-h-11 text-left text-[13px] hover:bg-[color:var(--surface-sunken)]"
+              onClick={() => {
+                setCursorStyle(row.id);
+                onToolChange('cursor');
+                setCursorMenuOpen(false);
+              }}
+            >
+              <ChromeIcon n={row.icon} s={16} />
+              <span>{row.label}</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            data-menu-row=""
+            className="w-full flex items-center gap-2 px-3 min-h-11 text-left text-[13px] hover:bg-[color:var(--surface-sunken)] opacity-50"
+            title="Eraser — stub"
+            disabled
+          >
+            <ChromeIcon n="eraser" s={16} />
+            <span>Eraser</span>
+            <span className="ml-auto text-[9px] text-muted">Soon</span>
+          </button>
+        </div>
+      )}
+
+      {magnetMenuOpen && (
+        <div
+          data-v9-chrome="1"
+          data-sdrop="1"
+          className="v9-flyout absolute left-full z-50 ml-1 w-[min(12rem,calc(100vw-4rem))] rounded-[var(--radius-panel,8px)] border border-[color:var(--line)] bg-[color:var(--surface-raised)] py-1 overflow-hidden"
+          style={{ top: 120 }}
+        >
+          <div className="v9-flyout-accent" aria-hidden />
+          <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted">
+            Magnet
+          </p>
+          {(
+            [
+              { id: 'off' as const, label: 'Off', icon: 'magnetOff' },
+              { id: 'weak' as const, label: 'Weak', icon: 'magnetWeak' },
+              { id: 'strong' as const, label: 'Strong', icon: 'magnetStrong' },
+            ] as const
+          ).map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              data-menu-row=""
+              data-active={magnetMode === row.id ? '1' : undefined}
+              className="w-full flex items-center gap-2 px-3 min-h-11 text-left text-[13px] hover:bg-[color:var(--surface-sunken)]"
+              onClick={() => {
+                onMagnetModeChange(row.id);
+                setMagnetMenuOpen(false);
+              }}
+            >
+              <ChromeIcon n={row.icon} s={16} />
+              <span>{row.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {visMenuOpen && (
+        <div
+          data-v9-chrome="1"
+          data-sdrop="1"
+          className="v9-flyout absolute left-full z-50 ml-1 w-[min(14rem,calc(100vw-4rem))] rounded-[var(--radius-panel,8px)] border border-[color:var(--line)] bg-[color:var(--surface-raised)] py-1 overflow-hidden"
+          style={{ top: 160 }}
+        >
+          <div className="v9-flyout-accent" aria-hidden />
+          <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted">
+            Visibility
+          </p>
+          <button
+            type="button"
+            data-menu-row=""
+            className="w-full flex items-center gap-2 px-3 min-h-11 text-left text-[13px] hover:bg-[color:var(--surface-sunken)]"
+            onClick={() => {
+              onDrawingsHiddenChange(!drawingsHidden);
+              setVisMenuOpen(false);
+            }}
+          >
+            <ChromeIcon n="eye" s={16} />
+            <span>{drawingsHidden ? 'Show drawings' : 'Hide drawings'}</span>
+          </button>
+          <button
+            type="button"
+            data-menu-row=""
+            className="w-full flex items-center gap-2 px-3 min-h-11 text-left text-[13px] hover:bg-[color:var(--surface-sunken)]"
+            onClick={() => {
+              setIndicatorsHidden((v) => !v);
+              window.dispatchEvent(
+                new CustomEvent('talaria:toggle-indicators-hidden', {
+                  detail: { hidden: !indicatorsHidden },
+                }),
+              );
+              setVisMenuOpen(false);
+            }}
+          >
+            <ChromeIcon n="eyeInd" s={16} />
+            <span>
+              {indicatorsHidden ? 'Show indicators' : 'Hide indicators'}
+            </span>
+          </button>
+          <button
+            type="button"
+            data-menu-row=""
+            className="w-full flex items-center gap-2 px-3 min-h-11 text-left text-[13px] hover:bg-[color:var(--surface-sunken)]"
+            onClick={() => {
+              const hide = !(drawingsHidden && indicatorsHidden);
+              onDrawingsHiddenChange(hide);
+              setIndicatorsHidden(hide);
+              window.dispatchEvent(
+                new CustomEvent('talaria:toggle-indicators-hidden', {
+                  detail: { hidden: hide },
+                }),
+              );
+              setVisMenuOpen(false);
+            }}
+          >
+            <ChromeIcon n="eyeAll" s={16} />
+            <span>Hide all</span>
+          </button>
+        </div>
+      )}
 
       {removeMenuOpen && (
         <div

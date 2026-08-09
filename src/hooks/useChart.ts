@@ -28,11 +28,14 @@ import { getIndicatorDef } from '@/indicators/registry';
 import { computeIndicators } from '@/indicators/runIndicatorWorker';
 import { colorsForIndicator } from '@/indicators/themeColors';
 import {
+  INDICATOR_FULL_MIN_MS,
   INDICATOR_TIP_EVERY_BARS,
   INDICATOR_TIP_MIN_MS,
   needsFullIndicatorRecompute,
   alignIndicatorOverlays,
   alignIndicatorPanes,
+  landIndicatorOverlays,
+  landIndicatorPanes,
   stitchTipOverlays,
   stitchTipPanes,
   tipWindowBars,
@@ -93,6 +96,8 @@ export interface UseChartOptions {
   onBacktestEventSelect?: (event: import('@/types/backtest').BacktestEvent | null) => void;
   /** User dragged the plot/axes — detach replay camera follow. */
   onUserGesture?: () => void;
+  /** Engine reset time scale / follow — clear React camera-detached. */
+  onFollowReattach?: () => void;
   /** Engine moved/resized a drawing — persist in React. */
   onDrawingsChange?: (drawings: readonly Drawing[]) => void;
   /** Engine selection changed (full id set; empty = none). */
@@ -228,6 +233,9 @@ export function useChart(
     const unsubGesture = instance.onUserGesture(() => {
       optionsRef.current.onUserGesture?.();
     });
+    const unsubFollowReattach = instance.onFollowReattach(() => {
+      optionsRef.current.onFollowReattach?.();
+    });
 
     const unsubDrawings = instance.onDrawingsChange((next) => {
       optionsRef.current.onDrawingsChange?.(next);
@@ -272,6 +280,7 @@ export function useChart(
       unsubMove();
       unsubClick();
       unsubGesture();
+      unsubFollowReattach();
       unsubDrawings();
       unsubSelect();
       unsubFreehand();
@@ -372,6 +381,7 @@ export function useChart(
     /** Last bar count when tip Worker actually ran — gates replay isolation. */
     let lastTipAtLen = 0;
     let lastTipAtMs = 0;
+    let lastFullAtMs = 0;
     /** Prevent stacking full recomputes while one is already in flight. */
     let fullInFlight = false;
 
@@ -381,6 +391,16 @@ export function useChart(
       if (live.length > 0) return live;
       return optionsRef.current.bars ?? EMPTY_BARS;
     };
+
+    const snapshotBars = (bars: readonly ChartBar[]): ChartBar[] =>
+      bars.map((b) => ({
+        time: b.time,
+        open: b.open,
+        high: b.high,
+        low: b.low,
+        close: b.close,
+        volume: b.volume,
+      }));
 
     const runFull = (bars: readonly ChartBar[]) => {
       if (bars.length === 0) {
@@ -394,23 +414,48 @@ export function useChart(
         tipPending = bars;
         return;
       }
+      // Play + pan slides the warm-cache often — don't kick a full Worker every
+      // slide (stale landings used to flash/glitch the MA). Remap already holds
+      // values on the candles until this coalesced pass lands.
+      const now = performance.now();
+      if (
+        optionsRef.current.replayFollow &&
+        lastFullBars != null &&
+        now - lastFullAtMs < INDICATOR_FULL_MIN_MS
+      ) {
+        tipPending = bars;
+        if (tipTimer == null) {
+          const wait = Math.max(16, INDICATOR_FULL_MIN_MS - (now - lastFullAtMs));
+          tipTimer = setTimeout(() => {
+            tipTimer = null;
+            drainTip();
+          }, wait);
+        }
+        return;
+      }
       fullInFlight = true;
-      const reqLen = bars.length;
-      void computeIndicators(bars, instances)
+      const requestBars = snapshotBars(bars);
+      void computeIndicators(requestBars, instances)
         .then(({ overlays, panes }) => {
           if (cancelled) return;
-          lastFullBars = bars;
+          const live = instance.getBars();
+          const landedOverlays = landIndicatorOverlays(
+            withWidth(overlays),
+            requestBars,
+            live.length > 0 ? live : requestBars,
+          );
+          const landedPanes = landIndicatorPanes(
+            withWidth(panes),
+            requestBars,
+            live.length > 0 ? live : requestBars,
+          );
+          lastFullBars =
+            live.length > 0 ? snapshotBars(live) : requestBars;
           lastTipAtMs = performance.now();
-          // Play may have advanced while the Worker ran — grow to live length
-          // so the tip isn't truncated until the next tip stitch.
-          const liveLen = instance.getBars().length || reqLen;
-          lastTipAtLen = liveLen;
-          instance.setIndicatorOverlays(
-            alignIndicatorOverlays(withWidth(overlays), liveLen),
-          );
-          instance.setIndicatorPanes(
-            alignIndicatorPanes(withWidth(panes), liveLen),
-          );
+          lastFullAtMs = lastTipAtMs;
+          lastTipAtLen = live.length || requestBars.length;
+          instance.setIndicatorOverlays(landedOverlays);
+          instance.setIndicatorPanes(landedPanes);
         })
         .catch(() => {
           if (cancelled) return;
@@ -450,6 +495,7 @@ export function useChart(
 
       // Replay isolation: skip Worker until enough new bars OR min interval.
       // Buffers already length-aligned (hold tip) so candles never wait.
+      // Also when playing with camera detached (React replayFollow still true).
       const now = performance.now();
       const barsSince = pending.length - lastTipAtLen;
       const msSince = now - lastTipAtMs;
@@ -470,13 +516,22 @@ export function useChart(
 
       tipPending = null;
       tipInFlight = true;
-      const slice = tipWindowBars(pending);
+      const requestBars = snapshotBars(pending);
+      const slice = tipWindowBars(requestBars);
       // Stitch against the bar count the Worker actually saw — if Play grew
       // the buffer mid-flight, grow/hold only the delta (no tip index drift).
-      const stitchLen = pending.length;
+      const stitchLen = requestBars.length;
       void computeIndicators(slice, instances)
         .then(({ overlays, panes }) => {
           if (cancelled) return;
+          const live = instance.getBars();
+          // Buffer slid mid-flight — tip stitch by index would flash. Land via
+          // full remap path instead of corrupting history.
+          if (needsFullIndicatorRecompute(requestBars, live)) {
+            tipPending = live.length > 0 ? live : requestBars;
+            runFull(tipPending);
+            return;
+          }
           lastTipAtMs = performance.now();
           const stitchedOverlays = stitchTipOverlays(
             instance.getIndicatorOverlays(),
@@ -488,7 +543,7 @@ export function useChart(
             withWidth(panes),
             stitchLen,
           );
-          const liveLen = instance.getBars().length || stitchLen;
+          const liveLen = live.length || stitchLen;
           lastTipAtLen = liveLen;
           instance.setIndicatorOverlays(
             liveLen === stitchLen

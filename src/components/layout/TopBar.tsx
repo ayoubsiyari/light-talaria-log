@@ -9,25 +9,23 @@ import {
 import { getAppearance, subscribeAppearance } from '@/chart/appearanceStore';
 import { BacktestRunMenu } from '@/components/backtest/BacktestRunMenu';
 import { IndicatorsMenu } from '@/components/indicators/IndicatorsMenu';
-import { BrandLogo } from '@/components/landing/BrandLogo';
 import { ChartTemplatesMenu } from '@/components/chart/ChartTemplatesMenu';
 import { LayoutPicker } from '@/components/layout/LayoutPicker';
+import { LogoMenu } from '@/components/layout/LogoMenu';
+import { SeriesTypePicker } from '@/components/layout/SeriesTypePicker';
 import { SymbolPicker } from '@/components/layout/SymbolPicker';
 import { TimeframePicker } from '@/components/layout/TimeframePicker';
+import {
+  TopBarUtilityPanels,
+  type UtilityPanelId,
+} from '@/components/layout/TopBarUtilityPanels';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { IconCandles } from '@/components/icons/ToolIcons';
 import { ChromeIcon } from '@/v9/chromeIcons.jsx';
 import type { EnabledIndicator } from '@/types/indicator';
 import type { LayoutSyncOptions } from '@/types/layout';
 import type { BacktestParams } from '@/types/backtest';
 import type { PairSymbol } from '@/types/session';
 import type { ChartLayout, Timeframe } from '@/types/ui';
-
-const SERIES: { id: SeriesType; label: string }[] = [
-  { id: 'candle', label: 'Candles' },
-  { id: 'bar', label: 'Bars' },
-  { id: 'line', label: 'Line' },
-];
 
 interface TopBarProps {
   symbol: string;
@@ -97,6 +95,8 @@ export function TopBar({
   const [templateId, setTemplateId] = useState<string | null>(() =>
     matchTemplateId(getAppearance()) ?? getActiveTemplateId(),
   );
+  const [utilPanel, setUtilPanel] = useState<UtilityPanelId>(null);
+  const [layoutOpenPulse, setLayoutOpenPulse] = useState(0);
 
   useEffect(() => {
     setTemplateId(matchTemplateId(getAppearance()) ?? getActiveTemplateId());
@@ -106,6 +106,27 @@ export function TopBar({
   }, []);
 
   const showThemeToggle = chartTemplateSupportsLightMode(templateId);
+
+  const utilBtn = (
+    id: 'layout' | 'layers' | 'news' | 'screenshot' | 'expand',
+    icon: string,
+    label: string,
+    onClick: () => void,
+  ) => (
+    <button
+      key={id}
+      type="button"
+      data-tb-item="utils"
+      data-tb-util={id}
+      data-v9-utility=""
+      title={label}
+      aria-label={label}
+      className="v8b-chrome-btn !h-9 !min-h-11 sm:!min-h-9 !w-9 !min-w-11 sm:!min-w-9 !px-0 justify-center"
+      onClick={onClick}
+    >
+      <ChromeIcon n={icon} s={15} />
+    </button>
+  );
 
   return (
     <header
@@ -119,16 +140,7 @@ export function TopBar({
       ].join(' ')}
     >
       <div data-tb-zone="logo" className="flex items-center shrink-0">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="shrink-0 h-9 min-h-11 w-9 min-w-11 sm:min-h-9 sm:min-w-9 mr-0.5 px-0"
-          aria-label="Exit session to Backtest"
-          onPress={onExitSession}
-          isDisabled={!onExitSession}
-        >
-          <BrandLogo size={28} variant="raster" className="w-7 h-7" />
-        </Button>
+        <LogoMenu onExitSession={onExitSession} />
       </div>
 
       <span className="v8b-sep" aria-hidden />
@@ -144,24 +156,10 @@ export function TopBar({
 
         <span className="v8b-sep hidden sm:block" aria-hidden />
 
-        <label
-          data-tb-item="chartType"
-          className="v8b-chrome-btn hidden sm:inline-flex cursor-pointer"
-        >
-          <IconCandles className="w-[15px] h-[15px]" />
-          <select
-            value={seriesType}
-            onChange={(e) => onSeriesTypeChange(e.target.value as SeriesType)}
-            className="bg-transparent text-inherit text-[13px] font-semibold outline-none cursor-pointer appearance-none pr-1 max-w-[7.5rem]"
-            aria-label="Series type"
-          >
-            {SERIES.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SeriesTypePicker
+          seriesType={seriesType}
+          onSeriesTypeChange={onSeriesTypeChange}
+        />
 
         <span className="v8b-sep hidden sm:block" aria-hidden />
 
@@ -172,25 +170,15 @@ export function TopBar({
             enabled={enabledIndicators}
             onChange={onEnabledIndicatorsChange}
             mobileExtras={
-              <div className="sm:hidden border-t border-[color:var(--line)] mt-1 pt-1 space-y-1">
+              <div className="sm:hidden border-t border-[color:var(--line)] mt-1 pt-1 space-y-1 px-1 pb-1">
                 <p className="px-2 py-1 text-xs font-semibold text-muted uppercase tracking-wide">
                   Chart
                 </p>
-                <label className="flex items-center gap-2 px-2 min-h-11 text-sm">
-                  <span className="text-muted w-16 shrink-0">Series</span>
-                  <select
-                    value={seriesType}
-                    onChange={(e) => onSeriesTypeChange(e.target.value as SeriesType)}
-                    className="flex-1 bg-background border border-[color:var(--line)] rounded-md px-2 py-1.5 outline-none"
-                    aria-label="Series type"
-                  >
-                    {SERIES.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <SeriesTypePicker
+                  seriesType={seriesType}
+                  onSeriesTypeChange={onSeriesTypeChange}
+                  compact
+                />
                 <p className="px-2 pb-1 text-[11px] text-muted">
                   Crosshair: long-press the chart
                 </p>
@@ -215,7 +203,7 @@ export function TopBar({
 
       <div
         data-tb-zone="right"
-        className="flex items-center gap-0.5 shrink-0 ml-auto pl-1"
+        className="flex items-center gap-0.5 shrink-0 ml-auto pl-1 border-l border-[color:var(--line)]"
       >
         <button
           type="button"
@@ -237,12 +225,33 @@ export function TopBar({
 
         <span className="v8b-sep" aria-hidden />
 
+        <div className="hidden sm:flex items-center gap-0">
+          {utilBtn('layout', 'layout', 'Layouts', () => {
+            setUtilPanel(null);
+            setLayoutOpenPulse((n) => n + 1);
+            window.dispatchEvent(new CustomEvent('talaria:open-layouts'));
+          })}
+          {utilBtn('layers', 'layers', 'Objects', () =>
+            setUtilPanel((p) => (p === 'objects' ? null : 'objects')),
+          )}
+          {utilBtn('news', 'news', 'News', () =>
+            setUtilPanel((p) => (p === 'news' ? null : 'news')),
+          )}
+          {utilBtn('screenshot', 'screenshot', 'Screenshot (stub)', () => {
+            /* stub */
+          })}
+          {utilBtn('expand', 'expand', 'Expand chart (stub)', () => {
+            /* stub */
+          })}
+        </div>
+
         <ChartTemplatesMenu />
         <LayoutPicker
           layout={chartLayout}
           onLayoutChange={onChartLayoutChange}
           sync={layoutSync}
           onSyncChange={onLayoutSyncChange}
+          openSignal={layoutOpenPulse}
         />
         {showThemeToggle && <ThemeToggle compact />}
         {backtestParams && onBacktestParamsChange ? (
@@ -269,6 +278,8 @@ export function TopBar({
           </Button>
         ) : null}
       </div>
+
+      <TopBarUtilityPanels panel={utilPanel} onClose={() => setUtilPanel(null)} />
     </header>
   );
 }

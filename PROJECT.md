@@ -896,10 +896,13 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-09 | Fix long-Play “freeze until Pause→Play”: wheel no longer detaches follow; sync publish doesn’t auto-detach; gap-jump without follow; rAF resume + watchdog | Play a long time / brush trackpad — candles keep advancing |
 | 2026-08-09 | Fix Play camera lag / runaway tip: follow scrolls on tip *time* advance (not only index); re-anchor if tip past right pad | Play multi-pane 15m — candles stay glued to camera |
 | 2026-08-09 | Thin V-grid: fade 2 octaves (was 3) + 36px stroke cull — 1m no longer paints a striped curtain | 1m pane — majors/minors readable, not every-bar lines |
+| 2026-08-09 | Fix indicator flash on Play+pan: land Worker results by time after buffer slide; coalesce full recomputes | Add SMA → Play → drag — MA stays glued, no flicker |
+| 2026-08-09 | Time-axis double-click resets to default scale (120 bars, tip right-anchored); plot dbl-click also auto Y | Zoom/pan → dbl-click time axis — default bar width |
 | 2026-08-09 | **Feel wave F0–F5:** overlay handles/badges; engine freehand; press-drag place; touch pan-vs-draw; orders/backtest off crosshair path; undo/redo | Manual: hover scrub, brush, trend press-drag, thumb pan, Cmd+Z |
 | 2026-08-09 | Brush Talaria parity: no stride-thin on release; Catmull-Rom α=0.5 paint; no magnet; settings Style+Visibility (hide dash; highlighter widths 8–64) | Draw brush curve — release matches live stroke |
 | 2026-08-09 | Obsidian settings shell (data-sett-v3): tool icon header, pill tabs, Reset/Done, Extend/Labels chips, Show Info; ChromeIcon map for rail + flyout | Open Trend Line settings — match V9 Obsidian chrome; then per-tool Inputs pass |
 | 2026-08-09 | Full Obsidian drawing settings UI: Sett* primitives + Style/Text/Coords/Visibility panes for all tool families (levels grids, visRanges, border/mid/label stubs) | Open settings per tool — controls match V9; paint wiring later |
+| 2026-08-09 | **Full Obsidian chrome UI (UI-first):** TF flyout+custom; symbol/chartType/ind-v2/sett-v2; logo+utils Objects/News stubs; rail cursor/magnet/vis/undo; Order Multi/BE/TSL/notes/shots; trades sort/card; layout thumbs 5–8 | Hard-refresh — click TopBar/rail/Order/trades; stubs OK until wiring |
 
 ---
 

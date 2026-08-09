@@ -269,10 +269,24 @@ export function OrderTicket({
   const [tpPlaced, setTpPlaced] = useState(false);
   const [entryMulti, setEntryMulti] = useState(false);
   const [tpMulti, setTpMulti] = useState(false);
+  const [entryRows, setEntryRows] = useState<string[]>(['', '']);
+  const [tpRows, setTpRows] = useState<{ price: string; qty: string }[]>([
+    { price: '', qty: '50' },
+    { price: '', qty: '50' },
+  ]);
   const [autoBe, setAutoBe] = useState(false);
+  const [stopMode, setStopMode] = useState<'off' | 'be' | 'tsl'>('off');
+  const [stopMenuOpen, setStopMenuOpen] = useState(false);
+  const [tslDist, setTslDist] = useState('10');
   const [beTriggerR, setBeTriggerR] = useState('1.5');
   const [beOffsetPips, setBeOffsetPips] = useState('0');
   const [journalOpen, setJournalOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [shots, setShots] = useState<string[]>([]);
+  const [advOn, setAdvOn] = useState(false);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [preTags, setPreTags] = useState<string[]>([]);
 
   const spreadPips = pipSize > 0 ? (ask - bid) / pipSize : 0;
@@ -576,6 +590,21 @@ export function OrderTicket({
           <span data-win-title="" style={{ flex: '0 1 auto' }}>
             Order
           </span>
+          <button
+            type="button"
+            data-order-adv=""
+            data-on={advOn ? '1' : undefined}
+            data-nodrag="1"
+            className="min-h-11 sm:min-h-7 px-2 rounded text-[10px] font-extrabold"
+            style={{
+              color: advOn ? 'var(--accent)' : 'var(--text-faint)',
+              background: advOn ? 'var(--accent-quiet)' : 'transparent',
+              border: `1px solid ${advOn ? 'var(--accent)' : 'var(--line)'}`,
+            }}
+            onClick={() => setAdvOn((v) => !v)}
+          >
+            Adv
+          </button>
           <div className="relative" data-nodrag="1">
             <button
               type="button"
@@ -585,6 +614,8 @@ export function OrderTicket({
               onClick={(e) => {
                 e.stopPropagation();
                 setSizeModeOpen((o) => !o);
+                setTemplatesOpen(false);
+                setHeaderMenuOpen(false);
               }}
               onPointerDown={(e) => e.stopPropagation()}
               className="inline-flex items-center gap-1"
@@ -605,7 +636,7 @@ export function OrderTicket({
                     type="button"
                     role="option"
                     aria-selected={sizeMode === m}
-                    className="w-full px-2.5 py-1.5 text-left text-[11px] font-bold"
+                    className="w-full px-2.5 py-1.5 text-left text-[11px] font-bold min-h-11 sm:min-h-8"
                     style={{
                       color:
                         sizeMode === m ? 'var(--accent)' : 'var(--text-muted)',
@@ -629,6 +660,81 @@ export function OrderTicket({
             ) : null}
           </div>
           <div style={{ flex: 1 }} />
+          <div className="relative" data-nodrag="1">
+            <button
+              type="button"
+              data-brand-icon="1"
+              className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 inline-flex items-center justify-center"
+              aria-label="Templates"
+              title="Order templates"
+              onClick={() => {
+                setTemplatesOpen((o) => !o);
+                setHeaderMenuOpen(false);
+                setSizeModeOpen(false);
+              }}
+            >
+              <ChromeIcon n="layout" s={14} />
+            </button>
+            {templatesOpen ? (
+              <div
+                data-sdrop="1"
+                className="absolute top-full right-0 mt-1 z-50 w-40 rounded-md border border-[color:var(--line)] bg-[color:var(--surface)] py-1 overflow-hidden"
+              >
+                {['Scalp 1:2', 'Swing default', 'Breakout'].map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    data-menu-row=""
+                    className="w-full px-2.5 min-h-11 sm:min-h-8 text-left text-[12px]"
+                    onClick={() => setTemplatesOpen(false)}
+                  >
+                    {name}
+                  </button>
+                ))}
+                <p className="px-2.5 py-1 text-[9px] text-[color:var(--text-faint)]">
+                  Stub — not saved yet
+                </p>
+              </div>
+            ) : null}
+          </div>
+          <div className="relative" data-nodrag="1">
+            <button
+              type="button"
+              data-brand-icon="1"
+              className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 inline-flex items-center justify-center"
+              aria-label="Order menu"
+              onClick={() => {
+                setHeaderMenuOpen((o) => !o);
+                setTemplatesOpen(false);
+                setSizeModeOpen(false);
+              }}
+            >
+              <ChromeIcon n="settings" s={14} />
+            </button>
+            {headerMenuOpen ? (
+              <div
+                data-sdrop="1"
+                className="absolute top-full right-0 mt-1 z-50 w-40 rounded-md border border-[color:var(--line)] bg-[color:var(--surface)] py-1"
+              >
+                <button
+                  type="button"
+                  data-menu-row=""
+                  className="w-full px-2.5 min-h-11 sm:min-h-8 text-left text-[12px]"
+                  onClick={() => setHeaderMenuOpen(false)}
+                >
+                  Detach (stub)
+                </button>
+                <button
+                  type="button"
+                  data-menu-row=""
+                  className="w-full px-2.5 min-h-11 sm:min-h-8 text-left text-[12px]"
+                  onClick={() => setHeaderMenuOpen(false)}
+                >
+                  Float (stub)
+                </button>
+              </div>
+            ) : null}
+          </div>
           <button
             type="button"
             data-brand-icon="1"
@@ -838,9 +944,82 @@ export function OrderTicket({
                   />
                 </div>
                 {entryMulti ? (
-                  <p className="mt-1.5 text-[9px] text-[color:var(--text-faint)]">
-                    Multi-entry levels — drag brackets on chart to scale in.
-                  </p>
+                  <div data-order-multi-rows="" className="mt-2 space-y-1.5">
+                    {entryRows.map((row, i) => (
+                      <div key={i} data-order-size-well="" className="gap-1">
+                        <span className="text-[9px] text-[color:var(--text-faint)] w-4">
+                          {i + 1}
+                        </span>
+                        <input
+                          value={row || (i === 0 ? (type === 'MARKET' ? entryPx.toFixed(digits) : price) : '')}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setEntryRows((prev) =>
+                              prev.map((x, j) => (j === i ? v : x)),
+                            );
+                          }}
+                          inputMode="decimal"
+                          aria-label={`Entry ${i + 1}`}
+                        />
+                        <button
+                          type="button"
+                          className="min-h-11 min-w-11 sm:min-h-7 sm:min-w-7 text-[color:var(--text-faint)]"
+                          aria-label="Remove entry row"
+                          disabled={entryRows.length <= 1}
+                          onClick={() =>
+                            setEntryRows((prev) => prev.filter((_, j) => j !== i))
+                          }
+                        >
+                          <ChromeIcon n="x" s={10} />
+                        </button>
+                      </div>
+                    ))}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        className="min-h-11 sm:min-h-7 px-2 text-[10px] font-bold rounded border border-[color:var(--line)]"
+                        onClick={() => setEntryRows((p) => [...p, ''])}
+                      >
+                        + Add
+                      </button>
+                      <button
+                        type="button"
+                        className="min-h-11 sm:min-h-7 px-2 text-[10px] font-bold rounded border border-[color:var(--line)]"
+                        onClick={() => {
+                          const base = entryPx;
+                          setEntryRows((p) =>
+                            p.map((_, i) =>
+                              (base + (i - (p.length - 1) / 2) * tickSize * 10).toFixed(
+                                digits,
+                              ),
+                            ),
+                          );
+                        }}
+                      >
+                        Equalize
+                      </button>
+                      <button
+                        type="button"
+                        className="min-h-11 sm:min-h-7 px-2 text-[10px] font-bold rounded border border-[color:var(--line)]"
+                        onClick={() => setEntryRows([''])}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <p className="text-[9px] text-[color:var(--text-faint)]">
+                      Avg{' '}
+                      {(() => {
+                        const nums = entryRows
+                          .map((r) => Number(r))
+                          .filter((n) => Number.isFinite(n) && n > 0);
+                        if (nums.length === 0) return '—';
+                        return (
+                          nums.reduce((a, b) => a + b, 0) / nums.length
+                        ).toFixed(digits);
+                      })()}{' '}
+                      · stub until scale-in wiring
+                    </p>
+                  </div>
                 ) : null}
               </div>
             </div>
@@ -858,26 +1037,71 @@ export function OrderTicket({
                 />
                 <span data-order-level-title="">Stop</span>
                 <div style={{ flex: 1 }} />
-                <button
-                  type="button"
-                  data-order-be=""
-                  data-on={autoBe ? '1' : undefined}
-                  onClick={() => setAutoBe((v) => !v)}
-                  className="h-5 px-1.5 rounded text-[9px] font-extrabold tracking-wide"
-                  style={{
-                    color: autoBe ? '#e0b040' : 'var(--text-faint)',
-                    background: autoBe
-                      ? 'rgba(224,176,64,0.12)'
-                      : 'transparent',
-                    border: `1px solid ${
-                      autoBe
-                        ? 'rgba(224,176,64,0.45)'
-                        : 'color-mix(in oklab, var(--down) 35%, transparent)'
-                    }`,
-                  }}
-                >
-                  Auto BE
-                </button>
+                <div className="relative">
+                  <button
+                    type="button"
+                    data-order-be=""
+                    data-on={stopMode !== 'off' ? '1' : undefined}
+                    onClick={() => setStopMenuOpen((o) => !o)}
+                    className="h-5 px-1.5 rounded text-[9px] font-extrabold tracking-wide inline-flex items-center gap-0.5"
+                    style={{
+                      color:
+                        stopMode !== 'off' ? '#e0b040' : 'var(--text-faint)',
+                      background:
+                        stopMode !== 'off'
+                          ? 'rgba(224,176,64,0.12)'
+                          : 'transparent',
+                      border: `1px solid ${
+                        stopMode !== 'off'
+                          ? 'rgba(224,176,64,0.45)'
+                          : 'color-mix(in oklab, var(--down) 35%, transparent)'
+                      }`,
+                    }}
+                  >
+                    {stopMode === 'tsl' ? 'TSL' : 'Auto BE'}
+                    <ChromeIcon n="chevDown" s={8} />
+                  </button>
+                  {stopMenuOpen ? (
+                    <div
+                      data-sdrop="1"
+                      className="absolute top-full right-0 mt-1 z-40 w-28 rounded-md border border-[color:var(--line)] bg-[color:var(--surface)] py-1"
+                    >
+                      <button
+                        type="button"
+                        className="w-full px-2 min-h-11 sm:min-h-8 text-left text-[11px] font-bold"
+                        onClick={() => {
+                          setAutoBe(true);
+                          setStopMode('be');
+                          setStopMenuOpen(false);
+                        }}
+                      >
+                        Auto BE
+                      </button>
+                      <button
+                        type="button"
+                        className="w-full px-2 min-h-11 sm:min-h-8 text-left text-[11px] font-bold"
+                        onClick={() => {
+                          setAutoBe(false);
+                          setStopMode('tsl');
+                          setStopMenuOpen(false);
+                        }}
+                      >
+                        Trailing SL
+                      </button>
+                      <button
+                        type="button"
+                        className="w-full px-2 min-h-11 sm:min-h-8 text-left text-[11px]"
+                        onClick={() => {
+                          setAutoBe(false);
+                          setStopMode('off');
+                          setStopMenuOpen(false);
+                        }}
+                      >
+                        Off
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               </div>
               {slOn ? (
                 <div style={{ padding: '4px 8px 6px 10px' }}>
@@ -923,7 +1147,7 @@ export function OrderTicket({
                       DIST {slDistPips.toFixed(1)} pips
                     </span>
                   </div>
-                  {autoBe ? (
+                  {stopMode === 'be' || autoBe ? (
                     <div
                       style={{
                         marginTop: 6,
@@ -986,7 +1210,47 @@ export function OrderTicket({
                         </span>
                       </div>
                       <p className="text-[9px] text-[color:var(--text-faint)] leading-snug">
-                        Moves SL to entry when trigger hits
+                        Moves SL to entry when trigger hits (stub)
+                      </p>
+                    </div>
+                  ) : null}
+                  {stopMode === 'tsl' ? (
+                    <div
+                      style={{
+                        marginTop: 6,
+                        paddingTop: 6,
+                        borderTop:
+                          '1px solid color-mix(in oklab, var(--down) 18%, transparent)',
+                      }}
+                    >
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] text-[color:var(--text-muted)]">
+                          Trail
+                        </span>
+                        <div
+                          data-order-size-well=""
+                          style={{ flex: '0 0 auto', width: 64 }}
+                        >
+                          <input
+                            value={tslDist}
+                            onChange={(e) => {
+                              if (
+                                e.target.value === '' ||
+                                /^\d*\.?\d*$/.test(e.target.value)
+                              ) {
+                                setTslDist(e.target.value);
+                              }
+                            }}
+                            inputMode="decimal"
+                            aria-label="Trailing distance pips"
+                          />
+                        </div>
+                        <span className="text-[10px] text-[color:var(--text-faint)]">
+                          pips
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[9px] text-[color:var(--text-faint)]">
+                        Trailing stop — stub until engine support
                       </p>
                     </div>
                   ) : null}
@@ -1054,20 +1318,74 @@ export function OrderTicket({
                     </span>
                   </div>
                   {tpMulti ? (
-                    <p className="mt-1.5 text-[9px] text-[color:var(--text-faint)]">
-                      Multi-target — scale out across TP rungs on the chart.
-                    </p>
+                    <div data-order-multi-rows="" className="mt-2 space-y-1.5">
+                      {tpRows.map((row, i) => (
+                        <div key={i} className="flex items-center gap-1">
+                          <div data-order-size-well="" className="flex-1">
+                            <span className="text-[9px] text-[color:var(--text-faint)]">
+                              TP{i + 1}
+                            </span>
+                            <input
+                              value={row.price}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setTpRows((prev) =>
+                                  prev.map((x, j) =>
+                                    j === i ? { ...x, price: v } : x,
+                                  ),
+                                );
+                              }}
+                              inputMode="decimal"
+                              aria-label={`Target ${i + 1}`}
+                              style={{ color: 'var(--up)' }}
+                            />
+                          </div>
+                          <div data-order-size-well="" style={{ width: 56 }}>
+                            <input
+                              value={row.qty}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (v === '' || /^\d*\.?\d*$/.test(v)) {
+                                  setTpRows((prev) =>
+                                    prev.map((x, j) =>
+                                      j === i ? { ...x, qty: v } : x,
+                                    ),
+                                  );
+                                }
+                              }}
+                              inputMode="decimal"
+                              aria-label={`TP${i + 1} qty %`}
+                            />
+                          </div>
+                          <span className="text-[9px] text-[color:var(--text-faint)]">
+                            %
+                          </span>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        className="min-h-11 sm:min-h-7 px-2 text-[10px] font-bold rounded border border-[color:var(--line)]"
+                        onClick={() =>
+                          setTpRows((p) => [...p, { price: '', qty: '0' }])
+                        }
+                      >
+                        + Target
+                      </button>
+                      <p className="text-[9px] text-[color:var(--text-faint)]">
+                        Multi-target stub — scale-out not wired
+                      </p>
+                    </div>
                   ) : null}
                 </div>
               ) : null}
             </div>
           </div>
 
-          {/* JOURNAL */}
+          {/* PRE-TRADE TAGS */}
           <div data-order-block="" data-order-journal="1">
             <button
               type="button"
-              className="w-full flex items-center gap-2 text-left"
+              className="w-full flex items-center gap-2 text-left min-h-11"
               onClick={() => setJournalOpen((v) => !v)}
             >
               <span
@@ -1078,10 +1396,10 @@ export function OrderTicket({
                   color: '#e0b040',
                 }}
               >
-                JOURNAL
+                PRE-TRADE TAGS
               </span>
               <span className="text-[10px] text-[color:var(--text-faint)]">
-                › {preTags.length} tags
+                › {preTags.length}
               </span>
               <span className="ml-auto">
                 <ChromeIcon n="chevDown" s={10} />
@@ -1098,6 +1416,7 @@ export function OrderTicket({
                       data-trades-tag=""
                       data-kind="pre"
                       data-on={on ? '1' : undefined}
+                      className="min-h-11 sm:min-h-8"
                       onClick={() =>
                         setPreTags((prev) =>
                           on ? prev.filter((x) => x !== t) : [...prev, t],
@@ -1109,12 +1428,93 @@ export function OrderTicket({
                   );
                 })}
               </div>
-            ) : (
-              <div
-                className="mt-2 min-h-[44px] rounded-md border border-[color:var(--line)] bg-[color:var(--surface-sunken)]"
-                aria-hidden
+            ) : null}
+          </div>
+
+          {/* SCREENSHOTS */}
+          <div data-order-block="" data-order-shots="">
+            <div className="flex items-center gap-2 mb-1.5">
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  letterSpacing: '0.08em',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                SCREENSHOTS
+              </span>
+              <span className="text-[10px] text-[color:var(--text-faint)]">
+                {shots.length}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {shots.map((s, i) => (
+                <div
+                  key={s}
+                  className="relative h-14 w-14 rounded-md border border-[color:var(--line)] overflow-hidden bg-[color:var(--surface-sunken)]"
+                >
+                  <img src={s} alt="" className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    className="absolute top-0 right-0 min-h-8 min-w-8 flex items-center justify-center bg-black/50 text-white"
+                    aria-label="Remove screenshot"
+                    onClick={() =>
+                      setShots((prev) => prev.filter((_, j) => j !== i))
+                    }
+                  >
+                    <ChromeIcon n="x" s={10} />
+                  </button>
+                </div>
+              ))}
+              <label className="h-14 w-14 min-h-11 min-w-11 rounded-md border border-dashed border-[color:var(--line)] inline-flex items-center justify-center cursor-pointer text-[color:var(--text-muted)]">
+                <ChromeIcon n="plus" s={16} />
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    const url = URL.createObjectURL(f);
+                    setShots((prev) => [...prev, url]);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* NOTES */}
+          <div data-order-block="" data-order-notes="">
+            <button
+              type="button"
+              className="w-full flex items-center gap-2 text-left min-h-11"
+              onClick={() => setNotesOpen((v) => !v)}
+            >
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  letterSpacing: '0.08em',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                NOTES
+              </span>
+              <span className="ml-auto">
+                <ChromeIcon n="chevDown" s={10} />
+              </span>
+            </button>
+            {notesOpen ? (
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+                placeholder="Pre-trade notes (local stub)"
+                className="mt-1.5 w-full min-h-[88px] rounded-md border border-[color:var(--line)] bg-[color:var(--surface-sunken)] px-2 py-1.5 text-[12px] text-[color:var(--text)] outline-none resize-y"
               />
-            )}
+            ) : null}
           </div>
 
           {msg ? (

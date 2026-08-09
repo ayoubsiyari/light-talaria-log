@@ -2076,6 +2076,31 @@ export default function App() {
     return () => window.removeEventListener('talaria:open-chart-settings', open);
   }, []);
 
+  useEffect(() => {
+    const onUndo = () => {
+      const prev = drawingHistoryRef.current.undo(drawingsRef.current);
+      if (prev) {
+        persistDrawings(prev, { skipHistory: true });
+        setSelectedDrawingIds([]);
+        setSettingsOpen(false);
+      }
+    };
+    const onRedo = () => {
+      const next = drawingHistoryRef.current.redo(drawingsRef.current);
+      if (next) {
+        persistDrawings(next, { skipHistory: true });
+        setSelectedDrawingIds([]);
+        setSettingsOpen(false);
+      }
+    };
+    window.addEventListener('talaria:drawings-undo', onUndo);
+    window.addEventListener('talaria:drawings-redo', onRedo);
+    return () => {
+      window.removeEventListener('talaria:drawings-undo', onUndo);
+      window.removeEventListener('talaria:drawings-redo', onRedo);
+    };
+  }, [persistDrawings]);
+
   // Settings modal ↔ TopBar / volume: keep view state in sync with appearance store
   useEffect(() => {
     return subscribeAppearance((a) => {
@@ -2344,32 +2369,17 @@ export default function App() {
       const mod = e.metaKey || e.ctrlKey;
       if (mod && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
         e.preventDefault();
-        const prev = drawingHistoryRef.current.undo(drawingsRef.current);
-        if (prev) {
-          persistDrawings(prev, { skipHistory: true });
-          setSelectedDrawingIds([]);
-          setSettingsOpen(false);
-        }
+        window.dispatchEvent(new CustomEvent('talaria:drawings-undo'));
         return;
       }
       if (mod && (e.key === 'z' || e.key === 'Z') && e.shiftKey) {
         e.preventDefault();
-        const next = drawingHistoryRef.current.redo(drawingsRef.current);
-        if (next) {
-          persistDrawings(next, { skipHistory: true });
-          setSelectedDrawingIds([]);
-          setSettingsOpen(false);
-        }
+        window.dispatchEvent(new CustomEvent('talaria:drawings-redo'));
         return;
       }
       if (mod && (e.key === 'y' || e.key === 'Y')) {
         e.preventDefault();
-        const next = drawingHistoryRef.current.redo(drawingsRef.current);
-        if (next) {
-          persistDrawings(next, { skipHistory: true });
-          setSelectedDrawingIds([]);
-          setSettingsOpen(false);
-        }
+        window.dispatchEvent(new CustomEvent('talaria:drawings-redo'));
         return;
       }
       if (mod && (e.key === 'c' || e.key === 'C') && selectedDrawingIds.length > 0) {

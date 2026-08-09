@@ -190,6 +190,8 @@ export interface ChartInstance {
   onCrosshairMove: (cb: CrosshairListener) => () => void;
   onPlotClick: (cb: PlotClickListener) => () => void;
   onUserGesture: (cb: UserGestureListener) => () => void;
+  /** Time-axis / reset re-attached replay follow — App clears detached flags. */
+  onFollowReattach: (cb: () => void) => () => void;
   /** Right-click on canvas — open chart settings. */
   onContextMenu: (cb: ContextMenuListener) => () => void;
   /** Multi-chart: apply logical crosshair (local x/y recomputed). */
@@ -420,6 +422,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   const crosshairListeners = new Set<CrosshairListener>();
   const plotClickListeners = new Set<PlotClickListener>();
   const userGestureListeners = new Set<UserGestureListener>();
+  const followReattachListeners = new Set<() => void>();
   const contextMenuListeners = new Set<ContextMenuListener>();
   const drawingsChangeListeners = new Set<DrawingsChangeListener>();
   const drawingSelectListeners = new Set<DrawingSelectListener>();
@@ -821,30 +824,38 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     for (const cb of userGestureListeners) cb();
   };
 
+  const notifyFollowReattach = () => {
+    for (const cb of followReattachListeners) {
+      try {
+        cb();
+      } catch (err) {
+        console.error('[chart] follow reattach listener failed', err);
+      }
+    }
+  };
+
+  /**
+   * Double-click time axis → default horizontal scale (DEFAULT_VISIBLE_BARS),
+   * tip right-anchored. Re-attaches replay follow when a cursor exists.
+   */
   const resetTimeScale = () => {
     if (bars.length === 0) return;
+    const span = DEFAULT_VISIBLE_BARS;
     if (replayCursorTime != null) {
       // Re-attach follow after double-click recenter
       replayFollow = true;
-      followTipIndex = -1;
       const anchor = indexAtOrBeforeBars(bars, replayCursorTime);
-      let span = currentSpan();
-      // Oversized span after a bad TF camera — collapse so dbl-click recovers.
-      if (span > (anchor + 1) * 1.5) {
-        span = Math.max(
-          DEFAULT_VISIBLE_BARS,
-          Math.min(span, Math.max(DEFAULT_VISIBLE_BARS, anchor + 1)),
-        );
-      }
       followTipIndex = anchor;
-      setVisibleRangeInternal(rangeRightAnchored(anchor, span), false);
+      setVisibleRangeInternal(rangeRightAnchored(anchor, span), true);
+      notifyFollowReattach();
       return;
     }
-    const anchor = bars.length - 1;
-    setVisibleRangeInternal(rangeCenteredOnIndex(anchor, DEFAULT_VISIBLE_BARS), false);
+    const anchor = Math.max(0, bars.length - 1);
+    setVisibleRangeInternal(rangeRightAnchored(anchor, span), true);
+    notifyFollowReattach();
   };
 
-  /** Double-click plot: center live candle + auto price scale (TradingView-like). */
+  /** Double-click plot: default time scale + auto price scale (TradingView-like). */
   const resetView = () => {
     resetTimeScale();
     resetPriceScale();
@@ -1015,7 +1026,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       markSceneDirty();
     },
     resetPriceScale,
-    resetTimeScale: resetView,
+    resetTimeScale,
+    resetView,
     onHover: (x, y) => {
       hoverX = x;
       hoverY = y;
@@ -1626,6 +1638,13 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       };
     },
 
+    onFollowReattach(cb) {
+      followReattachListeners.add(cb);
+      return () => {
+        followReattachListeners.delete(cb);
+      };
+    },
+
     onContextMenu(cb: ContextMenuListener) {
       contextMenuListeners.add(cb);
       return () => {
@@ -2213,6 +2232,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       crosshairListeners.clear();
       plotClickListeners.clear();
       userGestureListeners.clear();
+      followReattachListeners.clear();
       contextMenuListeners.clear();
       drawingsChangeListeners.clear();
       drawingSelectListeners.clear();

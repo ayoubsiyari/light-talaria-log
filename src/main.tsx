@@ -4,6 +4,7 @@ import { Toast } from '@heroui/react';
 import App from './App';
 import { AuthProvider } from '@/auth/AuthContext';
 import { initAppearance } from '@/chart/appearanceStore';
+import { installTimezoneManager } from '@/chart/timezone';
 import { initTheme } from '@/theme/theme';
 import { installForbidNativeTooltips } from '@/v9/forbidNativeTooltips.js';
 import './index.css';
@@ -12,6 +13,7 @@ import '@/v9/chrome.css';
 
 initTheme();
 initAppearance();
+installTimezoneManager();
 installForbidNativeTooltips(document);
 
 createRoot(document.getElementById('root')!).render(

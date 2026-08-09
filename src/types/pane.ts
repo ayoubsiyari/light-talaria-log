@@ -27,6 +27,10 @@ export function paneCountForLayout(layout: ChartLayout | string): number {
   if (layout.startsWith('2')) return 2;
   if (layout.startsWith('3')) return 3;
   if (layout.startsWith('4')) return 4;
+  if (layout === '5') return 5;
+  if (layout === '6') return 6;
+  if (layout === '7') return 7;
+  if (layout === '8') return 8;
   return 1;
 }
 
@@ -34,5 +38,9 @@ export function layoutForPaneCount(n: number): ChartLayout {
   if (n <= 1) return '1';
   if (n === 2) return '2h';
   if (n === 3) return '3r';
-  return '4';
+  if (n === 4) return '4';
+  if (n === 5) return '5';
+  if (n === 6) return '6';
+  if (n === 7) return '7';
+  return '8';
 }

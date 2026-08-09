@@ -864,6 +864,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-09 | **Bottom chrome Obsidian parity:** BottomBar → `data-replay-v2` + Go To portal + pill `data-trades-v2` toolbar; TradeDock/Analytics nested inside panel; drag-resize; Export CSV | Hard-refresh chart — no old scrub/underline tabs; Go To + History table match Live |
 | 2026-08-09 | **Replay/trades visual match Live:** step-interval + rollback + Go To cluster; trades cols ID/TIME/SYMBOL…DUR/TAGS(PRE·POST)/NOTES/SHOTS; journal P&L | Hard-refresh — compare bottom strip to Obsidian screenshot |
 | 2026-08-09 | **Order ticket Obsidian parity:** Live header/hero/size modes/$·%·#; ENTRY Multi + STOP Auto BE + TARGET Multi; JOURNAL tags; side CTA | Open Place Order — match Live rail screenshot |
+| 2026-08-09 | **Layouts panel Obsidian:** `data-layout-v2` flyout — Panels 1–8, arrangement thumbs, Sync rows w/ hints+toggles; layouts 5–8 grids | TopBar layout icon — compare to Live Layouts screenshot |
 | 2026-08-09 | Soft viewport completeness guard (`viewportCompleteness`): tip-only/empty-left heal on TF/symbol switch + coalesced Play→Pause scan; unit tests | Pause → SMA → 1m→5m — full history without Play |
 | 2026-08-09 | Full viewport bar scan: OHLC/bucket/sort + cross-TF candle check vs base; `healViewportHistory` history-biased refill; TF matrix asserts integrity | Switch 1m↔5m↔1h — candles match base aggregates |
 

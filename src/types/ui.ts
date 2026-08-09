@@ -16,7 +16,11 @@ export type ChartLayout =
   | '3b'
   | '4'
   | '4h'
-  | '4v';
+  | '4v'
+  | '5'
+  | '6'
+  | '7'
+  | '8';
 
 /** Toolbar selection: cursor, a drawing tool, or a utility mode. */
 export type ChartToolId = 'cursor' | 'zoom' | DrawingToolId;

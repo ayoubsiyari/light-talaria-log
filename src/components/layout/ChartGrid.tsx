@@ -84,6 +84,10 @@ const LAYOUT_CLASS: Record<ChartLayout, string> = {
   '4': 'grid-cols-1 grid-rows-4 sm:grid-cols-2 sm:grid-rows-2',
   '4h': 'grid-cols-1 grid-rows-4 sm:grid-cols-4 sm:grid-rows-1',
   '4v': 'grid-cols-1 grid-rows-4',
+  '5': 'grid-cols-1 grid-rows-5 sm:grid-cols-3 sm:grid-rows-2 [&>*:nth-child(1)]:sm:col-span-1 [&>*:nth-child(2)]:sm:col-span-1 [&>*:nth-child(3)]:sm:col-span-1',
+  '6': 'grid-cols-1 grid-rows-6 sm:grid-cols-3 sm:grid-rows-2',
+  '7': 'grid-cols-1 grid-rows-7 sm:grid-cols-4 sm:grid-rows-2',
+  '8': 'grid-cols-1 grid-rows-8 sm:grid-cols-4 sm:grid-rows-2',
 };
 
 export function ChartGrid({

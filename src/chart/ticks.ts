@@ -1,4 +1,5 @@
 import type { ChartBar, VisibleRange } from '@/types/bar';
+import { indexToX, type PlotRect } from './scales';
 
 /** Nice step: 1 / 2 / 5 × 10^n covering the range with ~approxCount ticks. */
 export function nicePriceTicks(min: number, max: number, approxCount = 6): number[] {
@@ -46,6 +47,15 @@ export interface TimeTick {
 /** @deprecated accepted for paint-state compat; unused. */
 export interface TimeLatticeSticky {
   exp: number;
+}
+
+/**
+ * Stable time-axis label identity across pan frames.
+ * Without this, greedy width-cull re-picks labels every paint and they "jump"
+ * (very obvious when V-grid is hidden).
+ */
+export interface TimeLabelSticky {
+  times: number[];
 }
 
 export interface NiceTimeTicksOpts {
@@ -227,4 +237,66 @@ export function niceTimeTicks(
   }
 
   return ticks;
+}
+
+export interface SelectStickyTimeLabelsOpts {
+  /** Half-width in CSS px for a label at `time` (measureText/2 + pad). */
+  halfWidthForTime: (time: number) => number;
+  plotLeft: number;
+  plotWidth: number;
+  sticky?: TimeLabelSticky | null;
+}
+
+/**
+ * Pick axis labels that prefer last frame's times so they scroll with candles
+ * instead of hopping when overlap-cull membership changes.
+ */
+export function selectStickyTimeLabels(
+  ticks: readonly TimeTick[],
+  range: VisibleRange,
+  opts: SelectStickyTimeLabelsOpts,
+): { labels: TimeTick[]; sticky: TimeLabelSticky } {
+  const { halfWidthForTime, plotLeft, plotWidth, sticky } = opts;
+  const plotRight = plotLeft + plotWidth;
+  const candidates = ticks
+    .filter((t) => t.label !== false && (t.alpha ?? 1) >= 0.99)
+    .slice()
+    .sort((a, b) => a.index - b.index);
+
+  type Placed = { tick: TimeTick; x: number; half: number };
+  const placed: Placed[] = [];
+
+  const inView = (x: number, half: number) =>
+    x + half >= plotLeft && x - half <= plotRight;
+
+  const fits = (x: number, half: number) =>
+    placed.every((p) => Math.abs(p.x - x) >= p.half + half - 0.5);
+
+  const tryPlace = (tick: TimeTick): boolean => {
+    const x = indexToX(tick.index, range, {
+      left: plotLeft,
+      top: 0,
+      width: plotWidth,
+      height: 1,
+    } satisfies PlotRect);
+    const half = halfWidthForTime(tick.time);
+    if (!inView(x, half) || !fits(x, half)) return false;
+    placed.push({ tick, x, half });
+    return true;
+  };
+
+  const stickySet = new Set(sticky?.times ?? []);
+  // Sticky first (stable identity), then fill gaps with new majors.
+  for (const tick of candidates) {
+    if (stickySet.has(tick.time)) tryPlace(tick);
+  }
+  for (const tick of candidates) {
+    if (!stickySet.has(tick.time)) tryPlace(tick);
+  }
+
+  placed.sort((a, b) => a.x - b.x);
+  return {
+    labels: placed.map((p) => p.tick),
+    sticky: { times: placed.map((p) => p.tick.time) },
+  };
 }

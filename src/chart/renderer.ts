@@ -22,6 +22,8 @@ import { drawSeries, drawVolume } from './series/drawSeries';
 import {
   nicePriceTicks,
   niceTimeTicks,
+  selectStickyTimeLabels,
+  type TimeLabelSticky,
   type TimeLatticeSticky,
 } from './ticks';
 import type { ChartViewOptions, CrosshairPoint } from './types';
@@ -187,6 +189,8 @@ export interface PaintState {
   paneTimeframe?: import('@/types/ui').Timeframe | null;
   /** Per-engine zoom density sticky for the time lattice. */
   timeLatticeSticky?: TimeLatticeSticky;
+  /** Stable time-axis label times across pan (mutated each paint). */
+  timeLabelSticky?: TimeLabelSticky;
   replayCursorTime?: number | null;
   indicators?: readonly IndicatorOverlayResult[];
   indicatorPanes?: readonly IndicatorPaneResult[];
@@ -292,7 +296,7 @@ export function paintBaseFrame(
     drawPriceAxis(ctx, layout, scale, priceTicks, colors);
   }
   if (layout.timeAxisHeight > 0) {
-    drawTimeAxis(ctx, layout, range, timeTicks, colors);
+    drawTimeAxis(ctx, layout, range, timeTicks, colors, state.timeLabelSticky);
   }
 
   // Last-price chip must paint AFTER the axis fill or it is covered.
@@ -625,6 +629,7 @@ function drawTimeAxis(
   range: VisibleRange,
   timeTicks: { index: number; time: number; alpha?: number; label?: boolean }[],
   colors: ChartColors,
+  sticky?: TimeLabelSticky,
 ): void {
   const { plot, height, timeAxisHeight, width } = layout;
   const axisY = height - timeAxisHeight;
@@ -643,23 +648,26 @@ function drawTimeAxis(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
 
-  // Solid majors only, left→right, culled by measured label width (no overlap).
-  // Keep labels glued to the same tick X as V-grid strokes (no text-only hop).
-  const labelTicks = timeTicks
-    .filter((t) => t.label !== false && (t.alpha ?? 1) >= 0.99)
-    .sort((a, b) => a.index - b.index);
-  let lastRight = Number.NEGATIVE_INFINITY;
-  for (const tick of labelTicks) {
+  // Sticky pick: keep last frame's label times so they scroll with candles.
+  // Greedy left→right cull alone re-picks membership every pan step → jumps
+  // (very obvious when V-grid is hidden in multi-chart).
+  const { labels, sticky: nextSticky } = selectStickyTimeLabels(timeTicks, range, {
+    plotLeft: plot.left,
+    plotWidth: plot.width,
+    sticky,
+    halfWidthForTime: (time) => {
+      const text = formatTime(time);
+      return Math.max(
+        TIME_LABEL_MIN_GAP_PX / 2,
+        ctx.measureText(text).width / 2 + TIME_LABEL_PAD_PX,
+      );
+    },
+  });
+  if (sticky) sticky.times = nextSticky.times;
+
+  for (const tick of labels) {
     const x = indexToX(tick.index, range, plot);
-    if (x < plot.left || x > plot.left + plot.width) continue;
-    const text = formatTime(tick.time);
-    const half = Math.max(
-      TIME_LABEL_MIN_GAP_PX / 2,
-      ctx.measureText(text).width / 2 + TIME_LABEL_PAD_PX,
-    );
-    if (x - half < lastRight) continue;
-    ctx.fillText(text, x, axisY + 8);
-    lastRight = x + half;
+    ctx.fillText(formatTime(tick.time), x, axisY + 8);
   }
 }
 

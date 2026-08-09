@@ -7,6 +7,7 @@ import { indexToX } from '@/chart/scales';
 import {
   niceTimeTicks,
   resolveBarPeriod,
+  selectStickyTimeLabels,
   stepAlpha,
 } from '@/chart/ticks';
 import type { ChartBar } from '@/types/bar';
@@ -149,5 +150,32 @@ describe('niceTimeTicks', () => {
     for (const t of ticks) {
       if (t.label) assert.ok(t.alpha >= 0.99, 'label tick must be solid major');
     }
+  });
+
+  it('sticky time labels keep the same times while the camera pans', () => {
+    const data = bars(400);
+    const r0 = { fromIndex: 100, toIndex: 220 };
+    const r1 = { fromIndex: 100.6, toIndex: 220.6 };
+    const half = () => 36;
+    const t0 = niceTimeTicks(r0, data, 8);
+    const a = selectStickyTimeLabels(t0, r0, {
+      plotLeft: plot.left,
+      plotWidth: plot.width,
+      halfWidthForTime: half,
+    });
+    assert.ok(a.labels.length >= 2);
+    const t1 = niceTimeTicks(r1, data, 8);
+    const b = selectStickyTimeLabels(t1, r1, {
+      plotLeft: plot.left,
+      plotWidth: plot.width,
+      halfWidthForTime: half,
+      sticky: a.sticky,
+    });
+    // Most prior label times should survive a small pan (no membership hop).
+    const kept = a.sticky.times.filter((t) => b.sticky.times.includes(t));
+    assert.ok(
+      kept.length >= Math.max(1, a.sticky.times.length - 1),
+      `sticky labels hopped: before=${a.sticky.times.length} kept=${kept.length}`,
+    );
   });
 });

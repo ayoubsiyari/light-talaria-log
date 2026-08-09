@@ -65,7 +65,7 @@ import {
   type InteractionHandle,
 } from './interaction';
 import { rangeCenteredOnIndex, rangeRightAnchored } from './rangeAnchor';
-import type { TimeLatticeSticky } from './ticks';
+import type { TimeLabelSticky, TimeLatticeSticky } from './ticks';
 import {
   contentBottom,
   createLayout,
@@ -358,6 +358,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   let paneTimeframe: Timeframe | null = null;
   /** Nested grid octave sticky — one per engine (multi-pane safe). */
   const timeLatticeSticky: TimeLatticeSticky = { exp: -1 };
+  /** Time-axis label identity — keeps labels scrolling with candles when V-grid is off. */
+  const timeLabelSticky: TimeLabelSticky = { times: [] };
   let drawingMagnetMode: MagnetMode = 'off';
   let drawingShiftHeld = false;
   let replayCursorTime: number | null = null;
@@ -718,6 +720,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     drawingsHidden,
     paneTimeframe,
     timeLatticeSticky,
+    timeLabelSticky,
     replayCursorTime,
     indicators: indicatorOverlays,
     indicatorPanes,
@@ -1891,6 +1894,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       if (opts?.paneTimeframe !== undefined) {
         if (paneTimeframe !== opts.paneTimeframe) {
           timeLatticeSticky.exp = -1;
+          timeLabelSticky.times = [];
         }
         paneTimeframe = opts.paneTimeframe;
       }

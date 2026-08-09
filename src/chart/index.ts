@@ -46,7 +46,13 @@ export {
   seriesBarPeriod,
   stepAlpha,
 } from './ticks';
-export type { TimeLatticeSticky, NiceTimeTicksOpts, TimeTick } from './ticks';
+export type {
+  TimeLatticeSticky,
+  TimeLabelSticky,
+  NiceTimeTicksOpts,
+  TimeTick,
+} from './ticks';
+export { selectStickyTimeLabels } from './ticks';
 export { resolveCrosshair } from './crosshair';
 export type {
   CrosshairMode,

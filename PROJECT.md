@@ -874,6 +874,9 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-09 | Fix pan history dead with sync off: always publish visible timeRange for edge-prefetch; engine getBars; gesture kick; don’t re-attach follow on re-render | Drag chart to older time — candles fill empty left |
 | 2026-08-09 | Chart timezone: UTC/Local/NY/London/Berlin/Tokyo/SGP/Sydney — axis, crosshair, HUD, Go To; settings + bottom tz menu; persist appearance | Bottom clock tz → switch — labels update, weekends still gaps |
 | 2026-08-09 | Chart timezone setting: `ChartAppearance.timezone` + Settings picker + BottomBar clock/Go To use zoned labels | Chart Settings → Timezone — axis/HUD/Go To match zone |
+| 2026-08-09 | Impeccable install (Cursor project + hooks); `PRODUCT.md` product init; gitignore block; detector ignore `src/chart/`; live config; baseline UI audit | Cursor Nightly + Agent Skills on; reload; `/impeccable audit` dashboard when iterating UI |
+| 2026-08-09 | Replay smooth on high TF: median bar-period grid (no weekend rephase); detach ref not overwritten; no tip right-anchor / tip fill-ahead while panning; wall-clock remap after async history | Pan 1D during Play — camera stays; grid steady |
+| 2026-08-09 | Grid harden: TF-period pin + integer phase; zoom density sticky; pixel-snapped V lines; time-label min gap | Pan/zoom 1D — no shimmer / density thrash |
 
 ---
 

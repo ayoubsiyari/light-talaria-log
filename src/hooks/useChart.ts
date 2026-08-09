@@ -82,6 +82,8 @@ export interface UseChartOptions {
   drawingToolActive?: boolean;
   /** Brush / highlighter — press-drag stroke instead of pan. */
   freehandStrokeEnabled?: boolean;
+  /** Fixed-2 tools — press-drag place instead of click-click. */
+  placeDragEnabled?: boolean;
   /** Zoom tool — press-drag marquee region zoom. */
   marqueeZoomEnabled?: boolean;
   /** Global drawings lock — disables move/resize interact. */
@@ -95,10 +97,16 @@ export interface UseChartOptions {
   onDrawingsChange?: (drawings: readonly Drawing[]) => void;
   /** Engine selection changed (full id set; empty = none). */
   onDrawingSelect?: (drawingIds: readonly string[]) => void;
-  /** Brush / highlighter press-drag phases. */
+  /** Brush / highlighter press-drag phases (end carries full stroke). */
   onFreehandStroke?: (
     phase: 'start' | 'move' | 'end',
     point: DrawingPoint | null,
+    points?: readonly DrawingPoint[],
+  ) => void;
+  /** Fixed-2 press-drag place — commit on end. */
+  onPlaceDrag?: (
+    phase: 'start' | 'end',
+    points: readonly DrawingPoint[],
   ) => void;
   /** Layout sync: mirror crosshair across panes. */
   syncCrosshair?: boolean;
@@ -195,6 +203,7 @@ export function useChart(
       !optionsRef.current.drawingToolActive && !optionsRef.current.drawingsLocked;
     instance.setDrawingInteractEnabled(interactEnabled);
     instance.setFreehandStrokeEnabled(optionsRef.current.freehandStrokeEnabled === true);
+    instance.setPlaceDragEnabled(optionsRef.current.placeDragEnabled === true);
     instance.setMarqueeZoomEnabled(optionsRef.current.marqueeZoomEnabled === true);
 
     const unsubMove = instance.onCrosshairMove((point) => {
@@ -228,8 +237,12 @@ export function useChart(
       optionsRef.current.onDrawingSelect?.(ids);
     });
 
-    const unsubFreehand = instance.onFreehandStroke((phase, point) => {
-      optionsRef.current.onFreehandStroke?.(phase, point);
+    const unsubFreehand = instance.onFreehandStroke((phase, point, points) => {
+      optionsRef.current.onFreehandStroke?.(phase, point, points);
+    });
+
+    const unsubPlaceDrag = instance.onPlaceDrag((phase, points) => {
+      optionsRef.current.onPlaceDrag?.(phase, points);
     });
 
     // Always attach when store exists (including single pane) so user pan
@@ -262,6 +275,7 @@ export function useChart(
       unsubDrawings();
       unsubSelect();
       unsubFreehand();
+      unsubPlaceDrag();
       unsubSync();
       ro.disconnect();
       ledgerRelease('observers');
@@ -612,6 +626,12 @@ export function useChart(
     if (!instance) return;
     instance.setFreehandStrokeEnabled(options.freehandStrokeEnabled === true);
   }, [options.freehandStrokeEnabled]);
+
+  useEffect(() => {
+    const instance = instanceRef.current;
+    if (!instance) return;
+    instance.setPlaceDragEnabled(options.placeDragEnabled === true);
+  }, [options.placeDragEnabled]);
 
   useEffect(() => {
     const instance = instanceRef.current;

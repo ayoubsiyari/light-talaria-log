@@ -503,11 +503,12 @@ function paintAnchoredVwap(
 export function paintDrawing(
   pc: PaintCtx,
   d: Drawing,
-  opts: { selected?: boolean } = {},
+  opts: { selected?: boolean; showHandles?: boolean } = {},
 ): void {
   const style = d.style;
   const xy = pointsToXY(d.points, pc);
   const selected = !!opts.selected;
+  const showHandles = opts.showHandles !== false;
 
   pc.ctx.save();
   clipToPlot(pc);
@@ -1406,7 +1407,76 @@ export function paintDrawing(
   }
 
   pc.ctx.restore();
-  drawHandles(pc, handleXYForDrawing(d, xy, selected), selected ? 'selected' : false);
+  if (showHandles) {
+    drawHandles(pc, handleXYForDrawing(d, xy, selected), selected ? 'selected' : false);
+  }
+}
+
+export type DrawingPaintLayer = 'bodies' | 'chrome' | 'all';
+
+/** Handles + axis badges for selected / hovered drawings (overlay-cheap). */
+export function paintDrawingEditChrome(
+  ctx: CanvasRenderingContext2D,
+  drawings: readonly Drawing[],
+  bars: readonly ChartBar[],
+  range: import('@/types/bar').VisibleRange,
+  plot: import('@/chart/scales').PlotRect,
+  priceScale: import('@/chart/scales').PriceScale,
+  selectedIds: readonly string[] | string | null,
+  hoveredId: string | null,
+  colors?: ChartColors,
+  paneTf?: Timeframe | null,
+  axisLayout?: {
+    width: number;
+    height: number;
+    priceAxisWidth: number;
+    timeAxisHeight: number;
+  } | null,
+): void {
+  if (bars.length === 0 || drawings.length === 0) return;
+  const selectedSet = new Set(
+    typeof selectedIds === 'string'
+      ? [selectedIds]
+      : selectedIds ?? [],
+  );
+  if (selectedSet.size === 0 && !hoveredId) return;
+
+  const pc: PaintCtx = {
+    ctx,
+    bars,
+    range,
+    plot,
+    priceScale,
+    colors: colors ?? getChartColors(),
+  };
+
+  for (const d of drawings) {
+    if (d.visible === false) continue;
+    if (!isDrawingVisibleOnTf(d, paneTf)) continue;
+    const isSelected = selectedSet.has(d.id);
+    const isHovered = d.id === hoveredId;
+    if (!isSelected && !isHovered) continue;
+    const xy = pointsToXY(d.points, pc);
+    drawHandles(
+      pc,
+      handleXYForDrawing(d, xy, isSelected),
+      isSelected ? 'selected' : 'hover',
+    );
+  }
+
+  if (selectedSet.size > 0 && axisLayout) {
+    paintAxisBadges(
+      ctx,
+      drawings,
+      selectedSet,
+      bars,
+      range,
+      plot,
+      priceScale,
+      pc.colors,
+      axisLayout,
+    );
+  }
 }
 
 export function paintAllDrawings(
@@ -1428,6 +1498,7 @@ export function paintAllDrawings(
     priceAxisWidth: number;
     timeAxisHeight: number;
   } | null,
+  layer: DrawingPaintLayer = 'all',
 ): void {
   if (hidden || bars.length === 0) return;
   const selectedSet = new Set(
@@ -1443,23 +1514,45 @@ export function paintAllDrawings(
     priceScale,
     colors: colors ?? getChartColors(),
   };
+
+  if (layer === 'chrome') {
+    paintDrawingEditChrome(
+      ctx,
+      drawings,
+      bars,
+      range,
+      plot,
+      priceScale,
+      selectedIds,
+      hoveredId,
+      colors,
+      paneTf,
+      axisLayout,
+    );
+    if (draft) {
+      paintDrawing(pc, draft, { selected: true, showHandles: true });
+    }
+    return;
+  }
+
+  const showHandles = layer === 'all';
   for (const d of drawings) {
     if (d.visible === false) continue;
     if (!isDrawingVisibleOnTf(d, paneTf)) continue;
     const isSelected = selectedSet.has(d.id);
     const isHovered = d.id === hoveredId;
-    paintDrawing(pc, d, { selected: isSelected });
+    paintDrawing(pc, d, { selected: isSelected, showHandles: showHandles && isSelected });
     // Hover handles when near (TV); selected already drew handles above
-    if (!isSelected && isHovered) {
+    if (showHandles && !isSelected && isHovered) {
       const xy = pointsToXY(d.points, pc);
       drawHandles(pc, handleXYForDrawing(d, xy, false), 'hover');
     }
   }
-  if (draft) {
+  if (draft && layer === 'all') {
     // Always show anchors while placing
     paintDrawing(pc, draft, { selected: true });
   }
-  if (selectedSet.size > 0 && axisLayout) {
+  if (showHandles && selectedSet.size > 0 && axisLayout) {
     paintAxisBadges(
       ctx,
       drawings,

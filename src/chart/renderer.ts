@@ -7,7 +7,7 @@ import type { Drawing } from '@/drawings/drawingStore';
 import { getChartColors, type ChartColors } from './chartTheme';
 import { formatPrice, formatTime } from './format';
 import { drawCrosshair } from './overlays/drawCrosshair';
-import { drawDrawings } from './overlays/drawDrawings';
+import { drawDrawingEditChrome, drawDrawings } from './overlays/drawDrawings';
 import { drawLastPriceLine } from './overlays/drawLastPrice';
 import {
   computePriceScale,
@@ -302,8 +302,8 @@ export function paintBaseFrame(
 }
 
 /**
- * Committed drawings (+ selection/hover handles). Separate cache so handle-hover
- * does not rebuild the candle layer.
+ * Committed drawing bodies + orders/backtest.
+ * Handles / badges live on the overlay so hover never rebuilds this cache.
  */
 export function paintDrawingsFrame(
   ctx: CanvasRenderingContext2D,
@@ -318,89 +318,18 @@ export function paintDrawingsFrame(
     range,
     priceScale,
     drawings,
-    selectedDrawingId,
-    selectedDrawingIds,
-    hoveredDrawingId,
     drawingsHidden,
     paneTimeframe,
     replayCursorTime,
+    orders,
+    selectedOrderId,
+    backtestResult,
   } = state;
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (opts.clear !== false) {
     ctx.clearRect(0, 0, width, height);
   }
-
-  if (
-    drawingsHidden ||
-    !drawings?.length ||
-    bars.length === 0 ||
-    range.toIndex <= range.fromIndex ||
-    plot.width <= 0 ||
-    plot.height <= 0
-  ) {
-    return;
-  }
-
-  const maxBarIndex =
-    replayCursorTime != null ? indexAtOrBeforeBars(bars, replayCursorTime) : null;
-  const scale =
-    priceScale.min < priceScale.max
-      ? priceScale
-      : computePriceScale(bars, range, maxBarIndex);
-
-  const ids =
-    selectedDrawingIds && selectedDrawingIds.length > 0
-      ? selectedDrawingIds
-      : selectedDrawingId
-        ? [selectedDrawingId]
-        : [];
-
-  drawDrawings(
-    ctx,
-    drawings,
-    bars,
-    range,
-    plot,
-    scale,
-    colors,
-    null,
-    ids,
-    false,
-    hoveredDrawingId ?? null,
-    paneTimeframe ?? null,
-    {
-      width: layout.width,
-      height: layout.height,
-      priceAxisWidth: layout.priceAxisWidth,
-      timeAxisHeight: layout.timeAxisHeight,
-    },
-  );
-}
-
-/** Crosshair + in-progress draft — cheap path for pointer moves. */
-export function paintOverlayFrame(
-  ctx: CanvasRenderingContext2D,
-  layout: RenderLayout,
-  state: PaintState,
-  colors: ChartColors = getChartColors(),
-): void {
-  const { plot, dpr } = layout;
-  const {
-    bars,
-    range,
-    priceScale,
-    options,
-    crosshair,
-    draftDrawing,
-    replayCursorTime,
-    orders,
-    selectedOrderId,
-    backtestResult,
-    marquee,
-  } = state;
-
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   if (bars.length === 0 || range.toIndex <= range.fromIndex || plot.width <= 0 || plot.height <= 0) {
     return;
@@ -413,6 +342,26 @@ export function paintOverlayFrame(
       ? priceScale
       : computePriceScale(bars, range, maxBarIndex);
 
+  if (!drawingsHidden && drawings?.length) {
+    drawDrawings(
+      ctx,
+      drawings,
+      bars,
+      range,
+      plot,
+      scale,
+      colors,
+      null,
+      null,
+      false,
+      null,
+      paneTimeframe ?? null,
+      null,
+      'bodies',
+    );
+  }
+
+  // Orders / backtest: cached with drawings so crosshair moves stay overlay-cheap.
   if (backtestResult) {
     drawBacktest(
       ctx,
@@ -435,6 +384,75 @@ export function paintOverlayFrame(
       priceAxisWidth: layout.priceAxisWidth,
     });
   }
+}
+
+/**
+ * Edit chrome + draft + marquee + crosshair — cheap path for pointer moves.
+ */
+export function paintOverlayFrame(
+  ctx: CanvasRenderingContext2D,
+  layout: RenderLayout,
+  state: PaintState,
+  colors: ChartColors = getChartColors(),
+): void {
+  const { plot, dpr } = layout;
+  const {
+    bars,
+    range,
+    priceScale,
+    options,
+    crosshair,
+    draftDrawing,
+    drawings,
+    selectedDrawingId,
+    selectedDrawingIds,
+    hoveredDrawingId,
+    drawingsHidden,
+    paneTimeframe,
+    replayCursorTime,
+    marquee,
+  } = state;
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  if (bars.length === 0 || range.toIndex <= range.fromIndex || plot.width <= 0 || plot.height <= 0) {
+    return;
+  }
+
+  const maxBarIndex =
+    replayCursorTime != null ? indexAtOrBeforeBars(bars, replayCursorTime) : null;
+  const scale =
+    priceScale.min < priceScale.max
+      ? priceScale
+      : computePriceScale(bars, range, maxBarIndex);
+
+  const ids =
+    selectedDrawingIds && selectedDrawingIds.length > 0
+      ? selectedDrawingIds
+      : selectedDrawingId
+        ? [selectedDrawingId]
+        : [];
+
+  if (!drawingsHidden && drawings?.length) {
+    drawDrawingEditChrome(
+      ctx,
+      drawings,
+      bars,
+      range,
+      plot,
+      scale,
+      colors,
+      ids,
+      hoveredDrawingId ?? null,
+      paneTimeframe ?? null,
+      {
+        width: layout.width,
+        height: layout.height,
+        priceAxisWidth: layout.priceAxisWidth,
+        timeAxisHeight: layout.timeAxisHeight,
+      },
+    );
+  }
 
   if (draftDrawing) {
     drawDrawings(
@@ -449,6 +467,9 @@ export function paintOverlayFrame(
       null,
       false,
       null,
+      null,
+      null,
+      'all',
     );
   }
 

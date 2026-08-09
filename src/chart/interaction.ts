@@ -45,6 +45,15 @@ export interface InteractionCallbacks {
   beginFreehandStroke?: (x: number, y: number) => boolean;
   moveFreehandStroke?: (x: number, y: number) => void;
   endFreehandStroke?: (x: number, y: number) => void;
+  /** Cancel in-progress freehand without committing (pinch / blur). */
+  cancelFreehandStroke?: () => void;
+  /**
+   * Fixed-2 tool press-drag place. Tried after freehand miss, before marquee.
+   */
+  beginPlaceDrag?: (x: number, y: number) => boolean;
+  movePlaceDrag?: (x: number, y: number) => void;
+  endPlaceDrag?: (x: number, y: number) => void;
+  cancelPlaceDrag?: () => void;
   /**
    * Zoom marquee press-drag. Return true to claim pointer (no pan).
    * Tried after freehand miss, before pan.
@@ -52,6 +61,7 @@ export interface InteractionCallbacks {
   beginMarqueeZoom?: (x: number, y: number) => boolean;
   moveMarqueeZoom?: (x: number, y: number) => void;
   endMarqueeZoom?: (x: number, y: number) => void;
+  cancelMarqueeZoom?: () => void;
   /** Cursor while dragging a drawing (optional override). */
   getDrawingDragCursor?: () => string | null;
   /** Screen (client) coords for context menus. */
@@ -76,6 +86,7 @@ type DragMode =
   | 'priceZoom'
   | 'drawing'
   | 'freehand'
+  | 'place'
   | 'marquee'
   | 'pinch'
   | null;
@@ -184,6 +195,15 @@ export function attachInteraction(
     if (dragMode === 'drawing') {
       callbacks.endDrawingDrag?.();
     }
+    if (dragMode === 'freehand') {
+      callbacks.cancelFreehandStroke?.();
+    }
+    if (dragMode === 'place') {
+      callbacks.cancelPlaceDrag?.();
+    }
+    if (dragMode === 'marquee') {
+      callbacks.cancelMarqueeZoom?.();
+    }
     const m = pinchMetrics();
     if (!m) return;
     dragMode = 'pinch';
@@ -244,7 +264,7 @@ export function attachInteraction(
         'grabbing';
       return;
     }
-    if (dragMode === 'freehand') {
+    if (dragMode === 'freehand' || dragMode === 'place') {
       canvas.style.cursor = 'crosshair';
       return;
     }
@@ -362,6 +382,9 @@ export function attachInteraction(
     } else if (zone === 'plot' && callbacks.beginFreehandStroke?.(x, y)) {
       dragMode = 'freehand';
       cancelLongPress();
+    } else if (zone === 'plot' && callbacks.beginPlaceDrag?.(x, y)) {
+      dragMode = 'place';
+      cancelLongPress();
     } else if (zone === 'plot' && callbacks.beginMarqueeZoom?.(x, y)) {
       dragMode = 'marquee';
       cancelLongPress();
@@ -422,6 +445,14 @@ export function attachInteraction(
       callbacks.onHover(x, y);
       if (Math.hypot(dx, dy) >= 1) drawingMoved = true;
       callbacks.moveFreehandStroke?.(x, y);
+      setCursorForZone(zone, x, y);
+      return;
+    }
+
+    if (dragMode === 'place') {
+      callbacks.onHover(x, y);
+      if (Math.hypot(dx, dy) >= 1) drawingMoved = true;
+      callbacks.movePlaceDrag?.(x, y);
       setCursorForZone(zone, x, y);
       return;
     }
@@ -552,6 +583,19 @@ export function attachInteraction(
 
     if (wasMode === 'freehand') {
       callbacks.endFreehandStroke?.(x, y);
+      setCursorForZone(zone, x, y);
+      if (zone === 'plot') callbacks.onHover(x, y);
+      return;
+    }
+
+    if (wasMode === 'place') {
+      if (wasDrawingMoved) {
+        callbacks.endPlaceDrag?.(x, y);
+      } else {
+        // Tap without drag → fall through to click-click place.
+        callbacks.cancelPlaceDrag?.();
+        callbacks.onPlotClick?.(x, y);
+      }
       setCursorForZone(zone, x, y);
       if (zone === 'plot') callbacks.onHover(x, y);
       return;

@@ -883,6 +883,8 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-09 | Grid zoom: major+minor octave crossfade (minors fade out/in) — candle-aligned without density pop | Zoom in/out — lines fade, no small snap |
 | 2026-08-09 | Grid snap fix: pure span dual-lattice (no broken sticky); continuous wheel zoom; no V-line Math.round | Hard-refresh — zoom grid fades, no 1px tick |
 | 2026-08-09 | Grid zoom-in: per-step continuous alpha (no floor(log2) handoff pop); labels only on solid ticks | Zoom in — denser lines fade in, no snap |
+| 2026-08-09 | TF switch camera: bar-count zoom + tip/edge time (TV-like); heal no longer clears preserve / tip-snaps | Switch 1m↔5m↔1h — same place + same bar zoom |
+| 2026-08-09 | **Feel wave F0–F5:** overlay handles/badges; engine freehand; press-drag place; touch pan-vs-draw; orders/backtest off crosshair path; undo/redo | Manual: hover scrub, brush, trend press-drag, thumb pan, Cmd+Z |
 
 ---
 
@@ -1101,6 +1103,76 @@ Follow-on: **E1–E5** (Talaria interaction parity) — see section above (2026-
 
 ### Out of scope this wave
 Gann, Elliott, harmonics, fib spiral/arcs/circles/wedge, pitchforks, emoji/stickers, ghost feed, sync-drawings toggle across layouts, cloud drawing sync, per-pane drawing storage.
+
+---
+
+## Next Work Plan — Drawing Feel Wave F0–F5 (2026-08-09)
+
+**Goal:** Match TradingView drawing *feel* (smooth, no hitch, free draw) — not catalog breadth.  
+**North star:** Pointer path stays ~60fps; series layer stays cold during hover / place tip / freehand / drag.
+
+### Feel contract (non-negotiable)
+1. Anchors stay `{ time, price }` — never pixels.
+2. Pointer move may dirty **overlay only**, unless geometry / style / list actually changes.
+3. React learns geometry on **pointer-up / place-complete**, never every move.
+4. Series layer stays cold during hover, place tip, drag, freehand.
+5. Prefer Tier‑1 feel polish over new niche tools.
+
+### Invalidate matrix
+| Event | Layer |
+|---|---|
+| Crosshair / place tip / marquee | overlay |
+| Hover / select chrome (handles, badges) | overlay |
+| Drawing geometry / style / add-remove | drawings (+ overlay) |
+| Orders / backtest data change | drawings (+ overlay) |
+| Pan / zoom / bars / resize | scene + drawings + overlay |
+
+### Steps
+
+#### F0 — Contract
+**Status:** Done (2026-08-09).  
+- [x] Document feel contract + invalidate matrix + acceptance checklist
+
+#### F1 — Overlay-cheap edit chrome
+**Status:** Done (2026-08-09).  
+- [x] Handles + axis badges paint on overlay (not drawings cache)
+- [x] Hover / select-only → `markOverlayDirty` only
+- [x] Drawings cache = committed bodies (+ orders/backtest)
+
+#### F2 — Engine-owned freehand
+**Status:** Done (2026-08-09).  
+- [x] Stroke points accumulate in engine; React only on complete
+- [x] Pinch / cancel ends freehand cleanly
+
+#### F3 — Place + touch arbitration
+**Status:** Done (2026-08-09) — T5 device verify still open.  
+- [x] Press-drag place for fixed-2 tools (keep click-click)
+- [x] Coarse: unselected body → pan wins; selected body / handles → drag
+- [x] Gesture interrupt ends freehand + marquee + place-drag
+- [ ] T5 device checklist for drawings row
+
+#### F4 — Overlay diet
+**Status:** Done (2026-08-09).  
+- [x] Orders + backtest paint with drawings cache (not every crosshair frame)
+
+#### F5 — Muscle-memory polish
+**Status:** Done (2026-08-09).  
+- [x] Undo/redo stack (draw / move / delete) — Cmd/Ctrl+Z / Shift+Z / Y
+- [ ] (optional) snap-to-drawing magnet later
+
+### Acceptance (desktop + ~390px)
+1. 80+ drawings, 2–4 panes → hover scrub smooth; drawings layer not rebuilding every move
+2. Fast brush → no React stutter; persist on pointer-up only
+3. Trend/rect/fib place in one press-drag; series cold during rubber-band
+4. Thumb pan across dense lines without nudging unselected drawings
+5. Fib handle drag + magnet → series cold
+6. Many orders/backtest → crosshair still smooth
+7. Undo last move/delete restores geometry
+
+### Out of scope this wave
+Raising beta catalog, Gann/Elliott/harmonics, per-pane storage, cloud sync toggles.
+
+**Suggested order:** `F0 → F1 → F2 → F3 → F4 → F5`
 
 ---
 

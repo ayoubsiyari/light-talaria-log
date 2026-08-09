@@ -57,6 +57,7 @@ export interface ChartPaneProps {
   onReattachFollow?: () => void;
   drawingToolActive: boolean;
   freehandStrokeEnabled?: boolean;
+  placeDragEnabled?: boolean;
   marqueeZoomEnabled?: boolean;
   drawingsLocked?: boolean;
   onChartPoint: (point: CrosshairPoint, hit: HitResult | null) => void;
@@ -70,6 +71,11 @@ export interface ChartPaneProps {
   onFreehandStroke?: (
     phase: 'start' | 'move' | 'end',
     point: DrawingPoint | null,
+    points?: readonly DrawingPoint[],
+  ) => void;
+  onPlaceDrag?: (
+    phase: 'start' | 'end',
+    points: readonly DrawingPoint[],
   ) => void;
   orders?: readonly ChartOrder[];
   selectedOrderId?: string | null;
@@ -121,6 +127,7 @@ export function ChartPane({
   onReattachFollow,
   drawingToolActive,
   freehandStrokeEnabled = false,
+  placeDragEnabled = false,
   marqueeZoomEnabled = false,
   drawingsLocked = false,
   onChartPoint,
@@ -130,6 +137,7 @@ export function ChartPane({
   onDrawingsChange,
   onDrawingSelect,
   onFreehandStroke,
+  onPlaceDrag,
   orders = [],
   selectedOrderId = null,
   onOrderSelect,
@@ -256,6 +264,7 @@ export function ChartPane({
         replayCursorTime={replayCursorTime}
         drawingToolActive={drawingToolActive}
         freehandStrokeEnabled={freehandStrokeEnabled}
+        placeDragEnabled={placeDragEnabled}
         marqueeZoomEnabled={marqueeZoomEnabled}
         drawingsLocked={drawingsLocked}
         onChartPoint={onChartPoint}
@@ -264,6 +273,7 @@ export function ChartPane({
         onDrawingsChange={onDrawingsChange}
         onDrawingSelect={onDrawingSelect}
         onFreehandStroke={onFreehandStroke}
+        onPlaceDrag={onPlaceDrag}
         orders={orders}
         selectedOrderId={selectedOrderId}
         onOrderSelect={onOrderSelect}

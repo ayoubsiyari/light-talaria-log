@@ -1,9 +1,15 @@
 import type { ChartBar, VisibleRange } from '@/types/bar';
 import type { Drawing } from '@/drawings/drawingStore';
-import { paintAllDrawings } from '@/drawings/paint/paintDrawing';
+import {
+  paintAllDrawings,
+  paintDrawingEditChrome,
+  type DrawingPaintLayer,
+} from '@/drawings/paint/paintDrawing';
 import type { Timeframe } from '@/types/ui';
 import type { ChartColors } from '../chartTheme';
 import type { PlotRect, PriceScale } from '../scales';
+
+export type { DrawingPaintLayer };
 
 /** Paint drawings using time/price anchors (stable across pan/zoom/TF). */
 export function drawDrawings(
@@ -25,6 +31,7 @@ export function drawDrawings(
     priceAxisWidth: number;
     timeAxisHeight: number;
   } | null,
+  layer: DrawingPaintLayer = 'all',
 ): void {
   const ids =
     typeof selectedIds === 'string'
@@ -42,6 +49,41 @@ export function drawDrawings(
     hidden,
     hoveredId,
     _colors,
+    paneTf,
+    axisLayout,
+    layer,
+  );
+}
+
+/** Selection / hover handles + axis badges — overlay path only. */
+export function drawDrawingEditChrome(
+  ctx: CanvasRenderingContext2D,
+  drawings: readonly Drawing[],
+  bars: readonly ChartBar[],
+  range: VisibleRange,
+  plot: PlotRect,
+  priceScale: PriceScale,
+  colors: ChartColors,
+  selectedIds: readonly string[] | string | null,
+  hoveredId: string | null,
+  paneTf: Timeframe | null = null,
+  axisLayout?: {
+    width: number;
+    height: number;
+    priceAxisWidth: number;
+    timeAxisHeight: number;
+  } | null,
+): void {
+  paintDrawingEditChrome(
+    ctx,
+    drawings,
+    bars,
+    range,
+    plot,
+    priceScale,
+    selectedIds,
+    hoveredId,
+    colors,
     paneTf,
     axisLayout,
   );

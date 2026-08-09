@@ -38,7 +38,10 @@ import { LoadingProgress } from '@/components/LoadingProgress';
 import { ChartLoadingScreen } from '@/components/ChartLoadingScreen';
 import { PerfOverlay } from '@/components/perf/PerfOverlay';
 import { getChart } from '@/chart';
-/** Per-switch camera preserve: wall-clock window + tip fraction fallback. */
+/**
+ * Per-switch camera preserve (TradingView-like).
+ * `span` = bar-count zoom; times pin the place; tipRatio keeps tip X fraction.
+ */
 type LiveCamera = {
   anchorTime: number;
   span: number;
@@ -48,6 +51,7 @@ type LiveCamera = {
 };
 import {
   canAggregateFrom,
+  logicalIndexAtTime,
   smallestTimeframe,
   timeframeSeconds,
   visibleRangeFromTimeWindow,
@@ -69,6 +73,7 @@ import {
   pasteDrawingsFromClipboard,
   sendDrawingsToBack,
 } from '@/drawings/drawingClipboard';
+import { DrawingHistory } from '@/drawings/drawingHistory';
 import { applyShiftConstrainIfNeeded } from '@/drawings/constrain';
 import { placeDrawingPoint } from '@/drawings/drawingInteraction';
 import type { HitResult } from '@/drawings/hitTest';
@@ -229,6 +234,47 @@ interface PaneSeries {
 
 const SUGGESTED_PANE_TFS: Timeframe[] = ['1m', '5m', '15m', '1h'];
 
+/**
+ * Apply preserved camera onto a new TF/symbol buffer.
+ * Same bar-count zoom + same place in time — not the same wall-clock duration.
+ */
+function applyPreservedCamera(
+  chart: {
+    setVisibleRange: (
+      from: number,
+      to: number,
+      opts?: { silent?: boolean },
+    ) => void;
+  },
+  bars: readonly ChartBar[],
+  preserved: LiveCamera | null,
+  span: number,
+  tipRatio: number,
+): void {
+  if (bars.length === 0) return;
+  const spanSafe = Math.max(10, span);
+
+  // History pan (tip off to the right): pin the previous right-edge time.
+  if (
+    tipRatio > 1.001 &&
+    preserved?.toTime != null &&
+    Number.isFinite(preserved.toTime)
+  ) {
+    const toIndex = logicalIndexAtTime(bars, preserved.toTime);
+    chart.setVisibleRange(toIndex - spanSafe, toIndex, { silent: true });
+    return;
+  }
+
+  // Tip / near-tip: keep the tip (or anchor) at the same X fraction + bar zoom.
+  const anchorTime =
+    preserved?.anchorTime ??
+    preserved?.toTime ??
+    bars[bars.length - 1]!.time;
+  const anchorIndex = logicalIndexAtTime(bars, anchorTime);
+  const fromIndex = anchorIndex - tipRatio * spanSafe;
+  chart.setVisibleRange(fromIndex, fromIndex + spanSafe, { silent: true });
+}
+
 function isDrawingTool(tool: ChartToolId): tool is DrawingToolId {
   return tool !== 'cursor' && tool !== 'zoom' && tool in TOOLS;
 }
@@ -379,13 +425,11 @@ export default function App() {
   const [objectTreeOpen, setObjectTreeOpen] = useState(false);
   const [inlineTextId, setInlineTextId] = useState<string | null>(null);
   const [replayTick, setReplayTick] = useState(0);
+  /** Engine owns live freehand samples — React only tracks mode for placement tool id. */
   const freehandActiveRef = useRef(false);
-  /** Mirror of draftPoints for press-drag end (React state may lag a frame). */
-  const draftPointsRef = useRef<DrawingPoint[]>([]);
-  draftPointsRef.current = draftPoints;
-  /** Coalesce freehand point appends to one React update per frame. */
-  const freehandRafRef = useRef(0);
-  const pendingFreehandRef = useRef<DrawingPoint | null>(null);
+  const drawingHistoryRef = useRef(new DrawingHistory());
+  const drawingsRef = useRef(drawings);
+  drawingsRef.current = drawings;
 
   const syncStoreRef = useRef<ChartSyncStore | null>(null);
   const replayRef = useRef<ReplayController>(createReplayController());
@@ -520,9 +564,17 @@ export default function App() {
    * Imperative engine sync after TF/pair switch / warm-cache fills.
    * Required during replay: useChart skips React bar props while replayFollow is on.
    * By default only updates bars — never yanks sibling cameras (multi-pane independence).
+   *
+   * Camera apply (TradingView-like): keep **bar-count zoom** + the same place in
+   * time. Do NOT preserve wall-clock duration (1m→1h would zoom way in).
    */
   const syncEnginesFromSession = useCallback(
-    (opts?: { paneIds?: readonly string[]; applyCamera?: boolean }) => {
+    (opts?: {
+      paneIds?: readonly string[];
+      applyCamera?: boolean;
+      /** Keep preserve for a later final apply (heal mid TF-switch). */
+      keepPreserve?: boolean;
+    }) => {
       const s = sessionRef.current.get();
       const views = sessionRef.current.getViews();
       if (!s) return;
@@ -548,45 +600,32 @@ export default function App() {
           : v.bars[v.bars.length - 1]!.time;
         chart.syncReplayReveal(v.bars, tipTime);
 
-        if (applyCamera) {
-          // Prefer wall-clock remap so TF switch keeps the same time window
-          // (bar-count span from 1m onto 1h left a thin tip / empty pad).
-          if (
-            preserved?.fromTime != null &&
-            preserved?.toTime != null &&
-            preserved.toTime > preserved.fromTime
-          ) {
-            const mapped = visibleRangeFromTimeWindow(
-              v.bars,
-              preserved.fromTime,
-              preserved.toTime,
-            );
-            if (mapped.toIndex > mapped.fromIndex) {
-              chart.setVisibleRange(mapped.fromIndex, mapped.toIndex, {
-                silent: true,
-              });
-            } else {
-              const tipIndex = v.bars.length - 1;
-              const fromIndex = tipIndex - tipRatio * span;
-              chart.setVisibleRange(fromIndex, fromIndex + span, {
-                silent: true,
-              });
-            }
-          } else {
-            const tipIndex = v.bars.length - 1;
-            const fromIndex = tipIndex - tipRatio * span;
-            chart.setVisibleRange(fromIndex, fromIndex + span, {
-              silent: true,
-            });
-          }
-        }
-
+        // Follow before camera apply — setReplayFollow can right-anchor and
+        // must not run after we restore the preserved TF-switch viewport.
         if (replay.playing && !detachedPanesRef.current.has(pane.id)) {
           chart.setReplayFollow(true);
         }
+
+        if (applyCamera) {
+          applyPreservedCamera(chart, v.bars, preserved, span, tipRatio);
+        }
       }
 
-      if (applyCamera) cameraPreserveRef.current = null;
+      // Stamp engine cameras back into React panes so adopt/sync don't fight.
+      if (applyCamera) {
+        const stamped = panesRef.current.map((p) => {
+          if (only && !only.has(p.id)) return p;
+          const chart = getChart(p.id);
+          if (!chart || chart.getBars().length === 0) return p;
+          return { ...p, range: chart.getVisibleRange() };
+        });
+        panesRef.current = stamped;
+        setPanes(stamped);
+      }
+
+      if (applyCamera && opts?.keepPreserve !== true) {
+        cameraPreserveRef.current = null;
+      }
     },
     [],
   );
@@ -753,12 +792,27 @@ export default function App() {
   /** Engine paints rubber-band / freehand preview — no React setState per pointer move. */
   const placement = useMemo((): DrawingPlacement | null => {
     if (!isDrawingTool(activeTool)) return null;
+    // Freehand points live in the engine while stroking.
+    if (getTool(activeTool).points.kind === 'freehand') {
+      return {
+        tool: activeTool,
+        points: freehandActiveRef.current ? draftPoints : [],
+        freehandActive: freehandActiveRef.current,
+      };
+    }
     return {
       tool: activeTool,
       points: draftPoints,
-      freehandActive: freehandActiveRef.current,
+      freehandActive: false,
     };
   }, [activeTool, draftPoints]);
+
+  /** Armed for fixed-2 tools; engine skips when a click-click point is already pending. */
+  const placeDragEnabled = useMemo(() => {
+    if (!isDrawingTool(activeTool)) return false;
+    const mode = getTool(activeTool).points;
+    return mode.kind === 'fixed' && mode.count === 2;
+  }, [activeTool]);
 
   const selectedDrawing = drawings.find((d) => d.id === selectedDrawingId) ?? null;
   const selectedDrawings = useMemo(
@@ -767,7 +821,10 @@ export default function App() {
   );
 
   const persistDrawings = useCallback(
-    (next: Drawing[]) => {
+    (next: Drawing[], opts?: { skipHistory?: boolean }) => {
+      if (!opts?.skipHistory) {
+        drawingHistoryRef.current.push(drawingsRef.current);
+      }
       setDrawings(next);
       if (session && catalog) {
         saveDrawings(`${session.id}:${catalog.datasetId}`, next);
@@ -1876,6 +1933,7 @@ export default function App() {
         setChartLayout('1');
 
         const key = `${fresh.id}:${primary.datasetId}`;
+        drawingHistoryRef.current.clear();
         setDrawings(loadDrawings(key));
         const startingBalance =
           typeof fresh.startingBalance === 'number' &&
@@ -2247,6 +2305,36 @@ export default function App() {
       }
       if (typing) return;
       const mod = e.metaKey || e.ctrlKey;
+      if (mod && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+        e.preventDefault();
+        const prev = drawingHistoryRef.current.undo(drawingsRef.current);
+        if (prev) {
+          persistDrawings(prev, { skipHistory: true });
+          setSelectedDrawingIds([]);
+          setSettingsOpen(false);
+        }
+        return;
+      }
+      if (mod && (e.key === 'z' || e.key === 'Z') && e.shiftKey) {
+        e.preventDefault();
+        const next = drawingHistoryRef.current.redo(drawingsRef.current);
+        if (next) {
+          persistDrawings(next, { skipHistory: true });
+          setSelectedDrawingIds([]);
+          setSettingsOpen(false);
+        }
+        return;
+      }
+      if (mod && (e.key === 'y' || e.key === 'Y')) {
+        e.preventDefault();
+        const next = drawingHistoryRef.current.redo(drawingsRef.current);
+        if (next) {
+          persistDrawings(next, { skipHistory: true });
+          setSelectedDrawingIds([]);
+          setSettingsOpen(false);
+        }
+        return;
+      }
       if (mod && (e.key === 'c' || e.key === 'C') && selectedDrawingIds.length > 0) {
         e.preventDefault();
         copyDrawings(selectedDrawings);
@@ -2478,17 +2566,23 @@ export default function App() {
           if (switchGen !== paneSwitchGenRef.current) return;
 
           // Soft completeness guard — heal tip-only / empty-left before paint.
+          // Do NOT applyCamera during heal (that cleared preserve and tip-snapped).
           // Max 2 attempts per switch gen (session sparse retry + App heal).
           for (let attempt = 0; attempt < 2; attempt++) {
             if (switchGen !== paneSwitchGenRef.current) return;
             const healed = await healViewportIfNeeded(targets, {
               force: true,
-              applyCamera: true,
+              applyCamera: false,
             });
             if (!healed && attempt > 0) break;
             if (switchGen !== paneSwitchGenRef.current) return;
             commitSessionViews({ adoptRangePaneIds: targets });
-            syncEnginesFromSession({ paneIds: targets, applyCamera: true });
+            // Keep preserve until the final apply below (or last heal pass).
+            syncEnginesFromSession({
+              paneIds: targets,
+              applyCamera: true,
+              keepPreserve: true,
+            });
             // Second pass only if engines still fail the guard after push.
             if (attempt === 0) {
               const stillThin = targets.some((id) => {
@@ -2515,6 +2609,8 @@ export default function App() {
           }
           if (switchGen !== paneSwitchGenRef.current) return;
 
+          // Final camera apply + clear preserve.
+          syncEnginesFromSession({ paneIds: targets, applyCamera: true });
           syncReplayClockTf(panesRef.current);
 
           const focus = panesRef.current.find((p) => p.id === paneId);
@@ -2601,7 +2697,10 @@ export default function App() {
             replayBufferRef.current.delete(id);
           }
           if (switchGen !== paneSwitchGenRef.current) return;
-          await healViewportIfNeeded(targets, { force: true, applyCamera: true });
+          await healViewportIfNeeded(targets, {
+            force: true,
+            applyCamera: false,
+          });
           if (switchGen !== paneSwitchGenRef.current) return;
 
           commitSessionViews({ adoptRangePaneIds: targets });
@@ -2767,119 +2866,76 @@ export default function App() {
     };
   }, []);
 
-  const appendFreehandPoint = useCallback((pt: DrawingPoint) => {
-    pendingFreehandRef.current = pt;
-    if (freehandRafRef.current !== 0) return;
-    freehandRafRef.current = requestAnimationFrame(() => {
-      freehandRafRef.current = 0;
-      const nextPt = pendingFreehandRef.current;
-      if (!nextPt) return;
-      setDraftPoints((prev) => {
-        const last = prev[prev.length - 1];
-        if (
-          last &&
-          Math.abs(last.time - nextPt.time) < 0.5 &&
-          Math.abs(last.price - nextPt.price) < 1e-6
-        ) {
-          return prev;
-        }
-        const next = [...prev, nextPt];
-        draftPointsRef.current = next;
-        return next;
-      });
-    });
-  }, []);
-
-  /** Brush / highlighter: press → drag → release (engine-owned stroke phases). */
+  /** Brush / highlighter: engine owns samples; React commits on end only. */
   const handleFreehandStroke = useCallback(
-    (phase: 'start' | 'move' | 'end', point: DrawingPoint | null) => {
+    (
+      phase: 'start' | 'move' | 'end',
+      _point: DrawingPoint | null,
+      points?: readonly DrawingPoint[],
+    ) => {
       if (!session || !catalog) return;
       if (!isDrawingTool(activeTool) || getTool(activeTool).points.kind !== 'freehand') {
         return;
       }
 
       if (phase === 'start') {
-        if (!point) return;
         freehandActiveRef.current = true;
-        draftPointsRef.current = [point];
-        setDraftPoints([point]);
         return;
       }
 
       if (phase === 'move') {
-        if (!point || !freehandActiveRef.current) return;
-        appendFreehandPoint(point);
+        // Engine paints the stroke — no React updates.
         return;
       }
 
-      // end
       freehandActiveRef.current = false;
-      if (freehandRafRef.current !== 0) {
-        cancelAnimationFrame(freehandRafRef.current);
-        freehandRafRef.current = 0;
-      }
-      let pts = draftPointsRef.current;
-      if (pendingFreehandRef.current) {
-        const tip = pendingFreehandRef.current;
-        pendingFreehandRef.current = null;
-        const last = pts[pts.length - 1];
-        if (
-          !last ||
-          Math.abs(last.time - tip.time) >= 0.5 ||
-          Math.abs(last.price - tip.price) >= 1e-6
-        ) {
-          pts = [...pts, tip];
-        }
-      }
-      if (point) {
-        const last = pts[pts.length - 1];
-        if (
-          !last ||
-          Math.abs(last.time - point.time) >= 0.5 ||
-          Math.abs(last.price - point.price) >= 1e-6
-        ) {
-          pts = [...pts, point];
-        }
-      }
-      draftPointsRef.current = pts;
-
-      if (pts.length < 2) {
-        setDraftPoints([]);
-        draftPointsRef.current = [];
-        return;
-      }
+      const pts = points ?? [];
+      setDraftPoints([]);
+      if (pts.length < 2) return;
 
       const tip = pts[pts.length - 1]!;
-      const result = placeDrawingPoint(activeTool, pts, tip, {
+      const result = placeDrawingPoint(activeTool, [...pts], tip, {
         finishPolyline: true,
       });
-      setDraftPoints([]);
-      draftPointsRef.current = [];
       if (result.status === 'complete') {
-        persistDrawings([...drawings, result.drawing]);
+        persistDrawings([...drawingsRef.current, result.drawing]);
         finishPlacedDrawing(result.drawing);
       }
     },
-    [
-      activeTool,
-      appendFreehandPoint,
-      catalog,
-      drawings,
-      finishPlacedDrawing,
-      persistDrawings,
-      session,
-    ],
+    [activeTool, catalog, finishPlacedDrawing, persistDrawings, session],
+  );
+
+  /** Fixed-2 press-drag place (trend/rect/fib…) — commit on end. */
+  const handlePlaceDrag = useCallback(
+    (phase: 'start' | 'end', points: readonly DrawingPoint[]) => {
+      if (!session || !catalog) return;
+      if (!isDrawingTool(activeTool)) return;
+      const def = getTool(activeTool);
+      if (def.points.kind !== 'fixed' || def.points.count !== 2) return;
+
+      if (phase === 'start') {
+        setDraftPoints(points.length ? [points[0]!] : []);
+        return;
+      }
+
+      setDraftPoints([]);
+      if (points.length < 2) return;
+      const tip = points[points.length - 1]!;
+      const result = placeDrawingPoint(activeTool, [points[0]!], tip);
+      if (result.status === 'complete') {
+        persistDrawings([...drawingsRef.current, result.drawing]);
+        finishPlacedDrawing(result.drawing);
+      } else if (result.status === 'pending') {
+        setDraftPoints(result.points);
+      }
+    },
+    [activeTool, catalog, finishPlacedDrawing, persistDrawings, session],
   );
 
   const handleToolChange = (tool: ChartToolId) => {
     setActiveTool(tool);
     setDraftPoints([]);
     freehandActiveRef.current = false;
-    pendingFreehandRef.current = null;
-    if (freehandRafRef.current !== 0) {
-      cancelAnimationFrame(freehandRafRef.current);
-      freehandRafRef.current = 0;
-    }
     if (tool !== 'cursor') {
       setSelectedDrawingIds([]);
       setSettingsOpen(false);
@@ -4360,11 +4416,13 @@ export default function App() {
                 isDrawingTool(activeTool) &&
                 getTool(activeTool).points.kind === 'freehand'
               }
+              placeDragEnabled={placeDragEnabled}
               marqueeZoomEnabled={activeTool === 'zoom'}
               drawingsLocked={drawingsLocked}
               onChartPoint={handleChartPoint}
               onBacktestEventSelect={setExplainEvent}
               onFreehandStroke={handleFreehandStroke}
+              onPlaceDrag={handlePlaceDrag}
               onDrawingsChange={handleEngineDrawingsChange}
               onDrawingSelect={handleEngineDrawingSelect}
               onUserGesture={(paneId) => {

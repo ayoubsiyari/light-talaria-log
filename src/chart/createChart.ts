@@ -30,7 +30,7 @@ import {
   isRectEdgeHandle,
   isRectLikeTool,
 } from '@/drawings/rectHandles';
-import type { DrawingToolId } from '@/drawings/toolRegistry';
+import { getTool, type DrawingToolId } from '@/drawings/toolRegistry';
 import type { ChartBar, VisibleRange } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
 import type { IndicatorOverlayResult, IndicatorPaneResult } from '@/types/indicator';
@@ -52,6 +52,7 @@ import {
 } from '@/orders/levelDrag';
 import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
 import { markChartPaint } from '@/perf/perfMonitor';
+import { isCoarsePointer } from '@/utils/touchTarget';
 import { hitTestOrderLevel, hitTestOrders } from './overlays/drawOrders';
 import { hitTestBacktestEvent } from './overlays/drawBacktest';
 import { MAX_BARS_IN_MEMORY, VISIBLE_BARS_TARGET } from '@/utils/constants';
@@ -125,9 +126,16 @@ export type DrawingsChangeListener = (drawings: readonly Drawing[]) => void;
 /** Full selection set (primary = last id). Empty = deselect. */
 export type DrawingSelectListener = (drawingIds: readonly string[]) => void;
 export type FreehandStrokePhase = 'start' | 'move' | 'end';
+/** Freehand: start/move carry tip; end carries full stroke in `points`. */
 export type FreehandStrokeListener = (
   phase: FreehandStrokePhase,
   point: DrawingPoint | null,
+  points?: readonly DrawingPoint[],
+) => void;
+/** Press-drag place for fixed-2 tools — App commits on `end`. */
+export type PlaceDragListener = (
+  phase: 'start' | 'end',
+  points: readonly DrawingPoint[],
 ) => void;
 
 interface DrawingDragState {
@@ -264,11 +272,17 @@ export interface ChartInstance {
    * instead of panning — if no drawing was hit.
    */
   setFreehandStrokeEnabled: (enabled: boolean) => void;
+  /**
+   * When true, plot press-drag places a fixed-2 tool (trend/rect/fib…)
+   * instead of click-click — if no drawing was hit.
+   */
+  setPlaceDragEnabled: (enabled: boolean) => void;
   /** When true, plot press-drag draws a zoom marquee (after freehand miss). */
   setMarqueeZoomEnabled: (enabled: boolean) => void;
   onDrawingsChange: (cb: DrawingsChangeListener) => () => void;
   onDrawingSelect: (cb: DrawingSelectListener) => () => void;
   onFreehandStroke: (cb: FreehandStrokeListener) => () => void;
+  onPlaceDrag: (cb: PlaceDragListener) => () => void;
   destroy: () => void;
 }
 
@@ -351,6 +365,12 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   let drawingInteractEnabled = true;
   /** Brush / highlighter press-drag (on while freehand tool is active). */
   let freehandStrokeEnabled = false;
+  /** Fixed-2 tool press-drag place (trend/rect/fib…). */
+  let placeDragEnabled = false;
+  let placeDragActive = false;
+  /** Engine-owned freehand samples (React only sees complete stroke). */
+  let freehandPoints: DrawingPoint[] = [];
+  let freehandActive = false;
   /** Zoom tool marquee press-drag. */
   let marqueeZoomEnabled = false;
   let marquee: { x0: number; y0: number; x1: number; y1: number } | null = null;
@@ -402,6 +422,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   const drawingsChangeListeners = new Set<DrawingsChangeListener>();
   const drawingSelectListeners = new Set<DrawingSelectListener>();
   const freehandStrokeListeners = new Set<FreehandStrokeListener>();
+  const placeDragListeners = new Set<PlaceDragListener>();
   let unsubAppearance: (() => void) | null = null;
 
   const invalidateScaleCache = () => {
@@ -570,7 +591,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     if (drawingsHidden || x === null || y === null || drawings.length === 0) {
       if (hoveredDrawingId !== null) {
         hoveredDrawingId = null;
-        markDrawingsDirty();
+        markOverlayDirty(); // handles live on overlay
       }
       return;
     }
@@ -578,7 +599,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     const nextId = hit?.drawingId ?? null;
     if (nextId !== hoveredDrawingId) {
       hoveredDrawingId = nextId;
-      markDrawingsDirty(); // handles only — series layer stays cached
+      markOverlayDirty(); // handles only — drawings body cache stays cold
     }
   };
 
@@ -882,8 +903,58 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     return magnetSnap(logical, bars, drawingMagnetMode);
   };
 
-  const emitFreehandStroke = (phase: FreehandStrokePhase, point: DrawingPoint | null) => {
-    for (const cb of freehandStrokeListeners) cb(phase, point);
+  const emitFreehandStroke = (
+    phase: FreehandStrokePhase,
+    point: DrawingPoint | null,
+    points?: readonly DrawingPoint[],
+  ) => {
+    for (const cb of freehandStrokeListeners) cb(phase, point, points);
+  };
+
+  const emitPlaceDrag = (phase: 'start' | 'end', points: readonly DrawingPoint[]) => {
+    for (const cb of placeDragListeners) cb(phase, points);
+  };
+
+  const appendFreehandSample = (pt: DrawingPoint) => {
+    const last = freehandPoints[freehandPoints.length - 1];
+    if (
+      last &&
+      Math.abs(last.time - pt.time) < 0.5 &&
+      Math.abs(last.price - pt.price) < 1e-6
+    ) {
+      return;
+    }
+    freehandPoints = [...freehandPoints, pt];
+    if (placement) {
+      placement = {
+        ...placement,
+        points: freehandPoints,
+        freehandActive: true,
+      };
+      draftDrawing = createDraftDrawing(placement.tool, freehandPoints);
+      markOverlayDirty();
+    }
+  };
+
+  const resetFreehandStroke = () => {
+    if (!freehandActive && freehandPoints.length === 0) return;
+    freehandActive = false;
+    freehandPoints = [];
+    if (placement) {
+      placement = { ...placement, points: [], freehandActive: false };
+    }
+    draftDrawing = null;
+    markOverlayDirty();
+  };
+
+  const resetPlaceDrag = () => {
+    if (!placeDragActive) return;
+    placeDragActive = false;
+    if (placement) {
+      placement = { ...placement, points: [] };
+    }
+    draftDrawing = null;
+    markOverlayDirty();
   };
 
   const hitDrawingAt = (x: number, y: number): HitResult | null => hitDrawingCached(x, y);
@@ -952,7 +1023,9 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       const hit = hitDrawingAt(x, y);
       if (!hit) {
         // Brush / zoom marquee: show system crosshair so press-drag feels intentional
-        if (freehandStrokeEnabled || marqueeZoomEnabled) return 'crosshair';
+        if (freehandStrokeEnabled || placeDragEnabled || marqueeZoomEnabled) {
+          return 'crosshair';
+        }
         return null;
       }
       const d = drawings.find((dr) => dr.id === hit.drawingId);
@@ -964,7 +1037,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     getDrawingDragCursor: () =>
       orderLevelDragging ? 'ns-resize' : (drawingDrag?.cursor ?? null),
     beginFreehandStroke: (x, y) => {
-      if (!freehandStrokeEnabled) return false;
+      if (!freehandStrokeEnabled || !placement) return false;
       // Prefer select over stroke when pressing an existing drawing (plot click).
       if (!drawingsHidden && drawings.length > 0) {
         const existing = hitTestDrawings(
@@ -981,16 +1054,112 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       }
       const pt = resolveFreehandPoint(x, y);
       if (!pt) return false;
-      emitFreehandStroke('start', pt);
+      freehandActive = true;
+      freehandPoints = [pt];
+      placement = {
+        ...placement,
+        points: freehandPoints,
+        freehandActive: true,
+      };
+      draftDrawing = createDraftDrawing(placement.tool, freehandPoints);
+      markOverlayDirty();
+      emitFreehandStroke('start', pt, freehandPoints);
       return true;
     },
     moveFreehandStroke: (x, y) => {
-      if (!freehandStrokeEnabled) return;
-      emitFreehandStroke('move', resolveFreehandPoint(x, y));
+      if (!freehandStrokeEnabled || !freehandActive) return;
+      const pt = resolveFreehandPoint(x, y);
+      if (!pt) return;
+      appendFreehandSample(pt);
     },
     endFreehandStroke: (x, y) => {
-      if (!freehandStrokeEnabled) return;
-      emitFreehandStroke('end', resolveFreehandPoint(x, y));
+      if (!freehandStrokeEnabled || !freehandActive) return;
+      const tip = resolveFreehandPoint(x, y);
+      if (tip) appendFreehandSample(tip);
+      const pts = freehandPoints;
+      freehandActive = false;
+      freehandPoints = [];
+      if (placement) {
+        placement = { ...placement, points: [], freehandActive: false };
+      }
+      draftDrawing = null;
+      markOverlayDirty();
+      emitFreehandStroke('end', tip, pts);
+    },
+    cancelFreehandStroke: () => {
+      resetFreehandStroke();
+    },
+    beginPlaceDrag: (x, y) => {
+      if (!placeDragEnabled || !placement || placeDragActive || freehandActive) return false;
+      const def = getTool(placement.tool);
+      if (def.points.kind !== 'fixed' || def.points.count !== 2) return false;
+      if (placement.points.length > 0) return false;
+      if (!drawingsHidden && drawings.length > 0) {
+        const existing = hitTestDrawings(
+          x,
+          y,
+          drawings,
+          bars,
+          range,
+          layout.plot,
+          resolvePriceScale(),
+          paneTimeframe,
+        );
+        if (existing) return false;
+      }
+      let pt = mediaToLogical(x, y);
+      if (!pt) return false;
+      pt = magnetSnap(pt, bars, drawingMagnetMode);
+      placeDragActive = true;
+      placement = { ...placement, points: [pt], freehandActive: false };
+      updatePlacementDraft(pt);
+      emitPlaceDrag('start', [pt]);
+      return true;
+    },
+    movePlaceDrag: (x, y) => {
+      if (!placeDragActive || !placement) return;
+      let tip = mediaToLogical(x, y);
+      if (!tip) return;
+      tip = magnetSnap(tip, bars, drawingMagnetMode);
+      tip = applyShiftConstrainIfNeeded(
+        placement.tool,
+        placement.points,
+        tip,
+        bars,
+        drawingShiftHeld,
+      );
+      updatePlacementDraft(tip);
+    },
+    endPlaceDrag: (x, y) => {
+      if (!placeDragActive || !placement) return;
+      placeDragActive = false;
+      let tip = mediaToLogical(x, y);
+      if (tip) {
+        tip = magnetSnap(tip, bars, drawingMagnetMode);
+        tip = applyShiftConstrainIfNeeded(
+          placement.tool,
+          placement.points,
+          tip,
+          bars,
+          drawingShiftHeld,
+        );
+      }
+      const p0 = placement.points[0];
+      const pts =
+        p0 && tip
+          ? [p0, tip]
+          : p0
+            ? [p0]
+            : [];
+      placement = { ...placement, points: [] };
+      draftDrawing = null;
+      markOverlayDirty();
+      if (pts.length >= 2) {
+        emitPlaceDrag('end', pts);
+      }
+    },
+    cancelPlaceDrag: () => {
+      resetPlaceDrag();
     },
     beginDrawingDrag: (x, y, opts) => {
       // Order levels claim before drawings — drag must not reconcile React (§8.2).
@@ -1016,7 +1185,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
           ensureDragReadout(orderDragCtx.container);
           orderLevelDragging = true;
           selectedOrderId = order.id;
-          markOverlayDirty();
+          markDrawingsDirty(); // orders live on drawings cache
           return true;
         }
       }
@@ -1025,12 +1194,23 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         if (!opts?.additive) {
           selectedDrawingIds = [];
           for (const cb of drawingSelectListeners) cb([]);
-          markDrawingsDirty();
+          markOverlayDirty(); // selection chrome only
         }
         return false;
       }
       let d = drawings.find((dr) => dr.id === hit.drawingId);
       if (!d) return false;
+
+      // Touch: pan wins over unselected body hits — tap still selects via plot click.
+      // Selected bodies + any handle still claim immediately.
+      if (
+        isCoarsePointer() &&
+        hit.handleIndex == null &&
+        !selectedDrawingIds.includes(d.id) &&
+        !opts?.additive
+      ) {
+        return false;
+      }
 
       // Selection (additive = Shift/Ctrl/Meta). Locked drawings select but do not drag.
       let nextIds: string[];
@@ -1055,12 +1235,12 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
 
       // Additive toggle-off: select only, no drag.
       if (opts?.additive && !nextIds.includes(d.id)) {
-        markDrawingsDirty();
+        markOverlayDirty();
         return false;
       }
 
       if (d.locked) {
-        markDrawingsDirty();
+        markOverlayDirty();
         return false; // pan passthrough
       }
 
@@ -1121,7 +1301,9 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         anchorPrice: logical.price,
         cursor,
       };
-      markDrawingsDirty();
+      // Clone added a body → drawings; otherwise chrome-only until move.
+      if (opts?.altKey && hit.handleIndex == null) markDrawingsDirty();
+      else markOverlayDirty();
       return true;
     },
     beginMarqueeZoom: (x, y) => {
@@ -1133,6 +1315,11 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     moveMarqueeZoom: (x, y) => {
       if (!marquee) return;
       marquee = { ...marquee, x1: x, y1: y };
+      markOverlayDirty();
+    },
+    cancelMarqueeZoom: () => {
+      if (!marquee) return;
+      marquee = null;
       markOverlayDirty();
     },
     endMarqueeZoom: (x, y) => {
@@ -1216,7 +1403,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
             for (const cb of orderLevelLiveListeners) cb(payload);
           });
         }
-        markOverlayDirty();
+        markDrawingsDirty(); // live level preview on drawings cache
         return;
       }
       if (!drawingDrag) return;
@@ -1320,7 +1507,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
           };
           for (const cb of orderLevelCommitListeners) cb(payload);
         }
-        markOverlayDirty();
+        markDrawingsDirty();
         return;
       }
       if (drawingDrag) {
@@ -1493,12 +1680,12 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       chartOrders = orders;
       if (selectedId !== undefined) selectedOrderId = selectedId;
       // Level prices affect auto Y-scale — rebuild series when they change so
-      // SL/TP never sit clipped off-screen. PnL-only updates stay overlay-cheap.
+      // SL/TP never sit clipped off-screen.
       if (prevLevels !== orderLevelsKey()) {
         invalidateScaleCache();
         markSceneDirty();
       } else {
-        markOverlayDirty();
+        markDrawingsDirty(); // orders painted on drawings cache
       }
     },
 
@@ -1522,7 +1709,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
 
     setBacktestResult(result: BacktestResult | null) {
       backtestResult = result;
-      markOverlayDirty();
+      markDrawingsDirty();
     },
 
     hitTestBacktestAt(x: number, y: number) {
@@ -1585,6 +1772,9 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     followRealtime,
 
     setDrawings(next, draft = null, opts) {
+      const prevHidden = drawingsHidden;
+      const prevTf = paneTimeframe;
+      const listChanged = drawingDrag != null || drawings !== next;
       // Don't clobber in-flight drag geometry with a stale React snapshot.
       if (drawingDrag) {
         const liveById = new Map(
@@ -1602,7 +1792,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         drawings = next;
       }
       // Placement owns rubber-band draft; React draft only when not placing
-      if (!placement) draftDrawing = draft;
+      if (!placement && !freehandActive && !placeDragActive) draftDrawing = draft;
       if (opts?.selectedIds !== undefined) {
         selectedDrawingIds = opts.selectedIds ? [...opts.selectedIds] : [];
       } else if (opts?.selectedId !== undefined) {
@@ -1625,7 +1815,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         hoveredDrawingId = null;
       }
       invalidateHitCache();
-      markDrawingsDirty();
+      const bodiesChanged =
+        listChanged || prevHidden !== drawingsHidden || prevTf !== paneTimeframe;
+      if (bodiesChanged) markDrawingsDirty();
+      else markOverlayDirty(); // selection / hover chrome only
     },
 
     setDrawingMagnetMode(mode) {
@@ -1649,6 +1842,16 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     },
 
     setPlacement(next) {
+      // Engine owns live freehand / place-drag points — don't clobber mid-gesture.
+      if (freehandActive || placeDragActive) {
+        if (!next) return;
+        placement = {
+          ...next,
+          points: freehandActive ? freehandPoints : placement?.points ?? next.points,
+          freehandActive: freehandActive || next.freehandActive,
+        };
+        return;
+      }
       placement = next;
       if (!next) {
         draftDrawing = null;
@@ -1891,6 +2094,12 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
 
     setFreehandStrokeEnabled(enabled) {
       freehandStrokeEnabled = enabled;
+      if (!enabled) resetFreehandStroke();
+    },
+
+    setPlaceDragEnabled(enabled) {
+      placeDragEnabled = enabled;
+      if (!enabled) resetPlaceDrag();
     },
 
     setMarqueeZoomEnabled(enabled) {
@@ -1922,6 +2131,13 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       };
     },
 
+    onPlaceDrag(cb) {
+      placeDragListeners.add(cb);
+      return () => {
+        placeDragListeners.delete(cb);
+      };
+    },
+
     destroy() {
       if (destroyed) return;
       destroyed = true;
@@ -1945,6 +2161,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       drawingsChangeListeners.clear();
       drawingSelectListeners.clear();
       freehandStrokeListeners.clear();
+      placeDragListeners.clear();
       orderLevelCommitListeners.clear();
       orderLevelLiveListeners.clear();
       if (orderLevelLiveRaf != null) {
@@ -1953,6 +2170,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       }
       drawingDrag = null;
       freehandStrokeEnabled = false;
+      placeDragEnabled = false;
+      placeDragActive = false;
+      freehandActive = false;
+      freehandPoints = [];
       marqueeZoomEnabled = false;
       marquee = null;
       orderLevelDragging = false;

@@ -43,6 +43,7 @@ interface ChartGridProps {
   onReattachFollow?: () => void;
   drawingToolActive: boolean;
   freehandStrokeEnabled?: boolean;
+  placeDragEnabled?: boolean;
   marqueeZoomEnabled?: boolean;
   drawingsLocked?: boolean;
   onChartPoint: (point: CrosshairPoint, hit: HitResult | null) => void;
@@ -56,6 +57,11 @@ interface ChartGridProps {
   onFreehandStroke?: (
     phase: 'start' | 'move' | 'end',
     point: DrawingPoint | null,
+    points?: readonly DrawingPoint[],
+  ) => void;
+  onPlaceDrag?: (
+    phase: 'start' | 'end',
+    points: readonly DrawingPoint[],
   ) => void;
   orders?: readonly ChartOrder[];
   selectedOrderId?: string | null;
@@ -117,6 +123,7 @@ export function ChartGrid({
   onReattachFollow,
   drawingToolActive,
   freehandStrokeEnabled = false,
+  placeDragEnabled = false,
   marqueeZoomEnabled = false,
   drawingsLocked = false,
   onChartPoint,
@@ -126,6 +133,7 @@ export function ChartGrid({
   onDrawingsChange,
   onDrawingSelect,
   onFreehandStroke,
+  onPlaceDrag,
   orders = [],
   selectedOrderId = null,
   onOrderSelect,
@@ -216,6 +224,7 @@ export function ChartGrid({
               onReattachFollow={onReattachFollow}
               drawingToolActive={drawingToolActive}
               freehandStrokeEnabled={freehandStrokeEnabled}
+              placeDragEnabled={placeDragEnabled}
               marqueeZoomEnabled={marqueeZoomEnabled}
               drawingsLocked={drawingsLocked}
               onChartPoint={onChartPoint}
@@ -227,6 +236,7 @@ export function ChartGrid({
               onDrawingsChange={onDrawingsChange}
               onDrawingSelect={onDrawingSelect}
               onFreehandStroke={onFreehandStroke}
+              onPlaceDrag={onPlaceDrag}
               orders={ordersForPair(orders, pane.pair)}
               selectedOrderId={selectedOrderId}
               onOrderSelect={onOrderSelect}

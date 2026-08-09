@@ -29,6 +29,10 @@ interface LineStylePickerFlyoutProps {
   onClose: () => void;
   /** Show thickness + dash segments (default true). */
   showLineControls?: boolean;
+  /** Hide dash style row (brush/highlighter — always solid). */
+  hideDash?: boolean;
+  /** Custom thickness presets (e.g. highlighter 8…64). */
+  widthPresets?: readonly number[];
 }
 
 /**
@@ -42,7 +46,10 @@ export function LineStylePickerFlyout({
   onChange,
   onClose,
   showLineControls = true,
+  hideDash = false,
+  widthPresets,
 }: LineStylePickerFlyoutProps) {
+  const widths = widthPresets?.length ? widthPresets : LINE_WIDTHS;
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const [customHex, setCustomHex] = useState(value.color);
@@ -183,46 +190,52 @@ export function LineStylePickerFlyout({
             <div className="text-xs text-muted">Thickness</div>
             <SegmentedControl
               ariaLabel="Line thickness"
-              value={value.width}
+              value={
+                (widths as readonly number[]).includes(value.width)
+                  ? value.width
+                  : (widths.find((w) => w >= value.width) ?? widths[widths.length - 1]!)
+              }
               onChange={(w) => onChange({ width: w })}
-              options={LINE_WIDTHS.map((w) => ({
+              options={widths.map((w) => ({
                 id: w,
                 title: `${w}px`,
                 content: (
                   <span
                     className="block w-5 rounded-full bg-current"
-                    style={{ height: Math.max(1, w) }}
+                    style={{ height: Math.max(1, Math.min(8, w / (widths.length > 4 ? 8 : 1))) }}
                   />
                 ),
               }))}
             />
           </div>
 
-          <div className="space-y-1.5">
-            <div className="text-xs text-muted">Line style</div>
-            <SegmentedControl
-              ariaLabel="Line style"
-              value={value.lineStyle}
-              onChange={(lineStyle) => onChange({ lineStyle })}
-              options={LINE_STYLES.map((ls) => ({
-                id: ls.id,
-                title: ls.title,
-                content: (
-                  <svg width="28" height="10" viewBox="0 0 28 10">
-                    <line
-                      x1="2"
-                      y1="5"
-                      x2="26"
-                      y2="5"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeDasharray={ls.dash || undefined}
-                    />
-                  </svg>
-                ),
-              }))}
-            />
-          </div>
+          {!hideDash && (
+            <div className="space-y-1.5">
+              <div className="text-xs text-muted">Line style</div>
+              <SegmentedControl
+                ariaLabel="Line style"
+                value={value.lineStyle}
+                onChange={(lineStyle) => onChange({ lineStyle })}
+                options={LINE_STYLES.map((ls) => ({
+                  id: ls.id,
+                  title: ls.title,
+                  content: (
+                    <svg width="28" height="10" viewBox="0 0 28 10">
+                      <line
+                        x1="2"
+                        y1="5"
+                        x2="26"
+                        y2="5"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeDasharray={ls.dash || undefined}
+                      />
+                    </svg>
+                  ),
+                }))}
+              />
+            </div>
+          )}
         </>
       )}
     </div>,

@@ -8,6 +8,36 @@ export type PlaceResult =
   | { status: 'complete'; drawing: Drawing; points: DrawingPoint[] }
   | { status: 'ignore' };
 
+/**
+ * Talaria-style freehand sanitize — drop consecutive near-duplicates only.
+ * Do NOT stride-thin to ~40 pts (that is what made release look jagged).
+ */
+export function sanitizeFreehandPoints(points: readonly DrawingPoint[]): DrawingPoint[] {
+  if (points.length < 2) return points.map((p) => ({ ...p }));
+  const out: DrawingPoint[] = [];
+  // Data-space epsilon (time seconds² + price²) — keep dense strokes.
+  const minDistSq = 1e-10;
+  for (const p of points) {
+    if (!Number.isFinite(p.time) || !Number.isFinite(p.price)) continue;
+    if (out.length > 0) {
+      const prev = out[out.length - 1]!;
+      const dt = p.time - prev.time;
+      const dp = p.price - prev.price;
+      if (dt * dt + dp * dp < minDistSq) continue;
+    }
+    out.push({ time: p.time, price: p.price });
+  }
+  if (out.length < 2 && points.length >= 2) {
+    const first = points[0]!;
+    const last = points[points.length - 1]!;
+    return [
+      { time: first.time, price: first.price },
+      { time: last.time, price: last.price },
+    ];
+  }
+  return out;
+}
+
 /** Append a point toward finishing the active tool. */
 export function placeDrawingPoint(
   tool: DrawingToolId,
@@ -27,14 +57,7 @@ export function placeDrawingPoint(
         Math.abs(last.time - point.time) < 0.5 &&
         Math.abs(last.price - point.price) < 1e-6;
       let next = tipDup || existing.length === 0 ? existing : [...existing, point];
-      // Thin dense freehand samples (keep endpoints).
-      if (next.length > 48) {
-        const step = Math.ceil(next.length / 40);
-        const thinned: DrawingPoint[] = [next[0]!];
-        for (let i = step; i < next.length - 1; i += step) thinned.push(next[i]!);
-        thinned.push(next[next.length - 1]!);
-        next = thinned;
-      }
+      next = sanitizeFreehandPoints(next);
       if (next.length < 2) return { status: 'ignore' };
       return {
         status: 'complete',
@@ -43,10 +66,10 @@ export function placeDrawingPoint(
       };
     }
     const last = existing[existing.length - 1];
-    // Skip near-duplicate samples while stroking.
+    // Skip near-duplicate samples while stroking (tight — keep curve density).
     if (
       last &&
-      Math.abs(last.time - point.time) < 80 &&
+      Math.abs(last.time - point.time) < 0.05 &&
       Math.abs(last.price - point.price) < 1e-8
     ) {
       return {

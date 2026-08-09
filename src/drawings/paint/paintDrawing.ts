@@ -35,6 +35,7 @@ import {
   pointsToXY,
   type PaintCtx,
 } from './coords';
+import { pathFreehandCatmullRom } from './freehandPath';
 import {
   drawArrowHead,
   drawHandles,
@@ -983,26 +984,34 @@ export function paintDrawing(
       break;
     case 'path':
     case 'polyline':
+      strokePoly(pc, xy, style, false);
+      break;
     case 'brush':
     case 'highlighter': {
-      const soft = asBool(d.meta?.softEdge, d.type === 'highlighter');
-      if (soft && xy.length >= 2) {
+      // Talaria: Catmull-Rom α=0.5, round caps, always solid.
+      // Highlighter look = wide stroke + opacity (not a soft-edge halo).
+      if (xy.length >= 2) {
         const { ctx } = pc;
-        ctx.save();
-        applyStrokeStyle(ctx, {
-          ...style,
-          width: style.width + 4,
-          opacity: style.opacity * 0.35,
-        });
+        applyStrokeStyle(ctx, { ...style, lineStyle: 'solid' });
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.beginPath();
-        ctx.moveTo(xy[0]!.x, xy[0]!.y);
-        for (let i = 1; i < xy.length; i++) ctx.lineTo(xy[i]!.x, xy[i]!.y);
+        pathFreehandCatmullRom(ctx, xy, {
+          skipStartPad: style.leftEnd,
+          skipEndPad: style.rightEnd,
+        });
         ctx.stroke();
-        ctx.restore();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+        if (style.leftEnd && xy[0] && xy[1]) {
+          drawArrowHead(pc, xy[1].x, xy[1].y, xy[0].x, xy[0].y, style);
+        }
+        if (style.rightEnd && xy.length >= 2) {
+          const a = xy[xy.length - 2]!;
+          const b = xy[xy.length - 1]!;
+          drawArrowHead(pc, a.x, a.y, b.x, b.y, style);
+        }
       }
-      strokePoly(pc, xy, style, false);
       break;
     }
     case 'arc':

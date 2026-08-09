@@ -146,19 +146,19 @@ export function DrawingSettingsModal({
   }, []);
 
   const showInputs = settings.showInputsTab && settings.toolPanel !== 'generic';
+  const showText = settings.showTextTab;
+  const showCoords = settings.showCoordsTab !== false;
 
   const tabs = useMemo(() => {
     const list: { id: SettingsTab; label: string }[] = [
       { id: 'style', label: 'Style' },
     ];
     if (showInputs) list.push({ id: 'inputs', label: 'Inputs' });
-    list.push(
-      { id: 'text', label: 'Text' },
-      { id: 'coordinates', label: 'Coordinates' },
-      { id: 'visibility', label: 'Visibility' },
-    );
+    if (showText) list.push({ id: 'text', label: 'Text' });
+    if (showCoords) list.push({ id: 'coordinates', label: 'Coordinates' });
+    list.push({ id: 'visibility', label: 'Visibility' });
     return list;
-  }, [showInputs]);
+  }, [showInputs, showText, showCoords]);
 
   const displayTitle = draft.name?.trim() || tool.label;
 
@@ -210,6 +210,9 @@ export function DrawingSettingsModal({
 
   const showFill = settings.styleSections.includes('fill');
   const showLineExtras = settings.styleSections.includes('lineExtras');
+  const isBrushTool = draft.type === 'brush' || draft.type === 'highlighter';
+  /** Extend / midpoint / price labels — line family only (not brush). */
+  const showLineExtendExtras = showLineExtras && !isBrushTool;
 
   const commitRename = () => {
     const trimmed = renameValue.trim();
@@ -284,7 +287,8 @@ export function DrawingSettingsModal({
                     setPickerOpen((v) => !v);
                   }}
                 />
-                {showLineExtras && (
+                {/* End caps: line tools + brush (Talaria); not highlighter. */}
+                {showLineExtras && draft.type !== 'highlighter' && (
                   <div className="flex gap-1">
                     <label
                       className="min-h-9 min-w-9 rounded-md border border-border flex items-center justify-center text-[10px] text-muted cursor-pointer hover:text-foreground"
@@ -327,7 +331,7 @@ export function DrawingSettingsModal({
               </div>
             </Row>
 
-            {showLineExtras && (
+            {showLineExtendExtras && (
               <>
                 <Row label="Extend">
                   <select
@@ -405,7 +409,7 @@ export function DrawingSettingsModal({
           />
         )}
 
-        {tab === 'text' && (
+        {tab === 'text' && showText && (
           <>
             <div className="flex items-center gap-2 flex-wrap">
               <ColorSwatches
@@ -494,7 +498,7 @@ export function DrawingSettingsModal({
           </>
         )}
 
-        {tab === 'coordinates' && (
+        {tab === 'coordinates' && showCoords && (
           <div className="space-y-3">
             {draft.points.length === 0 && (
               <p className="text-muted text-sm">No points on this drawing.</p>
@@ -596,12 +600,16 @@ export function DrawingSettingsModal({
         open={pickerOpen}
         anchorEl={strokeBtnRef.current}
         value={styleToPickerValue(draft.style)}
+        hideDash={settings.hideDash}
+        widthPresets={settings.widthPresets}
         onChange={(partial) => {
           const next: Partial<DrawingStyle> = { ...partial };
           // Keep fill linked until user picks a separate fill color.
           if (partial.color && draft.style.fillColor === draft.style.color) {
             next.fillColor = partial.color;
           }
+          // Brush/highlighter always solid.
+          if (settings.hideDash) next.lineStyle = 'solid';
           patchStyle(next);
         }}
         onClose={() => setPickerOpen(false)}

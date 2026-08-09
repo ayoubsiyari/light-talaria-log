@@ -3,6 +3,7 @@ import { IconLock, IconSettings, IconTrash } from '@/components/icons/ToolIcons'
 import type { Drawing } from '@/drawings/drawingStore';
 import type { DrawingStyle } from '@/drawings/drawingStyle';
 import { getTool } from '@/drawings/toolRegistry';
+import { getToolSettings } from '@/drawings/toolSettings';
 import { StyleTriggerButton } from '@/components/drawings/settings/StyleTriggerButton';
 import {
   LineStylePickerFlyout,
@@ -48,6 +49,7 @@ export function DrawingFloatingToolbar({
   const styleBtnRef = useRef<HTMLButtonElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
   const tool = getTool(drawing.type);
+  const toolSettings = getToolSettings(drawing.type);
   const style = drawing.style;
   const canEditText = !!tool.needsText || drawing.type === 'callout';
 
@@ -67,6 +69,7 @@ export function DrawingFloatingToolbar({
     if (partial.color && style.fillColor === style.color) {
       next.fillColor = partial.color;
     }
+    if (toolSettings.hideDash) next.lineStyle = 'solid';
     onChange({ style: next });
   };
 
@@ -233,6 +236,8 @@ export function DrawingFloatingToolbar({
           open={pickerOpen}
           anchorEl={styleBtnRef.current}
           value={styleToPickerValue(style)}
+          hideDash={toolSettings.hideDash}
+          widthPresets={toolSettings.widthPresets}
           onChange={patchStyle}
           onClose={() => setPickerOpen(false)}
         />

@@ -19,8 +19,6 @@ export interface InteractionCallbacks {
   onPlotClick?: (x: number, y: number) => void;
   /** User started panning/zooming the plot or axes (detach replay camera). */
   onUserGesture?: () => void;
-  /** True while a plot/axis pointer drag is active (freeze auto-Y breathing). */
-  setInteractionDragActive?: (active: boolean) => void;
   /**
    * Cursor when pointer is over a drawable (move / resize).
    * Return null to keep plot crosshair cursor.
@@ -210,8 +208,6 @@ export function attachInteraction(
     if (!m) return;
     dragMode = 'pinch';
     panArmed = true;
-    callbacks.setInteractionDragActive?.(true);
-    callbacks.onUserGesture?.();
     pinchPrevDist = m.dist;
     pinchPrevMidX = m.midX;
     pinchPrevMidY = m.midY;
@@ -475,7 +471,6 @@ export function attachInteraction(
         panArmed = true;
         cancelLongPress();
         canvas.style.cursor = 'grabbing';
-        callbacks.setInteractionDragActive?.(true);
         callbacks.onUserGesture?.();
       }
       if (dx === 0 && dy === 0) return;
@@ -505,7 +500,6 @@ export function attachInteraction(
 
     if (dragMode === 'timeZoom') {
       if (dx === 0) return;
-      callbacks.setInteractionDragActive?.(true);
       callbacks.onUserGesture?.();
       zoomTimeByDrag(callbacks, dx);
       return;
@@ -513,7 +507,6 @@ export function attachInteraction(
 
     if (dragMode === 'priceZoom') {
       if (dy === 0) return;
-      callbacks.setInteractionDragActive?.(true);
       callbacks.onUserGesture?.();
       zoomPriceByDrag(callbacks, dy, layout);
     }
@@ -536,7 +529,6 @@ export function attachInteraction(
       dragMode = null;
       activePointerId = null;
       panArmed = false;
-      callbacks.setInteractionDragActive?.(false);
       const rem = pointers.values().next().value as Ptr | undefined;
       if (rem) {
         // Leave second finger tracking but idle until lift
@@ -565,9 +557,6 @@ export function attachInteraction(
     panArmed = false;
     drawingMoved = false;
     longPressFired = false;
-    if (wasPan || wasMode === 'timeZoom' || wasMode === 'priceZoom') {
-      callbacks.setInteractionDragActive?.(false);
-    }
     try {
       canvas.releasePointerCapture(e.pointerId);
     } catch {

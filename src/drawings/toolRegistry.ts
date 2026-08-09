@@ -503,14 +503,22 @@ export const TOOLS: Record<DrawingToolId, ToolDef> = {
     category: 'brushes',
     label: 'Brush',
     points: { kind: 'freehand' },
-    defaultStyle: { width: 2.5 },
+    // Talaria defaults: solid, ~2px, muted gray-blue accent ok via theme color.
+    defaultStyle: { width: 2, lineStyle: 'solid', opacity: 1 },
   },
   highlighter: {
     id: 'highlighter',
     category: 'brushes',
     label: 'Highlighter',
     points: { kind: 'freehand' },
-    defaultStyle: { width: 12, opacity: 0.35, color: '#FFEB3B' },
+    // Talaria: wide translucent stroke (not soft-edge halo).
+    defaultStyle: {
+      width: 20,
+      opacity: 0.35,
+      color: '#787B86',
+      fillColor: '#787B86',
+      lineStyle: 'solid',
+    },
   },
 
   arrowMarker: {

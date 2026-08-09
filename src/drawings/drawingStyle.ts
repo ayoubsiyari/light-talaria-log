@@ -74,6 +74,9 @@ export const DEFAULT_DRAWING_STYLE: DrawingStyle = {
 
 export const LINE_WIDTHS = [1, 2, 3, 4] as const;
 
+/** Talaria highlighter thickness presets (brush stays on LINE_WIDTHS). */
+export const HIGHLIGHTER_WIDTHS = [8, 12, 20, 32, 48, 64] as const;
+
 export function cloneStyle(style?: Partial<DrawingStyle>): DrawingStyle {
   const next = { ...DEFAULT_DRAWING_STYLE, ...style };
   // Older saves may omit fillColor — keep stroke/fill visually linked.

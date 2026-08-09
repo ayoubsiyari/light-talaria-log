@@ -45,6 +45,12 @@ export interface ToolSettingsDef {
   showTextTab: boolean;
   /** Dedicated Inputs tab (level editors, tool-specific fields). */
   showInputsTab: boolean;
+  /** Show Coordinates tab (hidden for freehand — too many samples). */
+  showCoordsTab: boolean;
+  /** Hide dash picker in Style (brush/highlighter are always solid). */
+  hideDash: boolean;
+  /** Custom thickness list for the style flyout (highlighter). */
+  widthPresets?: readonly number[];
 }
 
 export interface BrushMeta {
@@ -196,15 +202,28 @@ export function getToolSettings(type: DrawingToolId): ToolSettingsDef {
   const styleSections: StyleSection[] = ['stroke'];
   if (FILL_TOOLS.has(type)) styleSections.push('fill');
   if (LINE_EXTRAS.has(type)) styleSections.push('lineExtras');
+  // Talaria brush: Style has endpoint arrows; highlighter does not.
+  if (type === 'brush') styleSections.push('lineExtras');
 
   const toolPanel =
     TOOL_PANEL_OVERRIDE[type] ?? CATEGORY_PANEL[def.category] ?? 'generic';
 
+  const isBrush = type === 'brush' || type === 'highlighter';
+
   return {
     styleSections,
     toolPanel,
-    showTextTab: true, // optional note on every tool; text tools emphasize it
-    showInputsTab: toolPanel !== 'generic',
+    // Talaria V8b/V9: brush/highlighter — Style + Visibility only.
+    showTextTab: !isBrush,
+    showInputsTab: !isBrush && toolPanel !== 'generic',
+    showCoordsTab: !isBrush,
+    hideDash: isBrush,
+    widthPresets:
+      type === 'highlighter'
+        ? [8, 12, 20, 32, 48, 64]
+        : type === 'brush'
+          ? [1, 2, 3, 4]
+          : undefined,
   };
 }
 
@@ -214,7 +233,8 @@ export function defaultMetaFor(type: DrawingToolId): Record<string, unknown> {
     case 'fibLevels':
       return { ...defaultFibMetaFor(type) } satisfies FibMeta;
     case 'brush':
-      return { softEdge: type === 'highlighter' } satisfies BrushMeta;
+      // Soft-edge kept for older saves; paint no longer uses it (Talaria = width+alpha).
+      return { softEdge: false } satisfies BrushMeta;
     case 'position':
       return {
         riskReward: 2,

@@ -23,9 +23,9 @@ function buildTabs(counts: {
   count?: number;
 }[] {
   return [
-    { id: 'all', label: 'All Trade', short: 'All', count: counts.all },
+    { id: 'all', label: 'All', short: 'All', count: counts.all },
     { id: 'pending', label: 'Pending', short: 'Pend', count: counts.pending ?? 0 },
-    { id: 'open', label: 'Open Positions', short: 'Open', count: counts.open ?? 0 },
+    { id: 'open', label: 'Open', short: 'Open', count: counts.open ?? 0 },
     { id: 'history', label: 'History', short: 'Hist', count: counts.history ?? 0 },
     { id: 'analytics', label: 'Analytics', short: 'Anal' },
   ];

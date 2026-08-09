@@ -1,6 +1,9 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { inferPendingType } from '@/orders/inferPendingType';
+import { defaultSpecForSymbol } from '@/orders/instrumentSpec';
+import { unrealizedPnL } from '@/orders/pnl';
 import type { OrderSide, OrderType, TimeInForce } from '@/orders/orderTypes';
+import { ChromeIcon } from '@/v9/chromeIcons.jsx';
 
 const REJECT_MESSAGES: Record<string, string> = {
   LIMIT_WRONG_SIDE: 'Limit is on the wrong side of the market.',
@@ -74,12 +77,9 @@ interface OrderTicketProps {
   onDraftChange?: (draft: OrderTicketDraft | null) => void;
 }
 
-const inputCls =
-  'w-full min-h-11 rounded-md border border-border bg-background px-2.5 text-[13px] text-foreground tabular-nums outline-none focus:border-accent';
-
 /**
- * TradingView-style order ticket (right drawer).
- * Sell/Buy quote buttons · type tabs · TP/SL toggles · margin summary · chart draft levels.
+ * V9 Obsidian order ticket (right rail / phone sheet).
+ * Markup uses data-order-v2 so chrome-order-ticket.css styles it — engine wiring unchanged.
  */
 export function OrderTicket({
   open,
@@ -246,20 +246,86 @@ export function OrderTicket({
       ? `${symbol.slice(0, 3)}/${symbol.slice(3, 6)}`
       : symbol;
 
-  // Button shows expected fill (BUY→ask) — chart tip stays on bid.
-  const placeLabel = [
-    side === 'BUY' ? 'Buy' : 'Sell',
-    '/',
-    lots || 0.1,
-    displaySym.replace('/', ''),
-    '@',
-    (type === 'MARKET' ? fillPx : entryPx).toFixed(digits),
-    type === 'MARKET' ? 'MARKET' : type === 'LIMIT' ? 'LIMIT' : 'STOP',
-  ].join(' ');
+  const effLots = lots || 0.1;
+  const slN = Number(sl);
+  const tpN = Number(tp);
+  const slAuto =
+    side === 'BUY' ? entryPx - slPips * pipSize : entryPx + slPips * pipSize;
+  const tpAuto =
+    side === 'BUY' ? entryPx + tpPips * pipSize : entryPx - tpPips * pipSize;
+  const slPxLive =
+    slOn && Number.isFinite(slN) && Math.abs(slN - entryPx) > tickSize * 0.5
+      ? slN
+      : slOn
+        ? slAuto
+        : NaN;
+  const tpPxLive =
+    tpOn && Number.isFinite(tpN) && Math.abs(tpN - entryPx) > tickSize * 0.5
+      ? tpN
+      : tpOn
+        ? tpAuto
+        : NaN;
+
+  const specLike = {
+    ...defaultSpecForSymbol(displaySym.replace('/', '')),
+    digits,
+    pipSize,
+    tickSize,
+    contractSize,
+    baseCurrency,
+    leverage,
+    typicalSpread: Math.max(0, ask - bid),
+  };
+
+  const riskAmt =
+    slOn && Number.isFinite(slPxLive) && entryPx > 0
+      ? unrealizedPnL(side, entryPx, slPxLive, slPxLive, effLots, specLike, {
+          accountCurrency,
+          instrumentPrice: entryPx,
+        }).amount
+      : 0;
+  const rewardAmt =
+    tpOn && Number.isFinite(tpPxLive) && entryPx > 0
+      ? unrealizedPnL(side, entryPx, tpPxLive, tpPxLive, effLots, specLike, {
+          accountCurrency,
+          instrumentPrice: entryPx,
+        }).amount
+      : 0;
+  const slDistPips =
+    slOn && Number.isFinite(slPxLive) && pipSize > 0
+      ? Math.abs(slPxLive - entryPx) / pipSize
+      : 0;
+  const tpDistPips =
+    tpOn && Number.isFinite(tpPxLive) && pipSize > 0
+      ? Math.abs(tpPxLive - entryPx) / pipSize
+      : 0;
+  const absRisk = Math.abs(riskAmt);
+  const absReward = Math.abs(rewardAmt);
+  const rrTotal = absRisk + absReward;
+  const riskPct = rrTotal > 0 ? (absRisk / rrTotal) * 100 : 50;
+  const rewardPct = rrTotal > 0 ? (absReward / rrTotal) * 100 : 50;
+  const marginPct = freeMargin > 0 ? (reqMargin / freeMargin) * 100 : 0;
+
+  const placeLabel =
+    lots <= 0
+      ? `${side === 'BUY' ? 'Buy' : 'Sell'} — Set Position Size`
+      : `${side === 'BUY' ? 'Buy' : 'Sell'} ${effLots.toFixed(2)} Lots`;
+
+  const submitOrder = () => {
+    if (lots <= 0) return;
+    onSubmit({
+      side,
+      type,
+      size: lots,
+      price: type === 'MARKET' ? undefined : Number(price),
+      stopLoss: Number.isFinite(slPxLive) ? slPxLive : undefined,
+      takeProfit: Number.isFinite(tpPxLive) ? tpPxLive : undefined,
+      tif,
+    });
+  };
 
   return (
     <>
-      {/* Phone dimmer — dismiss sheet */}
       <button
         type="button"
         className="fixed inset-0 z-30 bg-background/55 sm:hidden"
@@ -267,413 +333,354 @@ export function OrderTicket({
         onClick={onClose}
       />
       <aside
+        data-v9-chrome="1"
+        data-v9-order="1"
+        data-order-v2="1"
+        data-side={side === 'BUY' ? 'buy' : 'sell'}
+        data-order-mode="dock"
         className={[
-          'pointer-events-auto flex flex-col bg-background border-border',
-          // Phone: bottom sheet so the chart keeps full width
-          'fixed inset-x-0 bottom-0 z-40 w-full max-h-[min(90dvh,640px)] rounded-t-xl border-t shadow-xl',
+          'pointer-events-auto flex flex-col',
+          'fixed inset-x-0 bottom-0 z-40 w-full max-h-[min(90dvh,640px)] rounded-t-xl border-t border-[color:var(--line)]',
           'pb-[env(safe-area-inset-bottom)]',
-          // Desktop / tablet+: side dock
-          'sm:relative sm:inset-auto sm:z-20 sm:shrink-0 sm:w-[300px] sm:h-full sm:max-h-none sm:rounded-none sm:border-t-0 sm:border-l sm:shadow-none sm:pb-0',
+          'sm:relative sm:inset-auto sm:z-20 sm:shrink-0 sm:w-[300px] sm:h-full sm:max-h-none sm:rounded-none sm:border-t-0 sm:border-l sm:pb-0',
         ].join(' ')}
         role="dialog"
         aria-label="Order ticket"
       >
-      {/* Header: symbol + Order tab */}
-      <header className="shrink-0 flex items-center gap-2 px-3 h-11 border-b border-border">
-        <span className="text-[13px] font-semibold text-foreground tracking-wide">
-          {displaySym}
-        </span>
-        <div className="flex items-center gap-3 ml-2 text-[12px]">
-          <span className="text-foreground border-b-2 border-accent pb-2.5 pt-2.5 font-medium">
-            Order
-          </span>
-          <span className="text-muted pb-2.5 pt-2.5 cursor-default" title="Not available in replay">
-            Depth
-          </span>
-        </div>
-        <button
-          type="button"
-          className="ml-auto min-h-11 min-w-11 rounded text-muted hover:text-foreground hover:bg-surface"
-          onClick={onClose}
-          aria-label="Close"
-        >
-          ✕
-        </button>
-      </header>
-
-      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 flex flex-col gap-3">
-        {/* Sell / Buy quote buttons with spread badge */}
-        <div className="relative grid grid-cols-2 gap-0 rounded-lg overflow-hidden border border-border">
+        <header data-win-header="">
+          <span data-win-title="">Order</span>
+          <span data-order-mode-chip="">{type}</span>
           <button
             type="button"
-            className={[
-              'min-h-[52px] flex flex-col items-center justify-center gap-0.5 transition-colors',
-              side === 'SELL'
-                ? 'bg-danger text-danger-foreground'
-                : 'bg-surface text-muted hover:text-foreground',
-            ].join(' ')}
-            onClick={() => setSide('SELL')}
+            data-brand-icon="1"
+            className="ml-auto min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 inline-flex items-center justify-center"
+            onClick={onClose}
+            aria-label="Close"
           >
-            <span className="text-[11px] opacity-80">Sell</span>
-            <span className="text-[15px] font-semibold tabular-nums">{bid.toFixed(digits)}</span>
+            <ChromeIcon n="x" s={16} />
           </button>
-          <button
-            type="button"
-            className={[
-              'min-h-[52px] flex flex-col items-center justify-center gap-0.5 transition-colors',
-              side === 'BUY'
-                ? 'bg-accent text-accent-foreground'
-                : 'bg-surface text-muted hover:text-foreground',
-            ].join(' ')}
-            onClick={() => setSide('BUY')}
-          >
-            <span className="text-[11px] opacity-80">Buy</span>
-            <span className="text-[15px] font-semibold tabular-nums">{ask.toFixed(digits)}</span>
-          </button>
-          <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 rounded px-1.5 py-0.5 text-[10px] font-mono tabular-nums bg-background border border-border text-foreground">
-            {spreadPips.toFixed(1)}
-          </span>
-        </div>
+        </header>
 
-        {/* Market / Limit / Stop */}
-        <div className="flex items-center gap-4 border-b border-border">
-          {(
-            [
-              ['MARKET', 'Market'],
-              ['LIMIT', 'Limit'],
-              ['STOP', 'Stop'],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              className={[
-                'min-h-11 text-[13px] pb-2 -mb-px border-b-2 transition-colors',
-                type === id
-                  ? 'border-accent text-foreground font-medium'
-                  : 'border-transparent text-muted hover:text-foreground',
-              ].join(' ')}
-              onClick={() => {
-                setType(id);
-                if (id !== 'MARKET') {
-                  // Limit/Stop default on the visible last-price line (bid).
-                  setPrice(lastPx.toFixed(digits));
-                }
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* Price (limit/stop) */}
-        {type !== 'MARKET' && (
-          <Field label="Price">
-            <div className="relative">
-              <input
-                className={inputCls}
-                value={price}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setPrice(v);
-                  const n = Number(v);
-                  if (Number.isFinite(n)) {
-                    setType(inferPendingType(side, n, bid, ask));
-                  }
-                }}
-                inputMode="decimal"
-              />
-              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-muted">
-                {type === 'STOP' ? 'Stop' : side === 'BUY' ? 'Ask' : 'Bid'}
-              </span>
-            </div>
-          </Field>
-        )}
-
-        {/* Lots */}
-        <Field label={`Lots · margin ${accountCurrency}`}>
-          <div className="flex gap-2">
-            <input
-              className={inputCls}
-              value={size}
-              onChange={(e) => setSize(e.target.value)}
-              inputMode="decimal"
-            />
-            <span className="shrink-0 min-h-11 px-3 rounded-md border border-border bg-surface text-[12px] text-muted flex items-center">
-              lots
+        <div data-order-hero="">
+          <span data-order-sym="">{displaySym}</span>
+          <div data-order-asset="">
+            <span>Forex</span>
+            <span>·</span>
+            <span>{leverage}:1</span>
+          </div>
+          <div data-order-metrics="">
+            <span>
+              Spread <b>{spreadPips.toFixed(1)}</b>
+            </span>
+            <span>
+              Margin <b>{fmt(reqMargin)}</b>
+            </span>
+            <span>
+              Free <b>{fmt(freeMargin)}</b>
             </span>
           </div>
-        </Field>
+        </div>
 
-        {/* Take profit */}
-        <BracketRow
-          label="Take profit, price"
-          on={tpOn}
-          onToggle={(v) => {
-            setTpOn(v);
-            if (v && !tpPlaced) setTp(entryPx.toFixed(digits));
-          }}
-          price={tp}
-          onPrice={(v) => {
-            setTpPlaced(true);
-            setTp(v);
-          }}
-          pips={tpPips}
-          onPips={(n) => {
-            setTpPlaced(true);
-            setTpPips(n);
-            setTp(
-              round(
-                entryPx + (side === 'BUY' ? 1 : -1) * pipSize * n,
-                digits,
-              ).toFixed(digits),
-            );
-          }}
-          accent="success"
-          hint={!tpPlaced ? 'On entry — drag on chart or pick pips' : undefined}
-        />
+        <div data-order-stack="" className="flex-1 min-h-0 overflow-y-auto">
+          <div data-order-block="" data-order-intent="">
+            <div data-order-block-title="">Side</div>
+            <div data-order-side="">
+              <button
+                type="button"
+                data-side="buy"
+                data-active={side === 'BUY' ? '1' : undefined}
+                aria-pressed={side === 'BUY'}
+                onClick={() => setSide('BUY')}
+              >
+                BUY
+              </button>
+              <button
+                type="button"
+                data-side="sell"
+                data-active={side === 'SELL' ? '1' : undefined}
+                aria-pressed={side === 'SELL'}
+                onClick={() => setSide('SELL')}
+              >
+                SELL
+              </button>
+            </div>
+            <div data-order-type="">
+              {(
+                [
+                  ['MARKET', 'Market'],
+                  ['LIMIT', 'Limit'],
+                  ['STOP', 'Stop'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  data-active={type === id ? '1' : undefined}
+                  aria-pressed={type === id}
+                  onClick={() => {
+                    setType(id);
+                    if (id !== 'MARKET') setPrice(lastPx.toFixed(digits));
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-        {/* Stop loss */}
-        <BracketRow
-          label="Stop loss, price"
-          on={slOn}
-          onToggle={(v) => {
-            setSlOn(v);
-            if (v && !slPlaced) setSl(entryPx.toFixed(digits));
-          }}
-          price={sl}
-          onPrice={(v) => {
-            setSlPlaced(true);
-            setSl(v);
-          }}
-          pips={slPips}
-          onPips={(n) => {
-            setSlPlaced(true);
-            setSlPips(n);
-            setSl(
-              round(
-                entryPx + (side === 'BUY' ? -1 : 1) * pipSize * n,
-                digits,
-              ).toFixed(digits),
-            );
-          }}
-          accent="danger"
-          hint={!slPlaced ? 'On entry — drag on chart or pick pips' : undefined}
-        />
-
-        {/* TIF */}
-        <Field label="Time in force">
-          <select
-            className={inputCls}
-            value={tif}
-            onChange={(e) => setTif(e.target.value as TimeInForce)}
-          >
-            <option value="GTC">GTC (Good til canceled)</option>
-            <option value="DAY">Day</option>
-            <option value="IOC">IOC</option>
-            <option value="FOK">FOK</option>
-          </select>
-        </Field>
-
-        {/* Order info */}
-        <section className="rounded-lg border border-border bg-surface/60 p-3 space-y-2.5">
-          <h3 className="text-[11px] font-medium text-muted uppercase tracking-wide">
-            Order info
-          </h3>
-          <div>
-            <div className="flex justify-between text-[11px] mb-1">
-              <span className="text-muted">Margin</span>
-              <span className="font-mono tabular-nums text-foreground">
-                {fmt(reqMargin)} / {fmt(freeMargin)}
+          <div data-order-block="">
+            <div data-order-block-title="">Position size</div>
+            <div data-order-size-row="">
+              <label data-order-size-well="">
+                <span aria-hidden>#</span>
+                <input
+                  value={size}
+                  onChange={(e) => setSize(e.target.value)}
+                  inputMode="decimal"
+                  aria-label="Lots"
+                />
+              </label>
+              <span data-order-size-meta="">
+                {marginPct.toFixed(1)}% margin · tick {tickValue.toFixed(2)}
               </span>
             </div>
-            <div className="h-1.5 rounded-full bg-background overflow-hidden">
-              <div
-                className={[
-                  'h-full rounded-full transition-[width]',
-                  reqMargin > freeMargin ? 'bg-danger' : 'bg-accent',
-                ].join(' ')}
-                style={{
-                  width: `${Math.min(100, freeMargin > 0 ? (reqMargin / freeMargin) * 100 : 0)}%`,
-                }}
-              />
+          </div>
+
+          <div data-order-block="" data-order-levels="">
+            <div data-order-block-title="">Levels</div>
+
+            <div data-order-level="entry">
+              <div data-order-level-head="">
+                <span data-order-level-title="">Entry</span>
+                {type === 'MARKET' ? (
+                  <span data-order-level-count="">MKT</span>
+                ) : null}
+              </div>
+              <div className="px-2.5 py-2">
+                {type === 'MARKET' ? (
+                  <div className="font-mono tabular-nums text-[13px] font-semibold text-[color:var(--text)]">
+                    {entryPx.toFixed(digits)}
+                    <span className="ml-2 text-[10px] font-medium text-[color:var(--text-faint)]">
+                      {side === 'BUY' ? 'ask' : 'bid'}{' '}
+                      {(side === 'BUY' ? ask : bid).toFixed(digits)}
+                    </span>
+                  </div>
+                ) : (
+                  <label data-order-size-well="">
+                    <input
+                      value={price}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setPrice(v);
+                        const n = Number(v);
+                        if (Number.isFinite(n)) {
+                          setType(inferPendingType(side, n, bid, ask));
+                        }
+                      }}
+                      inputMode="decimal"
+                      aria-label="Entry price"
+                    />
+                  </label>
+                )}
+              </div>
             </div>
-            {reqMargin > freeMargin && (
-              <p className="text-[10px] text-danger mt-1">
-                Required margin exceeds free margin — reduce lots or close the ticket.
-              </p>
-            )}
+
+            <div data-order-level="sl">
+              <div data-order-level-head="">
+                <label className="inline-flex items-center gap-2 min-h-9 cursor-default">
+                  <input
+                    type="checkbox"
+                    checked={slOn}
+                    onChange={(e) => {
+                      const v = e.target.checked;
+                      setSlOn(v);
+                      if (v && !slPlaced) setSl(entryPx.toFixed(digits));
+                    }}
+                  />
+                  <span data-order-level-title="">Stop</span>
+                </label>
+                {slOn ? (
+                  <span data-order-level-count="">{slPips}p</span>
+                ) : null}
+              </div>
+              {slOn ? (
+                <div className="px-2.5 py-2 space-y-1.5">
+                  <label data-order-size-well="">
+                    <input
+                      value={sl}
+                      onChange={(e) => {
+                        setSlPlaced(true);
+                        setSl(e.target.value);
+                      }}
+                      inputMode="decimal"
+                      aria-label="Stop loss"
+                    />
+                  </label>
+                  <div className="flex items-center justify-between gap-2 text-[10px] font-semibold tabular-nums">
+                    <span className="text-[color:var(--down)]">
+                      LOSS {fmtMoney(riskAmt)}
+                    </span>
+                    <span className="text-[color:var(--text-faint)]">
+                      DIST {slDistPips.toFixed(1)} pips
+                    </span>
+                  </div>
+                  <select
+                    className="w-full h-9 rounded-md border border-[color:var(--line)] bg-[color:var(--surface)] px-2 text-[11px] text-[color:var(--text-muted)]"
+                    value={slPips}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      setSlPlaced(true);
+                      setSlPips(n);
+                      setSl(
+                        round(
+                          entryPx + (side === 'BUY' ? -1 : 1) * pipSize * n,
+                          digits,
+                        ).toFixed(digits),
+                      );
+                    }}
+                    aria-label="Stop loss pips"
+                  >
+                    {[10, 15, 20, 25, 40, 50, 75, 100, 150, 200, slPips]
+                      .filter((t, i, a) => a.indexOf(t) === i)
+                      .sort((a, b) => a - b)
+                      .map((t) => (
+                        <option key={t} value={t}>
+                          {t} pips
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              ) : null}
+            </div>
+
+            <div data-order-level="tp">
+              <div data-order-level-head="">
+                <label className="inline-flex items-center gap-2 min-h-9 cursor-default">
+                  <input
+                    type="checkbox"
+                    checked={tpOn}
+                    onChange={(e) => {
+                      const v = e.target.checked;
+                      setTpOn(v);
+                      if (v && !tpPlaced) setTp(entryPx.toFixed(digits));
+                    }}
+                  />
+                  <span data-order-level-title="">Target</span>
+                </label>
+                {tpOn ? (
+                  <span data-order-level-count="">{tpPips}p</span>
+                ) : null}
+              </div>
+              {tpOn ? (
+                <div className="px-2.5 py-2 space-y-1.5">
+                  <label data-order-size-well="">
+                    <input
+                      value={tp}
+                      onChange={(e) => {
+                        setTpPlaced(true);
+                        setTp(e.target.value);
+                      }}
+                      inputMode="decimal"
+                      aria-label="Take profit"
+                    />
+                  </label>
+                  <div className="flex items-center justify-between gap-2 text-[10px] font-semibold tabular-nums">
+                    <span className="text-[color:var(--up)]">
+                      PROFIT {fmtMoney(rewardAmt)}
+                    </span>
+                    <span className="text-[color:var(--text-faint)]">
+                      DIST {tpDistPips.toFixed(1)} pips
+                    </span>
+                  </div>
+                  <select
+                    className="w-full h-9 rounded-md border border-[color:var(--line)] bg-[color:var(--surface)] px-2 text-[11px] text-[color:var(--text-muted)]"
+                    value={tpPips}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      setTpPlaced(true);
+                      setTpPips(n);
+                      setTp(
+                        round(
+                          entryPx + (side === 'BUY' ? 1 : -1) * pipSize * n,
+                          digits,
+                        ).toFixed(digits),
+                      );
+                    }}
+                    aria-label="Take profit pips"
+                  >
+                    {[10, 15, 20, 25, 40, 50, 75, 100, 150, 200, tpPips]
+                      .filter((t, i, a) => a.indexOf(t) === i)
+                      .sort((a, b) => a - b)
+                      .map((t) => (
+                        <option key={t} value={t}>
+                          {t} pips
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              ) : null}
+            </div>
           </div>
-          <InfoRow label="Leverage" value={`${leverage}:1`} />
-          <InfoRow
-            label="Tick value"
-            value={`${tickValue.toFixed(2)} ${accountCurrency}`}
-          />
-          <InfoRow
-            label="Notional"
-            value={`${fmt(tradeValue)} ${accountCurrency}`}
-          />
-          <p className="text-[10px] text-muted leading-snug pt-1">
-            Entry defaults on the last price · drag SL/TP off the entry (or pick pips) ·
-            market fills at next bar open
-          </p>
-        </section>
 
-        {msg && (
-          <p className="text-[12px] text-danger" role="alert">
-            {msg}
-          </p>
-        )}
-      </div>
-
-      {/* Primary CTA */}
-      <div className="shrink-0 p-3 border-t border-border pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <button
-          type="button"
-          disabled={disabled || lots <= 0}
-          className={[
-            'w-full min-h-12 rounded-md text-[13px] font-semibold transition-colors disabled:opacity-40',
-            side === 'BUY'
-              ? 'bg-accent text-accent-foreground hover:opacity-90'
-              : 'bg-danger text-danger-foreground hover:opacity-90',
-          ].join(' ')}
-          onClick={() => {
-            if (lots <= 0) return;
-            const slN = Number(sl);
-            const tpN = Number(tp);
-            // If toggle is on but still glued to entry, apply default pip offset.
-            const slAuto =
-              side === 'BUY'
-                ? entryPx - slPips * pipSize
-                : entryPx + slPips * pipSize;
-            const tpAuto =
-              side === 'BUY'
-                ? entryPx + tpPips * pipSize
-                : entryPx - tpPips * pipSize;
-            const slPx =
-              slOn && Number.isFinite(slN) && Math.abs(slN - entryPx) > tickSize * 0.5
-                ? slN
-                : slOn
-                  ? slAuto
-                  : NaN;
-            const tpPx =
-              tpOn && Number.isFinite(tpN) && Math.abs(tpN - entryPx) > tickSize * 0.5
-                ? tpN
-                : tpOn
-                  ? tpAuto
-                  : NaN;
-            onSubmit({
-              side,
-              type,
-              size: lots,
-              price: type === 'MARKET' ? undefined : Number(price),
-              stopLoss: Number.isFinite(slPx) ? slPx : undefined,
-              takeProfit: Number.isFinite(tpPx) ? tpPx : undefined,
-              tif,
-            });
-          }}
-        >
-          {placeLabel}
-        </button>
-      </div>
-    </aside>
-    </>
-  );
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1.5 text-[11px] text-muted">
-      {label}
-      {children}
-    </label>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between text-[12px]">
-      <span className="text-muted">{label}</span>
-      <span className="font-mono tabular-nums text-foreground">{value}</span>
-    </div>
-  );
-}
-
-function BracketRow({
-  label,
-  on,
-  onToggle,
-  price,
-  onPrice,
-  pips,
-  onPips,
-  accent,
-  hint,
-}: {
-  label: string;
-  on: boolean;
-  onToggle: (v: boolean) => void;
-  price: string;
-  onPrice: (v: string) => void;
-  pips: number;
-  onPips: (n: number) => void;
-  accent: 'success' | 'danger';
-  hint?: string;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-muted">{label}</span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={on}
-          className={[
-            'relative w-10 h-6 rounded-full transition-colors min-h-11 sm:min-h-6 flex items-center',
-            on
-              ? accent === 'success'
-                ? 'bg-success'
-                : 'bg-danger'
-              : 'bg-border',
-          ].join(' ')}
-          onClick={() => onToggle(!on)}
-        >
-          <span
-            className={[
-              'absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-foreground transition-transform',
-              on ? 'translate-x-4' : 'translate-x-0',
-            ].join(' ')}
-          />
-        </button>
-      </div>
-      {on && (
-        <>
-          <div className="flex gap-2">
-            <input
-              className={inputCls}
-              value={price}
-              onChange={(e) => onPrice(e.target.value)}
-              inputMode="decimal"
-            />
+          <div data-order-block="">
+            <div data-order-block-title="">Time in force</div>
             <select
-              className="shrink-0 min-h-11 w-[7.5rem] rounded-md border border-border bg-surface px-2 text-[11px] text-muted"
-              value={pips}
-              onChange={(e) => onPips(Number(e.target.value))}
+              className="w-full h-9 rounded-md border border-[color:var(--line)] bg-[color:var(--surface-sunken)] px-2 text-[12px] text-[color:var(--text)]"
+              value={tif}
+              onChange={(e) => setTif(e.target.value as TimeInForce)}
             >
-              {[10, 15, 20, 25, 40, 50, 75, 100, 150, 200, pips]
-                .filter((t, i, a) => a.indexOf(t) === i)
-                .sort((a, b) => a - b)
-                .map((t) => (
-                  <option key={t} value={t}>
-                    {t} pips
-                  </option>
-                ))}
+              <option value="GTC">GTC</option>
+              <option value="DAY">Day</option>
+              <option value="IOC">IOC</option>
+              <option value="FOK">FOK</option>
             </select>
+            <p className="mt-2 text-[10px] text-[color:var(--text-faint)] leading-snug">
+              Notional {fmt(tradeValue)} {accountCurrency}
+              {reqMargin > freeMargin ? ' · margin exceeds free' : ''}
+            </p>
           </div>
-          {hint && <p className="text-[10px] text-muted">{hint}</p>}
-        </>
-      )}
-    </div>
+
+          {msg ? (
+            <p className="text-[12px] text-[color:var(--down)] px-1" role="alert">
+              {msg}
+            </p>
+          ) : null}
+        </div>
+
+        <div data-order-rr="">
+          <div data-order-rr-bar="" aria-hidden>
+            <span
+              style={{
+                width: `${riskPct}%`,
+                background: 'var(--down)',
+              }}
+            />
+            <span
+              style={{
+                width: `${rewardPct}%`,
+                background: 'var(--up)',
+              }}
+            />
+          </div>
+          <div className="mt-1.5 flex justify-between text-[10px] font-semibold tabular-nums">
+            <span className="text-[color:var(--down)]">Risk {fmtMoney(riskAmt)}</span>
+            <span className="text-[color:var(--up)]">Reward {fmtMoney(rewardAmt)}</span>
+          </div>
+        </div>
+
+        <div data-order-foot="" className="pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            data-brand-btn="primary"
+            disabled={disabled || lots <= 0}
+            className="w-full disabled:opacity-40"
+            onClick={submitOrder}
+          >
+            {placeLabel}
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }
 
@@ -684,6 +691,14 @@ function round(n: number, digits: number): number {
 
 function fmt(n: number): string {
   if (!Number.isFinite(n)) return '—';
-  if (Math.abs(n) >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  if (Math.abs(n) >= 1000) {
+    return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  }
   return n.toFixed(2);
+}
+
+function fmtMoney(n: number): string {
+  if (!Number.isFinite(n)) return '$0.00';
+  const sign = n > 0 ? '+' : n < 0 ? '-' : '';
+  return `${sign}$${Math.abs(n).toFixed(2)}`;
 }

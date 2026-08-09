@@ -1,4 +1,3 @@
-import { Button } from '@heroui/react';
 import type { InstrumentSpec } from '@/orders/instrumentSpec';
 import { unrealizedPnL } from '@/orders/pnl';
 import type { Order, OrderEngineState, Position } from '@/orders/orderTypes';
@@ -21,6 +20,40 @@ function fmt(n: number, digits = 2): string {
   return n.toFixed(digits);
 }
 
+function fmtSym(raw: string): string {
+  if (raw.includes('/')) return raw;
+  if (raw.length >= 6) return `${raw.slice(0, 3)}/${raw.slice(3, 6)}`;
+  return raw;
+}
+
+function fmtTime(unixSec: number | undefined): string {
+  if (unixSec == null || !(unixSec > 0)) return '—';
+  const d = new Date(unixSec * 1000);
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  return `${months[d.getUTCMonth()]} ${d.getUTCDate()} ${hh}:${mm}`;
+}
+
+function shortId(id: string): string {
+  const digits = id.replace(/\D/g, '');
+  if (digits.length >= 4) return digits.slice(-4);
+  return id.slice(0, 6);
+}
+
 /** Unrealized P&L in account currency (same math as equity / bottom-bar P&L). */
 function unrealizedAccount(
   pos: Position,
@@ -36,9 +69,36 @@ function unrealizedAccount(
   }).amount;
 }
 
+const TRADES_COLS = [
+  'minmax(48px,0.55fr)', // ID
+  'minmax(72px,1.15fr)', // SYMBOL
+  'minmax(88px,1.15fr)', // TIME
+  'minmax(44px,0.5fr)', // SIDE
+  'minmax(54px,0.6fr)', // STATUS
+  'minmax(40px,0.5fr)', // SIZE
+  'minmax(48px,0.55fr)', // TYPE
+  'minmax(62px,0.75fr)', // ENTRY
+  'minmax(62px,0.75fr)', // EXIT
+  'minmax(62px,0.85fr)', // P&L
+  'minmax(58px,0.7fr)', // ACTION
+].join(' ');
+
+const HDRS: { label: string; col: string }[] = [
+  { label: 'ID', col: 'id' },
+  { label: 'Symbol', col: 'sym' },
+  { label: 'Time', col: 'time' },
+  { label: 'Side', col: 'side' },
+  { label: 'Status', col: 'status' },
+  { label: 'Size', col: 'num' },
+  { label: 'Type', col: 'type' },
+  { label: 'Entry', col: 'num' },
+  { label: 'Exit', col: 'num' },
+  { label: 'P&L', col: 'pnl' },
+  { label: 'Action', col: 'action' },
+];
+
 /**
- * V9 Obsidian bottom trade list — shown under the chrome tabs.
- * Compact rows driven by our order engine (not window.chart.orderManager).
+ * V9 Obsidian bottom trade list — data-trades-v2 grammar, our order engine.
  */
 export function TradeDock({
   activeTab,
@@ -74,64 +134,45 @@ export function TradeDock({
     (!showPending || pending.length === 0) &&
     (!showHistory || history.length === 0);
 
+  const totalRows =
+    (showOpen ? positions.length : 0) +
+    (showPending ? pending.length : 0) +
+    (showHistory ? history.length : 0);
+
   return (
     <div
       data-v9-chrome="1"
+      data-trades-v2="1"
       data-trades-dock="1"
       data-tc-body=""
-      className="shrink-0 border-t border-[color:var(--line)] bg-[color:var(--surface)] max-h-[28vh] sm:max-h-[22vh] overflow-y-auto"
+      className="shrink-0 border-t border-[color:var(--line)] bg-[color:var(--surface)] max-h-[28vh] sm:max-h-[22vh] flex flex-col min-h-0"
     >
-      {state && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-1.5 text-[11px] font-mono tabular-nums border-b border-[color:var(--line)]">
-          <span>
-            <span className="text-muted mr-1">Balance</span>
-            {fmt(state.account.balance)}
-          </span>
-          <span>
-            <span className="text-muted mr-1">Equity</span>
-            {fmt(state.account.equity)}
-          </span>
-          <span>
-            <span className="text-muted mr-1">Free</span>
-            {fmt(state.account.freeMargin)}
-          </span>
-          <span>
-            <span className="text-muted mr-1">Margin</span>
-            {state.account.usedMargin > 0
-              ? `${fmt(state.account.marginLevel, 0)}%`
-              : '—'}
-          </span>
+      <div data-trades-table="" className="flex-1 min-h-0 overflow-auto">
+        <div data-trades-hdr="" style={{ gridTemplateColumns: TRADES_COLS }}>
+          {HDRS.map((h) => (
+            <button type="button" key={h.label} data-col={h.col} disabled>
+              <span>{h.label}</span>
+            </button>
+          ))}
         </div>
-      )}
 
-      {empty ? (
-        <p className="px-3 py-3 text-[12px] text-muted">
-          No {activeTab === 'pending' ? 'pending orders' : activeTab === 'open' ? 'open positions' : 'trades'} yet.
-          Use <span className="text-foreground">+ Place Order</span> — SL/TP lines appear on the chart.
-        </p>
-      ) : (
-        <table className="w-full text-[12px] text-left">
-          <thead className="sticky top-0 bg-[color:var(--surface)] text-[10px] uppercase tracking-wide text-muted z-[1]">
-            <tr className="border-b border-[color:var(--line)]">
-              <th className="px-3 py-1.5 font-medium">Symbol</th>
-              <th className="px-2 py-1.5 font-medium">Side</th>
-              <th className="px-2 py-1.5 font-medium">Qty</th>
-              <th className="px-2 py-1.5 font-medium">Price</th>
-              <th className="px-2 py-1.5 font-medium hidden sm:table-cell">SL</th>
-              <th className="px-2 py-1.5 font-medium hidden sm:table-cell">TP</th>
-              <th className="px-2 py-1.5 font-medium">P&L</th>
-              <th className="px-2 py-1.5 font-medium w-20" />
-            </tr>
-          </thead>
-          <tbody>
+        {empty ? (
+          <div data-trades-empty="" className="px-3 py-4">
+            <strong>No trades here</strong>
+            <em>
+              {activeTab === 'pending'
+                ? 'No pending orders.'
+                : activeTab === 'open'
+                  ? 'No open positions.'
+                  : activeTab === 'history'
+                    ? 'No closed trades yet.'
+                    : 'Use + Place Order — SL/TP lines appear on the chart.'}
+            </em>
+          </div>
+        ) : (
+          <>
             {showOpen &&
               positions.map((p) => {
-                const sl = working.find(
-                  (o) => o.positionId === p.id && o.role === 'stopLoss',
-                );
-                const tp = working.find(
-                  (o) => o.positionId === p.id && o.role === 'takeProfit',
-                );
                 const upnl = unrealizedAccount(
                   p,
                   bid,
@@ -139,130 +180,193 @@ export function TradeDock({
                   spec,
                   state?.account.currency ?? 'USD',
                 );
+                const sideLabel = p.side === 'BUY' ? 'LONG' : 'SHORT';
                 return (
-                  <tr
+                  <div
                     key={p.id}
+                    data-trades-row=""
                     data-tc-status="open"
-                    className="border-b border-[color:var(--line)] hover:bg-[color:var(--surface-raised)] cursor-pointer min-h-11"
+                    data-selected={undefined}
+                    style={{ gridTemplateColumns: TRADES_COLS }}
                     onClick={() => onSelectPosition?.(p.id)}
                   >
-                    <td className="px-3 py-2 font-mono">{p.symbol}</td>
-                    <td
-                      data-tc-side={p.side === 'BUY' ? 'long' : 'short'}
-                      className={[
-                        'px-2 py-2 font-medium',
-                        p.side === 'BUY'
-                          ? 'text-[color:var(--up)]'
-                          : 'text-[color:var(--down)]',
-                      ].join(' ')}
-                    >
-                      {p.side}
-                    </td>
-                    <td className="px-2 py-2 font-mono tabular-nums">{p.size}</td>
-                    <td className="px-2 py-2 font-mono tabular-nums">
+                    <div data-col="id">
+                      <button type="button" data-trades-id="" data-live="1">
+                        {shortId(p.id)}
+                      </button>
+                    </div>
+                    <div data-col="sym" data-cell="sym">
+                      {fmtSym(p.symbol)}
+                    </div>
+                    <div data-col="time" data-cell="time">
+                      {fmtTime(p.openedAt)}
+                    </div>
+                    <div data-col="side">
+                      <span data-trade-side={sideLabel}>{sideLabel === 'LONG' ? 'Long' : 'Short'}</span>
+                    </div>
+                    <div data-col="status">
+                      <span data-trade-status="open">Open</span>
+                    </div>
+                    <div data-col="num" data-cell="num">
+                      {p.size}
+                    </div>
+                    <div data-col="type" data-cell="muted">
+                      Market
+                    </div>
+                    <div data-col="num" data-cell="num">
                       {fmt(p.entryPrice, digits)}
-                    </td>
-                    <td className="px-2 py-2 font-mono tabular-nums hidden sm:table-cell text-[color:var(--down)]">
-                      {sl?.price != null ? fmt(sl.price, digits) : '—'}
-                    </td>
-                    <td className="px-2 py-2 font-mono tabular-nums hidden sm:table-cell text-[color:var(--up)]">
-                      {tp?.price != null ? fmt(tp.price, digits) : '—'}
-                    </td>
-                    <td
-                      className={[
-                        'px-2 py-2 font-mono tabular-nums',
-                        upnl >= 0
-                          ? 'text-[color:var(--up)]'
-                          : 'text-[color:var(--down)]',
-                      ].join(' ')}
+                    </div>
+                    <div data-col="num" data-cell="muted" data-empty="1">
+                      —
+                    </div>
+                    <div
+                      data-col="pnl"
+                      data-cell="pnl"
+                      style={{
+                        color: upnl >= 0 ? 'var(--up)' : 'var(--down)',
+                      }}
                     >
+                      {upnl >= 0 ? '+' : ''}
                       {fmt(upnl)}
-                    </td>
-                    <td className="px-2 py-1.5">
-                      {onClosePosition && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="min-h-11 sm:min-h-7 h-7 px-2"
-                          data-brand-btn="ghost"
-                          onPress={() => onClosePosition(p.id)}
+                    </div>
+                    <div data-col="action" data-cell="action">
+                      {onClosePosition ? (
+                        <button
+                          type="button"
+                          data-trades-act="close"
+                          className="min-h-11 sm:min-h-[22px]"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onClosePosition(p.id);
+                          }}
                         >
                           Close
-                        </Button>
+                        </button>
+                      ) : (
+                        <em>—</em>
                       )}
-                    </td>
-                  </tr>
+                    </div>
+                  </div>
                 );
               })}
 
             {showPending &&
-              pending.map((o) => (
-                <tr
-                  key={o.id}
-                  data-tc-status="pending"
-                  className="border-b border-[color:var(--line)] hover:bg-[color:var(--surface-raised)]"
-                >
-                  <td className="px-3 py-2 font-mono">{o.symbol}</td>
-                  <td
-                    data-tc-side={o.side === 'BUY' ? 'long' : 'short'}
-                    className={[
-                      'px-2 py-2 font-medium',
-                      o.side === 'BUY'
-                        ? 'text-[color:var(--up)]'
-                        : 'text-[color:var(--down)]',
-                    ].join(' ')}
+              pending.map((o) => {
+                const sideLabel = o.side === 'BUY' ? 'LONG' : 'SHORT';
+                return (
+                  <div
+                    key={o.id}
+                    data-trades-row=""
+                    data-tc-status="pending"
+                    style={{ gridTemplateColumns: TRADES_COLS }}
                   >
-                    {o.side} {o.type}
-                  </td>
-                  <td className="px-2 py-2 font-mono tabular-nums">{o.size}</td>
-                  <td className="px-2 py-2 font-mono tabular-nums">
-                    {o.price != null ? fmt(o.price, digits) : 'MKT'}
-                  </td>
-                  <td className="px-2 py-2 font-mono tabular-nums hidden sm:table-cell text-[color:var(--down)]">
-                    {o.stopLoss != null ? fmt(o.stopLoss, digits) : '—'}
-                  </td>
-                  <td className="px-2 py-2 font-mono tabular-nums hidden sm:table-cell text-[color:var(--up)]">
-                    {o.takeProfit != null ? fmt(o.takeProfit, digits) : '—'}
-                  </td>
-                  <td className="px-2 py-2 text-muted">—</td>
-                  <td className="px-2 py-1.5">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="min-h-11 sm:min-h-7 h-7 px-2"
-                      data-brand-btn="ghost"
-                      onPress={() => onCancel(o.id)}
-                    >
-                      Cancel
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+                    <div data-col="id">
+                      <button type="button" data-trades-id="">
+                        {shortId(o.id)}
+                      </button>
+                    </div>
+                    <div data-col="sym" data-cell="sym">
+                      {fmtSym(o.symbol)}
+                    </div>
+                    <div data-col="time" data-cell="time">
+                      {fmtTime(o.createdAt)}
+                    </div>
+                    <div data-col="side">
+                      <span data-trade-side={sideLabel}>
+                        {sideLabel === 'LONG' ? 'Long' : 'Short'}
+                      </span>
+                    </div>
+                    <div data-col="status">
+                      <span data-trade-status="pending">Pending</span>
+                    </div>
+                    <div data-col="num" data-cell="num">
+                      {o.size}
+                    </div>
+                    <div data-col="type" data-cell="muted">
+                      {o.type}
+                    </div>
+                    <div data-col="num" data-cell="num">
+                      {o.price != null ? fmt(o.price, digits) : 'MKT'}
+                    </div>
+                    <div data-col="num" data-cell="muted" data-empty="1">
+                      —
+                    </div>
+                    <div data-col="pnl" data-cell="muted" data-empty="1">
+                      —
+                    </div>
+                    <div data-col="action" data-cell="action">
+                      <button
+                        type="button"
+                        data-trades-act="cancel"
+                        className="min-h-11 sm:min-h-[22px]"
+                        onClick={() => onCancel(o.id)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
 
             {showHistory &&
-              history.map((o) => (
-                <tr
-                  key={`${o.id}-${o.filledAt}`}
-                  data-tc-status="closed"
-                  className="border-b border-[color:var(--line)] text-muted"
-                >
-                  <td className="px-3 py-2 font-mono">{o.symbol}</td>
-                  <td className="px-2 py-2">{o.side}</td>
-                  <td className="px-2 py-2 font-mono tabular-nums">{o.size}</td>
-                  <td className="px-2 py-2 font-mono tabular-nums">
-                    {fmt(o.fillPrice ?? 0, digits)}
-                  </td>
-                  <td className="px-2 py-2 hidden sm:table-cell">—</td>
-                  <td className="px-2 py-2 hidden sm:table-cell">—</td>
-                  <td className="px-2 py-2 font-mono">
-                    {o.ambiguousFill ? 'ambig.' : 'filled'}
-                  </td>
-                  <td />
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      )}
+              history.map((o) => {
+                const sideLabel = o.side === 'BUY' ? 'LONG' : 'SHORT';
+                return (
+                  <div
+                    key={`${o.id}-${o.filledAt}`}
+                    data-trades-row=""
+                    data-tc-status="closed"
+                    style={{ gridTemplateColumns: TRADES_COLS }}
+                  >
+                    <div data-col="id">
+                      <button type="button" data-trades-id="">
+                        {shortId(o.id)}
+                      </button>
+                    </div>
+                    <div data-col="sym" data-cell="sym">
+                      {fmtSym(o.symbol)}
+                    </div>
+                    <div data-col="time" data-cell="time">
+                      {fmtTime(o.filledAt ?? o.createdAt)}
+                    </div>
+                    <div data-col="side">
+                      <span data-trade-side={sideLabel}>
+                        {sideLabel === 'LONG' ? 'Long' : 'Short'}
+                      </span>
+                    </div>
+                    <div data-col="status">
+                      <span data-trade-status="closed">Closed</span>
+                    </div>
+                    <div data-col="num" data-cell="num">
+                      {o.size}
+                    </div>
+                    <div data-col="type" data-cell="muted">
+                      {o.type}
+                    </div>
+                    <div data-col="num" data-cell="num">
+                      {fmt(o.fillPrice ?? o.price ?? 0, digits)}
+                    </div>
+                    <div data-col="num" data-cell="num">
+                      {fmt(o.fillPrice ?? 0, digits)}
+                    </div>
+                    <div data-col="pnl" data-cell="muted">
+                      {o.ambiguousFill ? 'ambig.' : 'filled'}
+                    </div>
+                    <div data-col="action" data-cell="action">
+                      <em>—</em>
+                    </div>
+                  </div>
+                );
+              })}
+          </>
+        )}
+      </div>
+
+      <div className="shrink-0 flex items-center justify-between px-3 py-1.5 border-t border-[color:var(--line)] text-[11px] text-[color:var(--text-faint)]">
+        <span>
+          {totalRows} trade{totalRows === 1 ? '' : 's'}
+        </span>
+      </div>
     </div>
   );
 }

@@ -2030,23 +2030,15 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         const tipIndexMoved = tip !== prevTip;
         const tipTimeMoved =
           tipTime != null && prevTipTime != null && tipTime !== prevTipTime;
-        // Buffer slide under a fixed tip index: keep wall-clock (candles stay put).
-        // Real tip advance: incremental follow scroll (grid moves like pan).
-        if (didReplace && keepTime && bars.length > 0 && !tipIndexMoved) {
-          const mapped = visibleRangeFromTimeWindow(
-            bars,
-            keepTime.fromTime,
-            keepTime.toTime,
-          );
-          if (mapped.toIndex > mapped.fromIndex) {
-            setVisibleRangeInternal(mapped, false);
-            if (tip >= 0) followTipIndex = tip;
-          } else if (tipIndexMoved || tipTimeMoved) {
-            centerOnReplayCursor(false);
-          }
-        } else if (tipIndexMoved || tipTimeMoved) {
+        // Tip advanced (index OR time) → scroll camera with the tip.
+        // Warm-cache slides often keep tip at length-1 (index unchanged) while
+        // tip *time* moves — the old "!tipIndexMoved → wall-clock" path froze the
+        // viewport and let candles run off the right (laggy screen / runaway tip).
+        if (tipIndexMoved || tipTimeMoved) {
           centerOnReplayCursor(false);
         } else if (didReplace && keepTime && bars.length > 0) {
+          // Pure buffer slide, same tip time — keep wall-clock window so candles
+          // don't jump when history is trimmed behind a forming tip.
           const mapped = visibleRangeFromTimeWindow(
             bars,
             keepTime.fromTime,
@@ -2061,6 +2053,15 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         } else if (didReplace) {
           followTipIndex = -1;
           centerOnReplayCursor(false);
+        }
+        // Safety: tip past the right pad → hard re-anchor (catch missed scrolls).
+        if (tip >= 0) {
+          const span = currentSpan();
+          const rightPad = Math.max(1, Math.floor(span * 0.1));
+          if (tip + 1 + rightPad > range.toIndex + 0.5) {
+            followTipIndex = -1;
+            centerOnReplayCursor(false);
+          }
         }
       } else if (didReplace && keepTime && bars.length > 0) {
         // Step / seek / async cache fill while paused: keep the same wall-clock

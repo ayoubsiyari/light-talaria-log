@@ -10,8 +10,9 @@ import { SegmentedControl } from '@/components/drawings/settings/SegmentedContro
 
 const LINE_STYLES: { id: LineStyleKind; dash: string; title: string }[] = [
   { id: 'solid', dash: '', title: 'Solid' },
-  { id: 'dashed', dash: '4 3', title: 'Dashed' },
-  { id: 'dotted', dash: '1.5 2.5', title: 'Dotted' },
+  { id: 'dotted', dash: '2 4', title: 'Dotted' },
+  { id: 'dashed', dash: '7 4', title: 'Dashed' },
+  { id: 'dashdot', dash: '7 4 2 4', title: 'Dash-dot' },
 ];
 
 export interface LineStylePickerValue {

@@ -2,8 +2,9 @@ import { forwardRef } from 'react';
 import type { DrawingStyle, LineStyleKind } from '@/drawings/drawingStyle';
 
 function dashFor(kind: LineStyleKind): string | undefined {
-  if (kind === 'dashed') return '4 3';
-  if (kind === 'dotted') return '1.5 2.5';
+  if (kind === 'dashed') return '7 4';
+  if (kind === 'dotted') return '2 4';
+  if (kind === 'dashdot') return '7 4 2 4';
   return undefined;
 }
 

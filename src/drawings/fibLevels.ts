@@ -10,6 +10,8 @@ export interface FibLevel {
   visible: boolean;
   color: string;
   lineStyle: LineStyleKind;
+  /** Optional width for Obsidian level grid (paint may ignore until wired). */
+  width?: number;
 }
 
 export type FibLabelMode = 'values' | 'percent' | 'both';
@@ -106,7 +108,7 @@ const CYCLE_LEVELS: readonly FibLevel[] = Array.from({ length: 9 }, (_, i) => ({
   lineStyle: (i === 0 ? 'solid' : 'dashed') as LineStyleKind,
 }));
 
-const LINE_STYLES = new Set<LineStyleKind>(['solid', 'dashed', 'dotted']);
+const LINE_STYLES = new Set<LineStyleKind>(['solid', 'dashed', 'dotted', 'dashdot']);
 
 function colorForCoeff(coeff: number): string {
   const hit = DEFAULT_FIB_LEVEL_DEFS.find((l) => Math.abs(l.coeff - coeff) < 1e-9);

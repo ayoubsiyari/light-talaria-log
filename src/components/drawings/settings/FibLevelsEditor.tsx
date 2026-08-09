@@ -18,8 +18,9 @@ interface FibLevelsEditorProps {
 
 const LINE_STYLE_OPTS: { id: LineStyleKind; label: string }[] = [
   { id: 'solid', label: '—' },
-  { id: 'dashed', label: '- -' },
   { id: 'dotted', label: '···' },
+  { id: 'dashed', label: '- -' },
+  { id: 'dashdot', label: '-·-' },
 ];
 
 /**

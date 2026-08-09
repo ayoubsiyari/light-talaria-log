@@ -213,10 +213,10 @@ export function getToolSettings(type: DrawingToolId): ToolSettingsDef {
   return {
     styleSections,
     toolPanel,
-    // Talaria V8b/V9: brush/highlighter — Style + Visibility only.
+    // Brush/highlighter: no Text tab; Inputs + Coords (endpoints) available for V9 parity.
     showTextTab: !isBrush,
-    showInputsTab: !isBrush && toolPanel !== 'generic',
-    showCoordsTab: !isBrush,
+    showInputsTab: toolPanel !== 'generic' || isBrush,
+    showCoordsTab: true,
     hideDash: isBrush,
     widthPresets:
       type === 'highlighter'

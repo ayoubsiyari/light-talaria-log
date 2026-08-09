@@ -894,9 +894,11 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-09 | Play grid=pan: incremental tip-delta camera (no hard re-anchor); stable lattice from tip; labels glued to tick X; wall-clock remap on buffer slide | Play — V-grid + time labels scroll together like pan |
 | 2026-08-09 | Step on higher TF lands on rate-candle **close** (full OHLC tip); Play clock still 1m-tick | 15m step ›› — tip candle is complete, not 1m stub |
 | 2026-08-09 | Fix long-Play “freeze until Pause→Play”: wheel no longer detaches follow; sync publish doesn’t auto-detach; gap-jump without follow; rAF resume + watchdog | Play a long time / brush trackpad — candles keep advancing |
+| 2026-08-09 | Fix Play camera lag / runaway tip: follow scrolls on tip *time* advance (not only index); re-anchor if tip past right pad | Play multi-pane 15m — candles stay glued to camera |
 | 2026-08-09 | **Feel wave F0–F5:** overlay handles/badges; engine freehand; press-drag place; touch pan-vs-draw; orders/backtest off crosshair path; undo/redo | Manual: hover scrub, brush, trend press-drag, thumb pan, Cmd+Z |
 | 2026-08-09 | Brush Talaria parity: no stride-thin on release; Catmull-Rom α=0.5 paint; no magnet; settings Style+Visibility (hide dash; highlighter widths 8–64) | Draw brush curve — release matches live stroke |
 | 2026-08-09 | Obsidian settings shell (data-sett-v3): tool icon header, pill tabs, Reset/Done, Extend/Labels chips, Show Info; ChromeIcon map for rail + flyout | Open Trend Line settings — match V9 Obsidian chrome; then per-tool Inputs pass |
+| 2026-08-09 | Full Obsidian drawing settings UI: Sett* primitives + Style/Text/Coords/Visibility panes for all tool families (levels grids, visRanges, border/mid/label stubs) | Open settings per tool — controls match V9; paint wiring later |
 
 ---
 

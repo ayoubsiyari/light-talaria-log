@@ -862,6 +862,10 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-07 | Axis badges: place on real price/time axes (shared formatPrice/formatTime); pass layout from paintDrawingsFrame | Select drawing — chips align with crosshair/last-price |
 | 2026-08-09 | **V9 design on our shell:** OrderTicket → `data-order-v2` Obsidian markup; TradeDock → `data-trades-v2` table (engine/wiring unchanged; Live not mounted) | Place Order — BUY/SELL + STOP/TARGET blocks; expand trades strip — ID/Side/Status/Close |
 | 2026-08-09 | **Bottom chrome Obsidian parity:** BottomBar → `data-replay-v2` + Go To portal + pill `data-trades-v2` toolbar; TradeDock/Analytics nested inside panel; drag-resize; Export CSV | Hard-refresh chart — no old scrub/underline tabs; Go To + History table match Live |
+| 2026-08-09 | **Replay/trades visual match Live:** step-interval + rollback + Go To cluster; trades cols ID/TIME/SYMBOL…DUR/TAGS(PRE·POST)/NOTES/SHOTS; journal P&L | Hard-refresh — compare bottom strip to Obsidian screenshot |
+| 2026-08-09 | **Order ticket Obsidian parity:** Live header/hero/size modes/$·%·#; ENTRY Multi + STOP Auto BE + TARGET Multi; JOURNAL tags; side CTA | Open Place Order — match Live rail screenshot |
+| 2026-08-09 | Soft viewport completeness guard (`viewportCompleteness`): tip-only/empty-left heal on TF/symbol switch + coalesced Play→Pause scan; unit tests | Pause → SMA → 1m→5m — full history without Play |
+| 2026-08-09 | Full viewport bar scan: OHLC/bucket/sort + cross-TF candle check vs base; `healViewportHistory` history-biased refill; TF matrix asserts integrity | Switch 1m↔5m↔1h — candles match base aggregates |
 
 ---
 

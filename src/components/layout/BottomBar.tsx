@@ -54,6 +54,8 @@ interface BottomBarProps {
   balanceLabel?: string;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
+  /** Active chart TF label for step-interval control (e.g. "1m"). */
+  stepLabel?: string;
   /** TradeDock / Analytics body when expanded. */
   children?: ReactNode;
   /** Optional CSV export (History / All). */
@@ -111,10 +113,18 @@ export function BottomBar({
   balanceLabel,
   expanded,
   onExpandedChange,
+  stepLabel = '1m',
   children,
   onExportTrades,
 }: BottomBarProps) {
   const [balVis, setBalVis] = useState(true);
+  const [stepMenuOpen, setStepMenuOpen] = useState(false);
+  const [stepInterval, setStepInterval] = useState(stepLabel);
+  const stepBtnRef = useRef<HTMLButtonElement>(null);
+  const [stepMenuPos, setStepMenuPos] = useState<{
+    bottom: number;
+    left: number;
+  } | null>(null);
   const [gotoOpen, setGotoOpen] = useState(false);
   const [gotoTab, setGotoTab] = useState<GotoTab>('pinned');
   const [gotoQuery, setGotoQuery] = useState('');
@@ -166,6 +176,41 @@ export function BottomBar({
   useEffect(() => {
     saveGotoState(gotoItems, gotoPresets);
   }, [gotoItems, gotoPresets]);
+
+  useEffect(() => {
+    setStepInterval(stepLabel);
+  }, [stepLabel]);
+
+  useLayoutEffect(() => {
+    if (!stepMenuOpen) {
+      setStepMenuPos(null);
+      return;
+    }
+    const place = () => {
+      const r = stepBtnRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const w = 72;
+      const pad = 8;
+      let left = r.left;
+      left = Math.max(pad, Math.min(left, window.innerWidth - w - pad));
+      const bottom = Math.max(pad, window.innerHeight - r.top + 6);
+      setStepMenuPos({ bottom, left });
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [stepMenuOpen]);
+
+  useEffect(() => {
+    if (!stepMenuOpen) return;
+    const onPtr = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (stepBtnRef.current?.contains(t)) return;
+      setStepMenuOpen(false);
+    };
+    window.addEventListener('pointerdown', onPtr);
+    return () => window.removeEventListener('pointerdown', onPtr);
+  }, [stepMenuOpen]);
 
   useLayoutEffect(() => {
     if (!gotoOpen) {
@@ -279,6 +324,85 @@ export function BottomBar({
           className="flex-1 min-w-0 h-full flex items-center justify-center overflow-x-auto overflow-y-hidden"
         >
           <div data-rp-cluster="" data-rp-transport="1">
+            <div className="relative" data-replay-mode-root="1">
+              <button
+                ref={stepBtnRef}
+                type="button"
+                data-rp-btn=""
+                data-rp-step=""
+                data-active={stepMenuOpen ? '1' : undefined}
+                aria-label="Step interval"
+                aria-haspopup="listbox"
+                aria-expanded={stepMenuOpen}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setGotoOpen(false);
+                  setStepMenuOpen((o) => !o);
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <ChromeIcon n="stepSize" s={18} />
+                <span data-rp-step-label="">{stepInterval}</span>
+              </button>
+              {stepMenuOpen && stepMenuPos
+                ? createPortal(
+                    <div
+                      data-v9-chrome="1"
+                      data-sdrop="1"
+                      data-chrome-win="replay-step"
+                      data-rp-menu="1"
+                      data-rp-step-menu="1"
+                      role="listbox"
+                      aria-label="Step interval"
+                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      style={{
+                        position: 'fixed',
+                        bottom: stepMenuPos.bottom,
+                        left: stepMenuPos.left,
+                        width: 72,
+                        maxHeight: 280,
+                        zIndex: 11000,
+                        overflowY: 'auto',
+                      }}
+                    >
+                      <div data-rp-menu-sec="">Step</div>
+                      {(
+                        [
+                          stepLabel,
+                          '1m',
+                          '5m',
+                          '15m',
+                          '1h',
+                          '4h',
+                          '1D',
+                        ] as const
+                      )
+                        .filter((t, i, a) => a.indexOf(t) === i)
+                        .map((t) => (
+                          <button
+                            type="button"
+                            key={t}
+                            role="option"
+                            aria-selected={stepInterval === t}
+                            data-rp-menu-item=""
+                            data-on={stepInterval === t ? '1' : undefined}
+                            onClick={() => {
+                              setStepInterval(t);
+                              setStepMenuOpen(false);
+                            }}
+                          >
+                            <span>{t}</span>
+                          </button>
+                        ))}
+                    </div>,
+                    document.body,
+                  )
+                : null}
+            </div>
+
+            <i data-rp-sep="" aria-hidden />
+
             <button
               type="button"
               data-rp-btn=""
@@ -294,9 +418,7 @@ export function BottomBar({
             <i data-rp-sep="" aria-hidden />
 
             <div data-rp-speed="" data-no-tip="1">
-              <span data-rp-speed-val="">
-                {SPEED_STEPS[si]}×
-              </span>
+              <span data-rp-speed-val="">{SPEED_STEPS[si]}×</span>
               <div data-rp-speed-track="">
                 <div data-rp-speed-rail="">
                   <i style={{ width: `${speedPct}%` }} />
@@ -323,21 +445,19 @@ export function BottomBar({
             <button
               type="button"
               data-rp-btn=""
-              aria-label="Step back"
-              onClick={() => onStep(-1)}
-            >
-              <ChromeIcon n="stepBack" s={18} />
-            </button>
-            <button
-              type="button"
-              data-rp-btn=""
               aria-label="Next step"
               onClick={() => onStep(1)}
             >
               <ChromeIcon n="stepFwd" s={18} />
             </button>
-
-            <i data-rp-sep="" aria-hidden />
+            <button
+              type="button"
+              data-rp-btn=""
+              aria-label="Rollback"
+              onClick={() => onStep(-1)}
+            >
+              <ChromeIcon n="rollback" s={18} />
+            </button>
 
             <div className="relative" data-rp-goto-root="1">
               <button
@@ -347,7 +467,10 @@ export function BottomBar({
                 data-active={gotoOpen ? '1' : undefined}
                 aria-label="Go to"
                 aria-expanded={gotoOpen}
-                onClick={openGoto}
+                onClick={() => {
+                  setStepMenuOpen(false);
+                  openGoto();
+                }}
               >
                 <ChromeIcon n="goto" s={18} />
               </button>
@@ -358,6 +481,14 @@ export function BottomBar({
         <div
           data-rp-zone="account"
           className="flex items-center justify-end flex-shrink-0 min-w-0"
+          style={{
+            borderLeft: '1px solid var(--line)',
+            paddingLeft: 8,
+            background: 'var(--surface)',
+            position: 'relative',
+            zIndex: 2,
+            maxWidth: '48%',
+          }}
         >
           <div className="flex items-center gap-2 px-2 min-w-0 overflow-hidden">
             <button
@@ -366,9 +497,10 @@ export function BottomBar({
               aria-label={balVis ? 'Hide balance' : 'Show balance'}
               aria-pressed={balVis}
               onClick={() => setBalVis((v) => !v)}
-              className="w-8 h-8 inline-flex items-center justify-center rounded-md"
+              className="w-8 h-8 inline-flex items-center justify-center rounded-md relative"
+              style={{ color: balVis ? 'var(--text-muted)' : 'var(--warn)' }}
             >
-              <ChromeIcon n="eye" s={16} />
+              <ChromeIcon n={balVis ? 'eye' : 'eyeHide'} s={16} />
             </button>
             <div className="flex items-end gap-3.5 min-w-0 overflow-hidden">
               <div data-rp-metric="bal">

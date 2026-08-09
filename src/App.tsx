@@ -52,7 +52,7 @@ import {
   timeframeSeconds,
   visibleRangeFromTimeWindow,
 } from '@/data/timeframeAgg';
-import { createSessionController } from '@/session';
+import { createSessionController, needsViewportHeal } from '@/session';
 import { ledgerAssertTeardown } from '@/dev/resourceLedger';
 import { warmCache } from '@/session/warmCache';
 import {
@@ -415,6 +415,9 @@ export default function App() {
   const lodReloadCancelRef = useRef<(() => void) | null>(null);
   /** Bumps on each TF/symbol switch — ignore stale async completions. */
   const paneSwitchGenRef = useRef(0);
+  /** Soft completeness heal — one in flight per pane; backoff between attempts. */
+  const viewportHealInflightRef = useRef(new Set<string>());
+  const viewportHealLastAtRef = useRef(new Map<string, number>());
   /** While set, session notify must not commit (avoids stomping mid-switch). */
   const suppressSessionCommitRef = useRef(false);
   /** User pan/zoom during play detaches camera follow (stops fighting the drag). */
@@ -580,6 +583,79 @@ export default function App() {
       if (applyCamera) cameraPreserveRef.current = null;
     },
     [],
+  );
+
+  /**
+   * Soft completeness heal — history-biased refresh when the viewport is
+   * tip-only / empty-left (e.g. 1m→5m before Play). Coalesced per pane.
+   */
+  const healViewportIfNeeded = useCallback(
+    async (
+      paneIds: readonly string[],
+      opts?: { force?: boolean; applyCamera?: boolean },
+    ): Promise<boolean> => {
+      if (!sessionRef.current.get()) return false;
+      const force = opts?.force === true;
+      const now = performance.now();
+      const needy: string[] = [];
+      const span = Math.max(10, sessionRef.current.get()?.span ?? 120);
+      const cursor = replayRef.current.get().cursorTime;
+      const views = sessionRef.current.getViews();
+
+      for (const id of paneIds) {
+        if (!force) {
+          if (viewportHealInflightRef.current.has(id)) continue;
+          const last = viewportHealLastAtRef.current.get(id) ?? 0;
+          if (now - last < 1500) continue;
+        }
+        const v = views[id];
+        const engine = getChart(id);
+        const bars =
+          engine && engine.getBars().length > 0
+            ? engine.getBars()
+            : (v?.bars ?? []);
+        const range = engine?.getVisibleRange() ?? v?.range ?? null;
+        const tf =
+          v?.timeframe ??
+          panesRef.current.find((p) => p.id === id)?.timeframe;
+        if (!tf) continue;
+        // Count/pad/integrity gate; session healViewportHistory also runs
+        // cross-TF candle scan against warm-cache base bars.
+        if (
+          needsViewportHeal({
+            bars,
+            span,
+            cursorTime: cursor,
+            tf,
+            range,
+          })
+        ) {
+          needy.push(id);
+        }
+      }
+      if (needy.length === 0) return false;
+
+      for (const id of needy) {
+        viewportHealInflightRef.current.add(id);
+        viewportHealLastAtRef.current.set(id, now);
+      }
+      try {
+        // Full viewport history refill (not tip-biased topUp) + bar integrity.
+        await sessionRef.current.healViewportHistory(needy);
+        commitSessionViews({ adoptRangePaneIds: needy });
+        syncEnginesFromSession({
+          paneIds: needy,
+          applyCamera: opts?.applyCamera === true,
+        });
+        return true;
+      } catch (err) {
+        console.warn('[viewport] completeness heal failed', err);
+        return false;
+      } finally {
+        for (const id of needy) viewportHealInflightRef.current.delete(id);
+      }
+    },
+    [commitSessionViews, syncEnginesFromSession],
   );
 
   /** Capture live zoom + tip position from the engine (not stale React pane.bars). */
@@ -1930,8 +2006,19 @@ export default function App() {
       applyReplayReveal(rs.cursorTime);
       // Pause / seek / step — always flush progress so exit/reopen resumes here.
       if (playEdge || cursorChanged) persistReplayProgress(true);
+
+      // Soft completeness scan on Play→Pause — heal tip-only without blocking UI.
+      // Skip while playing so Play rAF never waits on history fills.
+      if (playEdge && !rs.playing) {
+        const activeId =
+          sessionRef.current.get()?.activePaneId ??
+          panesRef.current[0]?.id;
+        if (activeId) {
+          void healViewportIfNeeded([activeId], { applyCamera: false });
+        }
+      }
     });
-  }, [catalog, applyReplayReveal, persistReplayProgress]);
+  }, [catalog, applyReplayReveal, healViewportIfNeeded, persistReplayProgress]);
 
   // Pan/zoom → edge-prefetch. With date-range sync OFF, only the origin pane reloads.
   useEffect(() => {
@@ -2276,20 +2363,44 @@ export default function App() {
           }
           if (switchGen !== paneSwitchGenRef.current) return;
 
-          // Empty OR tip-only (1–few bars) — force another history fill.
-          // 1m→5m often painted a single forming candle until Play topped up.
-          const views = sessionRef.current.getViews();
-          const span = Math.max(10, sessionRef.current.get()?.span ?? 120);
-          const minBars = Math.min(24, Math.max(8, Math.floor(span * 0.15)));
-          if (
-            targets.some((id) => (views[id]?.bars.length ?? 0) < minBars)
-          ) {
-            await sessionRef.current.refreshViews(targets);
+          // Soft completeness guard — heal tip-only / empty-left before paint.
+          // Max 2 attempts per switch gen (session sparse retry + App heal).
+          for (let attempt = 0; attempt < 2; attempt++) {
+            if (switchGen !== paneSwitchGenRef.current) return;
+            const healed = await healViewportIfNeeded(targets, {
+              force: true,
+              applyCamera: true,
+            });
+            if (!healed && attempt > 0) break;
+            if (switchGen !== paneSwitchGenRef.current) return;
+            commitSessionViews({ adoptRangePaneIds: targets });
+            syncEnginesFromSession({ paneIds: targets, applyCamera: true });
+            // Second pass only if engines still fail the guard after push.
+            if (attempt === 0) {
+              const stillThin = targets.some((id) => {
+                const v = sessionRef.current.getViews()[id];
+                const engine = getChart(id);
+                const bars =
+                  engine && engine.getBars().length > 0
+                    ? engine.getBars()
+                    : (v?.bars ?? []);
+                const tf =
+                  v?.timeframe ??
+                  panesRef.current.find((p) => p.id === id)?.timeframe;
+                if (!tf) return false;
+                return needsViewportHeal({
+                  bars,
+                  span: Math.max(10, sessionRef.current.get()?.span ?? 120),
+                  cursorTime: replayRef.current.get().cursorTime,
+                  tf,
+                  range: engine?.getVisibleRange() ?? v?.range ?? null,
+                });
+              });
+              if (!stillThin) break;
+            }
           }
           if (switchGen !== paneSwitchGenRef.current) return;
 
-          commitSessionViews({ adoptRangePaneIds: targets });
-          syncEnginesFromSession({ paneIds: targets, applyCamera: true });
           syncReplayClockTf(panesRef.current);
 
           const focus = panesRef.current.find((p) => p.id === paneId);
@@ -2313,6 +2424,7 @@ export default function App() {
       catalog,
       captureLiveCamera,
       commitSessionViews,
+      healViewportIfNeeded,
       markPanesLoading,
       seriesForPane,
       syncEnginesFromSession,
@@ -2375,11 +2487,7 @@ export default function App() {
             replayBufferRef.current.delete(id);
           }
           if (switchGen !== paneSwitchGenRef.current) return;
-
-          const views = sessionRef.current.getViews();
-          if (targets.some((id) => (views[id]?.bars.length ?? 0) === 0)) {
-            await sessionRef.current.refreshViews(targets);
-          }
+          await healViewportIfNeeded(targets, { force: true, applyCamera: true });
           if (switchGen !== paneSwitchGenRef.current) return;
 
           commitSessionViews({ adoptRangePaneIds: targets });
@@ -2429,6 +2537,7 @@ export default function App() {
       catalog,
       captureLiveCamera,
       commitSessionViews,
+      healViewportIfNeeded,
       markPanesLoading,
       pushOrdersToPanes,
       syncEnginesFromSession,
@@ -2916,9 +3025,13 @@ export default function App() {
   }, [orders, ticketDraft, session, panes, activePaneId]);
 
   const orderCounts = useMemo(
-    () => tradeDockCounts(orderBridgeRef.current?.getState() ?? null),
+    () =>
+      tradeDockCounts(orderBridgeRef.current?.getState() ?? null, {
+        sessionId: session?.id ?? null,
+        liveJournal: orderBridgeRef.current?.getJournal() ?? null,
+      }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- tick drives refresh
-    [orderEngineTick],
+    [orderEngineTick, session?.id],
   );
 
   const liveBidAsk = useMemo(() => {
@@ -4494,6 +4607,7 @@ export default function App() {
         pendingCount={orderCounts.pending}
         openCount={orderCounts.open}
         historyCount={orderCounts.history}
+        stepLabel={activePane?.timeframe ?? '1m'}
         onExportTrades={() => {
           const bridge = orderBridgeRef.current;
           if (!bridge) return;
@@ -4573,6 +4687,8 @@ export default function App() {
             }
             bid={liveBidAsk.bid}
             ask={liveBidAsk.ask}
+            sessionId={session.id}
+            liveJournal={orderBridgeRef.current?.getJournal() ?? null}
             onCancel={(orderId) => {
               const bridge = orderBridgeRef.current;
               if (!bridge) return;

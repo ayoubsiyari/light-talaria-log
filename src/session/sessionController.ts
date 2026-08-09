@@ -13,6 +13,10 @@ import type {
   SessionState,
 } from '@/session/sessionState';
 import { warmCache, type WarmCacheFillOpts } from '@/session/warmCache';
+import {
+  needsViewportHeal,
+  type CompletenessInput,
+} from '@/session/viewportCompleteness';
 import type { ChartBar } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
 import {
@@ -103,6 +107,86 @@ export function createSessionController() {
       }),
     );
     if (myGlobal === globalEpoch) notify();
+  };
+
+  /** Completeness + integrity input for a pane (incl. base bars for cross-TF). */
+  const paneHealInput = (paneId: string): CompletenessInput | null => {
+    if (!state) return null;
+    const cfg = state.panes[paneId];
+    const v = views[paneId];
+    if (!cfg || !v) return null;
+    const basePeek =
+      cfg.tf !== state.baseTf
+        ? warmCache.peek(cfg.datasetId, state.baseTf)
+        : null;
+    return {
+      bars: v.bars,
+      span: Math.max(1, state.span),
+      cursorTime: state.cursorTime,
+      tf: cfg.tf,
+      range: v.range,
+      baseBars: basePeek ?? undefined,
+      baseTf: basePeek ? state.baseTf : undefined,
+    };
+  };
+
+  const paneNeedsHeal = (paneId: string): boolean => {
+    const input = paneHealInput(paneId);
+    if (!input) return true;
+    return needsViewportHeal(input);
+  };
+
+  /**
+   * Full viewport history refill for one pane — history-biased warmCache.fill
+   * (+ base clock when pane TF > base), then rederive. Caps at MAX_BARS_IN_MEMORY.
+   */
+  const healPaneHistory = async (paneId: string): Promise<void> => {
+    if (!state) return;
+    const cfg = state.panes[paneId];
+    if (!cfg) return;
+    const span = Math.max(1, state.span);
+    const historyOpts: WarmCacheFillOpts = {
+      awaitRemote: true,
+      aheadRatio: 0.05,
+      windowBars: Math.min(
+        MAX_BARS_IN_MEMORY,
+        Math.max(span * 3 + BUFFER_BARS, span * 4 + 200, 1200),
+      ),
+    };
+    await warmCache.fill(
+      cfg.datasetId,
+      cfg.tf,
+      state.cursorTime,
+      span,
+      historyOpts,
+    );
+    if (!state) return;
+    if (cfg.tf !== state.baseTf) {
+      const baseSpan = Math.min(
+        MAX_BARS_IN_MEMORY,
+        Math.max(
+          span,
+          Math.ceil(
+            (span * timeframeSeconds(cfg.tf)) /
+              timeframeSeconds(state.baseTf),
+          ) + 64,
+        ),
+      );
+      await warmCache.fill(
+        cfg.datasetId,
+        state.baseTf,
+        state.cursorTime,
+        baseSpan,
+        {
+          awaitRemote: true,
+          aheadRatio: 0.08,
+          windowBars: Math.min(MAX_BARS_IN_MEMORY, baseSpan + 200),
+        },
+      );
+    }
+    if (!state) return;
+    rederivePaneSync(paneId);
+    await rederiveAsync([paneId]);
   };
 
   return {
@@ -319,48 +403,16 @@ export function createSessionController() {
         };
         rederivePaneSync(paneId);
 
-        // Sparse = only forming tip (classic 1m→5m with empty higher-TF IDB).
-        // Retry a heavier history fill + awaited async derive before paint.
-        const minPaint = Math.min(32, Math.max(8, Math.floor(span * 0.2)));
-        let painted = views[paneId]?.bars.length ?? 0;
-        if (painted < minPaint) {
-          await warmCache.fill(datasetId, tf, state.cursorTime, span, {
-            ...switchOpts,
-            aheadRatio: 0.05,
-            windowBars: Math.min(
-              MAX_BARS_IN_MEMORY,
-              Math.max(span * 3 + BUFFER_BARS, 1200),
-            ),
-          });
-          if (!state) return;
-          if (tf !== state.baseTf) {
-            const baseSpan = Math.min(
-              MAX_BARS_IN_MEMORY,
-              Math.max(
-                span,
-                Math.ceil(
-                  (span * timeframeSeconds(tf)) /
-                    timeframeSeconds(state.baseTf),
-                ) + 64,
-              ),
-            );
-            await warmCache.fill(
-              datasetId,
-              state.baseTf,
-              state.cursorTime,
-              baseSpan,
-              { awaitRemote: true, aheadRatio: 0.08 },
-            );
-          }
-          if (!state) return;
-          rederivePaneSync(paneId);
-          await rederiveAsync([paneId]);
-          painted = views[paneId]?.bars.length ?? 0;
+        // Soft completeness + full bar scan (incl. cross-TF vs base).
+        const incomplete = () => paneNeedsHeal(paneId);
+
+        if (incomplete()) {
+          await healPaneHistory(paneId);
         }
 
         notify();
-        // Late IDB/remote catch-up (no remote wait) if still thin.
-        if (painted < minPaint) {
+        // Late IDB/remote catch-up (no remote wait) if still thin/corrupt.
+        if (incomplete()) {
           void rederiveAsync([paneId]);
         }
       } finally {
@@ -431,14 +483,9 @@ export function createSessionController() {
       }
       if (!state) return;
       rederivePaneSync(paneId);
-      // Still sparse after first fill (slow remote) — one more awaited pass.
-      const painted = views[paneId]?.bars.length ?? 0;
-      if (painted < Math.min(8, Math.max(2, Math.floor(s.span * 0.05)))) {
-        await warmCache.fill(meta.datasetId, keepTf, state.anchorTime, state.span, {
-          awaitRemote: true,
-        });
-        if (!state) return;
-        rederivePaneSync(paneId);
+      // Soft completeness + full bar scan after symbol switch onto empty IDB.
+      if (paneNeedsHeal(paneId)) {
+        await healPaneHistory(paneId);
       }
       notify();
       void warmCache
@@ -523,6 +570,27 @@ export function createSessionController() {
         rederiveSync();
       }
       await rederiveAsync(paneIds);
+      notify();
+    },
+
+    /**
+     * Full viewport history heal — history-biased refill + integrity rederive
+     * for panes that fail the completeness/candle scan. Caps at MAX_BARS.
+     */
+    async healViewportHistory(paneIds?: string[]): Promise<void> {
+      if (!state) return;
+      const ids = paneIds?.length
+        ? paneIds
+        : Object.keys(state.panes);
+      for (const id of ids) {
+        if (!state?.panes[id]) continue;
+        // Always refill when explicitly targeting a pane (App force heal);
+        // opportunistic path still gates on the scan.
+        if (paneIds?.length || paneNeedsHeal(id)) {
+          await healPaneHistory(id);
+        }
+      }
+      if (!state) return;
       notify();
     },
 

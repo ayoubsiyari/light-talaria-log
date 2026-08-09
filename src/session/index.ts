@@ -10,3 +10,16 @@ export type { SessionController, CreateSessionArgs } from '@/session/sessionCont
 export { revealedViewport, assertNoLookahead } from '@/session/revealedViewport';
 export { warmCache, WarmCache } from '@/session/warmCache';
 export { derivePaneSync, derivePaneAsync } from '@/session/derivePane';
+export {
+  checkCrossTfCandles,
+  checkViewportCompleteness,
+  fullViewportMinBars,
+  minBarsForSpan,
+  needsViewportHeal,
+  scanBarIntegrity,
+} from '@/session/viewportCompleteness';
+export type {
+  CompletenessInput,
+  CompletenessReason,
+  CompletenessResult,
+} from '@/session/viewportCompleteness';

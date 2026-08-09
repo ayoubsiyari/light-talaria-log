@@ -117,14 +117,14 @@
   transition: background var(--motion), color var(--motion), border-color var(--motion) !important;
 }
 [data-order-v2="1"] [data-order-side] button[data-active="1"][data-side="buy"] {
-  background: color-mix(in oklab, var(--up) 22%, var(--surface)) !important;
-  color: var(--up) !important;
-  border-color: color-mix(in oklab, var(--up) 55%, transparent) !important;
+  background: var(--up) !important;
+  color: #0a0c0e !important;
+  border-color: var(--up) !important;
 }
 [data-order-v2="1"] [data-order-side] button[data-active="1"][data-side="sell"] {
-  background: color-mix(in oklab, var(--down) 22%, var(--surface)) !important;
-  color: var(--down) !important;
-  border-color: color-mix(in oklab, var(--down) 55%, transparent) !important;
+  background: var(--down) !important;
+  color: #0a0c0e !important;
+  border-color: var(--down) !important;
 }
 
 [data-order-v2="1"] [data-order-type] {

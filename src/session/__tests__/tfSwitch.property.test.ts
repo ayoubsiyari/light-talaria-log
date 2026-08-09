@@ -6,6 +6,10 @@ import assert from 'node:assert/strict';
 import { describe, it, beforeEach } from 'node:test';
 import { bucketStart, timeframeSeconds } from '@/data/timeframeAgg';
 import { createSessionController } from '@/session/sessionController';
+import {
+  checkCrossTfCandles,
+  scanBarIntegrity,
+} from '@/session/viewportCompleteness';
 import { warmCache } from '@/session/warmCache';
 import type { ChartBar } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
@@ -78,7 +82,8 @@ function seedCache(base: ChartBar[], cursorTime: number): void {
 }
 
 describe('TF switch properties', () => {
-  const t0 = 1_700_000_000;
+  // Align to 1D so every coarser TF bucket start matches base 1m times.
+  const t0 = bucketStart(1_700_000_000, timeframeSeconds('1D'));
   const baseBars = makeBaseBars(t0, 20_000);
   const bounds = {
     start: baseBars[0]!.time,
@@ -161,13 +166,40 @@ describe('TF switch properties', () => {
 
                 if (view.bars.length < 1) {
                   failures.push(`${tag}: painted bars < 1`);
-                } else if (revealMode === 'replay') {
-                  const open = bucketStart(s.cursorTime, timeframeSeconds(tfTo));
-                  const last = view.bars[view.bars.length - 1]!;
-                  if (last.time > open) {
+                } else {
+                  const integrity = scanBarIntegrity(view.bars, tfTo);
+                  if (!integrity.ok) {
                     failures.push(
-                      `${tag}: right edge ${last.time} > open bucket ${open}`,
+                      `${tag}: bar integrity ${integrity.reason} @${integrity.badIndex}`,
                     );
+                  }
+                  if (revealMode === 'replay') {
+                    const open = bucketStart(
+                      s.cursorTime,
+                      timeframeSeconds(tfTo),
+                    );
+                    const last = view.bars[view.bars.length - 1]!;
+                    if (last.time > open) {
+                      failures.push(
+                        `${tag}: right edge ${last.time} > open bucket ${open}`,
+                      );
+                    }
+                    // Cross-TF: closed higher-TF candles must match 1m aggregates.
+                    if (tfTo !== BASE) {
+                      const base = warmCache.peek(DS, BASE) ?? [];
+                      const cross = checkCrossTfCandles(
+                        view.bars,
+                        base,
+                        tfTo,
+                        BASE,
+                        s.cursorTime,
+                      );
+                      if (!cross.ok) {
+                        failures.push(
+                          `${tag}: cross-TF mismatch @${cross.badIndex}`,
+                        );
+                      }
+                    }
                   }
                 }
 

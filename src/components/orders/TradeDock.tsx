@@ -1,7 +1,10 @@
+import { useEffect, useMemo, useState } from 'react';
+import { ChromeIcon } from '@/v9/chromeIcons.jsx';
 import type { InstrumentSpec } from '@/orders/instrumentSpec';
+import type { OrderJournal } from '@/orders/journal';
 import { unrealizedPnL } from '@/orders/pnl';
 import type { Order, OrderEngineState, Position } from '@/orders/orderTypes';
-import { isTerminal } from '@/orders/orderTypes';
+import { getOrderJournalView, type OrderTrade } from '@/orders/tradeJournal';
 import type { BottomTabId } from '@/types/ui';
 
 interface TradeDockProps {
@@ -10,14 +13,81 @@ interface TradeDockProps {
   spec: InstrumentSpec | null;
   bid: number;
   ask: number;
+  sessionId?: string | null;
+  liveJournal?: OrderJournal | null;
   onCancel: (orderId: string) => void;
   onSelectPosition?: (positionId: string) => void;
   onClosePosition?: (positionId: string) => void;
 }
 
+type RowStatus = 'open' | 'pending' | 'closed';
+
+type DockRow = {
+  id: string;
+  displayId: string;
+  time: string;
+  timeSec: number;
+  sym: string;
+  side: 'LONG' | 'SHORT';
+  status: RowStatus;
+  size: number;
+  type: string;
+  entry: string;
+  exit: string;
+  pnl: string;
+  pnlColor: string;
+  dur: string;
+  omId: string;
+};
+
+const TRADES_COLS = [
+  'minmax(48px,0.55fr)', // ID
+  'minmax(88px,1.15fr)', // TIME
+  'minmax(72px,1.25fr)', // SYMBOL
+  'minmax(44px,0.5fr)', // SIDE
+  'minmax(54px,0.6fr)', // STATUS
+  'minmax(40px,0.5fr)', // SIZE
+  'minmax(48px,0.55fr)', // TYPE
+  'minmax(62px,0.75fr)', // ENTRY
+  'minmax(62px,0.75fr)', // EXIT
+  'minmax(62px,0.85fr)', // P&L
+  'minmax(46px,0.55fr)', // DUR
+  'minmax(96px,1.2fr)', // TAGS
+  'minmax(72px,1.55fr)', // NOTES
+  'minmax(64px,0.85fr)', // SHOTS
+  'minmax(58px,0.7fr)', // ACTION
+].join(' ');
+
+const HDRS: { label: string; col: string; sortable?: boolean }[] = [
+  { label: 'ID', col: 'id', sortable: true },
+  { label: 'TIME', col: 'time', sortable: true },
+  { label: 'SYMBOL', col: 'sym', sortable: true },
+  { label: 'SIDE', col: 'side', sortable: true },
+  { label: 'STATUS', col: 'status', sortable: true },
+  { label: 'SIZE', col: 'num', sortable: true },
+  { label: 'TYPE', col: 'type', sortable: true },
+  { label: 'ENTRY', col: 'num' },
+  { label: 'EXIT', col: 'num' },
+  { label: 'P&L', col: 'pnl', sortable: true },
+  { label: 'DUR', col: 'dur', sortable: true },
+  { label: 'TAGS', col: 'tags' },
+  { label: 'NOTES', col: 'notes' },
+  { label: 'SHOTS', col: 'shots' },
+  { label: 'ACTION', col: 'action' },
+];
+
+const PRE_DEFS = ['Setup A', 'Setup B', 'News', 'FOMO'];
+const POST_DEFS = ['Followed plan', 'Early exit', 'Revenge', 'Good hold'];
+
 function fmt(n: number, digits = 2): string {
   if (!Number.isFinite(n)) return '—';
   return n.toFixed(digits);
+}
+
+function fmtPnl(n: number): string {
+  if (!Number.isFinite(n)) return '—';
+  const sign = n > 0 ? '+' : '';
+  return `${sign}${n.toFixed(2)}`;
 }
 
 function fmtSym(raw: string): string {
@@ -48,13 +118,27 @@ function fmtTime(unixSec: number | undefined): string {
   return `${months[d.getUTCMonth()]} ${d.getUTCDate()} ${hh}:${mm}`;
 }
 
-function shortId(id: string): string {
-  const digits = id.replace(/\D/g, '');
-  if (digits.length >= 4) return digits.slice(-4);
-  return id.slice(0, 6);
+function fmtDur(fromSec: number, toSec: number | null): string {
+  if (!(fromSec > 0)) return '—';
+  const end = toSec && toSec > fromSec ? toSec : Math.floor(Date.now() / 1000);
+  let sec = Math.max(0, end - fromSec);
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  if (h < 48) return rm ? `${h}h ${rm}m` : `${h}h`;
+  const d = Math.floor(h / 24);
+  return `${d}d`;
 }
 
-/** Unrealized P&L in account currency (same math as equity / bottom-bar P&L). */
+function displayId(id: string): string {
+  const digits = id.replace(/\D/g, '');
+  if (digits.length >= 4) return `#${digits.slice(-4)}`;
+  if (digits.length > 0) return `#${digits.padStart(4, '0')}`;
+  return `#${id.slice(0, 4)}`;
+}
+
 function unrealizedAccount(
   pos: Position,
   bid: number,
@@ -69,36 +153,31 @@ function unrealizedAccount(
   }).amount;
 }
 
-const TRADES_COLS = [
-  'minmax(48px,0.55fr)', // ID
-  'minmax(72px,1.15fr)', // SYMBOL
-  'minmax(88px,1.15fr)', // TIME
-  'minmax(44px,0.5fr)', // SIDE
-  'minmax(54px,0.6fr)', // STATUS
-  'minmax(40px,0.5fr)', // SIZE
-  'minmax(48px,0.55fr)', // TYPE
-  'minmax(62px,0.75fr)', // ENTRY
-  'minmax(62px,0.75fr)', // EXIT
-  'minmax(62px,0.85fr)', // P&L
-  'minmax(58px,0.7fr)', // ACTION
-].join(' ');
+type TagMap = Record<string, { pre: string[]; post: string[] }>;
 
-const HDRS: { label: string; col: string }[] = [
-  { label: 'ID', col: 'id' },
-  { label: 'Symbol', col: 'sym' },
-  { label: 'Time', col: 'time' },
-  { label: 'Side', col: 'side' },
-  { label: 'Status', col: 'status' },
-  { label: 'Size', col: 'num' },
-  { label: 'Type', col: 'type' },
-  { label: 'Entry', col: 'num' },
-  { label: 'Exit', col: 'num' },
-  { label: 'P&L', col: 'pnl' },
-  { label: 'Action', col: 'action' },
-];
+function loadTags(sessionId: string | null | undefined): TagMap {
+  if (!sessionId) return {};
+  try {
+    const raw = localStorage.getItem(`talaria.tradeTags.${sessionId}`);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as TagMap;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveTags(sessionId: string | null | undefined, map: TagMap): void {
+  if (!sessionId) return;
+  try {
+    localStorage.setItem(`talaria.tradeTags.${sessionId}`, JSON.stringify(map));
+  } catch {
+    /* ignore */
+  }
+}
 
 /**
- * V9 Obsidian bottom trade list — data-trades-v2 grammar, our order engine.
+ * V9 Obsidian bottom trade list — Live column grammar + our order engine.
  */
 export function TradeDock({
   activeTab,
@@ -106,33 +185,149 @@ export function TradeDock({
   spec,
   bid,
   ask,
+  sessionId,
+  liveJournal,
   onCancel,
   onSelectPosition,
   onClosePosition,
 }: TradeDockProps) {
-  if (activeTab === 'analytics') return null;
+  const [tagMap, setTagMap] = useState<TagMap>(() => loadTags(sessionId));
+  const [tagDrop, setTagDrop] = useState<{
+    id: string;
+    type: 'pre' | 'post';
+  } | null>(null);
+
+  useEffect(() => {
+    setTagMap(loadTags(sessionId));
+  }, [sessionId]);
+
+  useEffect(() => {
+    saveTags(sessionId, tagMap);
+  }, [sessionId, tagMap]);
+
+  useEffect(() => {
+    if (!tagDrop) return;
+    const onPtr = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.('[data-trades-tag-menu], [data-trades-tag]')) return;
+      setTagDrop(null);
+    };
+    document.addEventListener('pointerdown', onPtr, true);
+    return () => document.removeEventListener('pointerdown', onPtr, true);
+  }, [tagDrop]);
 
   const digits = spec?.digits ?? 5;
-  const working: Order[] = state
-    ? state.workingIds.map((id) => state.orders[id]!).filter(Boolean)
-    : [];
-  const pending = working.filter((o) => !o.role);
-  const positions: Position[] = state ? Object.values(state.positions) : [];
-  const history: Order[] = state
-    ? Object.values(state.orders)
-        .filter((o) => isTerminal(o.status) && o.status === 'FILLED' && !o.role)
-        .sort((a, b) => (b.filledAt ?? 0) - (a.filledAt ?? 0))
-        .slice(0, 40)
-    : [];
 
-  const showOpen = activeTab === 'all' || activeTab === 'open';
-  const showPending = activeTab === 'all' || activeTab === 'pending';
-  const showHistory = activeTab === 'all' || activeTab === 'history';
+  const closedTrades: OrderTrade[] = useMemo(() => {
+    if (!sessionId) return [];
+    const view = getOrderJournalView(sessionId, liveJournal ?? null);
+    return view?.trades.slice().reverse() ?? [];
+  }, [sessionId, liveJournal, state]);
 
-  const empty =
-    (!showOpen || positions.length === 0) &&
-    (!showPending || pending.length === 0) &&
-    (!showHistory || history.length === 0);
+  const rows = useMemo(() => {
+    const out: DockRow[] = [];
+    const currency = state?.account.currency ?? 'USD';
+
+    if (state) {
+      for (const p of Object.values(state.positions)) {
+        const upnl = unrealizedAccount(p, bid, ask, spec, currency);
+        out.push({
+          id: p.id,
+          displayId: displayId(p.id),
+          time: fmtTime(p.openedAt),
+          timeSec: p.openedAt ?? 0,
+          sym: fmtSym(p.symbol),
+          side: p.side === 'BUY' ? 'LONG' : 'SHORT',
+          status: 'open',
+          size: p.size,
+          type: 'Market',
+          entry: fmt(p.entryPrice, digits),
+          exit: '—',
+          pnl: fmtPnl(upnl),
+          pnlColor: upnl >= 0 ? 'var(--up)' : 'var(--down)',
+          dur: fmtDur(p.openedAt ?? 0, null),
+          omId: p.id,
+        });
+      }
+
+      const working: Order[] = state.workingIds
+        .map((id) => state.orders[id]!)
+        .filter((o) => o && !o.role);
+      for (const o of working) {
+        out.push({
+          id: o.id,
+          displayId: displayId(o.id),
+          time: fmtTime(o.createdAt),
+          timeSec: o.createdAt ?? 0,
+          sym: fmtSym(o.symbol),
+          side: o.side === 'BUY' ? 'LONG' : 'SHORT',
+          status: 'pending',
+          size: o.size,
+          type: o.type,
+          entry: o.price != null ? fmt(o.price, digits) : 'MKT',
+          exit: '—',
+          pnl: '—',
+          pnlColor: 'var(--text-faint)',
+          dur: '—',
+          omId: o.id,
+        });
+      }
+    }
+
+    for (const t of closedTrades) {
+      out.push({
+        id: t.id,
+        displayId: displayId(t.id),
+        time: fmtTime(t.exitTime || t.entryTime),
+        timeSec: t.exitTime || t.entryTime,
+        sym: fmtSym(t.symbol),
+        side: t.side === 'buy' ? 'LONG' : 'SHORT',
+        status: 'closed',
+        size: t.size,
+        type: 'Market',
+        entry: fmt(t.entryPrice, digits),
+        exit: fmt(t.exitPrice, digits),
+        pnl: t.ambiguousFill ? 'ambig.' : fmtPnl(t.pnlAccount),
+        pnlColor: t.ambiguousFill
+          ? 'var(--text-faint)'
+          : t.pnlAccount >= 0
+            ? 'var(--up)'
+            : 'var(--down)',
+        dur: fmtDur(t.entryTime, t.exitTime),
+        omId: t.id,
+      });
+    }
+
+    out.sort((a, b) => b.timeSec - a.timeSec);
+    return out;
+  }, [state, bid, ask, spec, digits, closedTrades]);
+
+  if (activeTab === 'analytics') return null;
+
+  const filtered =
+    activeTab === 'all'
+      ? rows
+      : rows.filter((r) =>
+          activeTab === 'pending'
+            ? r.status === 'pending'
+            : activeTab === 'open'
+              ? r.status === 'open'
+              : activeTab === 'history'
+                ? r.status === 'closed'
+                : false,
+        );
+
+  const empty = filtered.length === 0;
+
+  const setTags = (id: string, type: 'pre' | 'post', tags: string[]) => {
+    setTagMap((prev) => ({
+      ...prev,
+      [id]: {
+        pre: type === 'pre' ? tags : (prev[id]?.pre ?? []),
+        post: type === 'post' ? tags : (prev[id]?.post ?? []),
+      },
+    }));
+  };
 
   return (
     <div
@@ -140,11 +335,23 @@ export function TradeDock({
       data-tc-body=""
       className="flex-1 min-h-0 flex flex-col tlr-scroll"
     >
-      <div data-trades-table="" className="flex-1 min-h-0 overflow-auto">
+      <div
+        data-trades-table=""
+        className="tlr-scroll flex-1 min-h-0"
+        style={{ overflowY: 'auto' }}
+      >
         <div data-trades-hdr="" style={{ gridTemplateColumns: TRADES_COLS }}>
           {HDRS.map((h) => (
-            <button type="button" key={h.label} data-col={h.col} disabled>
+            <button
+              type="button"
+              key={h.label}
+              data-col={h.col}
+              data-sorted={h.col === 'time' ? '1' : undefined}
+              data-dir={h.col === 'time' ? 'desc' : undefined}
+              disabled={!h.sortable}
+            >
               <span>{h.label}</span>
+              {h.sortable ? <ChromeIcon n="chevDown" s={9} /> : null}
             </button>
           ))}
         </div>
@@ -163,202 +370,266 @@ export function TradeDock({
             </em>
           </div>
         ) : (
-          <>
-            {showOpen &&
-              positions.map((p) => {
-                const upnl = unrealizedAccount(
-                  p,
-                  bid,
-                  ask,
-                  spec,
-                  state?.account.currency ?? 'USD',
-                );
-                const sideLabel = p.side === 'BUY' ? 'LONG' : 'SHORT';
-                return (
-                  <div
-                    key={p.id}
-                    data-trades-row=""
-                    data-tc-status="open"
-                    data-selected={undefined}
-                    style={{ gridTemplateColumns: TRADES_COLS }}
-                    onClick={() => onSelectPosition?.(p.id)}
+          filtered.map((r) => {
+            const pre = tagMap[r.id]?.pre ?? [];
+            const post = tagMap[r.id]?.post ?? [];
+            const isActive = r.status === 'open' || r.status === 'pending';
+            return (
+              <div
+                key={`${r.status}-${r.id}-${r.timeSec}`}
+                data-trades-row=""
+                data-status={r.status}
+                style={{ gridTemplateColumns: TRADES_COLS }}
+                onClick={() => {
+                  if (r.status === 'open') onSelectPosition?.(r.omId);
+                }}
+              >
+                <div data-cell="id" data-col="id">
+                  <button
+                    type="button"
+                    data-trades-id=""
+                    data-live={isActive ? '1' : undefined}
                   >
-                    <div data-col="id">
-                      <button type="button" data-trades-id="" data-live="1">
-                        {shortId(p.id)}
-                      </button>
-                    </div>
-                    <div data-col="sym" data-cell="sym">
-                      {fmtSym(p.symbol)}
-                    </div>
-                    <div data-col="time" data-cell="time">
-                      {fmtTime(p.openedAt)}
-                    </div>
-                    <div data-col="side">
-                      <span data-trade-side={sideLabel}>{sideLabel === 'LONG' ? 'Long' : 'Short'}</span>
-                    </div>
-                    <div data-col="status">
-                      <span data-trade-status="open">Open</span>
-                    </div>
-                    <div data-col="num" data-cell="num">
-                      {p.size}
-                    </div>
-                    <div data-col="type" data-cell="muted">
-                      Market
-                    </div>
-                    <div data-col="num" data-cell="num">
-                      {fmt(p.entryPrice, digits)}
-                    </div>
-                    <div data-col="num" data-cell="muted" data-empty="1">
-                      —
-                    </div>
-                    <div
-                      data-col="pnl"
-                      data-cell="pnl"
-                      style={{
-                        color: upnl >= 0 ? 'var(--up)' : 'var(--down)',
-                      }}
-                    >
-                      {upnl >= 0 ? '+' : ''}
-                      {fmt(upnl)}
-                    </div>
-                    <div data-col="action" data-cell="action">
-                      {onClosePosition ? (
+                    {r.displayId}
+                  </button>
+                </div>
+                <span data-cell="time" data-col="time" title={r.time}>
+                  {r.time}
+                </span>
+                <span data-cell="sym" data-col="sym">
+                  {r.sym}
+                </span>
+                <span data-trade-side={r.side} data-col="side">
+                  {r.side === 'LONG' ? 'Long' : 'Short'}
+                </span>
+                <span data-trade-status={r.status} data-col="status">
+                  {r.status}
+                </span>
+                <span data-cell="num" data-col="num">
+                  {r.size}
+                </span>
+                <span data-cell="muted" data-col="type">
+                  {r.type}
+                </span>
+                <span data-cell="num" data-col="num">
+                  {r.entry}
+                </span>
+                <span
+                  data-cell="num"
+                  data-col="num"
+                  data-empty={r.exit === '—' ? '1' : undefined}
+                >
+                  {r.exit}
+                </span>
+                <span
+                  data-cell="pnl"
+                  data-col="pnl"
+                  style={{ color: r.pnlColor }}
+                >
+                  {r.pnl}
+                </span>
+                <span
+                  data-cell="muted"
+                  data-col="dur"
+                  data-empty={r.dur === '—' ? '1' : undefined}
+                >
+                  {r.dur}
+                </span>
+                <div
+                  data-cell="tags"
+                  data-col="tags"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {(
+                    [
+                      {
+                        type: 'pre' as const,
+                        tags: pre,
+                        label: 'PRE',
+                        canEdit: r.status === 'pending' || r.status === 'open',
+                        defs: PRE_DEFS,
+                      },
+                      {
+                        type: 'post' as const,
+                        tags: post,
+                        label: 'POST',
+                        canEdit: r.status === 'closed',
+                        defs: POST_DEFS,
+                      },
+                    ] as const
+                  ).map(({ type, tags, label, canEdit, defs }) => {
+                    const isOpen =
+                      tagDrop?.id === r.id && tagDrop.type === type;
+                    const hasTags = tags.length > 0;
+                    const clickable =
+                      type === 'post'
+                        ? canEdit
+                        : hasTags || canEdit || defs.length > 0;
+                    return (
+                      <div key={type} style={{ position: 'relative' }}>
                         <button
                           type="button"
-                          data-trades-act="close"
-                          className="min-h-11 sm:min-h-[22px]"
+                          data-trades-tag=""
+                          data-on={isOpen || hasTags ? '1' : undefined}
+                          data-kind={type}
+                          data-open={isOpen ? '1' : undefined}
+                          disabled={!clickable}
                           onClick={(e) => {
                             e.stopPropagation();
-                            onClosePosition(p.id);
+                            if (!clickable) return;
+                            setTagDrop(isOpen ? null : { id: r.id, type });
                           }}
                         >
-                          Close
+                          <span>{label}</span>
+                          {hasTags ? (
+                            <em data-trades-tag-count="">{tags.length}</em>
+                          ) : null}
+                          {clickable ? (
+                            <ChromeIcon n="chevDown" s={9} />
+                          ) : null}
                         </button>
-                      ) : (
-                        <em>—</em>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-
-            {showPending &&
-              pending.map((o) => {
-                const sideLabel = o.side === 'BUY' ? 'LONG' : 'SHORT';
-                return (
-                  <div
-                    key={o.id}
-                    data-trades-row=""
-                    data-tc-status="pending"
-                    style={{ gridTemplateColumns: TRADES_COLS }}
-                  >
-                    <div data-col="id">
-                      <button type="button" data-trades-id="">
-                        {shortId(o.id)}
-                      </button>
-                    </div>
-                    <div data-col="sym" data-cell="sym">
-                      {fmtSym(o.symbol)}
-                    </div>
-                    <div data-col="time" data-cell="time">
-                      {fmtTime(o.createdAt)}
-                    </div>
-                    <div data-col="side">
-                      <span data-trade-side={sideLabel}>
-                        {sideLabel === 'LONG' ? 'Long' : 'Short'}
-                      </span>
-                    </div>
-                    <div data-col="status">
-                      <span data-trade-status="pending">Pending</span>
-                    </div>
-                    <div data-col="num" data-cell="num">
-                      {o.size}
-                    </div>
-                    <div data-col="type" data-cell="muted">
-                      {o.type}
-                    </div>
-                    <div data-col="num" data-cell="num">
-                      {o.price != null ? fmt(o.price, digits) : 'MKT'}
-                    </div>
-                    <div data-col="num" data-cell="muted" data-empty="1">
-                      —
-                    </div>
-                    <div data-col="pnl" data-cell="muted" data-empty="1">
-                      —
-                    </div>
-                    <div data-col="action" data-cell="action">
-                      <button
-                        type="button"
-                        data-trades-act="cancel"
-                        className="min-h-11 sm:min-h-[22px]"
-                        onClick={() => onCancel(o.id)}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-
-            {showHistory &&
-              history.map((o) => {
-                const sideLabel = o.side === 'BUY' ? 'LONG' : 'SHORT';
-                return (
-                  <div
-                    key={`${o.id}-${o.filledAt}`}
-                    data-trades-row=""
-                    data-tc-status="closed"
-                    style={{ gridTemplateColumns: TRADES_COLS }}
-                  >
-                    <div data-col="id">
-                      <button type="button" data-trades-id="">
-                        {shortId(o.id)}
-                      </button>
-                    </div>
-                    <div data-col="sym" data-cell="sym">
-                      {fmtSym(o.symbol)}
-                    </div>
-                    <div data-col="time" data-cell="time">
-                      {fmtTime(o.filledAt ?? o.createdAt)}
-                    </div>
-                    <div data-col="side">
-                      <span data-trade-side={sideLabel}>
-                        {sideLabel === 'LONG' ? 'Long' : 'Short'}
-                      </span>
-                    </div>
-                    <div data-col="status">
-                      <span data-trade-status="closed">Closed</span>
-                    </div>
-                    <div data-col="num" data-cell="num">
-                      {o.size}
-                    </div>
-                    <div data-col="type" data-cell="muted">
-                      {o.type}
-                    </div>
-                    <div data-col="num" data-cell="num">
-                      {fmt(o.fillPrice ?? o.price ?? 0, digits)}
-                    </div>
-                    <div data-col="num" data-cell="num">
-                      {fmt(o.fillPrice ?? 0, digits)}
-                    </div>
-                    <div data-col="pnl" data-cell="muted">
-                      {o.ambiguousFill ? 'ambig.' : 'filled'}
-                    </div>
-                    <div data-col="action" data-cell="action">
-                      <em>—</em>
-                    </div>
-                  </div>
-                );
-              })}
-          </>
+                        {isOpen && clickable ? (
+                          <div
+                            data-v9-chrome="1"
+                            data-sdrop="1"
+                            data-trades-tag-menu=""
+                            data-kind={type}
+                            data-readonly={!canEdit ? '1' : undefined}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              position: 'absolute',
+                              bottom: '100%',
+                              left: 0,
+                              zIndex: 40,
+                              marginBottom: 4,
+                              minWidth: 200,
+                              maxHeight: 240,
+                              overflow: 'auto',
+                            }}
+                          >
+                            <header data-trades-tag-menu-h="">
+                              <div data-trades-tag-menu-titles="">
+                                <span>
+                                  {type === 'pre' ? 'Pre-trade' : 'Post-trade'}
+                                </span>
+                                <em>
+                                  {!canEdit
+                                    ? 'View only'
+                                    : tags.length
+                                      ? `${tags.length} selected`
+                                      : 'Select tags'}
+                                </em>
+                              </div>
+                              {canEdit && tags.length > 0 ? (
+                                <button
+                                  type="button"
+                                  data-trades-tag-clear=""
+                                  onClick={() => setTags(r.id, type, [])}
+                                >
+                                  Clear
+                                </button>
+                              ) : null}
+                            </header>
+                            <div
+                              data-trades-tag-menu-body=""
+                              className="tlr-scroll"
+                            >
+                              {defs.map((opt) => {
+                                const active = tags.includes(opt);
+                                return (
+                                  <button
+                                    key={opt}
+                                    type="button"
+                                    data-trades-tag-row="multi"
+                                    data-on={active ? '1' : undefined}
+                                    disabled={!canEdit}
+                                    onClick={() => {
+                                      if (!canEdit) return;
+                                      setTags(
+                                        r.id,
+                                        type,
+                                        active
+                                          ? tags.filter((x) => x !== opt)
+                                          : [...tags, opt],
+                                      );
+                                    }}
+                                    style={{
+                                      display: 'flex',
+                                      width: '100%',
+                                      alignItems: 'center',
+                                      gap: 6,
+                                      padding: '6px 10px',
+                                      background: active
+                                        ? 'var(--accent-quiet)'
+                                        : 'transparent',
+                                      color: 'var(--text)',
+                                      border: 'none',
+                                      textAlign: 'left',
+                                      fontSize: 12,
+                                    }}
+                                  >
+                                    {active ? (
+                                      <ChromeIcon n="check" s={10} />
+                                    ) : null}
+                                    <span>{opt}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div data-cell="notes" data-col="notes">
+                  <em>—</em>
+                </div>
+                <div data-cell="shots" data-col="shots">
+                  <em>—</em>
+                </div>
+                <div data-cell="action" data-col="action">
+                  {r.status === 'pending' ? (
+                    <button
+                      type="button"
+                      data-trades-act="cancel"
+                      className="min-h-11 sm:min-h-[22px]"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCancel(r.omId);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  ) : r.status === 'open' && onClosePosition ? (
+                    <button
+                      type="button"
+                      data-trades-act="close"
+                      className="min-h-11 sm:min-h-[22px]"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClosePosition(r.omId);
+                      }}
+                    >
+                      Close
+                    </button>
+                  ) : (
+                    <em>—</em>
+                  )}
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
     </div>
   );
 }
 
-export function tradeDockCounts(state: OrderEngineState | null): {
+export function tradeDockCounts(
+  state: OrderEngineState | null,
+  opts?: { sessionId?: string | null; liveJournal?: OrderJournal | null },
+): {
   open: number;
   pending: number;
   history: number;
@@ -368,9 +639,10 @@ export function tradeDockCounts(state: OrderEngineState | null): {
     const o = state.orders[id];
     return o && !o.role;
   }).length;
-  const history = Object.values(state.orders).filter(
-    (o) => isTerminal(o.status) && o.status === 'FILLED' && !o.role,
-  ).length;
+  const sid = opts?.sessionId;
+  const history = sid
+    ? (getOrderJournalView(sid, opts?.liveJournal ?? null)?.trades.length ?? 0)
+    : 0;
   return {
     open: Object.keys(state.positions).length,
     pending,

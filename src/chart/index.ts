@@ -47,7 +47,16 @@ export type {
   SeriesType,
   ChartViewOptions,
 } from './types';
-export { formatPrice, formatTime } from './format';
+export { formatPrice, formatTime, formatCrosshairTime, formatClockHms } from './format';
+export {
+  CHART_TIMEZONES,
+  getChartTimezone,
+  timezoneOption,
+  timezoneManager,
+  installTimezoneManager,
+} from './timezone';
+export type { ChartTimezoneOption } from './timezone';
+export type { ChartTimezoneId } from '@/types/chartAppearance';
 export { createChartSyncStore, attachChartSync } from './sync';
 export type {
   ChartId,

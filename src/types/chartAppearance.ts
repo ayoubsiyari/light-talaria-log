@@ -3,6 +3,20 @@ export type LastPriceLineStyle = 'solid' | 'dashed' | 'dotted';
 export type AppearanceSeriesType = 'candle' | 'bar' | 'line';
 export type AppearanceCrosshairMode = 'normal' | 'magnet' | 'magnetOhlc' | 'hidden';
 
+/**
+ * Display timezone for axis / crosshair / bottom clock / Go To wall-clock.
+ * Bar data stays unix UTC; only labels convert.
+ */
+export type ChartTimezoneId =
+  | 'utc'
+  | 'local'
+  | 'America/New_York'
+  | 'Europe/London'
+  | 'Europe/Berlin'
+  | 'Asia/Tokyo'
+  | 'Asia/Singapore'
+  | 'Australia/Sydney';
+
 /** Full chart + chrome appearance (TradingView-style settings). */
 export interface ChartAppearance {
   /* ── Symbol / series ─────────────────────────────── */
@@ -43,6 +57,8 @@ export interface ChartAppearance {
   lastPriceLineStyle: LastPriceLineStyle;
   showPriceScale: boolean;
   showTimeScale: boolean;
+  /** Axis / HUD / Go To display zone (default UTC). */
+  timezone: ChartTimezoneId;
   axisText: string | null;
 
   /* ── Canvas ──────────────────────────────────────── */
@@ -110,6 +126,7 @@ export const DEFAULT_CHART_APPEARANCE: ChartAppearance = {
   lastPriceLineStyle: 'dashed',
   showPriceScale: true,
   showTimeScale: true,
+  timezone: 'utc',
   axisText: null,
 
   background: null,

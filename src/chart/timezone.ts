@@ -3,16 +3,9 @@
  * Bar timestamps in storage stay unix UTC; only presentation converts.
  */
 import { getAppearance } from '@/chart/appearanceStore';
+import type { ChartTimezoneId } from '@/types/chartAppearance';
 
-export type ChartTimezoneId =
-  | 'utc'
-  | 'local'
-  | 'America/New_York'
-  | 'Europe/London'
-  | 'Europe/Berlin'
-  | 'Asia/Tokyo'
-  | 'Asia/Singapore'
-  | 'Australia/Sydney';
+export type { ChartTimezoneId };
 
 export interface ChartTimezoneOption {
   id: ChartTimezoneId;

@@ -1,7 +1,19 @@
 import {
   DEFAULT_CHART_APPEARANCE,
   type ChartAppearance,
+  type ChartTimezoneId,
 } from '@/types/chartAppearance';
+
+const TIMEZONE_IDS: ReadonlySet<string> = new Set([
+  'utc',
+  'local',
+  'America/New_York',
+  'Europe/London',
+  'Europe/Berlin',
+  'Asia/Tokyo',
+  'Asia/Singapore',
+  'Australia/Sydney',
+]);
 
 const STORAGE_KEY = 'talaria.chartAppearance.v2';
 
@@ -17,7 +29,11 @@ function readStored(): ChartAppearance {
       localStorage.getItem('talaria.chartAppearance.v1');
     if (!raw) return { ...DEFAULT_CHART_APPEARANCE };
     const parsed = JSON.parse(raw) as Partial<ChartAppearance>;
-    return { ...DEFAULT_CHART_APPEARANCE, ...parsed };
+    const merged = { ...DEFAULT_CHART_APPEARANCE, ...parsed };
+    if (!TIMEZONE_IDS.has(merged.timezone)) {
+      merged.timezone = 'utc' satisfies ChartTimezoneId;
+    }
+    return merged;
   } catch {
     return { ...DEFAULT_CHART_APPEARANCE };
   }

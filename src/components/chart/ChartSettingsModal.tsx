@@ -18,10 +18,12 @@ import {
   ToggleRow,
   fieldClass,
 } from '@/components/drawings/settings/SettingsForm';
+import { CHART_TIMEZONES } from '@/chart/timezone';
 import type {
   AppearanceCrosshairMode,
   AppearanceSeriesType,
   ChartAppearance,
+  ChartTimezoneId,
   GridLineStyle,
   LastPriceLineStyle,
 } from '@/types/chartAppearance';
@@ -507,6 +509,27 @@ function ScalesTab({
         checked={draft.showTimeScale}
         onChange={(v) => applyLive({ showTimeScale: v })}
       />
+      <Row label="Timezone">
+        <select
+          value={draft.timezone}
+          onChange={(e) =>
+            applyLive({
+              timezone: e.target.value as ChartTimezoneId,
+            })
+          }
+          className={`${fieldClass} min-h-11`}
+          aria-label="Chart timezone"
+        >
+          {CHART_TIMEZONES.map((z) => (
+            <option key={z.id} value={z.id}>
+              {z.label}
+            </option>
+          ))}
+        </select>
+      </Row>
+      <p className="text-xs text-muted-foreground px-1 -mt-1 mb-2">
+        Axis, crosshair, and replay clock labels. Bar data stays UTC.
+      </p>
       <ColorField
         label="Axis labels"
         value={draft.axisText}

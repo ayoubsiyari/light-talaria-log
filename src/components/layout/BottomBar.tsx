@@ -4,9 +4,23 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
+import {
+  getAppearance,
+  patchAppearance,
+  subscribeAppearance,
+} from '@/chart/appearanceStore';
+import {
+  CHART_TIMEZONES,
+  convertToTimezoneDate,
+  formatZonedClockHms,
+  formatZonedDateIso,
+  timezoneOption,
+} from '@/chart/timezone';
+import type { ChartTimezoneId } from '@/types/chartAppearance';
 import { ChromeIcon } from '@/v9/chromeIcons.jsx';
 import { formatV9HudDateLineTitle } from '@/v9/chromeTheme.js';
 import type { ReplayState } from '@/replay/replayStore';
@@ -74,24 +88,6 @@ function nearestSpeedIndex(speed: number): number {
   return best;
 }
 
-function formatClockHms(unixSec: number): string {
-  if (!(unixSec > 0)) return '—';
-  const d = new Date(unixSec * 1000);
-  const hh = String(d.getUTCHours()).padStart(2, '0');
-  const mm = String(d.getUTCMinutes()).padStart(2, '0');
-  const ss = String(d.getUTCSeconds()).padStart(2, '0');
-  return `${hh}:${mm}:${ss}`;
-}
-
-function cursorDateIso(unixSec: number): string {
-  if (!(unixSec > 0)) {
-    const n = new Date();
-    return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, '0')}-${String(n.getUTCDate()).padStart(2, '0')}`;
-  }
-  const d = new Date(unixSec * 1000);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-}
-
 type GotoTab = 'pinned' | 'preset' | 'create';
 
 /** V9 Obsidian bottom chrome: replay-v2 bar · trades-v2 toolbar · dock body. */
@@ -153,11 +149,39 @@ export function BottomBar({
     maxH: number;
   } | null>(null);
 
+  const appearance = useSyncExternalStore(
+    subscribeAppearance,
+    getAppearance,
+    getAppearance,
+  );
+  const tzId = appearance.timezone;
+  const tzShort = timezoneOption(tzId).short;
+  const [tzMenuOpen, setTzMenuOpen] = useState(false);
+  const tzBtnRef = useRef<HTMLButtonElement>(null);
+
   const si = nearestSpeedIndex(replay.speed);
   const speedPct = (si / (SPEED_STEPS.length - 1)) * 100;
   const cursorMs = replay.cursorTime > 0 ? replay.cursorTime * 1000 : Date.now();
-  const dateLine = formatV9HudDateLineTitle(cursorMs);
-  const clock = formatClockHms(replay.cursorTime);
+  const dateLine = formatV9HudDateLineTitle(cursorMs, (ms) =>
+    convertToTimezoneDate(ms, tzId),
+  );
+  const clock = formatZonedClockHms(
+    replay.cursorTime > 0 ? replay.cursorTime : Date.now() / 1000,
+    tzId,
+  );
+
+  useEffect(() => {
+    if (!tzMenuOpen) return;
+    const onPtr = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (tzBtnRef.current?.contains(t)) return;
+      const menu = document.getElementById('talaria-tz-menu');
+      if (menu?.contains(t)) return;
+      setTzMenuOpen(false);
+    };
+    window.addEventListener('pointerdown', onPtr);
+    return () => window.removeEventListener('pointerdown', onPtr);
+  }, [tzMenuOpen]);
 
   const tabs = useMemo(
     () =>
@@ -260,7 +284,7 @@ export function BottomBar({
     const playheadMs =
       replay.cursorTime > 0 ? replay.cursorTime * 1000 : Date.now();
     const ms = resolveGotoTimestampMs(item, {
-      fallbackDateIso: cursorDateIso(replay.cursorTime),
+      fallbackDateIso: formatZonedDateIso(replay.cursorTime, tzId),
       playheadMs,
     });
     if (ms == null || !Number.isFinite(ms)) return;
@@ -288,10 +312,12 @@ export function BottomBar({
   const openGoto = () => {
     setGotoTab('pinned');
     setGotoQuery('');
-    setCreateDate(cursorDateIso(replay.cursorTime || replay.startTime));
+    setCreateDate(
+      formatZonedDateIso(replay.cursorTime || replay.startTime, tzId),
+    );
     setCreateTime(
       replay.cursorTime > 0
-        ? formatClockHms(replay.cursorTime).slice(0, 5)
+        ? formatZonedClockHms(replay.cursorTime, tzId).slice(0, 5)
         : '09:00',
     );
     setGotoOpen((o) => !o);
@@ -313,9 +339,72 @@ export function BottomBar({
           className="flex flex-col items-start justify-center h-full flex-shrink-0 overflow-hidden box-border"
         >
           <span data-rp-date="">{dateLine}</span>
-          <div className="flex items-baseline gap-1.5 whitespace-nowrap max-w-full overflow-hidden">
+          <div className="relative flex items-baseline gap-1.5 whitespace-nowrap max-w-full overflow-hidden">
             <span data-rp-clock="">{clock}</span>
-            <span data-rp-tz="">UTC</span>
+            <button
+              ref={tzBtnRef}
+              type="button"
+              data-rp-tz=""
+              className="min-h-11 min-w-11 px-1 text-left underline-offset-2 hover:underline"
+              aria-label="Chart timezone"
+              aria-haspopup="listbox"
+              aria-expanded={tzMenuOpen}
+              onClick={(e) => {
+                e.stopPropagation();
+                setTzMenuOpen((o) => !o);
+                setGotoOpen(false);
+                setStepMenuOpen(false);
+              }}
+            >
+              {tzShort}
+            </button>
+            {tzMenuOpen &&
+              createPortal(
+                <div
+                  id="talaria-tz-menu"
+                  role="listbox"
+                  aria-label="Timezone"
+                  className="fixed z-[80] min-w-[200px] max-h-[min(60vh,360px)] overflow-y-auto rounded-md border border-border bg-surface py-1 shadow-lg"
+                  style={{
+                    bottom: Math.max(
+                      8,
+                      window.innerHeight -
+                        (tzBtnRef.current?.getBoundingClientRect().top ?? 0) +
+                        6,
+                    ),
+                    left: Math.max(
+                      8,
+                      tzBtnRef.current?.getBoundingClientRect().left ?? 8,
+                    ),
+                  }}
+                >
+                  {CHART_TIMEZONES.map((z) => (
+                    <button
+                      key={z.id}
+                      type="button"
+                      role="option"
+                      aria-selected={z.id === tzId}
+                      className={`flex w-full min-h-11 items-center px-3 text-left text-sm ${
+                        z.id === tzId
+                          ? 'bg-accent/15 text-foreground'
+                          : 'text-foreground hover:bg-muted/40'
+                      }`}
+                      onClick={() => {
+                        patchAppearance({
+                          timezone: z.id as ChartTimezoneId,
+                        });
+                        setTzMenuOpen(false);
+                      }}
+                    >
+                      <span className="w-10 shrink-0 text-xs text-muted-foreground">
+                        {z.short}
+                      </span>
+                      <span>{z.label}</span>
+                    </button>
+                  ))}
+                </div>,
+                document.body,
+              )}
           </div>
         </div>
 

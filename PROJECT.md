@@ -884,6 +884,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-09 | Grid snap fix: pure span dual-lattice (no broken sticky); continuous wheel zoom; no V-line Math.round | Hard-refresh — zoom grid fades, no 1px tick |
 | 2026-08-09 | Grid zoom-in: per-step continuous alpha (no floor(log2) handoff pop); labels only on solid ticks | Zoom in — denser lines fade in, no snap |
 | 2026-08-09 | TF switch camera: bar-count zoom + tip/edge time (TV-like); heal no longer clears preserve / tip-snaps | Switch 1m↔5m↔1h — same place + same bar zoom |
+| 2026-08-09 | Pan snap: expand-only Y while pointer drag; no H-grid Math.round (auto-Y was refitting every pan frame) | Drag chart — grid/candles slide without small snap |
 | 2026-08-09 | **Feel wave F0–F5:** overlay handles/badges; engine freehand; press-drag place; touch pan-vs-draw; orders/backtest off crosshair path; undo/redo | Manual: hover scrub, brush, trend press-drag, thumb pan, Cmd+Z |
 
 ---

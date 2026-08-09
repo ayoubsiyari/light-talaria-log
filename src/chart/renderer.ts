@@ -533,7 +533,8 @@ function drawGrid(
     ctx.strokeStyle = colors.gridHorizontal;
     ctx.setLineDash(dashFor(colors.gridHStyle));
     for (const price of priceTicks) {
-      const y = Math.round(priceToY(price, priceScale, plot)) + 0.5;
+      // No Math.round — pixel-rounding snapped H-lines whenever auto-Y breathed.
+      const y = priceToY(price, priceScale, plot) + 0.5;
       if (y < plot.top || y > plot.top + plot.height) continue;
       ctx.beginPath();
       ctx.moveTo(plot.left, y);

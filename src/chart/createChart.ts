@@ -404,10 +404,12 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   let cachedAutoScale: PriceScale | null = null;
   let scaleCacheKey = '';
   /**
-   * Expand-only auto Y while replayFollow — cleared on Pause / reset / manual.
-   * Prevents every tip tick from recomputing a tighter min/max (plot shake).
+   * Expand-only auto Y while replayFollow or pointer drag — cleared on reset /
+   * manual scale / drag end. Stops pan from refitting Y every frame (grid snap).
    */
   let playPriceSticky: PriceScale | null = null;
+  /** True while plot/axis pointer drag is active (set from interaction.ts). */
+  let interactionDragActive = false;
 
   /** Shared hit-test for cursor + hover in the same move. */
   let hitCacheX = Number.NaN;
@@ -511,7 +513,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       return manualPriceScale;
     }
     const levelsKey = orderLevelsKey();
-    const key = `${bars.length}|${range.fromIndex}|${range.toIndex}|${replayCursorTime ?? ''}|${levelsKey}|${replayFollow ? 'f' : 'p'}`;
+    const dragKey = interactionDragActive ? 'd' : 'i';
+    const key = `${bars.length}|${range.fromIndex}|${range.toIndex}|${replayCursorTime ?? ''}|${levelsKey}|${replayFollow ? 'f' : 'p'}|${dragKey}`;
     if (cachedAutoScale && scaleCacheKey === key) return cachedAutoScale;
     const maxBarIndex =
       replayCursorTime != null && bars.length > 0
@@ -519,10 +522,13 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         : null;
     const base = computePriceScale(bars, range, maxBarIndex);
     const expanded = expandPriceScale(base, orderLevelPrices());
-    if (replayFollow) {
+    // Expand-only while Play-following OR while the user is dragging — otherwise
+    // every pan frame refits Y as bars enter/leave and the grid "snaps".
+    if (replayFollow || interactionDragActive) {
       playPriceSticky = applyPlayPriceHysteresis(playPriceSticky, expanded);
       cachedAutoScale = playPriceSticky;
     } else {
+      // Drag just ended (or idle): refit to the current window once.
       playPriceSticky = null;
       cachedAutoScale = expanded;
     }
@@ -1006,6 +1012,22 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       for (const cb of plotClickListeners) cb(point);
     },
     onUserGesture: notifyUserGesture,
+    setInteractionDragActive: (active: boolean) => {
+      if (interactionDragActive === active) return;
+      interactionDragActive = active;
+      if (!active) {
+        // Force one clean refit on the next paint after drag ends.
+        playPriceSticky = null;
+        invalidateScaleCache();
+        markSceneDirty();
+      } else {
+        // Seed sticky from current auto scale so the first pan frame doesn't jump.
+        if (!playPriceSticky && priceScaleMode === 'auto') {
+          playPriceSticky = resolvePriceScale();
+        }
+        invalidateScaleCache();
+      }
+    },
     onContextMenu: (clientX, clientY) => {
       for (const cb of contextMenuListeners) cb(clientX, clientY);
       if (typeof window !== 'undefined') {
@@ -1808,6 +1830,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       if (opts?.paneTimeframe !== undefined) {
         if (paneTimeframe !== opts.paneTimeframe) {
           timeLatticeSticky.exp = -1;
+          playPriceSticky = null;
+          invalidateScaleCache();
         }
         paneTimeframe = opts.paneTimeframe;
       }

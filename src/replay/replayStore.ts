@@ -1,4 +1,4 @@
-import { timeframeSeconds } from '@/data/timeframeAgg';
+import { bucketStart, timeframeSeconds } from '@/data/timeframeAgg';
 import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
 import type { Timeframe } from '@/types/ui';
 
@@ -77,6 +77,17 @@ export function createReplayController(): ReplayController {
   /** How many base-TF bars equal one rate-TF bar. */
   const clockStepsPerRateBar = () =>
     Math.max(1, Math.round(timeframeSeconds(rateTf) / timeframeSeconds(baseTf)));
+
+  /**
+   * Close of the rate-TF candle containing `time` (last base bar in that bucket).
+   * Stepping lands here so higher-TF tips show full OHLC, not the bucket open.
+   */
+  const rateCandleClose = (time: number): number => {
+    const baseP = clockPeriod();
+    const rateP = Math.max(baseP, timeframeSeconds(rateTf));
+    const open = bucketStart(time, rateP);
+    return open + rateP - baseP;
+  };
 
   const stopRaf = () => {
     if (raf) {
@@ -229,13 +240,32 @@ export function createReplayController(): ReplayController {
       else this.play();
     },
     step(deltaBars) {
-      const steps = clockStepsPerRateBar() * deltaBars;
+      if (deltaBars === 0) return;
       const period = clockPeriod();
+      const rateP = Math.max(period, timeframeSeconds(rateTf));
+      const curClose = rateCandleClose(state.cursorTime);
+      let next: number;
+      if (deltaBars > 0) {
+        // Complete the open rate candle first (tip = full OHLC), then step
+        // close → close so each click reveals a finished higher-TF bar.
+        if (state.cursorTime < curClose) {
+          next = curClose + rateP * (deltaBars - 1);
+        } else {
+          next = curClose + rateP * deltaBars;
+        }
+      } else {
+        // Backward: land on previous rate-candle closes.
+        if (state.cursorTime > curClose) {
+          next = curClose + rateP * (deltaBars + 1);
+        } else {
+          next = curClose + rateP * deltaBars;
+        }
+      }
       const cursorTime = Math.min(
         state.endTime,
         Math.max(
           state.startTime,
-          snapToBar(state.cursorTime + period * steps, period, state.startTime),
+          snapToBar(next, period, state.startTime),
         ),
       );
       state = { ...state, cursorTime, playing: false };

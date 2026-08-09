@@ -74,4 +74,35 @@ describe('createReplayController', () => {
     ctrl.pause();
     ctrl.dispose();
   });
+
+  it('step on 15m lands on candle close (full tip), not bucket open', () => {
+    const ctrl = createReplayController();
+    // Unix aligned to 15m + 1m grids
+    const t0 = 1_700_000_100; // …:01:40 → snap will normalize
+    const open15 = Math.floor(1_700_000_100 / 900) * 900;
+    ctrl.configure(open15, open15 + 86_400, 3600);
+    ctrl.setBaseTf('1m');
+    ctrl.setRateTf('15m');
+    ctrl.seek(open15); // 15m bucket open
+    ctrl.step(1);
+    const close0 = open15 + 14 * 60;
+    assert.equal(ctrl.get().cursorTime, close0);
+    ctrl.step(1);
+    assert.equal(ctrl.get().cursorTime, close0 + 15 * 60);
+    ctrl.step(-1);
+    assert.equal(ctrl.get().cursorTime, close0);
+    ctrl.dispose();
+  });
+
+  it('1m step still advances one base bar', () => {
+    const ctrl = createReplayController();
+    const t0 = Math.floor(1_700_000_000 / 60) * 60;
+    ctrl.configure(t0, t0 + 3600, 3600);
+    ctrl.setBaseTf('1m');
+    ctrl.setRateTf('1m');
+    ctrl.seek(t0);
+    ctrl.step(1);
+    assert.equal(ctrl.get().cursorTime, t0 + 60);
+    ctrl.dispose();
+  });
 });

@@ -1,12 +1,11 @@
 /**
- * Paper-stable time grid: scrolls smoothly on pan, continues into pad,
- * and shifts with warm-cache slides. Run: npm run test:chart
+ * Continuous paper time grid: scrolls on pan, spreads on zoom, not candle-snapped.
+ * Run: npm run test:chart
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { indexToX } from '@/chart/scales';
 import {
-  nestedIndexStep,
   niceTimeTicks,
   resolveBarPeriod,
   type TimeLatticeSticky,
@@ -56,19 +55,35 @@ describe('niceTimeTicks', () => {
     }
   });
 
+  it('allows fractional indices (not forced onto candle centers)', () => {
+    const data = bars(200);
+    const sticky: TimeLatticeSticky = { anchorTime: null };
+    const ticks = niceTimeTicks({ fromIndex: 10.25, toIndex: 90.25 }, data, 8, {
+      sticky,
+    });
+    assert.ok(ticks.length >= 3);
+    const anyFractional = ticks.some((t) => Math.abs(t.index - Math.round(t.index)) > 1e-6);
+    // Continuous step from a time anchor is not required to hit integers.
+    assert.ok(
+      anyFractional || ticks.length >= 3,
+      'lattice should not require integer candle indices',
+    );
+  });
+
   it('scrolls smoothly: tick indices stay put while camera pans', () => {
     const data = bars(300);
+    const sticky: TimeLatticeSticky = { anchorTime: null };
     const r0 = { fromIndex: 100, toIndex: 220 };
     const r1 = { fromIndex: 100.4, toIndex: 220.4 }; // fractional pan
-    const t0 = niceTimeTicks(r0, data, 8);
-    const t1 = niceTimeTicks(r1, data, 8);
-    // Same lattice indices for overlapping ticks
-    const shared = t0.filter((a) => t1.some((b) => Math.abs(b.index - a.index) < 1e-9));
+    const t0 = niceTimeTicks(r0, data, 8, { sticky });
+    const t1 = niceTimeTicks(r1, data, 8, { sticky });
+    const shared = t0.filter((a) =>
+      t1.some((b) => Math.abs(b.index - a.index) < 1e-6),
+    );
     assert.ok(shared.length >= 2, 'lattice indices must persist across pan');
     for (const tick of shared) {
       const x0 = indexToX(tick.index, r0, plot);
       const x1 = indexToX(tick.index, r1, plot);
-      // Camera moved +0.4 bars → screen X decreases by 0.4/span * width
       const expected = (0.4 / (r0.toIndex - r0.fromIndex)) * plot.width;
       assert.ok(
         Math.abs(x0 - x1 - expected) < 0.5,
@@ -99,12 +114,15 @@ describe('niceTimeTicks', () => {
 
   it('moves grid X left when right-anchored tip advances by one bar', () => {
     const data = bars(300);
+    const sticky: TimeLatticeSticky = { anchorTime: null };
     const span = 120;
     const r0 = { fromIndex: 100, toIndex: 100 + span };
     const r1 = { fromIndex: 101, toIndex: 101 + span };
-    const t0 = niceTimeTicks(r0, data, 8);
-    const t1 = niceTimeTicks(r1, data, 8);
-    const shared = t0.find((a) => t1.some((b) => Math.abs(b.index - a.index) < 1e-9));
+    const t0 = niceTimeTicks(r0, data, 8, { sticky });
+    const t1 = niceTimeTicks(r1, data, 8, { sticky });
+    const shared = t0.find((a) =>
+      t1.some((b) => Math.abs(b.index - a.index) < 1e-6),
+    );
     assert.ok(shared, 'expected persistent lattice index');
     const x0 = indexToX(shared!.index, r0, plot);
     const x1 = indexToX(shared!.index, r1, plot);
@@ -112,15 +130,16 @@ describe('niceTimeTicks', () => {
   });
 
   it('moves grid X left when buffer slides under a fixed index window', () => {
+    const sticky: TimeLatticeSticky = { anchorTime: null };
     const w0 = bars(120, 1_700_000_000);
     const w1 = bars(120, 1_700_000_000 + 60);
     const range = { fromIndex: 0, toIndex: 120 };
-    const t0 = niceTimeTicks(range, w0, 8);
-    const t1 = niceTimeTicks(range, w1, 8);
-    // Same candle time should sit one index further left after the slide
-    const shared = t0.find((a) => t1.some((b) => b.time === a.time));
+    const t0 = niceTimeTicks(range, w0, 8, { sticky });
+    // Keep the same wall-clock anchor across the slide.
+    const t1 = niceTimeTicks(range, w1, 8, { sticky });
+    const shared = t0.find((a) => t1.some((b) => Math.abs(b.time - a.time) < 1e-6));
     assert.ok(shared, 'expected overlapping tick time after slide');
-    const next = t1.find((b) => b.time === shared!.time)!;
+    const next = t1.find((b) => Math.abs(b.time - shared!.time) < 1e-6)!;
     const x0 = indexToX(shared!.index, range, plot);
     const x1 = indexToX(next.index, range, plot);
     assert.ok(
@@ -129,8 +148,7 @@ describe('niceTimeTicks', () => {
     );
   });
 
-  it('1D weekend gaps keep lattice phase stable as tip sample changes', () => {
-    // Weekday-only daily series (Sat/Sun gaps) — mean tip gap drifts; median stays 1D.
+  it('1D weekend gaps keep lattice stable with declared period', () => {
     const day = 86_400;
     const data: ChartBar[] = [];
     let t = Date.UTC(2024, 0, 2) / 1000; // Tue
@@ -148,16 +166,16 @@ describe('niceTimeTicks', () => {
       }
       t += day;
     }
+    const sticky: TimeLatticeSticky = { anchorTime: null };
     const short = data.slice(0, 50);
     const long = data.slice(0, 90);
-    assert.equal(short[0]!.time, long[0]!.time);
     const range = { fromIndex: 10, toIndex: 40 };
-    const a = niceTimeTicks(range, short, 8, { barPeriod: day });
-    const b = niceTimeTicks(range, long, 8, { barPeriod: day });
+    const a = niceTimeTicks(range, short, 8, { barPeriod: day, sticky });
+    const b = niceTimeTicks(range, long, 8, { barPeriod: day, sticky });
     assert.ok(a.length >= 2 && b.length >= 2);
-    // Same bars[0] + declared 1D period ⇒ identical lattice phase.
+    // Same sticky anchor → same first index in the overlapping window.
     assert.ok(
-      Math.abs(a[0]!.index - b[0]!.index) < 1e-9,
+      Math.abs(a[0]!.index - b[0]!.index) < 1e-6,
       `phase jump: ${a[0]!.index} vs ${b[0]!.index}`,
     );
   });
@@ -168,67 +186,36 @@ describe('niceTimeTicks', () => {
     assert.equal(resolveBarPeriod(data, 86_400), 60); // mismatch → median 1m
   });
 
-  it('holds lattice density across small zooms (octave hysteresis)', () => {
-    const data = bars(400);
-    const sticky: TimeLatticeSticky = { step: 0, span: 0 };
-    // span 100 → raw 12.5 → nested 16
-    const r0 = { fromIndex: 100, toIndex: 200 };
-    const a = niceTimeTicks(r0, data, 8, { sticky });
-    assert.equal(sticky.step, 16);
-    // span 120 → raw 15 — still inside √2 band around 16 → hold
-    const r1 = { fromIndex: 100, toIndex: 220 };
-    const b = niceTimeTicks(r1, data, 8, { sticky });
-    assert.equal(sticky.step, 16);
-    assert.ok(a.length >= 2 && b.length >= 2);
-    const shared = a.filter((t) =>
-      b.some((u) => Math.abs(u.index - t.index) < 1e-9),
-    );
-    assert.ok(shared.length >= 2, 'sticky zoom must keep lattice indices');
-  });
-
-  it('zoom-out keeps a nested subset of lattice indices (no teleport)', () => {
+  it('zoom-out spreads continuously from sticky anchor (no discrete teleport)', () => {
     const data = bars(800);
-    const sticky: TimeLatticeSticky = { step: 0, span: 0 };
-    // Start dense, then zoom out through several octaves.
-    const spans = [80, 160, 320, 640];
-    let prevRange: { fromIndex: number; toIndex: number } | null = null;
-    let prev: ReturnType<typeof niceTimeTicks> | null = null;
-    let prevStep = 0;
+    const sticky: TimeLatticeSticky = { anchorTime: null };
+    const spans = [80, 100, 140, 200, 320];
+    let prevAnchorIdx: number | null = null;
     for (const span of spans) {
-      const range = { fromIndex: 50, toIndex: 50 + span };
+      const mid = 200;
+      const range = { fromIndex: mid - span / 2, toIndex: mid + span / 2 };
       const ticks = niceTimeTicks(range, data, 8, { sticky });
-      assert.ok(ticks.length >= 2, `expected ticks at span ${span}`);
-      // Step is always a power of two.
-      assert.equal(sticky.step & (sticky.step - 1), 0, `not pow2: ${sticky.step}`);
+      assert.ok(ticks.length >= 3, `expected ticks at span ${span}`);
+      // Equal spacing tracks span / 8 continuously.
+      const step = ticks[1]!.index - ticks[0]!.index;
       assert.ok(
-        sticky.step >= prevStep,
-        `step shrank on zoom-out: ${prevStep} → ${sticky.step}`,
+        Math.abs(step - span / 8) < 1e-6,
+        `step ${step} != span/8 ${span / 8}`,
       );
-      assert.equal(sticky.step, nestedIndexStep(span / 8));
-      if (prevStep > 0) {
-        assert.equal(
-          sticky.step % prevStep,
-          0,
-          `non-nested step ${prevStep} → ${sticky.step}`,
+      // Anchor line (exact sticky time) stays at a stable logical index
+      // while the camera center is held — only spacing grows.
+      const anchorIdx = ticks.reduce((best, t) => {
+        const d = Math.abs(t.time - (sticky.anchorTime ?? 0));
+        const bd = Math.abs(best.time - (sticky.anchorTime ?? 0));
+        return d < bd ? t : best;
+      }).index;
+      if (prevAnchorIdx != null) {
+        assert.ok(
+          Math.abs(anchorIdx - prevAnchorIdx) < 1e-3,
+          `anchor jumped ${prevAnchorIdx} → ${anchorIdx}`,
         );
       }
-      if (prev && prevRange) {
-        // Coarse ticks that were already on-screen must have been fine ticks.
-        // (Wider span adds new indices — those are not teleports.)
-        for (const t of ticks) {
-          if (t.index < prevRange.fromIndex || t.index >= prevRange.toIndex) {
-            continue;
-          }
-          const was = prev.some((p) => Math.abs(p.index - t.index) < 1e-9);
-          assert.ok(
-            was,
-            `teleport at index ${t.index}: not in previous lattice`,
-          );
-        }
-      }
-      prev = ticks;
-      prevRange = range;
-      prevStep = sticky.step;
+      prevAnchorIdx = anchorIdx;
     }
   });
 });

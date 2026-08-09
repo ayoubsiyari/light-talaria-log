@@ -525,8 +525,9 @@ function drawGrid(
     ctx.strokeStyle = colors.gridVertical;
     ctx.setLineDash(dashFor(colors.gridVStyle));
     for (const tick of timeTicks) {
-      // Pixel-snap like H lines — fractional X alone shimmered during pan.
-      const x = Math.round(indexToX(tick.index, range, plot)) + 0.5;
+      // No Math.round — candle-aligned pixel snap was the small zoom "tick".
+      // Half-pixel offset keeps 1px strokes crisp under the current transform.
+      const x = indexToX(tick.index, range, plot) + 0.5;
       if (x < plot.left || x > plot.left + plot.width) continue;
       ctx.beginPath();
       ctx.moveTo(x, plot.top);
@@ -596,7 +597,7 @@ function drawTimeAxis(
   let lastLabel = '';
   let lastLabelX = Number.NEGATIVE_INFINITY;
   for (const tick of timeTicks) {
-    const x = Math.round(indexToX(tick.index, range, plot));
+    const x = indexToX(tick.index, range, plot);
     if (x < plot.left || x > plot.left + plot.width) continue;
     if (x - lastLabelX < TIME_LABEL_MIN_GAP_PX) continue;
     const label = formatTime(tick.time);

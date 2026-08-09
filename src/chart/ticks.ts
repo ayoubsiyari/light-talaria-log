@@ -1,4 +1,5 @@
 import type { ChartBar, VisibleRange } from '@/types/bar';
+import { logicalIndexAtTime } from '@/data/timeframeAgg';
 
 /** Nice step: 1 / 2 / 5 × 10^n covering the range with ~approxCount ticks. */
 export function nicePriceTicks(min: number, max: number, approxCount = 6): number[] {
@@ -34,80 +35,30 @@ function roundToStep(value: number, step: number): number {
 }
 
 export interface TimeTick {
-  /** Logical index — may be < 0 or ≥ bars.length for empty pad. */
+  /** Logical index — may be fractional; may be < 0 or ≥ bars.length for pad. */
   index: number;
   time: number;
 }
 
-/** Per-engine sticky state so zoom density doesn't thrash mid-gesture. */
+/**
+ * Per-engine sticky for the time lattice.
+ * `anchorTime` pins one world line across zoom so density can change continuously
+ * without rephasing onto candle centers.
+ */
 export interface TimeLatticeSticky {
-  step: number;
-  /** Span (bars) when `step` was last committed. */
-  span: number;
+  anchorTime: number | null;
 }
 
 export interface NiceTimeTicksOpts {
   /** Declared TF period (seconds). Preferred when it matches the series. */
   barPeriod?: number;
-  /** Zoom density hysteresis — one object per chart engine. */
+  /** One object per chart engine. */
   sticky?: TimeLatticeSticky;
 }
 
 /**
- * Nested lattice step: powers of two only (1, 2, 4, 8, …).
- *
- * 1–2–5 decades (10→20→50) do *not* nest — zoom-out rephases and lines
- * teleport. Powers of two always nest: zoom-out only drops every other line;
- * survivors keep the same logical index.
- */
-export function nestedIndexStep(raw: number): number {
-  const n = Math.max(1, raw);
-  const exp = Math.round(Math.log2(n));
-  return Math.max(1, 2 ** Math.max(0, exp));
-}
-
-/**
- * Octave hysteresis around the current power-of-two step.
- * Only doubles / halves (never jumps to a non-multiple), so the visible
- * lattice is always a subset/superset of the previous frame.
- */
-function nestedIndexStepSticky(
-  span: number,
-  approxCount: number,
-  sticky?: TimeLatticeSticky,
-): number {
-  const raw = span / Math.max(2, approxCount);
-  if (!sticky || sticky.step <= 0) {
-    const step = nestedIndexStep(raw);
-    if (sticky) {
-      sticky.step = step;
-      sticky.span = span;
-    }
-    return step;
-  }
-
-  // Midpoint between octaves in log space (√2 ≈ 1.414).
-  const hi = sticky.step * Math.SQRT2;
-  const lo = sticky.step / Math.SQRT2;
-  let step = sticky.step;
-  if (raw > hi) {
-    while (raw > step * Math.SQRT2) step *= 2;
-  } else if (raw < lo) {
-    while (step > 1 && raw < step / Math.SQRT2) step = Math.max(1, step / 2);
-  }
-
-  sticky.step = step;
-  sticky.span = span;
-  return step;
-}
-
-/**
- * Stable bar period from the series itself (not the moving viewport),
- * so panning never rephases the lattice mid-drag.
- *
- * Use the *median* gap (same idea as timeframeAgg.barStepSeconds). Mean of
- * tip gaps on 1D is inflated by weekends (~3×) and drifts as Sat/Sun enter
- * or leave the tip window → grid phase jumps while candles stay put.
+ * Stable bar period from the series itself (not the moving viewport).
+ * Median gap — weekends must not inflate the period used for pad extrapolation.
  */
 export function seriesBarPeriod(bars: readonly ChartBar[]): number {
   if (bars.length < 2) return 60;
@@ -128,7 +79,6 @@ export function seriesBarPeriod(bars: readonly ChartBar[]): number {
 
 /**
  * Prefer the pane's declared TF period when the series agrees; otherwise median.
- * Stops floaty sampled periods on mixed/gap data.
  */
 export function resolveBarPeriod(
   bars: readonly ChartBar[],
@@ -136,7 +86,6 @@ export function resolveBarPeriod(
 ): number {
   const median = seriesBarPeriod(bars);
   if (preferredSec == null || !(preferredSec > 0)) return median;
-  // Plausible match (weekends / missing bars can inflate median slightly).
   if (median <= preferredSec * 2.5 && median >= preferredSec * 0.4) {
     return preferredSec;
   }
@@ -165,13 +114,12 @@ function timeAtLogicalIndex(
 }
 
 /**
- * Paper-stable time grid.
+ * Continuous paper-stable time grid (not candle-snapped).
  *
- * Lines sit on a nested power-of-two logical lattice (equal spacing). While you
- * drag, tick *indices* stay put and only their screen X moves with the camera.
- * On zoom-out, density only doubles (drop every other line) — survivors never
- * teleport. Phase locks to an integer bar sequence from `bars[0]` so warm-cache
- * slides move the grid with the candles.
+ * Spacing = visibleSpan / approxCount — changes smoothly while zooming.
+ * One sticky wall-clock anchor keeps a single line fixed in data space so
+ * other lines spread/contract from it (no discrete step rephase / candle snap).
+ * Indices may be fractional — lines are free paper, not forced onto bar centers.
  */
 export function niceTimeTicks(
   range: VisibleRange,
@@ -182,20 +130,33 @@ export function niceTimeTicks(
   if (bars.length === 0 || range.toIndex <= range.fromIndex) return [];
 
   const span = range.toIndex - range.fromIndex;
-  const step = nestedIndexStepSticky(span, approxCount, opts?.sticky);
+  const step = span / Math.max(2, approxCount);
+  if (!(step > 0) || !Number.isFinite(step)) return [];
+
   const period = resolveBarPeriod(bars, opts?.barPeriod);
+  const sticky = opts?.sticky;
+  const mid = (range.fromIndex + range.toIndex) / 2;
 
-  // Integer sequence — avoids float phase jitter on long unix timestamps.
-  // Tick when (baseSeq + index) ≡ 0 (mod step) ⇒ nested under coarser steps.
-  const baseSeq = Math.round(bars[0]!.time / period);
-  const phase = ((baseSeq % step) + step) % step;
+  let anchorTime = sticky?.anchorTime ?? null;
+  if (anchorTime == null || !Number.isFinite(anchorTime)) {
+    anchorTime = timeAtLogicalIndex(bars, mid, period);
+    if (sticky) sticky.anchorTime = anchorTime;
+  }
 
-  // Lattice: index = k·step − phase  (equal gaps, stable under pan)
-  let index = Math.ceil((range.fromIndex + phase) / step) * step - phase;
-  if (index < range.fromIndex - 1e-9) index += step;
+  let anchorIndex = logicalIndexAtTime(bars, anchorTime);
+  // Soft re-seed if the anchor drifted many viewports away (long pan).
+  if (Math.abs(anchorIndex - mid) > span * 4) {
+    anchorTime = timeAtLogicalIndex(bars, mid, period);
+    if (sticky) sticky.anchorTime = anchorTime;
+    anchorIndex = logicalIndexAtTime(bars, anchorTime);
+  }
+
+  // First line at or after range.fromIndex: anchor + k·step
+  let k = Math.ceil((range.fromIndex - anchorIndex) / step - 1e-12);
+  let index = anchorIndex + k * step;
 
   const ticks: TimeTick[] = [];
-  for (; index < range.toIndex - 1e-9; index += step) {
+  for (; index < range.toIndex - 1e-9; k += 1, index = anchorIndex + k * step) {
     ticks.push({
       index,
       time: timeAtLogicalIndex(bars, index, period),
@@ -204,7 +165,6 @@ export function niceTimeTicks(
   }
 
   if (ticks.length === 0) {
-    const mid = (range.fromIndex + range.toIndex) / 2;
     ticks.push({
       index: mid,
       time: timeAtLogicalIndex(bars, mid, period),

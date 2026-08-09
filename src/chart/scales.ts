@@ -64,18 +64,37 @@ export function applyPlayPriceHysteresis(
 }
 
 /**
+ * True when `price` is plausible for the candle scale (same instrument).
+ * Rejects cross-pair leaks (e.g. EUR 1.15 on a USD/JPY ~159 pane) that would
+ * smash auto-Y and hide candles.
+ */
+export function isPriceNearScale(scale: PriceScale, price: number): boolean {
+  if (!(scale.max > scale.min) || !Number.isFinite(price)) return false;
+  const mid = (scale.min + scale.max) / 2;
+  const barSpan = scale.max - scale.min;
+  // Allow levels well outside the visible candle window (far SL) but not
+  // another FX pair's price universe.
+  const maxDist = Math.max(barSpan * 40, Math.abs(mid) * 0.35, Math.abs(mid) * 0.01);
+  return Math.abs(price - mid) <= maxDist;
+}
+
+/**
  * Widen an auto price scale so entry / SL / TP stay on-screen.
  * Without this, protective levels often sit outside the candle range and
  * look like they “disappeared” (clipped by the plot).
+ * Outlier / wrong-pair prices are ignored so multi-chart tickets cannot
+ * collapse another pane's Y scale.
  */
 export function expandPriceScale(
   scale: PriceScale,
   prices: readonly (number | null | undefined)[],
 ): PriceScale {
+  if (!(scale.max > scale.min)) return scale;
   let { min, max } = scale;
   let touched = false;
   for (const p of prices) {
     if (p == null || !Number.isFinite(p)) continue;
+    if (!isPriceNearScale(scale, p)) continue;
     if (p < min) {
       min = p;
       touched = true;
@@ -89,6 +108,17 @@ export function expandPriceScale(
   const span = max - min;
   const pad = (span > 0 ? span : Math.abs(max) || 1) * PRICE_PAD;
   return { min: min - pad, max: max + pad };
+}
+
+/** Sticky Play Y locked onto a contaminated span — drop it so candles return. */
+export function playScaleNeedsReset(
+  sticky: PriceScale,
+  sane: PriceScale,
+): boolean {
+  if (!(sticky.max > sticky.min) || !(sane.max > sane.min)) return false;
+  const stickySpan = sticky.max - sticky.min;
+  const saneSpan = sane.max - sane.min;
+  return stickySpan > saneSpan * 6;
 }
 
 /** Logical index → canvas x (center of bar slot). */

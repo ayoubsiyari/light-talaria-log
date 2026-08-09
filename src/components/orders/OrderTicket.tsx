@@ -374,29 +374,55 @@ export function OrderTicket({
   const marginLevelPct =
     reqMargin > 0 ? (freeMargin / reqMargin) * 100 : 999;
 
+  const reseedLevels = (
+    px: number,
+    which: 'both' | 'sl' | 'tp' = 'both',
+  ) => {
+    if (!(px > 0) || !(pipSize > 0)) return;
+    const slOff = slPips * pipSize;
+    const tpOff = tpPips * pipSize;
+    if (which === 'both' || which === 'sl') {
+      const slPx = side === 'BUY' ? px - slOff : px + slOff;
+      setSl(slPx.toFixed(digits));
+    }
+    if (which === 'both' || which === 'tp') {
+      const tpPx = side === 'BUY' ? px + tpOff : px - tpOff;
+      setTp(tpPx.toFixed(digits));
+    }
+  };
+
+  // Open / side flip — seed MARKET entry + SL/TP in *this* symbol's price space.
   useEffect(() => {
     if (!open) return;
     const seed = lastPx.toFixed(digits);
     setType('MARKET');
     setPrice(seed);
-    const slOff = slPips * pipSize;
-    const tpOff = tpPips * pipSize;
-    const slPx = side === 'BUY' ? lastPx - slOff : lastPx + slOff;
-    const tpPx = side === 'BUY' ? lastPx + tpOff : lastPx - tpOff;
-    setSl(slPx.toFixed(digits));
-    setTp(tpPx.toFixed(digits));
-    setSlPlaced(slOn);
-    setTpPlaced(tpOn);
+    reseedLevels(lastPx);
+    setSlPlaced(false);
+    setTpPlaced(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, side]);
+
+  // Active pane / symbol change in multi-chart — never keep EUR levels on USD/JPY.
+  useEffect(() => {
+    if (!open || !(lastPx > 0)) return;
+    setType('MARKET');
+    setPrice(lastPx.toFixed(digits));
+    reseedLevels(lastPx);
+    setSlPlaced(false);
+    setTpPlaced(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol]);
 
   useEffect(() => {
     if (!open || type !== 'MARKET') return;
     const seed = lastPx.toFixed(digits);
     setPrice(seed);
-    if (!slPlaced) setSl(seed);
-    if (!tpPlaced) setTp(seed);
-  }, [open, type, lastPx, digits, slPlaced, tpPlaced]);
+    // Unplaced protective levels track pip distance from live entry — not the
+    // entry price itself (that published SL==entry and broke multi-chart Y).
+    if (!slPlaced) reseedLevels(lastPx, 'sl');
+    if (!tpPlaced) reseedLevels(lastPx, 'tp');
+  }, [open, type, lastPx, digits, slPlaced, tpPlaced, side, slPips, tpPips, pipSize]);
 
   useEffect(() => {
     if (!open || !levelPatch) return;
@@ -442,14 +468,14 @@ export function OrderTicket({
       onDraftChange?.(null);
       return;
     }
-    const slPx = slOn ? Number(sl) : NaN;
-    const tpPx = tpOn ? Number(tp) : NaN;
+    // Use live pip-distance levels — raw `sl`/`tp` can be ''→0 or a stale
+    // other-pair price after switching the active multi-chart pane.
     onDraftChange?.({
       side,
       type,
       entry: entryPx,
-      stopLoss: slOn && Number.isFinite(slPx) ? slPx : null,
-      takeProfit: tpOn && Number.isFinite(tpPx) ? tpPx : null,
+      stopLoss: slOn && Number.isFinite(slPxLive) ? slPxLive : null,
+      takeProfit: tpOn && Number.isFinite(tpPxLive) ? tpPxLive : null,
       size: lots > 0 ? lots : 0.1,
     });
   }, [
@@ -464,6 +490,8 @@ export function OrderTicket({
     slOn,
     tpOn,
     entryPx,
+    slPxLive,
+    tpPxLive,
     lots,
     onDraftChange,
   ]);

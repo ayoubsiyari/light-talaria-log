@@ -79,6 +79,7 @@ import {
   applyPlayPriceHysteresis,
   computePriceScale,
   expandPriceScale,
+  playScaleNeedsReset,
   xToIndex,
   yToPrice,
   type PriceScale,
@@ -527,9 +528,19 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     if (cachedAutoScale && scaleCacheKey === key) return cachedAutoScale;
     const maxBarIndex = tipIdx >= 0 ? tipIdx : null;
     const base = computePriceScale(bars, range, maxBarIndex);
+    // Ignore wrong-pair / outlier SL·TP so they cannot hide candles.
     const expanded = expandPriceScale(base, orderLevelPrices());
     if (replayFollow) {
-      playPriceSticky = applyPlayPriceHysteresis(playPriceSticky, expanded);
+      // Contaminated sticky (e.g. EUR levels briefly on USD/JPY) never shrinks
+      // on its own — snap back when sane span is much tighter.
+      if (
+        playPriceSticky &&
+        playScaleNeedsReset(playPriceSticky, expanded)
+      ) {
+        playPriceSticky = expanded;
+      } else {
+        playPriceSticky = applyPlayPriceHysteresis(playPriceSticky, expanded);
+      }
       cachedAutoScale = playPriceSticky;
     } else {
       playPriceSticky = null;

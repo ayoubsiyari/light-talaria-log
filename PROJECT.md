@@ -882,6 +882,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-09 | Grid look: candle-aligned integer lattice + pow2 nested zoom (lines on candle centers; zoom thins in place) | Zoom — every line on a candle; no free-float paper |
 | 2026-08-09 | Grid zoom: major+minor octave crossfade (minors fade out/in) — candle-aligned without density pop | Zoom in/out — lines fade, no small snap |
 | 2026-08-09 | Grid snap fix: pure span dual-lattice (no broken sticky); continuous wheel zoom; no V-line Math.round | Hard-refresh — zoom grid fades, no 1px tick |
+| 2026-08-09 | Grid zoom-in: per-step continuous alpha (no floor(log2) handoff pop); labels only on solid ticks | Zoom in — denser lines fade in, no snap |
 
 ---
 

@@ -37,19 +37,19 @@ export interface TimeTick {
   /** Logical bar index — integer so each line sits on a candle center. */
   index: number;
   time: number;
-  /** Stroke opacity 0..1 (dense lines fade while zooming). */
+  /** Stroke opacity 0..1. */
   alpha: number;
+  /** Axis label candidate (at-or-coarser than ideal spacing). */
+  label: boolean;
 }
 
-/** @deprecated kept so engines can pass a stub; lattice is a pure function of span. */
+/** @deprecated accepted for paint-state compat; unused. */
 export interface TimeLatticeSticky {
   exp: number;
 }
 
 export interface NiceTimeTicksOpts {
-  /** Declared TF period (seconds). Preferred when it matches the series. */
   barPeriod?: number;
-  /** Ignored — accepted for API compat with per-engine paint state. */
   sticky?: TimeLatticeSticky;
 }
 
@@ -66,9 +66,21 @@ function smoothstep01(t: number): number {
 }
 
 /**
- * Median bar period from the series tip sample.
- * Weekends must not inflate the period used for pad extrapolation.
+ * Opacity for a power-of-two step given ideal bars-per-line.
+ * Continuous in `ideal` — no floor/octave pop on zoom in or out.
+ *
+ * - step >= ideal → solid (coarser than needed)
+ * - ideal/2 < step < ideal → fade (one octave denser)
+ * - step <= ideal/2 → hidden
  */
+export function stepAlpha(step: number, ideal: number): number {
+  if (!(step > 0) || !(ideal > 0)) return 0;
+  const rel = Math.log2(ideal) - Math.log2(step);
+  if (rel <= 0) return 1;
+  if (rel >= 1) return 0;
+  return 1 - smoothstep01(rel);
+}
+
 export function seriesBarPeriod(bars: readonly ChartBar[]): number {
   if (bars.length < 2) return 60;
   const samples: number[] = [];
@@ -86,9 +98,6 @@ export function seriesBarPeriod(bars: readonly ChartBar[]): number {
   return Math.max(1, samples[Math.floor(samples.length / 2)]! || 60);
 }
 
-/**
- * Prefer the pane's declared TF period when the series agrees; otherwise median.
- */
 export function resolveBarPeriod(
   bars: readonly ChartBar[],
   preferredSec?: number,
@@ -101,7 +110,6 @@ export function resolveBarPeriod(
   return median;
 }
 
-/** Wall-clock at a logical index — extrapolates into empty left/right pad. */
 function timeAtLogicalIndex(
   bars: readonly ChartBar[],
   index: number,
@@ -130,7 +138,8 @@ function pushLattice(
   baseSeq: number,
   step: number,
   alpha: number,
-  seen: Set<number>,
+  label: boolean,
+  seen: Map<number, TimeTick>,
 ): void {
   if (step < 1 || alpha < 0.02) return;
   const phase = ((baseSeq % step) + step) % step;
@@ -139,26 +148,31 @@ function pushLattice(
   index = Math.round(index);
 
   for (; index < range.toIndex - 1e-9; index += step) {
-    if (seen.has(index)) continue;
-    seen.add(index);
-    ticks.push({
+    const prev = seen.get(index);
+    if (prev) {
+      // Keep the stronger stroke; promote label if either level wants it.
+      if (alpha > prev.alpha) prev.alpha = alpha;
+      if (label) prev.label = true;
+      continue;
+    }
+    const tick: TimeTick = {
       index,
       time: timeAtLogicalIndex(bars, index, period),
       alpha,
-    });
-    if (ticks.length > 64) break;
+      label,
+    };
+    seen.set(index, tick);
+    ticks.push(tick);
+    if (ticks.length > 80) break;
   }
 }
 
 /**
- * Candle-aligned grid with continuous zoom crossfade (no sticky pop).
+ * Candle-aligned grid — continuous zoom opacity (no octave handoff snap).
  *
- * Pure function of visible span:
- * - coarse lattice (2^{e+1}) always solid
- * - dense lattice (2^e) fades 1→0 across the octave
- *
- * At an octave boundary the roles hand off without jumping indices — every
- * line stays on a candle center.
+ * Ideal spacing = visibleSpan / approxCount. Each power-of-two lattice gets an
+ * alpha from {@link stepAlpha} so zoom-in fades denser lines in instead of
+ * popping a new lattice at the floor(log2) boundary.
  */
 export function niceTimeTicks(
   range: VisibleRange,
@@ -171,28 +185,21 @@ export function niceTimeTicks(
   const span = range.toIndex - range.fromIndex;
   const period = resolveBarPeriod(bars, opts?.barPeriod);
   const baseSeq = Math.round(bars[0]!.time / period);
+  const ideal = Math.max(1e-6, span / Math.max(2, approxCount));
 
-  const raw = Math.max(1e-6, span / Math.max(2, approxCount));
   const ticks: TimeTick[] = [];
-  const seen = new Set<number>();
+  const seen = new Map<number, TimeTick>();
 
-  // Very zoomed in: a line on every candle.
-  if (raw <= 1) {
-    pushLattice(ticks, range, bars, period, baseSeq, 1, 1, seen);
-    ticks.sort((a, b) => a.index - b.index);
-    return ticks;
+  // Enough octaves to cover pad + dense zoom-in (step 1 … 2048).
+  for (let exp = 0; exp <= 11; exp++) {
+    const step = 2 ** exp;
+    const alpha = stepAlpha(step, ideal);
+    if (alpha < 0.02) continue;
+    // Labels only on at-or-coarser-than-ideal (solid) lines — avoids text pop
+    // when denser strokes are still fading in.
+    const label = Math.log2(ideal) - Math.log2(step) <= 0;
+    pushLattice(ticks, range, bars, period, baseSeq, step, alpha, label, seen);
   }
-
-  const exact = Math.log2(raw);
-  const exp = Math.max(0, Math.floor(exact));
-  const frac = exact - exp; // [0, 1) — continuous as span changes
-  const stepDense = 2 ** exp;
-  const stepCoarse = 2 ** (exp + 1);
-  // Dense extras fade out before the next octave; coarse stays solid.
-  const denseAlpha = 1 - smoothstep01(frac);
-
-  pushLattice(ticks, range, bars, period, baseSeq, stepCoarse, 1, seen);
-  pushLattice(ticks, range, bars, period, baseSeq, stepDense, denseAlpha, seen);
 
   ticks.sort((a, b) => a.index - b.index);
 
@@ -202,6 +209,7 @@ export function niceTimeTicks(
       index: mid,
       time: timeAtLogicalIndex(bars, mid, period),
       alpha: 1,
+      label: true,
     });
   }
 

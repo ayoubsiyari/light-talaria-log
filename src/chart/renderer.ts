@@ -580,7 +580,7 @@ function drawTimeAxis(
   ctx: CanvasRenderingContext2D,
   layout: RenderLayout,
   range: VisibleRange,
-  timeTicks: { index: number; time: number; alpha?: number }[],
+  timeTicks: { index: number; time: number; alpha?: number; label?: boolean }[],
   colors: ChartColors,
 ): void {
   const { plot, height, timeAxisHeight, width } = layout;
@@ -603,13 +603,13 @@ function drawTimeAxis(
   let lastLabel = '';
   let lastLabelX = Number.NEGATIVE_INFINITY;
   for (const tick of timeTicks) {
-    // Labels only on solid majors — fading minors would flicker text.
+    // Solid (at-or-coarser) ticks only — fading denser lines must not steal labels.
+    if (tick.label === false) continue;
     if ((tick.alpha ?? 1) < 0.95) continue;
     const x = indexToX(tick.index, range, plot);
     if (x < plot.left || x > plot.left + plot.width) continue;
     if (x - lastLabelX < TIME_LABEL_MIN_GAP_PX) continue;
     const label = formatTime(tick.time);
-    // Belt-and-suspenders: never paint the same time string twice in a row
     if (label === lastLabel) continue;
     lastLabel = label;
     lastLabelX = x;

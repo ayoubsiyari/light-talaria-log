@@ -56,6 +56,8 @@ export interface OrderSessionBridge {
   /** Spec for a symbol (defaults to session primary). */
   getSpec(symbol?: string): InstrumentSpec;
   getLastReject(): string | null;
+  /** Open positions + working entry symbols (for Play bar runway / pins). */
+  getExposureSymbols(): string[];
   /**
    * Advance engine across every base bar in (lastStepped, cursorTime].
    * `getBars(symbol, from, to)` must return that symbol's bars only.
@@ -316,17 +318,12 @@ export function createOrderSessionBridge(input: {
       const key = instrumentSymbolKey(orderSym);
       marks.set(key, { bid, ask });
     }
-    // Freeze expected fill for chart: BUY→ask, SELL→bid (matches §4.3 side).
-    if (cmd.order.type === 'MARKET' && (bid > 0 || ask > 0)) {
-      const preview =
-        cmd.order.side === 'BUY'
-          ? ask > 0
-            ? ask
-            : bid
-          : bid > 0
-            ? bid
-            : ask;
-      if (preview > 0) marketPreviewEntry.set(cmd.order.id, preview);
+    // Freeze chart preview at submit tip (bid). Tip-chasing made Pending look
+    // like it was moving with Play; engine still fills BUY at next open+ask.
+    if (cmd.order.type === 'MARKET' && bid > 0) {
+      marketPreviewEntry.set(cmd.order.id, bid);
+    } else if (cmd.order.type === 'MARKET' && ask > 0) {
+      marketPreviewEntry.set(cmd.order.id, ask);
     }
     const fullCmd: EngineCommand = {
       type: 'SUBMIT',
@@ -457,6 +454,7 @@ export function createOrderSessionBridge(input: {
     getJournal: () => journal,
     getSpec: (symbol) => specFor(symbol ?? state.symbol),
     getLastReject: () => lastReject,
+    getExposureSymbols: () => collectExposureSymbols(state),
 
     advanceTo(cursorTime, getBars, ctxPartial) {
       return advanceToInner(cursorTime, getBars, ctxPartial);
@@ -583,15 +581,17 @@ export function createOrderSessionBridge(input: {
         const bid = mark?.bid ?? 0;
         const ask =
           mark?.ask && mark.ask > 0 ? mark.ask : bid + spec.typicalSpread;
-        // Pending market: glue chart entry to the tip (bid = last-price line).
-        // Using ask for BUY made a visible ~spread jump above the tip after Place.
-        // Engine still fills BUY at next open+ask; LIMIT/STOP keep fixed price.
+        // Pending MARKET: freeze at submit tip (marketPreviewEntry). Tip-chase
+        // made the line run with Play before fill; LIMIT/STOP keep fixed price.
+        const frozen = isMarket ? marketPreviewEntry.get(o.id) : undefined;
         const expectedEntry = isMarket
-          ? bid > 0
-            ? bid
-            : ask > 0
-              ? ask
-              : null
+          ? frozen != null && frozen > 0
+            ? frozen
+            : bid > 0
+              ? bid
+              : ask > 0
+                ? ask
+                : null
           : (o.price ?? null);
         out.push({
           id: o.id,

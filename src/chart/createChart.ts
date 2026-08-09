@@ -80,6 +80,7 @@ import {
   computePriceScale,
   expandPriceScale,
   playScaleNeedsReset,
+  softenPlayPriceScale,
   xToIndex,
   yToPrice,
   type PriceScale,
@@ -539,7 +540,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       ) {
         playPriceSticky = expanded;
       } else {
-        playPriceSticky = applyPlayPriceHysteresis(playPriceSticky, expanded);
+        const held = applyPlayPriceHysteresis(playPriceSticky, expanded);
+        // Far SL/TP (or cleared draft) can leave sticky wide — ease back while
+        // still expanding instantly for new tip extremes.
+        playPriceSticky = softenPlayPriceScale(held, expanded);
       }
       cachedAutoScale = playPriceSticky;
     } else {

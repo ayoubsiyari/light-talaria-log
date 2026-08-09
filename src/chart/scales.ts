@@ -121,6 +121,27 @@ export function playScaleNeedsReset(
   return stickySpan > saneSpan * 6;
 }
 
+/**
+ * Ease Play sticky Y toward the current target when it is only wider because
+ * far SL/TP (or a cleared draft) stretched it. Expands stay instant via
+ * hysteresis; shrinks recover over ~1s of paints instead of waiting for Pause.
+ */
+export function softenPlayPriceScale(
+  sticky: PriceScale,
+  target: PriceScale,
+  ease = 0.12,
+): PriceScale {
+  if (!(sticky.max > sticky.min) || !(target.max > target.min)) return target;
+  const stickySpan = sticky.max - sticky.min;
+  const targetSpan = target.max - target.min;
+  if (stickySpan <= targetSpan * 1.12) return sticky;
+  const t = Math.min(1, Math.max(0, ease));
+  return {
+    min: sticky.min + (target.min - sticky.min) * t,
+    max: sticky.max + (target.max - sticky.max) * t,
+  };
+}
+
 /** Logical index → canvas x (center of bar slot). */
 export function indexToX(index: number, range: VisibleRange, plot: PlotRect): number {
   const span = range.toIndex - range.fromIndex;

@@ -355,6 +355,10 @@ export default function App() {
   const [lastOrderReject, setLastOrderReject] = useState<string | null>(null);
   const [ticketOpen, setTicketOpen] = useState(false);
   const [ticketDraft, setTicketDraft] = useState<OrderTicketDraft | null>(null);
+  const ticketOpenRef = useRef(false);
+  const ticketDraftRef = useRef<OrderTicketDraft | null>(null);
+  ticketOpenRef.current = ticketOpen;
+  ticketDraftRef.current = ticketDraft;
   const [ticketLevelPatch, setTicketLevelPatch] = useState<{
     kind: 'entry' | 'sl' | 'tp';
     price: number;
@@ -1291,21 +1295,6 @@ export default function App() {
     setOrderEngineTick((n) => n + 1);
   }, []);
 
-  /** Push engine orders to each pane, filtered to that pane's symbol. */
-  const pushOrdersToPanes = useCallback(
-    (chartOrders: readonly ChartOrder[], selectedId: string | null) => {
-      for (const pane of panesRef.current) {
-        const forPane = ordersForPair(chartOrders, pane.pair);
-        const sel =
-          selectedId && forPane.some((o) => o.id === selectedId)
-            ? selectedId
-            : null;
-        getChart(pane.id)?.setOrders(forPane, sel);
-      }
-    },
-    [],
-  );
-
   /** Resolve datasetId for an order-engine symbol key. */
   const datasetIdForOrderSymbol = useCallback((symbol: string): string | null => {
     const key = chartPairKey(symbol);
@@ -1315,6 +1304,85 @@ export default function App() {
       null
     );
   }, []);
+
+  /** Merge open-ticket Preview into engine book for imperative Play pushes. */
+  const ordersWithTicketDraft = useCallback(
+    (engineOrders: readonly ChartOrder[]): ChartOrder[] => {
+      const draft = ticketDraftRef.current;
+      if (!ticketOpenRef.current || !draft) return [...engineOrders];
+      const pair =
+        panesRef.current.find((p) => p.id === activePaneId)?.pair ??
+        panesRef.current[0]?.pair ??
+        '';
+      if (!pair) return [...engineOrders];
+      const draftOrder: ChartOrder = {
+        id: '__draft__',
+        sessionId: sessionIdRef.current ?? '',
+        pair,
+        side: draft.side === 'BUY' ? 'buy' : 'sell',
+        entry: draft.entry,
+        stopLoss: draft.stopLoss,
+        takeProfit: draft.takeProfit,
+        createdAt: 0,
+        draft: true,
+        working: false,
+      };
+      return [...engineOrders, draftOrder];
+    },
+    [activePaneId],
+  );
+
+  /** Push engine orders to each pane, filtered to that pane's symbol. */
+  const pushOrdersToPanes = useCallback(
+    (chartOrders: readonly ChartOrder[], selectedId: string | null) => {
+      const withDraft = ordersWithTicketDraft(chartOrders);
+      for (const pane of panesRef.current) {
+        const forPane = ordersForPair(withDraft, pane.pair);
+        const sel =
+          selectedId && forPane.some((o) => o.id === selectedId)
+            ? selectedId
+            : null;
+        getChart(pane.id)?.setOrders(forPane, sel);
+      }
+    },
+    [ordersWithTicketDraft],
+  );
+
+  /**
+   * Keep base-TF runway warm for every open/working symbol so Play cannot
+   * silently stall fills on an off-focus multi-pane pair.
+   */
+  const ensureExposureRunway = useCallback(
+    async (cursorTime: number) => {
+      const bridge = orderBridgeRef.current;
+      const sess = sessionRef.current.get();
+      if (!bridge || !sess || !(cursorTime > 0)) return;
+      const symbols = bridge.getExposureSymbols();
+      if (symbols.length === 0) {
+        warmCache.pinExtra([]);
+        return;
+      }
+      const period = timeframeSeconds(sess.baseTf);
+      const lookback = Math.max(60, sess.span) * period;
+      const ahead = Math.max(180, sess.span) * period;
+      const fromTime = Math.max(0, cursorTime - lookback);
+      const toTime = cursorTime + ahead;
+      const pins: { datasetId: string; tf: Timeframe }[] = [];
+      await Promise.all(
+        symbols.map(async (sym) => {
+          const ds = datasetIdForOrderSymbol(sym);
+          if (!ds) return;
+          pins.push({ datasetId: ds, tf: sess.baseTf });
+          const peek = warmCache.peek(ds, sess.baseTf);
+          const tip = peek && peek.length > 0 ? peek[peek.length - 1]!.time : 0;
+          if (tip >= toTime - period) return;
+          await ensureOrderBars(ds, sess.baseTf, fromTime, toTime);
+        }),
+      );
+      warmCache.pinExtra(pins);
+    },
+    [datasetIdForOrderSymbol],
+  );
 
   /**
    * Sync bar provider: prefer an explicit preload map (rebuild/seek), else warmCache.
@@ -1377,6 +1445,7 @@ export default function App() {
 
   const lastOrderOverlayAtRef = useRef(0);
   const lastOrderChromeAtRef = useRef(0);
+  const lastExposureEnsureAtRef = useRef(0);
   const selectedOrderIdRef = useRef(selectedOrderId);
   selectedOrderIdRef.current = selectedOrderId;
   stepOrderEngineRef.current = (cursorTime: number) => {
@@ -1396,6 +1465,11 @@ export default function App() {
       return;
     }
     const now = performance.now();
+    // Keep traded-pair runway warm (~2Hz) without blocking the play clock.
+    if (now - lastExposureEnsureAtRef.current >= 500) {
+      lastExposureEnsureAtRef.current = now;
+      void ensureExposureRunway(cursorTime);
+    }
     // Engine advances every bar; overlays ~10Hz, React chrome ~5Hz (Play budget).
     if (now - lastOrderOverlayAtRef.current >= 100) {
       lastOrderOverlayAtRef.current = now;
@@ -1624,6 +1698,19 @@ export default function App() {
       if (!chart) continue;
       chart.setReplayFollow(true);
     }
+    // Ticket is disabled during Play — close Preview so it cannot look like a
+    // stuck Pending, and so imperative pushes stay clean.
+    setTicketOpen(false);
+    setTicketDraft(null);
+    ticketOpenRef.current = false;
+    ticketDraftRef.current = null;
+
+    // Warm + pin every open/working symbol before the clock starts.
+    const cursor = replayRef.current.get().cursorTime || s.cursorTime;
+    await ensureExposureRunway(cursor);
+    if (!viewportReloadEnabledRef.current) return;
+    if (sessionIdRef.current !== armSessionId) return;
+
     // Push current book before the first play tick so levels don't flash empty
     // while replayFollow blocks React → setOrders.
     const bridge = orderBridgeRef.current;
@@ -1636,6 +1723,7 @@ export default function App() {
     replayRef.current.play();
   }, [
     commitSessionViews,
+    ensureExposureRunway,
     pushOrdersToPanes,
     syncEnginesFromSession,
     syncReplayClockTf,

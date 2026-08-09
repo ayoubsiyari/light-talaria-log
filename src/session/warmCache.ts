@@ -65,12 +65,18 @@ export class WarmCache {
   private readonly epochs = new Map<CacheKey, number>();
   /** Keys that must not be LRU-evicted (active pane series during play). */
   private readonly pinned = new Set<CacheKey>();
+  /**
+   * Extra pins from the order engine (open/working symbols). Survive
+   * `setPinned` so session reveal cannot drop a traded off-focus pair.
+   */
+  private readonly extraPinned = new Set<CacheKey>();
 
   clearDataset(datasetId: string): void {
     for (const k of [...this.store.keys()]) {
       if (k.startsWith(`${datasetId}|`)) {
         this.store.delete(k);
         this.pinned.delete(k);
+        this.extraPinned.delete(k);
         ledgerRelease('cacheEntries');
       }
     }
@@ -81,6 +87,7 @@ export class WarmCache {
     this.store.clear();
     this.inflight.clear();
     this.pinned.clear();
+    this.extraPinned.clear();
     if (n > 0) ledgerRelease('cacheEntries', n);
   }
 
@@ -92,10 +99,22 @@ export class WarmCache {
     }
   }
 
+  /** Pin order-exposure series without clearing session pane pins. */
+  pinExtra(keys: ReadonlyArray<{ datasetId: string; tf: Timeframe }>): void {
+    this.extraPinned.clear();
+    for (const { datasetId, tf } of keys) {
+      this.extraPinned.add(key(datasetId, tf));
+    }
+  }
+
   stats(): { entries: number; bytes: number; pinned: number } {
     let bytes = 0;
     for (const e of this.store.values()) bytes += estimateBytes(e.bars);
-    return { entries: this.store.size, bytes, pinned: this.pinned.size };
+    return {
+      entries: this.store.size,
+      bytes,
+      pinned: this.pinned.size + this.extraPinned.size,
+    };
   }
 
   /**
@@ -308,7 +327,8 @@ export class WarmCache {
         oldestAnyTouch = e.touchedAt;
         oldestAny = k;
       }
-      if (!this.pinned.has(k) && e.touchedAt < oldestUnpinnedTouch) {
+      const held = this.pinned.has(k) || this.extraPinned.has(k);
+      if (!held && e.touchedAt < oldestUnpinnedTouch) {
         oldestUnpinnedTouch = e.touchedAt;
         oldestUnpinned = k;
       }

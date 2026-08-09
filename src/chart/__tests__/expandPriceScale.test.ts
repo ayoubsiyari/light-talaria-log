@@ -7,6 +7,7 @@ import {
   expandPriceScale,
   isPriceNearScale,
   playScaleNeedsReset,
+  softenPlayPriceScale,
 } from '@/chart/scales';
 
 describe('expandPriceScale', () => {
@@ -34,5 +35,20 @@ describe('expandPriceScale', () => {
       playScaleNeedsReset({ min: 159.4, max: 160.2 }, sane),
       false,
     );
+  });
+
+  it('eases wide Play sticky toward a tighter target', () => {
+    const sticky = { min: 1.1, max: 1.3 };
+    const target = { min: 1.15, max: 1.2 };
+    const out = softenPlayPriceScale(sticky, target, 0.5);
+    assert.ok(out.min > sticky.min && out.min < target.min + 1e-12);
+    assert.ok(out.max < sticky.max && out.max > target.max - 1e-12);
+  });
+
+  it('does not ease when sticky is already near target', () => {
+    const sticky = { min: 1.149, max: 1.201 };
+    const target = { min: 1.15, max: 1.2 };
+    const out = softenPlayPriceScale(sticky, target, 0.5);
+    assert.deepEqual(out, sticky);
   });
 });

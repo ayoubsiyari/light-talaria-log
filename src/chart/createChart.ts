@@ -39,6 +39,8 @@ import type { ChartOrder, OrderLevelHit } from '@/types/order';
 import {
   alignIndicatorOverlays,
   alignIndicatorPanes,
+  remapOverlaysByTime,
+  remapPanesByTime,
 } from '@/indicators/tipSync';
 import {
   beginLevelDrag,
@@ -72,6 +74,7 @@ import {
 } from './renderer';
 import { yToPaneValue } from './series/drawIndicatorPane';
 import {
+  applyPlayPriceHysteresis,
   computePriceScale,
   expandPriceScale,
   xToIndex,
@@ -377,6 +380,11 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   /** Cached auto price scale — invalidated when bars/range/cursor change. */
   let cachedAutoScale: PriceScale | null = null;
   let scaleCacheKey = '';
+  /**
+   * Expand-only auto Y while replayFollow — cleared on Pause / reset / manual.
+   * Prevents every tip tick from recomputing a tighter min/max (plot shake).
+   */
+  let playPriceSticky: PriceScale | null = null;
 
   /** Shared hit-test for cursor + hover in the same move. */
   let hitCacheX = Number.NaN;
@@ -475,17 +483,25 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
 
   const resolvePriceScale = (): PriceScale => {
     if (priceScaleMode === 'manual' && manualPriceScale) {
+      playPriceSticky = null;
       return manualPriceScale;
     }
     const levelsKey = orderLevelsKey();
-    const key = `${bars.length}|${range.fromIndex}|${range.toIndex}|${replayCursorTime ?? ''}|${levelsKey}`;
+    const key = `${bars.length}|${range.fromIndex}|${range.toIndex}|${replayCursorTime ?? ''}|${levelsKey}|${replayFollow ? 'f' : 'p'}`;
     if (cachedAutoScale && scaleCacheKey === key) return cachedAutoScale;
     const maxBarIndex =
       replayCursorTime != null && bars.length > 0
         ? indexAtOrBeforeBars(bars, replayCursorTime)
         : null;
     const base = computePriceScale(bars, range, maxBarIndex);
-    cachedAutoScale = expandPriceScale(base, orderLevelPrices());
+    const expanded = expandPriceScale(base, orderLevelPrices());
+    if (replayFollow) {
+      playPriceSticky = applyPlayPriceHysteresis(playPriceSticky, expanded);
+      cachedAutoScale = playPriceSticky;
+    } else {
+      playPriceSticky = null;
+      cachedAutoScale = expanded;
+    }
     scaleCacheKey = key;
     return cachedAutoScale;
   };
@@ -732,6 +748,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   const resetPriceScale = () => {
     priceScaleMode = 'auto';
     manualPriceScale = null;
+    playPriceSticky = null;
     invalidateScaleCache();
     markSceneDirty();
   };
@@ -1701,10 +1718,29 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         bars[prevLen - 1]!.time === nextBars[prevLen - 1]!.time;
 
       if (prevLen === 0 || nextLen < prevLen || !canAppend) {
+        const prevBarsSnap = bars;
         bars =
           nextLen > MAX_BARS_IN_MEMORY
             ? (nextBars.slice(0, MAX_BARS_IN_MEMORY) as ChartBar[])
             : (nextBars.slice() as ChartBar[]);
+        // Warm-cache slide / seek: remap MA values by time so overlays stay on
+        // the right candles until the full Worker catch-up finishes.
+        if (prevLen > 0 && bars.length > 0) {
+          if (indicatorOverlays.length > 0) {
+            indicatorOverlays = remapOverlaysByTime(
+              indicatorOverlays,
+              prevBarsSnap,
+              bars,
+            );
+          }
+          if (indicatorPanes.length > 0) {
+            indicatorPanes = remapPanesByTime(
+              indicatorPanes,
+              prevBarsSnap,
+              bars,
+            );
+          }
+        }
       } else {
         const srcTip = nextBars[prevLen - 1]!;
         const dstTip = bars[prevLen - 1]!;
@@ -1724,17 +1760,19 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
             volume: b.volume,
           });
         }
+        // Append path: grow/hold tip only (O(series), no Worker).
+        if (indicatorOverlays.length > 0) {
+          indicatorOverlays = alignIndicatorOverlays(
+            indicatorOverlays,
+            bars.length,
+          );
+        }
+        if (indicatorPanes.length > 0) {
+          indicatorPanes = alignIndicatorPanes(indicatorPanes, bars.length);
+        }
       }
 
       replayCursorTime = cursorTime;
-
-      // Keep indicator buffers length-aligned so paint never blanks the series.
-      if (indicatorOverlays.length > 0) {
-        indicatorOverlays = alignIndicatorOverlays(indicatorOverlays, bars.length);
-      }
-      if (indicatorPanes.length > 0) {
-        indicatorPanes = alignIndicatorPanes(indicatorPanes, bars.length);
-      }
 
       const didReplace = prevLen === 0 || nextLen < prevLen || !canAppend;
       if (replayFollow) {
@@ -1807,6 +1845,9 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     setReplayFollow(follow) {
       if (replayFollow === follow) return;
       replayFollow = follow;
+      // Pause → drop sticky so auto Y refits once; Play seeds from next resolve.
+      if (!follow) playPriceSticky = null;
+      invalidateScaleCache();
       // Enabling follow must not hard-snap if we are already right-anchored —
       // that was shifting vertical grid / time labels on every Play press.
       if (follow && replayCursorTime != null && bars.length > 0) {

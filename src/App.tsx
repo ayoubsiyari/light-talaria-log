@@ -2007,7 +2007,7 @@ export default function App() {
       // Pause / seek / step — always flush progress so exit/reopen resumes here.
       if (playEdge || cursorChanged) persistReplayProgress(true);
 
-      // Soft completeness scan on Play→Pause — heal tip-only without blocking UI.
+      // Soft completeness scan + neighbor TF warm on Play→Pause.
       // Skip while playing so Play rAF never waits on history fills.
       if (playEdge && !rs.playing) {
         const activeId =
@@ -2015,6 +2015,8 @@ export default function App() {
           panesRef.current[0]?.id;
         if (activeId) {
           void healViewportIfNeeded([activeId], { applyCamera: false });
+          // 1m→5m (etc.) hits warm cache on the next click.
+          void sessionRef.current.prefetchNeighborTimeframes(activeId);
         }
       }
     });

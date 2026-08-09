@@ -31,6 +31,8 @@ import {
   INDICATOR_TIP_EVERY_BARS,
   INDICATOR_TIP_MIN_MS,
   needsFullIndicatorRecompute,
+  alignIndicatorOverlays,
+  alignIndicatorPanes,
   stitchTipOverlays,
   stitchTipPanes,
   tipWindowBars,
@@ -377,14 +379,22 @@ export function useChart(
         return;
       }
       fullInFlight = true;
+      const reqLen = bars.length;
       void computeIndicators(bars, instances)
         .then(({ overlays, panes }) => {
           if (cancelled) return;
           lastFullBars = bars;
-          lastTipAtLen = bars.length;
           lastTipAtMs = performance.now();
-          instance.setIndicatorOverlays(withWidth(overlays));
-          instance.setIndicatorPanes(withWidth(panes));
+          // Play may have advanced while the Worker ran — grow to live length
+          // so the tip isn't truncated until the next tip stitch.
+          const liveLen = instance.getBars().length || reqLen;
+          lastTipAtLen = liveLen;
+          instance.setIndicatorOverlays(
+            alignIndicatorOverlays(withWidth(overlays), liveLen),
+          );
+          instance.setIndicatorPanes(
+            alignIndicatorPanes(withWidth(panes), liveLen),
+          );
         })
         .catch(() => {
           if (cancelled) return;
@@ -445,26 +455,35 @@ export function useChart(
       tipPending = null;
       tipInFlight = true;
       const slice = tipWindowBars(pending);
-      const tipLen = pending.length;
+      // Stitch against the bar count the Worker actually saw — if Play grew
+      // the buffer mid-flight, grow/hold only the delta (no tip index drift).
+      const stitchLen = pending.length;
       void computeIndicators(slice, instances)
         .then(({ overlays, panes }) => {
           if (cancelled) return;
-          lastTipAtLen = tipLen;
           lastTipAtMs = performance.now();
-          // Stitch to the live engine length (may have grown during the Worker).
-          const liveLen = instance.getBars().length || tipLen;
-          const nextOverlays = stitchTipOverlays(
+          const stitchedOverlays = stitchTipOverlays(
             instance.getIndicatorOverlays(),
             withWidth(overlays),
-            liveLen,
+            stitchLen,
           );
-          const nextPanes = stitchTipPanes(
+          const stitchedPanes = stitchTipPanes(
             instance.getIndicatorPanes(),
             withWidth(panes),
-            liveLen,
+            stitchLen,
           );
-          instance.setIndicatorOverlays(nextOverlays);
-          instance.setIndicatorPanes(nextPanes);
+          const liveLen = instance.getBars().length || stitchLen;
+          lastTipAtLen = liveLen;
+          instance.setIndicatorOverlays(
+            liveLen === stitchLen
+              ? stitchedOverlays
+              : alignIndicatorOverlays(stitchedOverlays, liveLen),
+          );
+          instance.setIndicatorPanes(
+            liveLen === stitchLen
+              ? stitchedPanes
+              : alignIndicatorPanes(stitchedPanes, liveLen),
+          );
         })
         .catch(() => {
           /* keep aligned hold-values */

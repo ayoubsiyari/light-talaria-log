@@ -35,6 +35,25 @@ export function bucketStart(timeSec: number, periodSec: number): number {
   return Math.floor(timeSec / periodSec) * periodSec;
 }
 
+const TF_ORDER: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D'];
+
+/**
+ * Adjacent timeframes in the UI ladder (one finer + one coarser when present).
+ * Used to warm-cache neighbors on Pause so the next TF click paints instantly.
+ */
+export function neighborTimeframes(
+  current: Timeframe,
+  available: readonly Timeframe[] = TF_ORDER,
+): Timeframe[] {
+  const avail = TF_ORDER.filter((tf) => available.includes(tf));
+  const i = avail.indexOf(current);
+  if (i < 0) return [];
+  const out: Timeframe[] = [];
+  if (i > 0) out.push(avail[i - 1]!);
+  if (i + 1 < avail.length) out.push(avail[i + 1]!);
+  return out;
+}
+
 /** Finest (smallest period) timeframe among a set — used as the multi-pane replay clock. */
 export function smallestTimeframe(tfs: readonly Timeframe[]): Timeframe {
   if (tfs.length === 0) return '1m';

@@ -867,6 +867,9 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-09 | **Layouts panel Obsidian:** `data-layout-v2` flyout — Panels 1–8, arrangement thumbs, Sync rows w/ hints+toggles; layouts 5–8 grids | TopBar layout icon — compare to Live Layouts screenshot |
 | 2026-08-09 | Soft viewport completeness guard (`viewportCompleteness`): tip-only/empty-left heal on TF/symbol switch + coalesced Play→Pause scan; unit tests | Pause → SMA → 1m→5m — full history without Play |
 | 2026-08-09 | Full viewport bar scan: OHLC/bucket/sort + cross-TF candle check vs base; `healViewportHistory` history-biased refill; TF matrix asserts integrity | Switch 1m↔5m↔1h — candles match base aggregates |
+| 2026-08-09 | Indicator tip smoothness: stitch at compute length then grow; full-result live-align; time-remap on warm-cache slide; tip cadence 4 bars / 100ms | Play + SMA/EMA — less plateau snap / slide misalign |
+| 2026-08-09 | Play-only price-scale hysteresis: expand-on-extremes, no shrink while follow; clear sticky on Pause/reset/manual | Play — Y-axis stops breathing with tip |
+| 2026-08-09 | Neighbor TF prefetch on Pause + after TF switch (history-biased, no remote wait, coalesced) | Pause on 1m → click 5m — paints from warm cache |
 
 ---
 

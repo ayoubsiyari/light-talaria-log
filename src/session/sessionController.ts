@@ -1,4 +1,8 @@
-import { bucketStart, timeframeSeconds } from '@/data/timeframeAgg';
+import {
+  bucketStart,
+  neighborTimeframes,
+  timeframeSeconds,
+} from '@/data/timeframeAgg';
 import { barsMatchTimeframe } from '@/session/barTfGuard';
 import {
   derivePaneAsync,
@@ -58,6 +62,10 @@ export function createSessionController() {
   /** Per-pane epoch for async loads. */
   const paneEpoch = new Map<string, number>();
   let globalEpoch = 0;
+  /** Catalog TFs for neighbor prefetch (updated on configure / symbol switch). */
+  let availableTfs: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D'];
+  /** Coalesce background neighbor warm-ups (Pause / post-TF-switch). */
+  let neighborPrefetchInflight = false;
 
   const notify = () => {
     if (!state) return;
@@ -205,6 +213,10 @@ export function createSessionController() {
 
     async configure(args: CreateSessionArgs): Promise<void> {
       const span = Math.max(1, Math.min(args.span ?? REPLAY_VISIBLE_BARS, MAX_BARS_IN_MEMORY));
+      availableTfs =
+        args.availableTfs.length > 0
+          ? [...args.availableTfs]
+          : ['1m', '5m', '15m', '1h', '4h', '1D'];
       const retainedDatasets = [
         ...new Set([
           ...(args.retainedDatasets ?? []),
@@ -415,6 +427,8 @@ export function createSessionController() {
         if (incomplete()) {
           void rederiveAsync([paneId]);
         }
+        // Warm adjacent TFs in background so the next click is instant.
+        void this.prefetchNeighborTimeframes(paneId);
       } finally {
         switchingPanes.delete(paneId);
       }
@@ -426,12 +440,13 @@ export function createSessionController() {
     async setPaneSymbol(
       paneId: string,
       meta: { datasetId: string; pair: string },
-      availableTfs: readonly Timeframe[],
+      catalogTfs: readonly Timeframe[],
     ): Promise<void> {
       if (!state) return;
       const pane = state.panes[paneId];
       if (!pane) return;
       if (pane.datasetId === meta.datasetId && pane.pair === meta.pair) return;
+      if (catalogTfs.length > 0) availableTfs = [...catalogTfs];
       const prevDs = pane.datasetId;
       const keepTf = pane.tf;
       switchingPanes.add(paneId);
@@ -592,6 +607,50 @@ export function createSessionController() {
       }
       if (!state) return;
       notify();
+    },
+
+    /**
+     * Background warm of adjacent TFs (+ base) around the cursor.
+     * Fire-and-forget — never awaits remote, never notifies (no Play jank).
+     * Call on Pause / after TF switch so 1m→5m hits warm cache.
+     */
+    async prefetchNeighborTimeframes(paneId?: string): Promise<void> {
+      if (!state || neighborPrefetchInflight) return;
+      const id = paneId ?? state.activePaneId;
+      const cfg = state.panes[id];
+      if (!cfg) return;
+
+      const targets = new Set<Timeframe>(
+        neighborTimeframes(cfg.tf, availableTfs),
+      );
+      if (cfg.tf !== state.baseTf) targets.add(state.baseTf);
+      // Drop the pane's current TF — already warm from the active view.
+      targets.delete(cfg.tf);
+      if (targets.size === 0) return;
+
+      neighborPrefetchInflight = true;
+      const span = Math.max(1, state.span);
+      const cursor = state.cursorTime;
+      const datasetId = cfg.datasetId;
+      const opts: WarmCacheFillOpts = {
+        awaitRemote: false,
+        aheadRatio: 0.05,
+        windowBars: Math.min(
+          MAX_BARS_IN_MEMORY,
+          Math.max(span * 3 + BUFFER_BARS, 900),
+        ),
+      };
+      try {
+        await Promise.all(
+          [...targets].map((tf) =>
+            warmCache.fill(datasetId, tf, cursor, span, opts),
+          ),
+        );
+      } catch (err) {
+        console.warn('[session] neighbor TF prefetch failed', err);
+      } finally {
+        neighborPrefetchInflight = false;
+      }
     },
 
     /**

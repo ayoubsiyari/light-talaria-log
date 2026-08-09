@@ -27,6 +27,7 @@ export {
   canAggregateFrom,
   indexAtOrBeforeBars,
   logicalIndexAtTime,
+  neighborTimeframes,
   smallestTimeframe,
   timeAtLogicalIndex,
   timeRangeFromVisible,

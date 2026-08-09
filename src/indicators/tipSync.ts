@@ -11,10 +11,11 @@ export const INDICATOR_TIP_WINDOW = 320;
 /**
  * Replay isolation budget:
  * - syncReplayReveal only grows buffers (O(series), no Worker) so candles never wait.
- * - Tip Worker runs at most every N new bars AND min interval — keeps replay FPS free.
+ * - Tip Worker runs at most every N new bars OR min interval — keeps replay FPS free.
+ * Slightly tighter than 8/150 so hold-fill plateaus don't read as tip shake.
  */
-export const INDICATOR_TIP_EVERY_BARS = 8;
-export const INDICATOR_TIP_MIN_MS = 150;
+export const INDICATOR_TIP_EVERY_BARS = 4;
+export const INDICATOR_TIP_MIN_MS = 100;
 
 function growValues(prev: Float32Array, len: number): Float32Array {
   if (prev.length === len) return prev;
@@ -164,4 +165,65 @@ export function needsFullIndicatorRecompute(
   if (prev[0]!.time !== next[0]!.time) return true;
   if (next.length + 8 < prev.length) return true; // large rewind
   return false;
+}
+
+/**
+ * Remap indicator values onto a slid/replaced bar buffer by wall-clock time.
+ * Keeps MAs glued to the correct candles until the full Worker catch-up lands.
+ * Unknown leading history → NaN; brand-new tip bars → hold last finite.
+ */
+export function remapValuesByTime(
+  values: Float32Array,
+  prevBars: readonly ChartBar[],
+  nextBars: readonly ChartBar[],
+): Float32Array {
+  const out = new Float32Array(nextBars.length);
+  if (nextBars.length === 0) return out;
+  const n = Math.min(values.length, prevBars.length);
+  const byTime = new Map<number, number>();
+  for (let i = 0; i < n; i++) {
+    const v = values[i]!;
+    if (Number.isFinite(v)) byTime.set(prevBars[i]!.time, v);
+  }
+  let last = Number.NaN;
+  for (let i = 0; i < nextBars.length; i++) {
+    const v = byTime.get(nextBars[i]!.time);
+    if (v !== undefined) {
+      out[i] = v;
+      last = v;
+    } else if (Number.isFinite(last)) {
+      out[i] = last;
+    } else {
+      out[i] = Number.NaN;
+    }
+  }
+  return out;
+}
+
+export function remapOverlaysByTime(
+  overlays: readonly IndicatorOverlayResult[],
+  prevBars: readonly ChartBar[],
+  nextBars: readonly ChartBar[],
+): IndicatorOverlayResult[] {
+  return overlays.map((o) => ({
+    ...o,
+    series: o.series.map((s) => ({
+      ...s,
+      values: remapValuesByTime(s.values, prevBars, nextBars),
+    })),
+  }));
+}
+
+export function remapPanesByTime(
+  panes: readonly IndicatorPaneResult[],
+  prevBars: readonly ChartBar[],
+  nextBars: readonly ChartBar[],
+): IndicatorPaneResult[] {
+  return panes.map((p) => ({
+    ...p,
+    series: p.series.map((s) => ({
+      ...s,
+      values: remapValuesByTime(s.values, prevBars, nextBars),
+    })),
+  }));
 }

@@ -42,6 +42,28 @@ export function computePriceScale(
 }
 
 /**
+ * Play-only auto Y hysteresis: expand immediately for new highs/lows, never
+ * shrink while following. Stops tip-candle min/max flicker from “breathing”
+ * the whole plot every replay tick. Caller clears sticky on Pause / reset.
+ */
+export function applyPlayPriceHysteresis(
+  sticky: PriceScale | null,
+  target: PriceScale,
+): PriceScale {
+  if (
+    !sticky ||
+    !(sticky.max > sticky.min) ||
+    !(target.max > target.min)
+  ) {
+    return { min: target.min, max: target.max };
+  }
+  return {
+    min: Math.min(sticky.min, target.min),
+    max: Math.max(sticky.max, target.max),
+  };
+}
+
+/**
  * Widen an auto price scale so entry / SL / TP stay on-screen.
  * Without this, protective levels often sit outside the candle range and
  * look like they “disappeared” (clipped by the plot).

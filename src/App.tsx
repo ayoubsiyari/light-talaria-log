@@ -3353,6 +3353,25 @@ export default function App() {
     return { bid, ask: bid + spread };
   }, [panes, activePaneId, orderEngineTick]);
 
+  /** Per-symbol mark for TradeDock — never reuse the active pane's bid on JPY. */
+  const resolveOrderMark = useCallback((symbol: string) => {
+    const bridge = orderBridgeRef.current;
+    const fromBridge = bridge?.getMark(symbol) ?? null;
+    if (fromBridge && fromBridge.bid > 0) return fromBridge;
+    const key = chartPairKey(symbol);
+    const pane = panesRef.current.find((p) => chartPairKey(p.pair) === key);
+    const last = pane?.bars[pane.bars.length - 1];
+    if (last && last.close > 0) {
+      const spread = bridge?.getSpec(symbol).typicalSpread ?? 0;
+      return { bid: last.close, ask: last.close + spread };
+    }
+    return null;
+  }, []);
+
+  const resolveOrderSpec = useCallback((symbol: string) => {
+    return orderBridgeRef.current?.getSpec(symbol) ?? null;
+  }, []);
+
   const submitTicket = useCallback(
     (ticket: {
       side: 'BUY' | 'SELL';
@@ -5072,6 +5091,9 @@ export default function App() {
             }
             bid={liveBidAsk.bid}
             ask={liveBidAsk.ask}
+            resolveMark={resolveOrderMark}
+            resolveSpec={resolveOrderSpec}
+            cursorTime={replayState.cursorTime}
             sessionId={session.id}
             liveJournal={orderBridgeRef.current?.getJournal() ?? null}
             onCancel={(orderId) => {

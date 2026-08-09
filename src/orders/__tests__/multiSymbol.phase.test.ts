@@ -81,5 +81,11 @@ describe('Multi-symbol session bridge', () => {
     // Filled at next bar open ± spread — must stay on each instrument's scale
     assert.ok(eur!.entryPrice > 1.09 && eur!.entryPrice < 1.12);
     assert.ok(gbp!.entryPrice > 1.24 && gbp!.entryPrice < 1.26);
+
+    // Marks must stay per-symbol (TradeDock used to price JPY with EUR bid).
+    const eurMark = bridge.getMark('EUR/USD');
+    const gbpMark = bridge.getMark('GBP/USD');
+    assert.ok(eurMark && eurMark.bid > 1.09 && eurMark.bid < 1.12);
+    assert.ok(gbpMark && gbpMark.bid > 1.24 && gbpMark.bid < 1.26);
   });
 });

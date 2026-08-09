@@ -13,6 +13,14 @@ interface TradeDockProps {
   spec: InstrumentSpec | null;
   bid: number;
   ask: number;
+  /**
+   * Per-symbol mark + spec for multi-pair books. Without this, every open row
+   * uses the active pane's bid (EUR 1.15 on a USD/JPY position → million $ P&L).
+   */
+  resolveMark?: (symbol: string) => { bid: number; ask: number } | null;
+  resolveSpec?: (symbol: string) => InstrumentSpec | null;
+  /** Replay cursor — open-row duration must not use wall clock. */
+  cursorTime?: number;
   sessionId?: string | null;
   liveJournal?: OrderJournal | null;
   onCancel: (orderId: string) => void;
@@ -198,6 +206,9 @@ export function TradeDock({
   spec,
   bid,
   ask,
+  resolveMark,
+  resolveSpec,
+  cursorTime,
   sessionId,
   liveJournal,
   onCancel,
@@ -273,10 +284,33 @@ export function TradeDock({
   const rows = useMemo(() => {
     const out: DockRow[] = [];
     const currency = state?.account.currency ?? 'USD';
+    const openEnd =
+      cursorTime != null && cursorTime > 0
+        ? cursorTime
+        : Math.floor(Date.now() / 1000);
 
     if (state) {
       for (const p of Object.values(state.positions)) {
-        const upnl = unrealizedAccount(p, bid, ask, spec, currency);
+        const posSpec = resolveSpec?.(p.symbol) ?? spec;
+        const mark = resolveMark?.(p.symbol);
+        // Per-symbol mark required in multi-pair. Legacy single-spec callers
+        // without resolveMark may use the shared bid — never mix pairs.
+        const posBid =
+          mark != null && mark.bid > 0
+            ? mark.bid
+            : resolveMark
+              ? 0
+              : bid;
+        const posAsk =
+          mark != null && mark.ask > 0
+            ? mark.ask
+            : posBid > 0
+              ? posBid + (posSpec?.typicalSpread ?? 0)
+              : resolveMark
+                ? 0
+                : ask;
+        const upnl = unrealizedAccount(p, posBid, posAsk, posSpec, currency);
+        const d = posSpec?.digits ?? digits;
         out.push({
           id: p.id,
           displayId: displayId(p.id),
@@ -287,11 +321,11 @@ export function TradeDock({
           status: 'open',
           size: p.size,
           type: 'Market',
-          entry: fmt(p.entryPrice, digits),
+          entry: fmt(p.entryPrice, d),
           exit: '—',
-          pnl: fmtPnl(upnl),
+          pnl: posBid > 0 ? fmtPnl(upnl) : '—',
           pnlColor: upnl >= 0 ? 'var(--up)' : 'var(--down)',
-          dur: fmtDur(p.openedAt ?? 0, null),
+          dur: fmtDur(p.openedAt ?? 0, openEnd),
           omId: p.id,
         });
       }
@@ -300,6 +334,8 @@ export function TradeDock({
         .map((id) => state.orders[id]!)
         .filter((o) => o && !o.role);
       for (const o of working) {
+        const oSpec = resolveSpec?.(o.symbol) ?? spec;
+        const d = oSpec?.digits ?? digits;
         out.push({
           id: o.id,
           displayId: displayId(o.id),
@@ -310,7 +346,7 @@ export function TradeDock({
           status: 'pending',
           size: o.size,
           type: o.type,
-          entry: o.price != null ? fmt(o.price, digits) : 'MKT',
+          entry: o.price != null ? fmt(o.price, d) : 'MKT',
           exit: '—',
           pnl: '—',
           pnlColor: 'var(--text-faint)',
@@ -321,6 +357,8 @@ export function TradeDock({
     }
 
     for (const t of closedTrades) {
+      const tSpec = resolveSpec?.(t.symbol) ?? spec;
+      const d = tSpec?.digits ?? digits;
       out.push({
         id: t.id,
         displayId: displayId(t.id),
@@ -331,8 +369,8 @@ export function TradeDock({
         status: 'closed',
         size: t.size,
         type: 'Market',
-        entry: fmt(t.entryPrice, digits),
-        exit: fmt(t.exitPrice, digits),
+        entry: fmt(t.entryPrice, d),
+        exit: fmt(t.exitPrice, d),
         pnl: t.ambiguousFill ? 'ambig.' : fmtPnl(t.pnlAccount),
         pnlColor: t.ambiguousFill
           ? 'var(--text-faint)'
@@ -346,7 +384,17 @@ export function TradeDock({
 
     out.sort((a, b) => b.timeSec - a.timeSec);
     return out;
-  }, [state, bid, ask, spec, digits, closedTrades]);
+  }, [
+    state,
+    bid,
+    ask,
+    spec,
+    digits,
+    closedTrades,
+    resolveMark,
+    resolveSpec,
+    cursorTime,
+  ]);
 
   if (activeTab === 'analytics') return null;
 

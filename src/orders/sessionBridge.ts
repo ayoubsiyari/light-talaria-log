@@ -58,6 +58,8 @@ export interface OrderSessionBridge {
   getLastReject(): string | null;
   /** Open positions + working entry symbols (for Play bar runway / pins). */
   getExposureSymbols(): string[];
+  /** Last stepped mark for a symbol (bid = bar.close). */
+  getMark(symbol?: string): { bid: number; ask: number } | null;
   /**
    * Advance engine across every base bar in (lastStepped, cursorTime].
    * `getBars(symbol, from, to)` must return that symbol's bars only.
@@ -455,6 +457,14 @@ export function createOrderSessionBridge(input: {
     getSpec: (symbol) => specFor(symbol ?? state.symbol),
     getLastReject: () => lastReject,
     getExposureSymbols: () => collectExposureSymbols(state),
+    getMark(symbol) {
+      const key = instrumentSymbolKey(symbol ?? state.symbol);
+      const m = marks.get(key);
+      if (!m || !(m.bid > 0)) return null;
+      const ask =
+        m.ask > 0 ? m.ask : m.bid + specFor(key).typicalSpread;
+      return { bid: m.bid, ask };
+    },
 
     advanceTo(cursorTime, getBars, ctxPartial) {
       return advanceToInner(cursorTime, getBars, ctxPartial);

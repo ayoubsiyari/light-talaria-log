@@ -3240,7 +3240,8 @@ export default function App() {
       takeProfit: ticketDraft.takeProfit,
       createdAt: 0,
       draft: true,
-      working: true,
+      // Not a booked working order — opening the ticket must not look like Pending.
+      working: false,
     };
     return [...orders, draftOrder];
   }, [orders, ticketDraft, session, panes, activePaneId]);
@@ -3302,27 +3303,81 @@ export default function App() {
           createdAt: cursorTime,
         },
       });
-      // Always push panes imperatively — during Play, React→setOrders is skipped.
-      const all = bridge.toChartOrders(sessionIdRef.current ?? '');
-      setOrders(all);
-      setLastOrderReject(bridge.getLastReject());
-      setOrderEngineTick((n) => n + 1);
-      pushOrdersToPanes(all, id);
       const reject = bridge.getLastReject();
       if (reject) {
         // Keep ticket + draft levels so the user can fix and resubmit.
+        const all = bridge.toChartOrders(sessionIdRef.current ?? '');
+        setOrders(all);
         setLastOrderReject(reject);
+        setOrderEngineTick((n) => n + 1);
         setSelectedOrderId(null);
         pushOrdersToPanes(all, null);
         return;
       }
-      setLastOrderReject(null);
-      setSelectedOrderId(id);
-      setTicketOpen(false);
-      setTicketDraft(null);
-      setActiveTab('open');
+
+      const finishBooked = (selectId: string) => {
+        const all = bridge.toChartOrders(sessionIdRef.current ?? '');
+        const openId =
+          all.find(
+            (o) =>
+              !o.draft &&
+              !o.closed &&
+              !o.working &&
+              chartPairKey(o.pair) === chartPairKey(tradeSymbol),
+          )?.id ?? selectId;
+        setOrders(all);
+        setLastOrderReject(null);
+        setOrderEngineTick((n) => n + 1);
+        pushOrdersToPanes(all, openId);
+        setSelectedOrderId(openId);
+        setTicketOpen(false);
+        setTicketDraft(null);
+        setActiveTab('open');
+      };
+
+      // Engine fills MARKET on the *next* base bar open. While paused, Buy used
+      // to leave a stuck Pending — step once (and preload if cache missed).
+      // During Play the next tick fills naturally; do not yank the clock here.
+      if (
+        ticket.type === 'MARKET' &&
+        !replayRef.current.get().playing &&
+        cursorTime < replayRef.current.get().endTime
+      ) {
+        replayRef.current.step(1);
+        if (!bridge.getState().workingIds.includes(id)) {
+          finishBooked(id);
+          return;
+        }
+        // Cache may not have the next base bar yet — ensure + advance.
+        const sess = sessionRef.current.get();
+        if (sess) {
+          const to = Math.max(
+            replayRef.current.get().cursorTime,
+            cursorTime + timeframeSeconds(sess.baseTf),
+          );
+          void ensureAllOrderBars(sess.baseTf, cursorTime, to).then((preload) => {
+            if (orderBridgeRef.current !== bridge) return;
+            bridge.advanceTo(
+              to,
+              makeOrderBarProvider(sess.baseTf, to, preload),
+            );
+            if (replayRef.current.get().cursorTime < to) {
+              replayRef.current.seek(to);
+            }
+            finishBooked(id);
+          });
+          return;
+        }
+      }
+
+      finishBooked(id);
     },
-    [activePaneId, pushOrdersToPanes],
+    [
+      activePaneId,
+      ensureAllOrderBars,
+      makeOrderBarProvider,
+      pushOrdersToPanes,
+    ],
   );
 
   useEffect(() => subscribeBacktest(() => setBacktestTick((n) => n + 1)), []);
@@ -4981,7 +5036,19 @@ export default function App() {
                   createdAt: cursorTime,
                 },
               });
+              // Same next-bar fill as Place Order — step while paused so Close
+              // does not leave a stuck opposing MARKET in Pending.
+              if (
+                !replayRef.current.get().playing &&
+                cursorTime < replayRef.current.get().endTime
+              ) {
+                replayRef.current.step(1);
+              }
               syncOrdersFromBridge();
+              pushOrdersToPanes(
+                bridge.toChartOrders(sessionIdRef.current ?? ''),
+                selectedOrderIdRef.current,
+              );
             }}
           />
         ) : null}

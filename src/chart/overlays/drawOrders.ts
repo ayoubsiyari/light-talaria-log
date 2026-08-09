@@ -166,7 +166,7 @@ export function drawOrders(
       } else {
         const sideTxt = sideBuy ? 'Buy' : 'Sell';
         const parts = [
-          order.draft ? 'Draft' : 'Pending',
+          order.draft ? 'Preview' : 'Pending',
           sideTxt,
           sizeTxt || null,
           formatPrice(entry),

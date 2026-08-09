@@ -95,6 +95,20 @@ describe('remapValuesByTime', () => {
     assert.equal(out[2], 20);
     assert.equal(out[3], 30);
   });
+
+  it('does not paint held tip values into older history on left pan', () => {
+    const prev = [bar(200), bar(260), bar(320)];
+    const values = new Float32Array([10, 20, 30]);
+    // History prepended + tip advanced
+    const next = [bar(80), bar(140), bar(200), bar(260), bar(320), bar(380)];
+    const out = remapValuesByTime(values, prev, next);
+    assert.ok(Number.isNaN(out[0]!));
+    assert.ok(Number.isNaN(out[1]!));
+    assert.equal(out[2], 10);
+    assert.equal(out[3], 20);
+    assert.equal(out[4], 30);
+    assert.equal(out[5], 30); // tip hold only
+  });
 });
 
 describe('landIndicatorOverlays', () => {

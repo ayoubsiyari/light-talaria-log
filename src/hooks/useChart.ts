@@ -414,15 +414,11 @@ export function useChart(
         tipPending = bars;
         return;
       }
-      // Play + pan slides the warm-cache often — don't kick a full Worker every
-      // slide (stale landings used to flash/glitch the MA). Remap already holds
-      // values on the candles until this coalesced pass lands.
+      // Pan (paused or Play) slides the warm-cache often — don't kick a full
+      // Worker every chunk. Remap-by-time already holds values on candles;
+      // Worker only backfills new history after the drag settles.
       const now = performance.now();
-      if (
-        optionsRef.current.replayFollow &&
-        lastFullBars != null &&
-        now - lastFullAtMs < INDICATOR_FULL_MIN_MS
-      ) {
+      if (lastFullBars != null && now - lastFullAtMs < INDICATOR_FULL_MIN_MS) {
         tipPending = bars;
         if (tipTimer == null) {
           const wait = Math.max(16, INDICATOR_FULL_MIN_MS - (now - lastFullAtMs));

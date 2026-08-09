@@ -1573,6 +1573,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     canvas,
 
     setViewportBars(nextBars: readonly ChartBar[]) {
+      const prevBars = bars;
       if (nextBars.length > MAX_BARS_IN_MEMORY) {
         console.warn(
           `setViewportBars: ${nextBars.length} exceeds MAX_BARS_IN_MEMORY (${MAX_BARS_IN_MEMORY}); truncating`,
@@ -1588,6 +1589,33 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         // Keep TV-style pads (fromIndex < 0 or toIndex > bars.length) — do not snap left
         range = rangeCenteredOnIndex(Math.max(0, bars.length - 1), DEFAULT_VISIBLE_BARS);
       }
+
+      // Pan/LOD history swaps replace the buffer — remap indicators by time so
+      // MAs stay glued to candles (index-stale overlays flashed while dragging).
+      const hasIndicators =
+        indicatorOverlays.length > 0 || indicatorPanes.length > 0;
+      const slid =
+        hasIndicators &&
+        prevBars.length > 0 &&
+        bars.length > 0 &&
+        (prevBars[0]!.time !== bars[0]!.time ||
+          prevBars.length !== bars.length ||
+          prevBars[prevBars.length - 1]!.time !==
+            bars[bars.length - 1]!.time);
+      if (slid) {
+        if (indicatorOverlays.length > 0) {
+          indicatorOverlays = remapOverlaysByTime(
+            indicatorOverlays,
+            prevBars,
+            bars,
+          );
+        }
+        if (indicatorPanes.length > 0) {
+          indicatorPanes = remapPanesByTime(indicatorPanes, prevBars, bars);
+        }
+        indicatorRevealCb?.(bars);
+      }
+
       // Do not auto-recenter here — React applies the preserved range after TF/buffer swaps.
       // Replay follow recenters via setReplayCursorTime / setReplayFollow instead.
       invalidateScaleCache();

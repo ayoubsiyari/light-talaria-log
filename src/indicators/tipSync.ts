@@ -16,8 +16,11 @@ export const INDICATOR_TIP_WINDOW = 320;
  */
 export const INDICATOR_TIP_EVERY_BARS = 4;
 export const INDICATOR_TIP_MIN_MS = 100;
-/** Full Worker passes while Play+pan slides the warm-cache — coalesce to avoid flash. */
-export const INDICATOR_FULL_MIN_MS = 280;
+/**
+ * Full Worker passes while Play/pan slides the warm-cache — coalesce hard.
+ * Remap-by-time keeps overlays glued; Worker only fills new history gaps.
+ */
+export const INDICATOR_FULL_MIN_MS = 450;
 
 function growValues(prev: Float32Array, len: number): Float32Array {
   if (prev.length === len) return prev;
@@ -172,7 +175,11 @@ export function needsFullIndicatorRecompute(
 /**
  * Remap indicator values onto a slid/replaced bar buffer by wall-clock time.
  * Keeps MAs glued to the correct candles until the full Worker catch-up lands.
- * Unknown leading history → NaN; brand-new tip bars → hold last finite.
+ *
+ * - Known times → exact value
+ * - New tip (after last known) → hold last finite (no tip hole while Play runs)
+ * - New history (before first known) → NaN (do not invent MA into the past;
+ *   Worker fills after pan settles — avoids a fake flat line flashing left)
  */
 export function remapValuesByTime(
   values: Float32Array,
@@ -183,17 +190,25 @@ export function remapValuesByTime(
   if (nextBars.length === 0) return out;
   const n = Math.min(values.length, prevBars.length);
   const byTime = new Map<number, number>();
+  let firstKnownTime = Number.POSITIVE_INFINITY;
+  let lastKnownTime = Number.NEGATIVE_INFINITY;
   for (let i = 0; i < n; i++) {
     const v = values[i]!;
-    if (Number.isFinite(v)) byTime.set(prevBars[i]!.time, v);
+    if (!Number.isFinite(v)) continue;
+    const t = prevBars[i]!.time;
+    byTime.set(t, v);
+    if (t < firstKnownTime) firstKnownTime = t;
+    if (t > lastKnownTime) lastKnownTime = t;
   }
   let last = Number.NaN;
   for (let i = 0; i < nextBars.length; i++) {
-    const v = byTime.get(nextBars[i]!.time);
+    const t = nextBars[i]!.time;
+    const v = byTime.get(t);
     if (v !== undefined) {
       out[i] = v;
       last = v;
-    } else if (Number.isFinite(last)) {
+    } else if (t > lastKnownTime && Number.isFinite(last)) {
+      // Forward tip only — never paint held values into older history.
       out[i] = last;
     } else {
       out[i] = Number.NaN;

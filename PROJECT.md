@@ -898,6 +898,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-09 | Thin V-grid: fade 2 octaves (was 3) + 36px stroke cull — 1m no longer paints a striped curtain | 1m pane — majors/minors readable, not every-bar lines |
 | 2026-08-09 | Fix indicator flash on Play+pan: land Worker results by time after buffer slide; coalesce full recomputes | Add SMA → Play → drag — MA stays glued, no flicker |
 | 2026-08-09 | Time-axis double-click resets to default scale (120 bars, tip right-anchored); plot dbl-click also auto Y | Zoom/pan → dbl-click time axis — default bar width |
+| 2026-08-09 | Fix indicator pan glitch: setViewportBars remaps overlays by time; full Worker coalesced on any pan (not only Play) | Add SMA → drag chart continuously — line stays glued |
 | 2026-08-09 | **Feel wave F0–F5:** overlay handles/badges; engine freehand; press-drag place; touch pan-vs-draw; orders/backtest off crosshair path; undo/redo | Manual: hover scrub, brush, trend press-drag, thumb pan, Cmd+Z |
 | 2026-08-09 | Brush Talaria parity: no stride-thin on release; Catmull-Rom α=0.5 paint; no magnet; settings Style+Visibility (hide dash; highlighter widths 8–64) | Draw brush curve — release matches live stroke |
 | 2026-08-09 | Obsidian settings shell (data-sett-v3): tool icon header, pill tabs, Reset/Done, Extend/Labels chips, Show Info; ChromeIcon map for rail + flyout | Open Trend Line settings — match V9 Obsidian chrome; then per-tool Inputs pass |

@@ -80,10 +80,17 @@ export function preservedVisibleRange(
     range = { fromIndex, toIndex: fromIndex + spanSafe };
   }
 
-  if (visibleBarsInRange(bars.length, range) < MIN_VISIBLE_BARS) {
+  const visible = visibleBarsInRange(bars.length, range);
+  const spanNow = range.toIndex - range.fromIndex;
+  // Tip-only / short 15m buffers: wall-clock can map to a huge empty pad with
+  // candles crushed on the right — fit zoom to the bars we actually have.
+  const crushed =
+    visible > 0 && spanNow > 0 && visible / spanNow < 0.2;
+  if (visible < MIN_VISIBLE_BARS || crushed) {
+    const fitted = Math.max(10, Math.ceil((tip + 1) / 0.85));
     const fallbackSpan = Math.max(
-      DEFAULT_VISIBLE_BARS,
-      Math.min(spanSafe, Math.max(DEFAULT_VISIBLE_BARS, tip + 1)),
+      10,
+      Math.min(spanSafe, Math.max(fitted, Math.min(DEFAULT_VISIBLE_BARS, tip + 1))),
     );
     return rangeRightAnchored(tip, fallbackSpan);
   }

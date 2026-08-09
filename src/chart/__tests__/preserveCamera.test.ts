@@ -70,4 +70,20 @@ describe('preservedVisibleRange', () => {
     );
     assert.ok(visibleBarsInRange(data.length, range) >= 8);
   });
+
+  it('fits zoom when tip-only 15m buffer would crush candles', () => {
+    const data = bars(6); // short post-switch buffer
+    const tip = data[data.length - 1]!.time;
+    const fromTime = tip - 1200 * 60; // ~1m-sized wall window
+    const range = preservedVisibleRange(
+      data,
+      { fromTime, toTime: tip, anchorTime: tip },
+      80,
+      0.9,
+    );
+    const visible = visibleBarsInRange(data.length, range);
+    const span = range.toIndex - range.fromIndex;
+    assert.ok(visible >= 6);
+    assert.ok(visible / span >= 0.2, `candles crushed: ${visible}/${span}`);
+  });
 });

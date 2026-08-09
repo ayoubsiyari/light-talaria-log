@@ -374,25 +374,21 @@ export function createSessionController() {
         const datasetId = pane.datasetId;
         const anchor = state.anchorTime;
         const span = Math.max(1, state.span);
-        // History-biased window — tip-heavy fills left only the forming 5m/1h
-        // candle until the user hit Play (which then top-filled history).
-        const switchOpts: WarmCacheFillOpts = {
-          awaitRemote: true,
+        const windowBars = Math.min(
+          MAX_BARS_IN_MEMORY,
+          Math.max(span * 2 + BUFFER_BARS, span * 3 + 200, 900),
+        );
+        // Paint from IDB first — never block the first TF click on remote (≤8s).
+        const fastOpts: WarmCacheFillOpts = {
+          awaitRemote: false,
           aheadRatio: 0.06,
-          windowBars: Math.min(
-            MAX_BARS_IN_MEMORY,
-            Math.max(span * 2 + BUFFER_BARS, span * 3 + 200, 900),
-          ),
+          windowBars,
         };
 
-        // Await remote chunks so the first TF click paints the new series.
-        // State still has the *old* TF — Play keeps extending previous candles.
-        await warmCache.fill(datasetId, tf, anchor, span, switchOpts);
+        await warmCache.fill(datasetId, tf, anchor, span, fastOpts);
         if (!state) return;
 
         if (tf !== state.baseTf) {
-          // Base clock needs enough 1m bars to cover the higher-TF viewport
-          // (span is in *pane* bars — 120×1h ≈ 7200×1m).
           const baseSpan = Math.min(
             MAX_BARS_IN_MEMORY,
             Math.max(
@@ -408,7 +404,7 @@ export function createSessionController() {
             state.cursorTime,
             baseSpan,
             {
-              awaitRemote: true,
+              awaitRemote: false,
               aheadRatio: 0.1,
               windowBars: Math.min(MAX_BARS_IN_MEMORY, baseSpan + 200),
             },
@@ -418,7 +414,8 @@ export function createSessionController() {
 
         const cur = state.panes[paneId];
         if (!cur) return;
-        // Flip TF only after fills succeed — then one atomic derive/notify.
+        // Flip + derive immediately so App can paint the new TF without waiting
+        // on remote heal (background catch-up below).
         state = {
           ...state,
           panes: {
@@ -427,21 +424,34 @@ export function createSessionController() {
           },
         };
         rederivePaneSync(paneId);
-
-        // Soft completeness + full bar scan (incl. cross-TF vs base).
-        const incomplete = () => paneNeedsHeal(paneId);
-
-        if (incomplete()) {
-          await healPaneHistory(paneId);
-        }
-
         notify();
-        // Late IDB/remote catch-up (no remote wait) if still thin/corrupt.
-        if (incomplete()) {
-          void rederiveAsync([paneId]);
-        }
-        // Warm adjacent TFs in background so the next click is instant.
-        void this.prefetchNeighborTimeframes(paneId);
+
+        const switchEpoch = fillSessionEpoch;
+        const switchTf = tf;
+        void (async () => {
+          try {
+            await warmCache.fill(datasetId, switchTf, anchor, span, {
+              awaitRemote: true,
+              aheadRatio: 0.06,
+              windowBars,
+            });
+            if (!state || fillSessionEpoch !== switchEpoch) return;
+            if (state.panes[paneId]?.tf !== switchTf) return;
+            if (paneNeedsHeal(paneId)) {
+              await healPaneHistory(paneId);
+            }
+            if (!state || fillSessionEpoch !== switchEpoch) return;
+            if (state.panes[paneId]?.tf !== switchTf) return;
+            rederivePaneSync(paneId);
+            notify();
+            if (paneNeedsHeal(paneId)) {
+              void rederiveAsync([paneId]);
+            }
+            void this.prefetchNeighborTimeframes(paneId);
+          } catch (err) {
+            console.warn('[session] TF background top-up failed', err);
+          }
+        })();
       } finally {
         switchingPanes.delete(paneId);
       }

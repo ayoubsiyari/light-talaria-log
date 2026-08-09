@@ -2577,17 +2577,15 @@ export default function App() {
       const camera = captureLiveCamera(paneId);
       const fromTf = existing.timeframe;
       const convertedSpan = cameraSpanForTf(camera, fromTf, tf);
-      // Preserve carries converted bar zoom for camera apply; wall-clock from/to
-      // keep place. Only rewrite shared session.span when all panes switch TF.
+      // Preserve = wall-clock place + converted bar zoom for the *target* TF.
       cameraPreserveRef.current = { ...camera, span: convertedSpan };
-      if (syncAll) {
-        sessionRef.current.setCamera(camera.anchorTime, convertedSpan);
-      } else {
-        sessionRef.current.setCamera(
-          camera.anchorTime,
-          Math.max(10, sessionRef.current.get()?.span ?? camera.span),
-        );
-      }
+      // Fill sizing always uses converted span (1m count on 15m is huge/slow).
+      // Restore prior span after paint when Interval sync is off (siblings).
+      const prevSessionSpan = Math.max(
+        10,
+        sessionRef.current.get()?.span ?? camera.span,
+      );
+      sessionRef.current.setCamera(camera.anchorTime, convertedSpan);
       setActivePaneId(paneId);
       // Only suppress the setActivePane notify — never hold this across awaits
       // (a stuck lock freezes session commits and looks like replay is dead).
@@ -2597,63 +2595,25 @@ export default function App() {
       markPanesLoading(targets, true);
 
       void (async () => {
-        // Hold session→React commits for the whole TF await so mid-fill
-        // notify() cannot race Play ticks and blank the chart.
+        // Hold session→React commits until the first paint of the new TF.
         suppressSessionCommitRef.current = true;
         try {
+          // IDB-first flip (session no longer awaits remote before return).
           await Promise.all(
             targets.map((id) => sessionRef.current.setPaneTimeframe(id, tf)),
           );
           if (switchGen !== paneSwitchGenRef.current) return;
 
-          // Soft completeness guard — heal tip-only / empty-left before paint.
-          // Do NOT applyCamera during heal (that cleared preserve and tip-snapped).
-          // Max 2 attempts per switch gen (session sparse retry + App heal).
-          for (let attempt = 0; attempt < 2; attempt++) {
-            if (switchGen !== paneSwitchGenRef.current) return;
-            const healed = await healViewportIfNeeded(targets, {
-              force: true,
-              applyCamera: false,
-            });
-            if (!healed && attempt > 0) break;
-            if (switchGen !== paneSwitchGenRef.current) return;
-            commitSessionViews({ adoptRangePaneIds: targets });
-            // Keep preserve until the final apply below (or last heal pass).
-            syncEnginesFromSession({
-              paneIds: targets,
-              applyCamera: true,
-              keepPreserve: true,
-            });
-            // Second pass only if engines still fail the guard after push.
-            if (attempt === 0) {
-              const stillThin = targets.some((id) => {
-                const v = sessionRef.current.getViews()[id];
-                const engine = getChart(id);
-                const bars =
-                  engine && engine.getBars().length > 0
-                    ? engine.getBars()
-                    : (v?.bars ?? []);
-                const paneTf =
-                  v?.timeframe ??
-                  panesRef.current.find((p) => p.id === id)?.timeframe;
-                if (!paneTf) return false;
-                return needsViewportHeal({
-                  bars,
-                  span: Math.max(10, sessionRef.current.get()?.span ?? 120),
-                  cursorTime: replayRef.current.get().cursorTime,
-                  tf: paneTf,
-                  range: engine?.getVisibleRange() ?? v?.range ?? null,
-                });
-              });
-              if (!stillThin) break;
-            }
+          // Immediate paint: bars + camera + auto Y (1m scale must not stick).
+          commitSessionViews({ adoptRangePaneIds: targets });
+          syncEnginesFromSession({
+            paneIds: targets,
+            applyCamera: true,
+            keepPreserve: true,
+          });
+          for (const id of targets) {
+            getChart(id)?.resetPriceScale();
           }
-          if (switchGen !== paneSwitchGenRef.current) return;
-
-          // Final camera apply + clear preserve.
-          syncEnginesFromSession({ paneIds: targets, applyCamera: true });
-          // When all panes share the TF, lock session.span to the live zoom.
-          // Per-pane TF switch must not collapse sibling zooms.
           if (syncAll) {
             const live = getChart(paneId)?.getVisibleRange();
             if (live) {
@@ -2661,17 +2621,39 @@ export default function App() {
                 Math.max(10, live.toIndex - live.fromIndex),
               );
             }
+          } else {
+            sessionRef.current.setSpan(prevSessionSpan);
           }
           syncReplayClockTf(panesRef.current);
+          markPanesLoading(targets, false);
 
           const focus = panesRef.current.find((p) => p.id === paneId);
           if (focus && focus.bars.length > 0) {
             const newTr = timeRangeFromVisible(focus.bars, focus.range);
-            // Only broadcast wall-clock when date-range sync is enabled.
             if (newTr && layoutSyncRef.current.dateRange) {
               syncStoreRef.current?.setTimeRange(newTr, 'tf-switch');
             }
             replayBufferRef.current.set(paneId, focus.bars);
+          }
+
+          // Background history top-up — do not block the first 15m paint.
+          suppressSessionCommitRef.current = false;
+          const healed = await healViewportIfNeeded(targets, {
+            force: true,
+            applyCamera: false,
+          });
+          if (switchGen !== paneSwitchGenRef.current) return;
+          if (healed) {
+            commitSessionViews({ adoptRangePaneIds: targets });
+            syncEnginesFromSession({
+              paneIds: targets,
+              applyCamera: true,
+            });
+            for (const id of targets) {
+              getChart(id)?.resetPriceScale();
+            }
+          } else {
+            cameraPreserveRef.current = null;
           }
         } finally {
           suppressSessionCommitRef.current = false;

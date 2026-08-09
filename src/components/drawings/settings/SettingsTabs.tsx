@@ -3,6 +3,7 @@ export interface SettingsTabItem<T extends string = string> {
   label: string;
 }
 
+/** Obsidian pill tabs — uses [data-sett-nav] chrome-settings.css. */
 export function SettingsTabs<T extends string>({
   tabs,
   value,
@@ -13,25 +14,22 @@ export function SettingsTabs<T extends string>({
   onChange: (id: T) => void;
 }) {
   return (
-    <div className="flex border-b border-border px-3 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <nav data-sett-nav="" data-tool-sett-nav="" role="tablist" aria-label="Settings tabs">
       {tabs.map((t) => {
         const active = t.id === value;
         return (
           <button
             key={t.id}
             type="button"
+            role="tab"
+            aria-selected={active}
+            data-active={active ? '1' : undefined}
             onClick={() => onChange(t.id)}
-            className={[
-              'px-3 py-2.5 text-sm border-b-2 -mb-px transition-colors whitespace-nowrap min-h-11 shrink-0',
-              active
-                ? 'border-foreground text-foreground font-medium'
-                : 'border-transparent text-muted hover:text-foreground',
-            ].join(' ')}
           >
             {t.label}
           </button>
         );
       })}
-    </div>
+    </nav>
   );
 }

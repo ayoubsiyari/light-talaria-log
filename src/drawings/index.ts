@@ -1,6 +1,7 @@
 export * from './drawingStore';
 export * from './drawingStyle';
 export * from './toolRegistry';
+export * from './chromeToolIcon';
 export * from './drawingInteraction';
 export * from './drawingClipboard';
 export * from './hitTest';

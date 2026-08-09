@@ -6,11 +6,13 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
-import { IconPencil } from '@/components/icons/ToolIcons';
+import { ChromeIcon } from '@/v9/chromeIcons.jsx';
 import { SettingsTabs, type SettingsTabItem } from '@/components/drawings/settings/SettingsTabs';
 
 interface DrawingSettingsShellProps<T extends string> {
   title: string;
+  /** ChromeIcon name for the tool (settings header). */
+  iconName?: string;
   renaming: boolean;
   renameValue: string;
   onRenameValueChange: (v: string) => void;
@@ -21,17 +23,20 @@ interface DrawingSettingsShellProps<T extends string> {
   tab: T;
   onTabChange: (id: T) => void;
   children: ReactNode;
+  /** Header-right template control (Obsidian: next to close). */
+  headerTrailing?: ReactNode;
   footer: ReactNode;
   onClose: () => void;
   onBackdrop: () => void;
 }
 
 /**
- * TV-style settings chrome: draggable panel, header+pencil, underline tabs, footer.
- * Backdrop click still closes; drag from the header only.
+ * Obsidian drawing settings chrome (Talaria V9 / data-sett-v3).
+ * Styled by src/v9/chrome-settings.css — keep data-* attrs in sync.
  */
 export function DrawingSettingsShell<T extends string>({
   title,
+  iconName = 'trendline',
   renaming,
   renameValue,
   onRenameValueChange,
@@ -42,6 +47,7 @@ export function DrawingSettingsShell<T extends string>({
   tab,
   onTabChange,
   children,
+  headerTrailing,
   footer,
   onClose,
   onBackdrop,
@@ -58,10 +64,8 @@ export function DrawingSettingsShell<T extends string>({
   const onHeaderPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (renaming) return;
-      // Don't start drag from interactive controls in the header.
       const t = e.target as HTMLElement;
-      if (t.closest('button, input, a')) return;
-      // Mobile bottom-sheet: keep anchored; drag on sm+.
+      if (t.closest('button, input, a, [data-tpl-trigger], [data-tpl-menu]')) return;
       if (typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches) {
         return;
       }
@@ -70,10 +74,8 @@ export function DrawingSettingsShell<T extends string>({
       e.preventDefault();
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       const rect = panel.getBoundingClientRect();
-      // First drag: convert centered layout into absolute offset from viewport center.
       const baseX = offset?.x ?? 0;
       const baseY = offset?.y ?? 0;
-      // If never dragged, seed from current visual position vs centered default.
       let origX = baseX;
       let origY = baseY;
       if (offset == null) {
@@ -99,13 +101,14 @@ export function DrawingSettingsShell<T extends string>({
     const dx = e.clientX - d.startX;
     const dy = e.clientY - d.startY;
     const panel = panelRef.current;
-    const w = panel?.offsetWidth ?? 420;
+    const w = panel?.offsetWidth ?? 448;
     const h = panel?.offsetHeight ?? 480;
     const maxX = window.innerWidth / 2 - w / 2 - 8;
     const maxY = window.innerHeight / 2 - h / 2 - 8;
-    const nextX = Math.max(-maxX, Math.min(maxX, d.origX + dx));
-    const nextY = Math.max(-maxY, Math.min(maxY, d.origY + dy));
-    setOffset({ x: nextX, y: nextY });
+    setOffset({
+      x: Math.max(-maxX, Math.min(maxX, d.origX + dx)),
+      y: Math.max(-maxY, Math.min(maxY, d.origY + dy)),
+    });
   }, []);
 
   const onHeaderPointerUp = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
@@ -118,26 +121,26 @@ export function DrawingSettingsShell<T extends string>({
     }
   }, []);
 
-  // Reset position when title changes (new drawing selected).
   useEffect(() => {
     setOffset(null);
   }, [title]);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 pointer-events-none"
-      // Transparent hit layer only for backdrop close — panel is pointer-events-auto.
-    >
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 pointer-events-none">
+      {/* Obsidian: no heavy dim — light click-catcher only */}
       <button
         type="button"
-        className="absolute inset-0 pointer-events-auto cursor-default border-0 p-0"
-        style={{ backgroundColor: 'var(--backdrop, rgba(0,0,0,0.35))' }}
+        className="absolute inset-0 pointer-events-auto cursor-default border-0 p-0 bg-transparent"
         aria-label="Close settings"
         onClick={onBackdrop}
       />
       <div
         ref={panelRef}
-        className="pointer-events-auto relative w-full sm:max-w-[420px] rounded-t-xl sm:rounded-xl border border-border bg-surface text-foreground shadow-2xl overflow-hidden flex flex-col max-h-[min(92vh,640px)]"
+        data-v9-chrome="1"
+        data-sett-v3="1"
+        data-tool-sett-v2="1"
+        data-chrome-win="tool-sett"
+        className="pointer-events-auto relative flex flex-col max-sm:rounded-t-xl max-sm:w-full max-sm:max-h-[min(92vh,700px)]"
         style={
           offset
             ? { transform: `translate(${offset.x}px, ${offset.y}px)` }
@@ -149,15 +152,21 @@ export function DrawingSettingsShell<T extends string>({
         aria-label={title}
       >
         <div
-          className="flex items-center justify-between gap-2 px-4 pt-3 pb-2 sm:cursor-grab active:sm:cursor-grabbing touch-none select-none"
+          data-win-header=""
+          className="sm:cursor-grab active:sm:cursor-grabbing touch-none select-none"
           onPointerDown={onHeaderPointerDown}
           onPointerMove={onHeaderPointerMove}
           onPointerUp={onHeaderPointerUp}
           onPointerCancel={onHeaderPointerUp}
         >
-          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <div data-win-icon="" aria-hidden>
+            <ChromeIcon n={iconName} s={16} cl="var(--accent)" />
+          </div>
+
+          <div data-sett-titles="">
             {renaming ? (
               <input
+                data-sett-rename=""
                 autoFocus
                 value={renameValue}
                 onChange={(e) => onRenameValueChange(e.target.value)}
@@ -169,39 +178,45 @@ export function DrawingSettingsShell<T extends string>({
                     onCancelRename();
                   }
                 }}
-                className="min-h-11 sm:min-h-9 w-full max-w-[260px] rounded-md border border-accent bg-background px-2 text-base font-semibold text-foreground outline-none"
                 aria-label="Drawing name"
               />
             ) : (
-              <>
-                <h2 className="text-base font-semibold text-foreground truncate">{title}</h2>
-                <button
-                  type="button"
-                  className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 rounded-md text-muted hover:text-foreground hover:bg-background/70 flex items-center justify-center shrink-0"
-                  onClick={onStartRename}
-                  title="Rename"
-                  aria-label="Rename drawing"
-                >
-                  <IconPencil className="w-3.5 h-3.5" />
-                </button>
-              </>
+              <button
+                type="button"
+                data-win-title=""
+                className="text-left border-0 bg-transparent p-0 cursor-text"
+                onDoubleClick={onStartRename}
+                title="Double-click to rename"
+              >
+                {title}
+              </button>
             )}
+            <span data-sett-sub="">Drawing settings</span>
           </div>
-          <button
-            type="button"
-            className="text-muted hover:text-foreground min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 rounded-md hover:bg-background/70 flex items-center justify-center shrink-0"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ✕
-          </button>
+
+          <div className="flex items-center gap-1 shrink-0 ml-auto">
+            {headerTrailing}
+            <button
+              type="button"
+              data-brand-icon="1"
+              className="inline-flex items-center justify-center text-[color:var(--text-muted)] hover:text-[color:var(--text)]"
+              onClick={onClose}
+              aria-label="Close"
+            >
+              <ChromeIcon n="x" s={16} />
+            </button>
+          </div>
         </div>
 
         <SettingsTabs tabs={tabs} value={tab} onChange={onTabChange} />
 
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm">{children}</div>
+        <div data-tool-sett-body="" data-sett-body="">
+          <div data-tool-sett-pane="" data-sett-pane="" className="space-y-0.5">
+            {children}
+          </div>
+        </div>
 
-        <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border bg-background/30">
+        <div data-sett-foot="" data-win-foot="" className="flex items-center justify-end gap-2 px-3 py-3 border-t border-[color:var(--line)] shrink-0">
           {footer}
         </div>
       </div>

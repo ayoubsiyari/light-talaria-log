@@ -788,7 +788,16 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   const centerOnReplayCursor = (emit: boolean) => {
     if (bars.length === 0 || replayCursorTime == null) return;
     const anchor = indexAtOrBeforeBars(bars, replayCursorTime);
-    setVisibleRangeInternal(rangeRightAnchored(anchor, currentSpan()), emit);
+    let span = currentSpan();
+    // After 1m→15m bar-count zoom, span can dwarf the buffer so double-click
+    // recenters onto an empty pad. Collapse to a usable tip window.
+    if (span > (anchor + 1) * 1.5) {
+      span = Math.max(
+        DEFAULT_VISIBLE_BARS,
+        Math.min(span, Math.max(DEFAULT_VISIBLE_BARS, anchor + 1)),
+      );
+    }
+    setVisibleRangeInternal(rangeRightAnchored(anchor, span), emit);
   };
 
   const notifyUserGesture = () => {

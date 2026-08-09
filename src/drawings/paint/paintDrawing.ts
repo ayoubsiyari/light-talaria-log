@@ -1003,10 +1003,14 @@ export function paintDrawing(
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.globalAlpha = 1;
-        if (style.leftEnd && xy[0] && xy[1]) {
+        if (style.leftEnd && xy[0] && xy[1] && style.leftEndStyle === 'arrow') {
           drawArrowHead(pc, xy[1].x, xy[1].y, xy[0].x, xy[0].y, style);
         }
-        if (style.rightEnd && xy.length >= 2) {
+        if (
+          style.rightEnd &&
+          xy.length >= 2 &&
+          style.rightEndStyle === 'arrow'
+        ) {
           const a = xy[xy.length - 2]!;
           const b = xy[xy.length - 1]!;
           drawArrowHead(pc, a.x, a.y, b.x, b.y, style);

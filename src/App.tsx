@@ -38,9 +38,10 @@ import { LoadingProgress } from '@/components/LoadingProgress';
 import { ChartLoadingScreen } from '@/components/ChartLoadingScreen';
 import { PerfOverlay } from '@/components/perf/PerfOverlay';
 import { getChart } from '@/chart';
+import { preservedVisibleRange } from '@/chart/preserveCamera';
 /**
- * Per-switch camera preserve (TradingView-like).
- * `span` = bar-count zoom; times pin the place; tipRatio keeps tip X fraction.
+ * Per-switch camera preserve.
+ * Wall-clock from/to pin the place; tipRatio/span are fallbacks only.
  */
 type LiveCamera = {
   anchorTime: number;
@@ -51,7 +52,6 @@ type LiveCamera = {
 };
 import {
   canAggregateFrom,
-  logicalIndexAtTime,
   smallestTimeframe,
   timeframeSeconds,
   visibleRangeFromTimeWindow,
@@ -236,7 +236,7 @@ const SUGGESTED_PANE_TFS: Timeframe[] = ['1m', '5m', '15m', '1h'];
 
 /**
  * Apply preserved camera onto a new TF/symbol buffer.
- * Same bar-count zoom + same place in time — not the same wall-clock duration.
+ * Wall-clock window first (avoids blank tip-only view on 1m→15m).
  */
 function applyPreservedCamera(
   chart: {
@@ -252,27 +252,8 @@ function applyPreservedCamera(
   tipRatio: number,
 ): void {
   if (bars.length === 0) return;
-  const spanSafe = Math.max(10, span);
-
-  // History pan (tip off to the right): pin the previous right-edge time.
-  if (
-    tipRatio > 1.001 &&
-    preserved?.toTime != null &&
-    Number.isFinite(preserved.toTime)
-  ) {
-    const toIndex = logicalIndexAtTime(bars, preserved.toTime);
-    chart.setVisibleRange(toIndex - spanSafe, toIndex, { silent: true });
-    return;
-  }
-
-  // Tip / near-tip: keep the tip (or anchor) at the same X fraction + bar zoom.
-  const anchorTime =
-    preserved?.anchorTime ??
-    preserved?.toTime ??
-    bars[bars.length - 1]!.time;
-  const anchorIndex = logicalIndexAtTime(bars, anchorTime);
-  const fromIndex = anchorIndex - tipRatio * spanSafe;
-  chart.setVisibleRange(fromIndex, fromIndex + spanSafe, { silent: true });
+  const range = preservedVisibleRange(bars, preserved, span, tipRatio);
+  chart.setVisibleRange(range.fromIndex, range.toIndex, { silent: true });
 }
 
 function isDrawingTool(tool: ChartToolId): tool is DrawingToolId {
@@ -565,8 +546,8 @@ export default function App() {
    * Required during replay: useChart skips React bar props while replayFollow is on.
    * By default only updates bars — never yanks sibling cameras (multi-pane independence).
    *
-   * Camera apply (TradingView-like): keep **bar-count zoom** + the same place in
-   * time. Do NOT preserve wall-clock duration (1m→1h would zoom way in).
+   * Camera apply: prefer preserved wall-clock window so coarse TF upgrades
+   * (1m→15m) keep candles filling the plot. Bar-count span is fallback only.
    */
   const syncEnginesFromSession = useCallback(
     (opts?: {
@@ -715,10 +696,10 @@ export default function App() {
       const cursor = replay.cursorTime;
       const tipIndex = Math.max(0, bars.length - 1);
       // Where the tip candle sits in the viewport (0 = left, 1 = right).
-      const tipRatio = Math.max(
-        0,
-        Math.min(1.2, (tipIndex - liveRange.fromIndex) / span),
-      );
+      // Never store ≤0 — that maps to a 100% empty future pad after TF switch.
+      let tipRatio = (tipIndex - liveRange.fromIndex) / span;
+      if (!Number.isFinite(tipRatio) || tipRatio <= 0.05) tipRatio = 0.9;
+      else tipRatio = Math.min(1.2, tipRatio);
 
       // While following replay, the tip time IS the cursor (last revealed candle).
       const following =

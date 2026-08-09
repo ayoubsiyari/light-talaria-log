@@ -25,9 +25,18 @@ export interface DrawingStyle {
   extend: ExtendMode;
   showMidpoint: boolean;
   showPriceLabels: boolean;
-  /** Left / right end caps (circle markers). */
+  /** Obsidian Labels → Time chip. */
+  showTimeLabels: boolean;
+  /** Show Info metrics (trendline family). */
+  showInfo: boolean;
+  /** Selected info metrics (price range, bars, …). */
+  infoMetrics: string[];
+  /** Left / right end caps (circle / arrow). */
   leftEnd: boolean;
   rightEnd: boolean;
+  /** End cap style: circle marker vs arrow (Obsidian ep1/ep2). */
+  leftEndStyle: 'normal' | 'arrow';
+  rightEndStyle: 'normal' | 'arrow';
 }
 
 /** TV-style swatches used in the style panel / toolbar. */
@@ -68,9 +77,24 @@ export const DEFAULT_DRAWING_STYLE: DrawingStyle = {
   extend: 'none',
   showMidpoint: false,
   showPriceLabels: false,
+  showTimeLabels: false,
+  showInfo: false,
+  infoMetrics: [],
   leftEnd: false,
   rightEnd: false,
+  leftEndStyle: 'normal',
+  rightEndStyle: 'normal',
 };
+
+/** Obsidian Show Info metric options (trendline / measure). */
+export const INFO_METRIC_OPTIONS = [
+  { id: 'priceRange', label: 'Price range' },
+  { id: 'percentChange', label: 'Percent change' },
+  { id: 'pips', label: 'Change in pips' },
+  { id: 'bars', label: 'Bars range' },
+  { id: 'dateRange', label: 'Date/time range' },
+  { id: 'volume', label: 'Volume' },
+] as const;
 
 export const LINE_WIDTHS = [1, 2, 3, 4] as const;
 

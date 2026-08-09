@@ -1,18 +1,8 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  IconBrush,
-  IconChannel,
   IconChevron,
-  IconFib,
-  IconGann,
-  IconMeasure,
   IconObjectTree,
-  IconPattern,
-  IconPitchfork,
-  IconShapes,
   IconStayDraw,
-  IconText,
-  IconTrendLine,
   IconZoom,
 } from '@/components/icons/ToolIcons';
 import { ChromeIcon } from '@/v9/chromeIcons.jsx';
@@ -34,27 +24,8 @@ import {
   readShowMoreTools,
   writeShowMoreTools,
 } from '@/drawings/toolMaturity';
+import { chromeIconForTool } from '@/drawings/chromeToolIcon';
 import type { ChartToolId } from '@/types/ui';
-
-type CategoryIcon = (p: { className?: string }) => ReactNode;
-
-const CATEGORY_ICONS: Record<ToolCategoryId, CategoryIcon> = {
-  lines: IconTrendLine,
-  channels: IconChannel,
-  pitchforks: IconPitchfork,
-  fibonacci: IconFib,
-  gann: IconGann,
-  brushes: IconBrush,
-  arrows: IconTrendLine,
-  shapes: IconShapes,
-  text: IconText,
-  patterns: IconPattern,
-  elliott: IconPattern,
-  cycles: IconPattern,
-  forecast: IconMeasure,
-  volume: IconMeasure,
-  measure: IconMeasure,
-};
 
 /** TradingView rail sections — dividers create space between groups. */
 type RailSection = 'draw' | 'measure';
@@ -63,7 +34,8 @@ type RailSection = 'draw' | 'measure';
 const TOOLBAR_GROUPS: {
   id: string;
   label: string;
-  Icon: CategoryIcon;
+  /** V9 ChromeIcon name for the group button. */
+  chromeIcon: string;
   categories: ToolCategoryId[];
   section: RailSection;
   /** Hide this group button until “More tools” is enabled. */
@@ -72,35 +44,35 @@ const TOOLBAR_GROUPS: {
   {
     id: 'lines',
     label: 'Lines',
-    Icon: IconTrendLine,
+    chromeIcon: 'trendline',
     categories: ['lines'],
     section: 'draw',
   },
   {
     id: 'channels',
     label: 'Channels',
-    Icon: IconChannel,
+    chromeIcon: 'channel',
     categories: ['channels', 'pitchforks'],
     section: 'draw',
   },
   {
     id: 'fib',
     label: 'Fibonacci',
-    Icon: IconFib,
+    chromeIcon: 'fib',
     categories: ['fibonacci', 'gann'],
     section: 'draw',
   },
   {
     id: 'shapes',
     label: 'Brushes, Arrows & Shapes',
-    Icon: IconBrush,
+    chromeIcon: 'draw',
     categories: ['brushes', 'arrows', 'shapes'],
     section: 'draw',
   },
   {
     id: 'patterns',
     label: 'Patterns',
-    Icon: IconPattern,
+    chromeIcon: 'wave',
     categories: ['patterns', 'elliott', 'cycles'],
     section: 'draw',
     moreOnly: true,
@@ -108,14 +80,14 @@ const TOOLBAR_GROUPS: {
   {
     id: 'text',
     label: 'Text',
-    Icon: IconText,
+    chromeIcon: 'text',
     categories: ['text'],
     section: 'draw',
   },
   {
     id: 'measure',
     label: 'Measure & Forecast',
-    Icon: IconMeasure,
+    chromeIcon: 'measure',
     categories: ['measure', 'forecast', 'volume'],
     section: 'measure',
   },
@@ -283,7 +255,7 @@ export function LeftToolbar({
           onClick={() => activateGroup(g.categories)}
           className="v8b-tool"
         >
-          <g.Icon />
+          <ChromeIcon n={g.chromeIcon} s={18} />
         </button>
         <button
           type="button"
@@ -581,7 +553,6 @@ function ToolFlyoutRow({
   badge?: string | null;
 }) {
   const def = TOOLS[tid];
-  const Icon = CATEGORY_ICONS[def.category];
   return (
     <button
       type="button"
@@ -599,7 +570,13 @@ function ToolFlyoutRow({
           aria-hidden
         />
       )}
-      <Icon className="w-[17px] h-[17px] shrink-0 opacity-80" />
+      <span className="shrink-0 opacity-90 inline-flex" aria-hidden>
+        <ChromeIcon
+          n={chromeIconForTool(tid)}
+          s={17}
+          cl={selected ? 'var(--accent)' : 'currentColor'}
+        />
+      </span>
       <span className="truncate flex-1 min-w-0">{def.label}</span>
       {badge && (
         <span className="shrink-0 text-[9px] uppercase tracking-wide text-muted border border-[color:var(--line)] rounded px-1 py-0.5">

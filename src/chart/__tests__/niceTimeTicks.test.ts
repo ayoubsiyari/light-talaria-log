@@ -139,11 +139,11 @@ describe('niceTimeTicks', () => {
     void alphaAt;
   });
 
-  it('labels allowed on any visibly stroked tick', () => {
+  it('labels only on solid major ticks', () => {
     const data = bars(400);
     const ticks = niceTimeTicks({ fromIndex: 50, toIndex: 200 }, data, 8);
     for (const t of ticks) {
-      if (t.label) assert.ok(t.alpha >= 0.2, 'label tick must be visibly stroked');
+      if (t.label) assert.ok(t.alpha >= 0.99, 'label tick must be solid major');
     }
   });
 });

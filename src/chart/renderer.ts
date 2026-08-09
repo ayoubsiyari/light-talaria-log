@@ -32,7 +32,9 @@ import { drawBacktest } from './overlays/drawBacktest';
 import { drawOrders } from './overlays/drawOrders';
 
 /** Min CSS px between time-axis labels (grid lines still draw). */
-const TIME_LABEL_MIN_GAP_PX = 56;
+/** Fallback gap when measureText is unavailable; real cull uses text width. */
+const TIME_LABEL_MIN_GAP_PX = 72;
+const TIME_LABEL_PAD_PX = 10;
 
 export interface LayoutOptions {
   showVolume?: boolean;
@@ -621,22 +623,26 @@ function drawTimeAxis(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
 
-  // Majors first so they claim pixel gaps; fainter labels only fill leftovers.
+  // Solid majors only, left→right, culled by measured label width (no overlap).
   const labelTicks = timeTicks
-    .map((t, i) => ({ t, i, a: t.alpha ?? 1 }))
-    .filter((x) => x.t.label !== false && x.a >= 0.2)
-    .sort((u, v) => v.a - u.a || u.i - v.i);
-  const placedX: number[] = [];
-  for (const { t, a } of labelTicks) {
-    const x = indexToX(t.index, range, plot);
+    .filter((t) => t.label !== false && (t.alpha ?? 1) >= 0.99)
+    .sort((a, b) => a.index - b.index);
+  let lastRight = Number.NEGATIVE_INFINITY;
+  let lastText = '';
+  for (const tick of labelTicks) {
+    const x = indexToX(tick.index, range, plot);
     if (x < plot.left || x > plot.left + plot.width) continue;
-    if (placedX.some((px) => Math.abs(px - x) < TIME_LABEL_MIN_GAP_PX)) continue;
-    placedX.push(x);
-    // Fade with stroke opacity — no hard cut when density crosses a threshold.
-    ctx.globalAlpha = a;
-    ctx.fillText(formatTime(t.time), x, axisY + 8);
+    const text = formatTime(tick.time);
+    if (text === lastText) continue;
+    const half = Math.max(
+      TIME_LABEL_MIN_GAP_PX / 2,
+      ctx.measureText(text).width / 2 + TIME_LABEL_PAD_PX,
+    );
+    if (x - half < lastRight) continue;
+    ctx.fillText(text, x, axisY + 8);
+    lastRight = x + half;
+    lastText = text;
   }
-  ctx.globalAlpha = 1;
 }
 
 function drawWatermark(

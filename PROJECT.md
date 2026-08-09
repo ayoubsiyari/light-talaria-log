@@ -886,8 +886,11 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-09 | TF switch camera: bar-count zoom + tip/edge time (TV-like); heal no longer clears preserve / tip-snaps | Switch 1m↔5m↔1h — same place + same bar zoom |
 | 2026-08-09 | Reverted pan Y-drag hysteresis (it regressed zoom-in/out grid smoothness) | Pan snap TBD without touching zoom path |
 | 2026-08-09 | Zoom grid: 3-octave ease-out density fade; gentler wheel; labels fade (no 0.85 hard cut) | Zoom in/out — density/labels crossfade (pan untouched) |
+| 2026-08-09 | Time axis: labels only on solid majors + width-based gap cull (fix overlap from fade labels) | Axis readable — no stacked MM-DD HH:mm | |
+| 2026-08-09 | Fix blank chart after 1m→15m: restore wall-clock TF camera + tipRatio/empty-pad guards; double-click recovers oversized span | Multi-pane 1m→15m — candles stay; dbl-click axis restores |
 | 2026-08-09 | **Feel wave F0–F5:** overlay handles/badges; engine freehand; press-drag place; touch pan-vs-draw; orders/backtest off crosshair path; undo/redo | Manual: hover scrub, brush, trend press-drag, thumb pan, Cmd+Z |
 | 2026-08-09 | Brush Talaria parity: no stride-thin on release; Catmull-Rom α=0.5 paint; no magnet; settings Style+Visibility (hide dash; highlighter widths 8–64) | Draw brush curve — release matches live stroke |
+| 2026-08-09 | Obsidian settings shell (data-sett-v3): tool icon header, pill tabs, Reset/Done, Extend/Labels chips, Show Info; ChromeIcon map for rail + flyout | Open Trend Line settings — match V9 Obsidian chrome; then per-tool Inputs pass |
 
 ---
 

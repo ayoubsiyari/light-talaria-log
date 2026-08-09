@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Drawing, DrawingPoint } from '@/drawings/drawingStore';
 import {
+  INFO_METRIC_OPTIONS,
   type DrawingStyle,
   type ExtendMode,
   type TextAlignH,
   type TextAlignV,
 } from '@/drawings/drawingStyle';
+import { chromeIconForTool } from '@/drawings/chromeToolIcon';
 import { getTool } from '@/drawings/toolRegistry';
 import { getToolSettings, resolveMeta } from '@/drawings/toolSettings';
 import {
@@ -18,6 +20,7 @@ import {
   Row,
   ToggleRow,
 } from '@/components/drawings/settings/SettingsForm';
+import { SettingsChip } from '@/components/drawings/settings/SettingsChip';
 import { ToolInputsPanel } from '@/components/drawings/settings/ToolInputsPanel';
 import { DrawingSettingsShell } from '@/components/drawings/settings/DrawingSettingsShell';
 import { TemplateMenu } from '@/components/drawings/settings/TemplateMenu';
@@ -38,13 +41,6 @@ interface DrawingSettingsModalProps {
   /** OK — keep current draft and close. */
   onOk: (next: Drawing) => void;
 }
-
-const EXTEND_OPTIONS: { id: ExtendMode; label: string }[] = [
-  { id: 'none', label: 'Do not extend' },
-  { id: 'left', label: 'Extend left' },
-  { id: 'right', label: 'Extend right' },
-  { id: 'both', label: 'Extend both' },
-];
 
 const ALIGN_V: { id: TextAlignV; label: string }[] = [
   { id: 'top', label: 'Top' },
@@ -211,8 +207,39 @@ export function DrawingSettingsModal({
   const showFill = settings.styleSections.includes('fill');
   const showLineExtras = settings.styleSections.includes('lineExtras');
   const isBrushTool = draft.type === 'brush' || draft.type === 'highlighter';
-  /** Extend / midpoint / price labels — line family only (not brush). */
-  const showLineExtendExtras = showLineExtras && !isBrushTool;
+  const isHighlighter = draft.type === 'highlighter';
+  /** Obsidian Extend chips — line / channel / fib (not brush/highlighter/vline). */
+  const showExtendChips =
+    showLineExtras &&
+    !isBrushTool &&
+    draft.type !== 'vline' &&
+    draft.type !== 'hline';
+  /** Labels Price/Time chips (Obsidian) — most overlay tools. */
+  const showPriceChip = draft.type !== 'vline' && draft.type !== 'text';
+  const showTimeChip =
+    draft.type !== 'hline' &&
+    draft.type !== 'horizontalRay' &&
+    draft.type !== 'text';
+  /** Show Info — classic trendline family only. */
+  const showInfoRow =
+    draft.type === 'trendLine' ||
+    draft.type === 'infoLine' ||
+    draft.type === 'datePriceRange';
+
+  const extendLeft =
+    draft.style.extend === 'left' || draft.style.extend === 'both';
+  const extendRight =
+    draft.style.extend === 'right' || draft.style.extend === 'both';
+
+  const setExtendChip = (side: 'left' | 'right', on: boolean) => {
+    const left = side === 'left' ? on : extendLeft;
+    const right = side === 'right' ? on : extendRight;
+    let next: ExtendMode = 'none';
+    if (left && right) next = 'both';
+    else if (left) next = 'left';
+    else if (right) next = 'right';
+    patchStyle({ extend: next });
+  };
 
   const commitRename = () => {
     const trimmed = renameValue.trim();
@@ -223,10 +250,24 @@ export function DrawingSettingsModal({
     setRenaming(false);
   };
 
+  const applyTemplate = (t: { style: DrawingStyle; meta: Record<string, unknown> }) => {
+    setDraft((d) => ({
+      ...d,
+      style: { ...t.style },
+      meta: { ...t.meta },
+    }));
+  };
+
+  const resetToSnapshot = () => {
+    skipLiveRef.current = true;
+    setDraft(cloneDrawing(snapshotRef.current));
+  };
+
   return (
     <>
       <DrawingSettingsShell
         title={displayTitle}
+        iconName={chromeIconForTool(draft.type)}
         renaming={renaming}
         renameValue={renameValue}
         onRenameValueChange={setRenameValue}
@@ -241,43 +282,40 @@ export function DrawingSettingsModal({
         onTabChange={setTab}
         onClose={() => onCancel(snapshotRef.current)}
         onBackdrop={() => onCancel(snapshotRef.current)}
+        headerTrailing={
+          <TemplateMenu
+            variant="icon"
+            type={draft.type}
+            style={draft.style}
+            meta={draft.meta ?? {}}
+            onApply={applyTemplate}
+          />
+        }
         footer={
           <>
-            <TemplateMenu
-              type={draft.type}
-              style={draft.style}
-              meta={draft.meta ?? {}}
-              onApply={(t) =>
-                setDraft((d) => ({
-                  ...d,
-                  style: { ...t.style },
-                  meta: { ...t.meta },
-                }))
-              }
-            />
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => onCancel(snapshotRef.current)}
-                className="min-h-11 px-4 py-2 rounded-md border border-border text-foreground hover:bg-background/80 text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => onOk(draft)}
-                className="min-h-11 px-4 py-2 rounded-md bg-foreground text-background text-sm font-medium hover:opacity-90"
-              >
-                OK
-              </button>
-            </div>
+            <button
+              type="button"
+              data-sett-dd=""
+              onClick={resetToSnapshot}
+              className="min-h-9 px-4 rounded-md text-sm text-foreground"
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={() => onOk(draft)}
+              className="min-h-9 px-4 rounded-md bg-[color:var(--text)] text-[color:var(--surface)] text-sm font-semibold hover:opacity-90"
+            >
+              Done
+            </button>
           </>
         }
       >
         {tab === 'style' && (
           <>
-            <Row label={showFill ? 'Border' : 'Line'}>
-              <div className="flex items-center gap-1.5">
+            <div data-sett-linegrid="">
+              <span data-sett-label="">{showFill ? 'Border' : 'Line'}</span>
+              <div data-sett-cluster="">
                 <StyleTriggerButton
                   ref={strokeBtnRef}
                   style={draft.style}
@@ -287,78 +325,140 @@ export function DrawingSettingsModal({
                     setPickerOpen((v) => !v);
                   }}
                 />
-                {/* End caps: line tools + brush (Talaria); not highlighter. */}
-                {showLineExtras && draft.type !== 'highlighter' && (
-                  <div className="flex gap-1">
-                    <label
-                      className="min-h-9 min-w-9 rounded-md border border-border flex items-center justify-center text-[10px] text-muted cursor-pointer hover:text-foreground"
+                {/* End caps: line tools + brush (not highlighter). */}
+                {showLineExtras && !isHighlighter && (
+                  <>
+                    <select
+                      data-sett-dd=""
+                      value={draft.style.leftEnd ? draft.style.leftEndStyle : 'none'}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === 'none') {
+                          patchStyle({ leftEnd: false });
+                        } else {
+                          patchStyle({
+                            leftEnd: true,
+                            leftEndStyle: v as 'normal' | 'arrow',
+                          });
+                        }
+                      }}
+                      aria-label="Left end"
                       title="Left end"
                     >
-                      <input
-                        type="checkbox"
-                        className="sr-only"
-                        checked={draft.style.leftEnd}
-                        onChange={(e) => patchStyle({ leftEnd: e.target.checked })}
-                      />
-                      <span
-                        className={
-                          draft.style.leftEnd ? 'text-foreground font-bold' : ''
+                      <option value="none">—</option>
+                      <option value="normal">●</option>
+                      <option value="arrow">◀</option>
+                    </select>
+                    <select
+                      data-sett-dd=""
+                      value={draft.style.rightEnd ? draft.style.rightEndStyle : 'none'}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === 'none') {
+                          patchStyle({ rightEnd: false });
+                        } else {
+                          patchStyle({
+                            rightEnd: true,
+                            rightEndStyle: v as 'normal' | 'arrow',
+                          });
                         }
-                      >
-                        ◀
-                      </span>
-                    </label>
-                    <label
-                      className="min-h-9 min-w-9 rounded-md border border-border flex items-center justify-center text-[10px] text-muted cursor-pointer hover:text-foreground"
+                      }}
+                      aria-label="Right end"
                       title="Right end"
                     >
-                      <input
-                        type="checkbox"
-                        className="sr-only"
-                        checked={draft.style.rightEnd}
-                        onChange={(e) => patchStyle({ rightEnd: e.target.checked })}
-                      />
-                      <span
-                        className={
-                          draft.style.rightEnd ? 'text-foreground font-bold' : ''
-                        }
-                      >
-                        ▶
-                      </span>
-                    </label>
-                  </div>
+                      <option value="none">—</option>
+                      <option value="normal">●</option>
+                      <option value="arrow">▶</option>
+                    </select>
+                  </>
                 )}
               </div>
-            </Row>
+            </div>
 
-            {showLineExtendExtras && (
-              <>
-                <Row label="Extend">
-                  <select
-                    value={draft.style.extend}
-                    onChange={(e) =>
-                      patchStyle({ extend: e.target.value as ExtendMode })
-                    }
-                    className={`${fieldClass} min-w-[160px]`}
-                  >
-                    {EXTEND_OPTIONS.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </Row>
-                <ToggleRow
-                  label="Midpoint"
-                  checked={draft.style.showMidpoint}
-                  onChange={(v) => patchStyle({ showMidpoint: v })}
+            {showExtendChips && (
+              <Row label="Extend">
+                <SettingsChip
+                  label="Left"
+                  on={extendLeft}
+                  onClick={() => setExtendChip('left', !extendLeft)}
                 />
+                <SettingsChip
+                  label="Right"
+                  on={extendRight}
+                  onClick={() => setExtendChip('right', !extendRight)}
+                />
+              </Row>
+            )}
+
+            {(showPriceChip || showTimeChip) && (
+              <Row label="Labels">
+                {showPriceChip && (
+                  <SettingsChip
+                    label="Price"
+                    on={draft.style.showPriceLabels}
+                    onClick={() =>
+                      patchStyle({ showPriceLabels: !draft.style.showPriceLabels })
+                    }
+                  />
+                )}
+                {showTimeChip && (
+                  <SettingsChip
+                    label="Time"
+                    on={draft.style.showTimeLabels}
+                    onClick={() =>
+                      patchStyle({ showTimeLabels: !draft.style.showTimeLabels })
+                    }
+                  />
+                )}
+              </Row>
+            )}
+
+            {showInfoRow && (
+              <>
                 <ToggleRow
-                  label="Price labels"
-                  checked={draft.style.showPriceLabels}
-                  onChange={(v) => patchStyle({ showPriceLabels: v })}
+                  label="Show Info"
+                  checked={draft.style.showInfo}
+                  onChange={(v) => patchStyle({ showInfo: v })}
+                  trailing={
+                    <select
+                      data-sett-dd=""
+                      disabled={!draft.style.showInfo}
+                      value=""
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        if (!id) return;
+                        const cur = draft.style.infoMetrics ?? [];
+                        const next = cur.includes(id)
+                          ? cur.filter((x) => x !== id)
+                          : [...cur, id];
+                        patchStyle({ infoMetrics: next });
+                      }}
+                      className={!draft.style.showInfo ? 'opacity-40' : ''}
+                      aria-label="Info metrics"
+                    >
+                      <option value="">
+                        {(draft.style.infoMetrics?.length ?? 0) > 0
+                          ? `${draft.style.infoMetrics.length} selected`
+                          : 'None'}
+                      </option>
+                      {INFO_METRIC_OPTIONS.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {(draft.style.infoMetrics ?? []).includes(m.id) ? '✓ ' : ''}
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  }
                 />
               </>
+            )}
+
+            {showLineExtras && !isBrushTool && (
+              <ToggleRow
+                label="Midpoint"
+                checked={draft.style.showMidpoint}
+                onChange={(v) => patchStyle({ showMidpoint: v })}
+              />
             )}
 
             {showFill && (
@@ -370,6 +470,7 @@ export function DrawingSettingsModal({
                   <button
                     ref={fillBtnRef}
                     type="button"
+                    data-v9-color-swatch=""
                     disabled={!draft.style.fill}
                     title="Fill color"
                     onClick={() => {
@@ -377,26 +478,15 @@ export function DrawingSettingsModal({
                       setPickerOpen(false);
                       setFillPickerOpen((v) => !v);
                     }}
-                    className={[
-                      'min-h-9 min-w-9 rounded-md border flex items-center justify-center',
-                      draft.style.fill
-                        ? 'border-border hover:border-accent/60'
-                        : 'border-border opacity-40 cursor-not-allowed',
-                      fillPickerOpen ? 'border-accent' : '',
-                    ].join(' ')}
-                  >
-                    <span
-                      className="w-4 h-4 rounded-[3px] border border-border"
-                      style={{
-                        backgroundColor: draft.style.fillColor || draft.style.color,
-                        opacity: draft.style.fillOpacity,
-                      }}
-                    />
-                  </button>
+                    className={!draft.style.fill ? 'opacity-40 cursor-not-allowed' : ''}
+                    style={{
+                      backgroundColor: draft.style.fillColor || draft.style.color,
+                      opacity: draft.style.fill ? draft.style.fillOpacity : 0.35,
+                    }}
+                  />
                 }
               />
             )}
-
           </>
         )}
 

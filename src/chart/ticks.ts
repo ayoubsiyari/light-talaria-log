@@ -200,9 +200,9 @@ export function niceTimeTicks(
     const step = 2 ** exp;
     const alpha = stepAlpha(step, ideal);
     if (alpha < 0.02) continue;
-    // Any visible stroke may carry a label; paint fades text with alpha and
-    // culls by pixel gap — avoids hard label density jumps at 0.85.
-    const label = alpha >= 0.2;
+    // Axis labels only on solid (at-or-coarser) lattices — keeps the time axis
+    // readable. Grid strokes still fade denser steps for smooth zoom.
+    const label = alpha >= 0.99;
     pushLattice(ticks, range, bars, period, baseSeq, step, alpha, label, seen);
   }
 

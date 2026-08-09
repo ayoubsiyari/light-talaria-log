@@ -12,9 +12,9 @@ export function Row({
   children: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 min-h-11">
-      <span className="text-muted shrink-0 text-sm">{label}</span>
-      <div className="flex items-center justify-end gap-2 flex-wrap min-w-0">{children}</div>
+    <div data-sett-row="">
+      <span data-sett-label="">{label}</span>
+      <div data-sett-acts="">{children}</div>
     </div>
   );
 }
@@ -35,22 +35,23 @@ export function ToggleRow({
 }) {
   return (
     <div
-      className={[
-        'flex items-center justify-between gap-3 text-sm min-h-11',
-        disabled ? 'opacity-50' : '',
-      ].join(' ')}
+      data-sett-row=""
+      className={disabled ? 'opacity-50' : undefined}
     >
-      <label className="flex items-center gap-2.5 text-foreground cursor-pointer min-w-0 flex-1">
+      <label
+        data-sett-label=""
+        className="flex items-center gap-2 cursor-pointer min-w-0"
+      >
         <input
           type="checkbox"
           checked={checked}
           disabled={disabled}
           onChange={(e) => onChange(e.target.checked)}
-          className="accent-[var(--accent)] w-4 h-4 rounded-[3px] border border-border shrink-0"
+          className="accent-[var(--accent)] w-4 h-4 rounded-[3px] border border-[color:var(--line)] shrink-0"
         />
         <span className="truncate">{label}</span>
       </label>
-      {trailing}
+      {trailing != null && <div data-sett-acts="">{trailing}</div>}
     </div>
   );
 }

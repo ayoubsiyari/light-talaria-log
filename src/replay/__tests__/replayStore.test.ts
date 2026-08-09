@@ -78,7 +78,6 @@ describe('createReplayController', () => {
   it('step on 15m lands on candle close (full tip), not bucket open', () => {
     const ctrl = createReplayController();
     // Unix aligned to 15m + 1m grids
-    const t0 = 1_700_000_100; // …:01:40 → snap will normalize
     const open15 = Math.floor(1_700_000_100 / 900) * 900;
     ctrl.configure(open15, open15 + 86_400, 3600);
     ctrl.setBaseTf('1m');

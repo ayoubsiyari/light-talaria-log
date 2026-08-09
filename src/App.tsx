@@ -1193,9 +1193,10 @@ export default function App() {
         sessionRef.current.setCursorTime(cursorTime, { follow, react: false });
 
         // Skip weekend / holiday dead air once the next session is cached.
-        // Don't jump the clock while the user is freely panning history.
+        // Independent of camera follow — a detached pan must not leave the
+        // clock crawling wall-time through Saturday (looks like Play died).
         const gapJump = sessionRef.current.suggestGapJump();
-        if (follow && gapJump != null && gapJump > cursorTime) {
+        if (gapJump != null && gapJump > cursorTime) {
           replayRef.current.seek(gapJump, { keepPlaying: true });
           return;
         }
@@ -2265,19 +2266,23 @@ export default function App() {
       ) {
         return;
       }
-      // User dragged during play → detach camera so pan stays smooth.
+      // During Play, only edge-prefetch when the user already pan-detached.
+      // Do NOT auto-detach here — wheel/zoom publishes pane timeRanges too, and
+      // that used to kill tip-follow + weekend gap-jumps until Pause→Play.
       if (
         replayRef.current.get().playing &&
         state.origin != null &&
         state.origin.startsWith('pane')
       ) {
-        cameraDetachedRef.current = true;
-        setCameraDetached(true);
-        reload(
-          state.timeRange.fromTime,
-          state.timeRange.toTime,
-          state.origin,
-        );
+        const detached =
+          cameraDetachedRef.current || detachedPanesRef.current.size > 0;
+        if (detached) {
+          reload(
+            state.timeRange.fromTime,
+            state.timeRange.toTime,
+            state.origin,
+          );
+        }
         return;
       }
       if (replayRef.current.get().playing && !cameraDetachedRef.current) return;

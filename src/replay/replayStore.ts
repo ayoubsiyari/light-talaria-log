@@ -61,6 +61,10 @@ export function createReplayController(): ReplayController {
   let raf = 0;
   let lastTs = 0;
   let barCarryMs = 0;
+  /** True while inside tick() — seekers must not schedule a parallel rAF. */
+  let inTick = false;
+  let watchdogTimer = 0;
+  let lastTickWall = 0;
 
   const notify = () => {
     for (const cb of listeners) {
@@ -89,6 +93,41 @@ export function createReplayController(): ReplayController {
     return open + rateP - baseP;
   };
 
+  const clearWatchdog = () => {
+    if (!watchdogTimer) return;
+    clearInterval(watchdogTimer);
+    watchdogTimer = 0;
+  };
+
+  const scheduleTick = () => {
+    if (raf) return;
+    ledgerAcquire('rafLoops');
+    raf = requestAnimationFrame(tick);
+  };
+
+  const armWatchdog = () => {
+    if (watchdogTimer) return;
+    watchdogTimer = setInterval(() => {
+      if (!state.playing) {
+        clearWatchdog();
+        return;
+      }
+      const now =
+        typeof performance !== 'undefined' ? performance.now() : Date.now();
+      // playing=true but no frames — classic "need Pause then Play" stall.
+      if (raf === 0 || (lastTickWall > 0 && now - lastTickWall > 2000)) {
+        if (raf) {
+          cancelAnimationFrame(raf);
+          ledgerRelease('rafLoops');
+          raf = 0;
+        }
+        lastTs = 0;
+        barCarryMs = 0;
+        scheduleTick();
+      }
+    }, 1000) as unknown as number;
+  };
+
   const stopRaf = () => {
     if (raf) {
       cancelAnimationFrame(raf);
@@ -97,6 +136,7 @@ export function createReplayController(): ReplayController {
     raf = 0;
     lastTs = 0;
     barCarryMs = 0;
+    clearWatchdog();
   };
 
   const advanceClockBars = (clockBars: number) => {
@@ -106,7 +146,13 @@ export function createReplayController(): ReplayController {
     const snapped = Math.min(state.endTime, snapToBar(next, period, state.startTime));
     // No forward snap (end not on grid, or zero-period) — stop instead of spinning rAF.
     if (snapped === state.cursorTime) {
-      state = { ...state, playing: false, cursorTime: state.endTime };
+      const atEnd =
+        state.cursorTime >= state.endTime || next >= state.endTime;
+      state = {
+        ...state,
+        playing: false,
+        cursorTime: atEnd ? state.endTime : state.cursorTime,
+      };
       notify();
       stopRaf();
       return false;
@@ -126,53 +172,59 @@ export function createReplayController(): ReplayController {
     // This frame's raf token is consumed.
     raf = 0;
     ledgerRelease('rafLoops');
+    lastTickWall =
+      typeof performance !== 'undefined' ? performance.now() : ts;
     if (!state.playing) return;
-    if (lastTs === 0) {
-      lastTs = ts;
-      ledgerAcquire('rafLoops');
-      raf = requestAnimationFrame(tick);
-      return;
-    }
-    const dtMs = ts - lastTs;
-    lastTs = ts;
-    barCarryMs += dtMs;
-
-    // speed = rate-TF bars/sec → coalesce all due steps into one notify this frame
-    const msPerRateBar = 1000 / Math.max(1, state.speed);
-    let rateBars = 0;
-    while (barCarryMs >= msPerRateBar) {
-      barCarryMs -= msPerRateBar;
-      rateBars += 1;
-      // Cap catch-up so a long tab-sleep doesn't jump the whole series in one frame
-      if (rateBars > state.speed * 2) {
-        barCarryMs = 0;
-        break;
-      }
-    }
-    const frameStart =
-      typeof performance !== 'undefined' ? performance.now() : 0;
+    inTick = true;
     let keepGoing = true;
     try {
-      if (rateBars > 0) {
-        keepGoing = advanceClockBars(clockStepsPerRateBar() * rateBars);
-      }
-      if (import.meta.env?.DEV && typeof performance !== 'undefined') {
-        const frameMs = performance.now() - frameStart + dtMs;
-        if (frameMs > 16) {
-          console.warn('[replay] frame budget exceeded', {
-            frameMs: Math.round(frameMs * 10) / 10,
-            rateBars,
-            speed: state.speed,
-          });
+      if (lastTs === 0) {
+        // Warmup frame — establish dt baseline, then reschedule below.
+        lastTs = ts;
+      } else {
+        const dtMs = ts - lastTs;
+        lastTs = ts;
+        barCarryMs += dtMs;
+
+        // speed = rate-TF bars/sec → coalesce all due steps into one notify this frame
+        const msPerRateBar = 1000 / Math.max(1, state.speed);
+        let rateBars = 0;
+        while (barCarryMs >= msPerRateBar) {
+          barCarryMs -= msPerRateBar;
+          rateBars += 1;
+          // Cap catch-up so a long tab-sleep doesn't jump the whole series in one frame
+          if (rateBars > state.speed * 2) {
+            barCarryMs = 0;
+            break;
+          }
+        }
+        const frameStart =
+          typeof performance !== 'undefined' ? performance.now() : 0;
+        try {
+          if (rateBars > 0) {
+            keepGoing = advanceClockBars(clockStepsPerRateBar() * rateBars);
+          }
+          if (import.meta.env?.DEV && typeof performance !== 'undefined') {
+            const frameMs = performance.now() - frameStart + dtMs;
+            if (frameMs > 16) {
+              console.warn('[replay] frame budget exceeded', {
+                frameMs: Math.round(frameMs * 10) / 10,
+                rateBars,
+                speed: state.speed,
+              });
+            }
+          }
+        } catch (err) {
+          console.error('[replay] tick failed', err);
         }
       }
-    } catch (err) {
-      console.error('[replay] tick failed', err);
+    } finally {
+      inTick = false;
     }
-    // Always reschedule while playing — a subscriber throw must not freeze the clock.
+    // Always reschedule while playing — a subscriber throw / gap-seek must not
+    // freeze the clock (nested seek used to schedule a parallel orphan rAF).
     if (!keepGoing || !state.playing) return;
-    ledgerAcquire('rafLoops');
-    raf = requestAnimationFrame(tick);
+    scheduleTick();
   };
 
   return {
@@ -216,7 +268,16 @@ export function createReplayController(): ReplayController {
       rateTf = tf;
     },
     play() {
-      if (state.playing) return;
+      // Idempotent resume: playing=true with a dead rAF used to no-op until Pause.
+      if (state.playing) {
+        if (!raf) {
+          lastTs = 0;
+          barCarryMs = 0;
+          scheduleTick();
+          armWatchdog();
+        }
+        return;
+      }
       const period = clockPeriod();
       const finished = state.cursorTime >= state.endTime;
       const cursorTime = finished
@@ -226,8 +287,9 @@ export function createReplayController(): ReplayController {
       notify();
       lastTs = 0;
       barCarryMs = 0;
-      ledgerAcquire('rafLoops');
-      raf = requestAnimationFrame(tick);
+      lastTickWall = 0;
+      scheduleTick();
+      armWatchdog();
     },
     pause() {
       if (!state.playing) return;
@@ -296,14 +358,17 @@ export function createReplayController(): ReplayController {
       if (!keepPlaying) stopRaf();
       state = { ...state, cursorTime, playing: keepPlaying };
       if (!opts?.silent) notify();
-      if (keepPlaying && !raf) {
+      // While inside tick(), the outer frame owns rescheduling — starting a
+      // second rAF here orphaned handles and could leave playing=true with no loop.
+      if (keepPlaying && !raf && !inTick) {
         lastTs = 0;
         barCarryMs = 0;
-        ledgerAcquire('rafLoops');
-        raf = requestAnimationFrame(tick);
+        scheduleTick();
+        armWatchdog();
       }
     },
     dispose() {
+      state = { ...state, playing: false };
       stopRaf();
       listeners.clear();
     },

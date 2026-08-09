@@ -644,8 +644,9 @@ export function attachInteraction(
     const { x, y } = clientToMedia(e.clientX, e.clientY, canvas, layout.width, layout.height);
     const zone = hitTestZone(x, y, layout);
 
-    callbacks.onUserGesture?.();
-
+    // Zoom only — do NOT treat wheel/trackpad as a pan-away gesture.
+    // Calling onUserGesture here detached replay follow after accidental scrolls
+    // during long Play (chart looked frozen until Pause→Play reattached).
     if (zone === 'priceAxis') {
       const scale = callbacks.getPriceScale();
       const mid = (scale.min + scale.max) / 2;

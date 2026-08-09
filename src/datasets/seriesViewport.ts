@@ -38,13 +38,20 @@ export function paneNeedsViewportPrefetch(
   if (bars.length === 0 || totalBars <= 0) return true;
 
   const range = visibleRangeFromTimeWindow(bars, fromTime, toTime);
-  return isNearBufferEdge({
-    localFrom: range.fromIndex,
-    localTo: range.toIndex,
-    bufferLen: bars.length,
-    windowFrom,
-    totalBars,
-  });
+  if (
+    isNearBufferEdge({
+      localFrom: range.fromIndex,
+      localTo: range.toIndex,
+      bufferLen: bars.length,
+      windowFrom,
+      totalBars,
+    })
+  ) {
+    return true;
+  }
+  // Buffer's first candle is already after the requested left edge → need older.
+  if (bars[0]!.time > fromTime) return true;
+  return false;
 }
 
 /** Logical index at-or-before time within a series. */
@@ -152,17 +159,31 @@ export async function loadViewportAroundTime(
   };
 }
 
-/** Load viewport covering a wall-clock window (multi-pane sync). */
+/**
+ * Load viewport covering a wall-clock window (multi-pane sync / pan).
+ * TradingView-style: fetch by logical indices for [fromTime, toTime] with
+ * BUFFER_BARS padding — not “anchor only at toTime” (that left empty history).
+ */
 export async function loadViewportForTimeRange(
   datasetId: string,
   timeframe: Timeframe,
   fromTime: number,
   toTime: number,
 ): Promise<ViewportLoadResult> {
-  const around = await loadViewportAroundTime(datasetId, timeframe, toTime);
-  if (around.bars.length === 0) return around;
-  const range = visibleRangeFromTimeWindow(around.bars, fromTime, toTime);
-  return { ...around, range };
+  if (!(toTime > fromTime)) {
+    return loadViewportAroundTime(datasetId, timeframe, toTime);
+  }
+
+  const fromIdx = await timeToLogicalIndex(datasetId, timeframe, fromTime);
+  const toIdx = await timeToLogicalIndex(datasetId, timeframe, toTime);
+  const lo = Math.min(fromIdx, toIdx);
+  const hi = Math.max(fromIdx, toIdx) + 1;
+  const vp = await loadViewportByLogical(datasetId, timeframe, lo, hi);
+  if (vp.bars.length === 0) return vp;
+
+  // Preserve fractional / negative pad so the camera doesn't snap.
+  const range = visibleRangeFromTimeWindow(vp.bars, fromTime, toTime);
+  return { ...vp, range };
 }
 
 /** Reload bars for logical indices with buffer (pan). Indices are into the local buffer if already loaded — use global series indices. */

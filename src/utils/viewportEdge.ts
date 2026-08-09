@@ -14,7 +14,11 @@ export interface BufferEdgeCheck {
 /** True when visible local range is near a buffer edge that still has series data. */
 export function isNearBufferEdge(opts: BufferEdgeCheck): boolean {
   const edge = BUFFER_BARS * EDGE_PREFETCH_RATIO;
-  const nearLeft = opts.localFrom < edge && opts.windowFrom > 0;
+  // Empty left pad (negative fromIndex) → always try history load (TV-style).
+  // Also when approaching buffer start and series has older bars (windowFrom > 0).
+  const nearLeft =
+    opts.localFrom < 0 ||
+    (opts.localFrom < edge && opts.windowFrom > 0);
   const nearRight =
     opts.localTo > opts.bufferLen - edge &&
     opts.windowFrom + opts.bufferLen < opts.totalBars;

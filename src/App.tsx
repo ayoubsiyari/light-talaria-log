@@ -53,6 +53,7 @@ import {
   visibleRangeFromTimeWindow,
 } from '@/data/timeframeAgg';
 import { createSessionController, needsViewportHeal } from '@/session';
+import { truncateAtCursor } from '@/session/derivePane';
 import { ledgerAssertTeardown } from '@/dev/resourceLedger';
 import { warmCache } from '@/session/warmCache';
 import {
@@ -144,6 +145,7 @@ import { paneCountForLayout } from '@/types/pane';
 import type { BottomTabId, ChartLayout, ChartToolId, Timeframe } from '@/types/ui';
 import { debounce } from '@/utils/debounce';
 import {
+  BUFFER_BARS,
   CHUNK_SIZE,
   LOD_DEBOUNCE_MS,
   MAX_BACKTEST_BARS,
@@ -918,23 +920,28 @@ export default function App() {
 
           const loadTf = lodTfs[i]!;
           const ds = getDataset(p.datasetId);
-          // Pan: try IDB first; small server top-up only if the window is empty/short.
+          const period = timeframeSeconds(loadTf);
+          // Pan: IDB window covering [fromTime, toTime]; top up remote if history/tip short.
           let vp = await loadViewportForTimeRange(
             p.datasetId,
             loadTf,
             fromTime,
             toTime,
           );
-          if (
-            (!ds || ds.source === 'remote') &&
-            (vp.bars.length === 0 ||
-              (vp.bars[vp.bars.length - 1]!.time < toTime - 60))
-          ) {
+          const historyShort =
+            vp.bars.length === 0 || vp.bars[0]!.time > fromTime + period;
+          const tipShort =
+            vp.bars.length > 0 &&
+            vp.bars[vp.bars.length - 1]!.time < toTime - period;
+          if ((!ds || ds.source === 'remote') && (historyShort || tipShort)) {
             try {
+              const fetchFrom = historyShort
+                ? fromTime - period * Math.max(64, Math.floor(BUFFER_BARS * 0.5))
+                : fromTime;
               await ensureRemoteTimeCoverage(
                 p.datasetId,
                 loadTf,
-                fromTime,
+                fetchFrom,
                 toTime,
                 { maxBars: CHUNK_SIZE },
               );
@@ -949,12 +956,50 @@ export default function App() {
             }
           }
           if (vp.bars.length === 0) return p; // keep previous window
-          // Remap camera from the same wall-clock window (fractional) so buffer
-          // reloads / LOD switches don't snap; keep prior range if remap is degenerate.
+
+          // Replay: never paint bars ahead of the cursor (no lookahead).
+          const sess = sessionRef.current.get();
+          const cursor = replayRef.current.get().cursorTime;
+          let bars = vp.bars;
+          let range = vp.range;
+          if (
+            sess?.revealMode === 'replay' &&
+            Number.isFinite(cursor) &&
+            cursor > 0
+          ) {
+            const baseBars =
+              warmCache.peek(p.datasetId, sess.baseTf) ?? [];
+            const truncated = truncateAtCursor(
+              bars,
+              cursor,
+              loadTf,
+              'replay',
+              sess.baseTf,
+              baseBars,
+            );
+            if (truncated.length > 0) {
+              bars = truncated;
+              range = visibleRangeFromTimeWindow(
+                bars,
+                fromTime,
+                Math.min(toTime, cursor),
+              );
+            }
+          }
+
+          warmCache.put(
+            p.datasetId,
+            loadTf,
+            bars,
+            Number.isFinite(cursor) && cursor > 0
+              ? Math.min(toTime, cursor)
+              : toTime,
+          );
+
           const next = paneFromViewport(
             p.id,
             loadTf,
-            vp,
+            { ...vp, bars, range },
             p.pair,
             p.datasetId,
             p.selectedTf ?? p.timeframe,
@@ -991,6 +1036,19 @@ export default function App() {
       );
       panesRef.current = merged;
       setPanes(merged);
+
+      // Push engines immediately (don't wait on React) so left-pan history shows.
+      for (let i = 0; i < merged.length; i++) {
+        if (!needsFetch[i]) continue;
+        const p = merged[i]!;
+        const chart = getChart(p.id);
+        if (!chart || p.bars.length === 0) continue;
+        chart.setViewportBars(p.bars);
+        chart.setVisibleRange(p.range.fromIndex, p.range.toIndex, {
+          silent: true,
+        });
+      }
+
       // Keep session pane TFs in sync when zoom LOD mutates effective timeframe.
       // No rederive — React already holds the LOD-loaded bars.
       const sess = sessionRef.current.get();
@@ -1845,10 +1903,16 @@ export default function App() {
 
         queueMicrotask(() => {
           if (loadGen !== loadSessionGenRef.current) return;
-          const tr = timeRangeFromVisible(nextPanes[0]!.bars, nextPanes[0]!.range);
+          const p0 = nextPanes[0]!;
+          const tr = timeRangeFromVisible(p0.bars, p0.range);
           if (tr) syncStoreRef.current?.setTimeRange(tr, 'session-load');
           viewportReloadEnabledRef.current = true;
           wasPlayingRef.current = false;
+          // Right-anchored load often shows empty left pad — pull history now
+          // (same path as TradingView-style drag-left), not only after user pans.
+          if (tr && p0.range.fromIndex < 8) {
+            void applyTimeWindowToPanes(tr.fromTime, tr.toTime, p0.id);
+          }
           if (journalFocus != null) {
             // Ensure viewport/follow settle on the journal entry time after chrome mounts.
             applyJournalFocus(journalFocus);
@@ -1865,6 +1929,7 @@ export default function App() {
     },
     [
       applyJournalFocus,
+      applyTimeWindowToPanes,
       clearChartFocusHash,
       ensureAllOrderBars,
       makeOrderBarProvider,
@@ -2017,10 +2082,24 @@ export default function App() {
           void healViewportIfNeeded([activeId], { applyCamera: false });
           // 1m→5m (etc.) hits warm cache on the next click.
           void sessionRef.current.prefetchNeighborTimeframes(activeId);
+          // Empty left pad → load another history chunk (TV pan-left).
+          const pane = panesRef.current.find((p) => p.id === activeId);
+          if (pane && pane.bars.length > 0 && pane.range.fromIndex < 8) {
+            const tr = timeRangeFromVisible(pane.bars, pane.range);
+            if (tr) {
+              void applyTimeWindowToPanes(tr.fromTime, tr.toTime, activeId);
+            }
+          }
         }
       }
     });
-  }, [catalog, applyReplayReveal, healViewportIfNeeded, persistReplayProgress]);
+  }, [
+    applyTimeWindowToPanes,
+    catalog,
+    applyReplayReveal,
+    healViewportIfNeeded,
+    persistReplayProgress,
+  ]);
 
   // Pan/zoom → edge-prefetch. With date-range sync OFF, only the origin pane reloads.
   useEffect(() => {

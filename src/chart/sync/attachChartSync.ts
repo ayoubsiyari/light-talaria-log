@@ -83,13 +83,14 @@ export function attachChartSync(
       return;
     }
 
-    const syncRange = options.getSyncDateRange?.() ?? true;
     const syncCrosshair = options.getSyncCrosshair?.() ?? true;
 
     const timeRange = pendingPublish;
     pendingPublish = null;
+    // Always publish the visible window so App can edge-prefetch history
+    // (TradingView-style drag-left). Multi-pane *apply* stays gated on
+    // getSyncDateRange below — sync-off must not block the origin pane's load.
     if (
-      syncRange &&
       timeRange &&
       !timeRangesEqual(timeRange, store.get().timeRange)
     ) {

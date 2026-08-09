@@ -871,6 +871,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-09 | Play-only price-scale hysteresis: expand-on-extremes, no shrink while follow; clear sticky on Pause/reset/manual | Play — Y-axis stops breathing with tip |
 | 2026-08-09 | Neighbor TF prefetch on Pause + after TF switch (history-biased, no remote wait, coalesced) | Pause on 1m → click 5m — paints from warm cache |
 | 2026-08-09 | TV-style left history: `loadViewportForTimeRange` by logical window; empty-left edge prefetch; remote history top-up; engine push on pan | Drag left / empty pad — older candles load in chunks |
+| 2026-08-09 | Fix pan history dead with sync off: always publish visible timeRange for edge-prefetch; engine getBars; gesture kick; don’t re-attach follow on re-render | Drag chart to older time — candles fill empty left |
 
 ---
 

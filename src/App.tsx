@@ -4339,6 +4339,25 @@ export default function App() {
                 getChart(paneId)?.setReplayFollow(false);
                 cameraDetachedRef.current = true;
                 setCameraDetached(true);
+                // Drag toward older time / empty left pad → load history chunk.
+                // (Sync publish also does this; kick here so sync-off never misses.)
+                const chart = getChart(paneId);
+                if (!chart) return;
+                const liveBars = chart.getBars();
+                const liveRange = chart.getVisibleRange();
+                if (
+                  liveBars.length > 0 &&
+                  liveRange.fromIndex < 24
+                ) {
+                  const tr = timeRangeFromVisible(liveBars, liveRange);
+                  if (tr) {
+                    void applyTimeWindowToPanes(
+                      tr.fromTime,
+                      tr.toTime,
+                      paneId,
+                    );
+                  }
+                }
               }}
             />
             {btResult && (

@@ -1,5 +1,5 @@
 import type { ChartColors } from '../chartTheme';
-import { formatPrice, formatTime } from '../format';
+import { formatCrosshairTime, formatPrice } from '../format';
 import { contentBottom, type RenderLayout } from '../renderer';
 import type { CrosshairPoint } from '../types';
 
@@ -65,8 +65,8 @@ export function drawCrosshair(
   ctx.textBaseline = 'middle';
   ctx.fillText(priceLabel, priceX + 4, priceY + labelH / 2);
 
-  // Time label on bottom axis
-  const timeLabel = formatTime(point.time);
+  // Time label on bottom axis (weekday + date/time)
+  const timeLabel = formatCrosshairTime(point.time);
   const timeW = ctx.measureText(timeLabel).width + 10;
   const timeX = Math.min(
     Math.max(cx - timeW / 2, plot.left),

@@ -235,11 +235,15 @@ export function useChart(
     });
 
     // Always attach when store exists (including single pane) so user pan
-    // can detach replay camera follow.
+    // can detach replay camera follow + edge-prefetch older history.
     const unsubSync =
       store != null
         ? attachChartSync(instance, chartId, store, {
-            getBars: () => barsRef.current,
+            // Engine bars win — React props lag during Play / after pan fills.
+            getBars: () => {
+              const live = instance.getBars();
+              return live.length > 0 ? live : barsRef.current;
+            },
             getSyncCrosshair: () => optionsRef.current.syncCrosshair !== false,
             getSyncDateRange: () => optionsRef.current.syncDateRange !== false,
           })
@@ -590,7 +594,11 @@ export function useChart(
   useEffect(() => {
     const instance = instanceRef.current;
     if (!instance || options.replayFollow === undefined) return;
-    instance.setReplayFollow(options.replayFollow);
+    // Only force *off* from React. Attaching follow is owned by App
+    // (play edge / reattach) so a parent re-render cannot undo pan-detach.
+    if (!options.replayFollow) {
+      instance.setReplayFollow(false);
+    }
   }, [options.replayFollow]);
 
   useEffect(() => {

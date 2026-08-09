@@ -1,3 +1,9 @@
+import {
+  formatZonedClockHms,
+  formatZonedCrosshairTime,
+  formatZonedTime,
+} from '@/chart/timezone';
+
 export function formatPrice(price: number): string {
   const abs = Math.abs(price);
   if (abs >= 1000) return price.toFixed(1);
@@ -5,11 +11,17 @@ export function formatPrice(price: number): string {
   return price.toFixed(5);
 }
 
+/** Axis time label — respects chart timezone setting. */
 export function formatTime(unixSec: number): string {
-  const d = new Date(unixSec * 1000);
-  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(d.getUTCDate()).padStart(2, '0');
-  const hh = String(d.getUTCHours()).padStart(2, '0');
-  const mi = String(d.getUTCMinutes()).padStart(2, '0');
-  return `${mm}-${dd} ${hh}:${mi}`;
+  return formatZonedTime(unixSec);
+}
+
+/** Crosshair chip — weekday + time in chart timezone. */
+export function formatCrosshairTime(unixSec: number): string {
+  return formatZonedCrosshairTime(unixSec);
+}
+
+/** HH:mm:ss for HUD / replay clock. */
+export function formatClockHms(unixSec: number): string {
+  return formatZonedClockHms(unixSec);
 }

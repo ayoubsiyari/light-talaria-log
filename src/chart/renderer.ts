@@ -1,5 +1,8 @@
 import type { ChartBar, VisibleRange } from '@/types/bar';
-import { indexAtOrBeforeBars } from '@/data/timeframeAgg';
+import {
+  indexAtOrBeforeBars,
+  timeframeSeconds,
+} from '@/data/timeframeAgg';
 import type { Drawing } from '@/drawings/drawingStore';
 import { getChartColors, type ChartColors } from './chartTheme';
 import { formatPrice, formatTime } from './format';
@@ -16,13 +19,20 @@ import {
 import { drawIndicators } from './series/drawIndicators';
 import { drawIndicatorPane } from './series/drawIndicatorPane';
 import { drawSeries, drawVolume } from './series/drawSeries';
-import { nicePriceTicks, niceTimeTicks } from './ticks';
+import {
+  nicePriceTicks,
+  niceTimeTicks,
+  type TimeLatticeSticky,
+} from './ticks';
 import type { ChartViewOptions, CrosshairPoint } from './types';
 import type { IndicatorOverlayResult, IndicatorPaneResult } from '@/types/indicator';
 import type { BacktestResult } from '@/types/backtest';
 import type { ChartOrder } from '@/types/order';
 import { drawBacktest } from './overlays/drawBacktest';
 import { drawOrders } from './overlays/drawOrders';
+
+/** Min CSS px between time-axis labels (grid lines still draw). */
+const TIME_LABEL_MIN_GAP_PX = 56;
 
 export interface LayoutOptions {
   showVolume?: boolean;
@@ -173,6 +183,8 @@ export interface PaintState {
   drawingsHidden?: boolean;
   /** Pane TF — filters drawings with per-interval visibility. */
   paneTimeframe?: import('@/types/ui').Timeframe | null;
+  /** Per-engine zoom density sticky for the time lattice. */
+  timeLatticeSticky?: TimeLatticeSticky;
   replayCursorTime?: number | null;
   indicators?: readonly IndicatorOverlayResult[];
   indicatorPanes?: readonly IndicatorPaneResult[];
@@ -229,7 +241,14 @@ export function paintBaseFrame(
       : computePriceScale(bars, range, maxBarIndex);
 
   const priceTicks = nicePriceTicks(scale.min, scale.max, 6);
-  const timeTicks = niceTimeTicks(range, bars, 8);
+  const barPeriod =
+    state.paneTimeframe != null
+      ? timeframeSeconds(state.paneTimeframe)
+      : undefined;
+  const timeTicks = niceTimeTicks(range, bars, 8, {
+    barPeriod,
+    sticky: state.timeLatticeSticky,
+  });
 
   drawGrid(ctx, layout, scale, range, priceTicks, timeTicks, colors);
   drawWatermark(ctx, layout, colors, options.showBrandWatermark !== false);
@@ -506,7 +525,8 @@ function drawGrid(
     ctx.strokeStyle = colors.gridVertical;
     ctx.setLineDash(dashFor(colors.gridVStyle));
     for (const tick of timeTicks) {
-      const x = indexToX(tick.index, range, plot) + 0.5;
+      // Pixel-snap like H lines — fractional X alone shimmered during pan.
+      const x = Math.round(indexToX(tick.index, range, plot)) + 0.5;
       if (x < plot.left || x > plot.left + plot.width) continue;
       ctx.beginPath();
       ctx.moveTo(x, plot.top);
@@ -574,13 +594,16 @@ function drawTimeAxis(
   ctx.textBaseline = 'top';
 
   let lastLabel = '';
+  let lastLabelX = Number.NEGATIVE_INFINITY;
   for (const tick of timeTicks) {
-    const x = indexToX(tick.index, range, plot);
+    const x = Math.round(indexToX(tick.index, range, plot));
     if (x < plot.left || x > plot.left + plot.width) continue;
+    if (x - lastLabelX < TIME_LABEL_MIN_GAP_PX) continue;
     const label = formatTime(tick.time);
     // Belt-and-suspenders: never paint the same time string twice in a row
     if (label === lastLabel) continue;
     lastLabel = label;
+    lastLabelX = x;
     ctx.fillText(label, x, axisY + 8);
   }
 }

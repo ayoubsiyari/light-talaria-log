@@ -1,7 +1,9 @@
 import {
   bucketStart,
   neighborTimeframes,
+  timeRangeFromVisible,
   timeframeSeconds,
+  visibleRangeFromTimeWindow,
 } from '@/data/timeframeAgg';
 import { barsMatchTimeframe } from '@/session/barTfGuard';
 import {
@@ -302,7 +304,8 @@ export function createSessionController() {
       if (!react) {
         // Grow revealed bars as the cursor advances (1m append + higher-TF forming).
         // Only patching the tip left base-TF charts frozen after load-time truncate.
-        extendRevealInPlace(state, views);
+        // Pass follow so a detached pan does not tip-chase / right-anchor the camera.
+        extendRevealInPlace(state, views, { follow });
         return;
       }
       rederiveSync();
@@ -789,12 +792,18 @@ function scheduleFillAhead(
  * Advance revealed bars with the cursor.
  * Rebuilds from the correct TF cache each tick so a finer-TF placeholder can
  * never leave 1m residue on a 1D pane (play sawtooth / pause looks fine).
+ *
+ * `follow: false` (user panned away from tip): still grow/patch candles, but
+ * do not tip-chase warm-cache runway or overwrite the camera with a
+ * right-anchored range — that snapped 1D pans back to the live edge.
  */
 function extendRevealInPlace(
   s: SessionState,
   views: Record<string, PaneView>,
+  opts?: { follow?: boolean },
 ): void {
   if (s.revealMode !== 'replay') return;
+  const follow = opts?.follow ?? s.playing;
 
   // Pin active series so LRU cannot evict a live pane mid-play.
   const pinKeys: { datasetId: string; tf: Timeframe }[] = [];
@@ -853,18 +862,25 @@ function extendRevealInPlace(
     // Hysteresis on history: only refill when we drop below ~55% of target so
     // we don't slide the warm-cache every few ticks (Play hitch).
     const behindCritical = Math.floor(needBehind * 0.55);
-    if (
-      !raw ||
-      raw.length === 0 ||
-      aheadBars < needAhead ||
-      behindBars < behindCritical
-    ) {
-      scheduleFillAhead(cfg.datasetId, cfg.tf, s.cursorTime, s.span);
+    const missing = !raw || raw.length === 0;
+    if (follow) {
+      if (missing || aheadBars < needAhead || behindBars < behindCritical) {
+        scheduleFillAhead(cfg.datasetId, cfg.tf, s.cursorTime, s.span);
+      }
+    } else if (missing || behindBars < behindCritical) {
+      // Detached pan: history soft-heal only — no tip runway that slides the
+      // buffer under the user's camera (especially painful on 1D).
+      const hist = paneRunwayFillOpts(s.span);
+      scheduleFillAhead(cfg.datasetId, cfg.tf, s.cursorTime, s.span, {
+        ...hist,
+        aheadRatio: Math.min(hist.aheadRatio ?? 0.15, 0.05),
+      });
     }
 
     // Higher-TF tip is built from base clock bars. Keep that window covering
     // the coarsest open bucket and the cursor tip (not just this pane's TF).
-    if (cfg.tf !== s.baseTf && !clockScheduled.has(cfg.datasetId)) {
+    // Skip tip-chasing clock fills while the user is freely panning history.
+    if (follow && cfg.tf !== s.baseTf && !clockScheduled.has(cfg.datasetId)) {
       const coarsest = coarsestSecByDs.get(cfg.datasetId) ?? tfPeriod;
       const coarseOpen = bucketStart(s.cursorTime, coarsest);
       const clockTip =
@@ -904,6 +920,10 @@ function extendRevealInPlace(
 
     const bars = view.bars as ChartBar[];
     const prevLen = bars.length;
+    const keepTime =
+      !follow && prevLen > 0
+        ? timeRangeFromVisible(bars, view.range)
+        : null;
     // Same-prefix grow/patch — avoid O(n) wipe every tick (smooth Play).
     const canPatch =
       prevLen > 0 &&
@@ -950,10 +970,22 @@ function extendRevealInPlace(
       continue;
     }
 
-    view.range = rangeRightAnchored(bars.length - 1, Math.max(1, s.span));
+    if (follow) {
+      view.range = rangeRightAnchored(bars.length - 1, Math.max(1, s.span));
+    } else if (keepTime) {
+      const mapped = visibleRangeFromTimeWindow(
+        bars,
+        keepTime.fromTime,
+        keepTime.toTime,
+      );
+      if (mapped.toIndex > mapped.fromIndex) {
+        view.range = mapped;
+      }
+    }
   }
 
   // Off-screen session legs (order engine) — keep base TF runway ahead of cursor.
+  if (!follow) return;
   for (const ds of s.retainedDatasets) {
     if (Object.values(s.panes).some((p) => p.datasetId === ds)) continue;
     const peek = warmCache.peek(ds, s.baseTf);

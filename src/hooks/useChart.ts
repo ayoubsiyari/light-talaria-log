@@ -127,8 +127,6 @@ export function useChart(
   optionsRef.current = options;
   const barsRef = useRef(options.bars ?? EMPTY_BARS);
   barsRef.current = options.bars ?? EMPTY_BARS;
-  /** Track follow edge so Pause can keep the same wall-clock window. */
-  const prevReplayFollowRef = useRef<boolean | undefined>(undefined);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -628,8 +626,6 @@ export function useChart(
   useLayoutEffect(() => {
     const instance = instanceRef.current;
     if (!instance || !options.bars) return;
-    const wasFollowing = prevReplayFollowRef.current === true;
-    prevReplayFollowRef.current = options.replayFollow;
     barsRef.current = options.bars;
 
     // While replay follow is active, App drives bars/camera via syncReplayReveal.
@@ -664,19 +660,11 @@ export function useChart(
       return;
     }
 
-    const reactIsStaleIndexCamera =
-      rangeFrom != null &&
-      rangeTo != null &&
-      Math.abs(liveRange.fromIndex - rangeFrom) < 1e-4 &&
-      Math.abs(liveRange.toIndex - rangeTo) < 1e-4;
-
     setViewportData(instance, options.bars);
 
-    if (
-      keepTime &&
-      options.bars.length > 0 &&
-      (wasFollowing || reactIsStaleIndexCamera)
-    ) {
+    // Prefer the live wall-clock window after any buffer replace — React index
+    // ranges from session (often right-anchored) snap 1D pans back to the tip.
+    if (keepTime && options.bars.length > 0) {
       const mapped = visibleRangeFromTimeWindow(
         options.bars,
         keepTime.fromTime,
@@ -690,8 +678,13 @@ export function useChart(
       }
     }
 
-    // Explicit React range wins (TF/symbol adopt, initial load).
+    // Explicit React range only on cold load / empty engine. Session views
+    // often ship right-anchored indices — applying them after a live pan
+    // snaps high-TF charts back to the tip.
     if (rangeFrom == null || rangeTo == null || rangeTo <= rangeFrom) return;
+    if (liveBars.length > 0 && liveRange.toIndex > liveRange.fromIndex) {
+      return;
+    }
     const cur = instance.getVisibleRange();
     if (
       Math.abs(cur.fromIndex - rangeFrom) < 1e-4 &&

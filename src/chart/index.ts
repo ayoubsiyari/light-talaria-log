@@ -38,7 +38,13 @@ export {
   subscribeAppearance,
 } from './appearanceStore';
 export { registerChart, unregisterChart, getChart } from './chartRegistry';
-export { nicePriceTicks, niceTimeTicks } from './ticks';
+export {
+  nicePriceTicks,
+  niceTimeTicks,
+  resolveBarPeriod,
+  seriesBarPeriod,
+} from './ticks';
+export type { TimeLatticeSticky, NiceTimeTicksOpts, TimeTick } from './ticks';
 export { resolveCrosshair } from './crosshair';
 export type {
   CrosshairMode,

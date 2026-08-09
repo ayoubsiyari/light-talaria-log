@@ -64,6 +64,7 @@ import {
   type InteractionHandle,
 } from './interaction';
 import { rangeCenteredOnIndex, rangeRightAnchored } from './rangeAnchor';
+import type { TimeLatticeSticky } from './ticks';
 import {
   contentBottom,
   createLayout,
@@ -339,6 +340,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   let hoveredDrawingId: string | null = null;
   let drawingsHidden = false;
   let paneTimeframe: Timeframe | null = null;
+  /** Zoom density sticky for vertical grid — one per engine (multi-pane safe). */
+  const timeLatticeSticky: TimeLatticeSticky = { step: 0, span: 0 };
   let drawingMagnetMode: MagnetMode = 'off';
   let drawingShiftHeld = false;
   let replayCursorTime: number | null = null;
@@ -686,6 +689,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     hoveredDrawingId,
     drawingsHidden,
     paneTimeframe,
+    timeLatticeSticky,
     replayCursorTime,
     indicators: indicatorOverlays,
     indicatorPanes,
@@ -1612,6 +1616,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         if (drawingsHidden) hoveredDrawingId = null;
       }
       if (opts?.paneTimeframe !== undefined) {
+        if (paneTimeframe !== opts.paneTimeframe) {
+          timeLatticeSticky.step = 0;
+          timeLatticeSticky.span = 0;
+        }
         paneTimeframe = opts.paneTimeframe;
       }
       if (hoveredDrawingId && !next.some((d) => d.id === hoveredDrawingId)) {

@@ -5,7 +5,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { indexToX } from '@/chart/scales';
-import { niceTimeTicks } from '@/chart/ticks';
+import {
+  niceTimeTicks,
+  resolveBarPeriod,
+  type TimeLatticeSticky,
+} from '@/chart/ticks';
 import type { ChartBar } from '@/types/bar';
 
 function bars(n: number, t0 = 1_700_000_000): ChartBar[] {
@@ -122,5 +126,61 @@ describe('niceTimeTicks', () => {
       x1 < x0 - 1,
       `slide: grid X should move left (x0=${x0}, x1=${x1})`,
     );
+  });
+
+  it('1D weekend gaps keep lattice phase stable as tip sample changes', () => {
+    // Weekday-only daily series (Sat/Sun gaps) — mean tip gap drifts; median stays 1D.
+    const day = 86_400;
+    const data: ChartBar[] = [];
+    let t = Date.UTC(2024, 0, 2) / 1000; // Tue
+    while (data.length < 90) {
+      const dow = new Date(t * 1000).getUTCDay();
+      if (dow !== 0 && dow !== 6) {
+        data.push({
+          time: t,
+          open: 1,
+          high: 1,
+          low: 1,
+          close: 1,
+          volume: 1,
+        });
+      }
+      t += day;
+    }
+    const short = data.slice(0, 50);
+    const long = data.slice(0, 90);
+    assert.equal(short[0]!.time, long[0]!.time);
+    const range = { fromIndex: 10, toIndex: 40 };
+    const a = niceTimeTicks(range, short, 8, { barPeriod: day });
+    const b = niceTimeTicks(range, long, 8, { barPeriod: day });
+    assert.ok(a.length >= 2 && b.length >= 2);
+    // Same bars[0] + declared 1D period ⇒ identical lattice phase.
+    assert.ok(
+      Math.abs(a[0]!.index - b[0]!.index) < 1e-9,
+      `phase jump: ${a[0]!.index} vs ${b[0]!.index}`,
+    );
+  });
+
+  it('prefers declared TF period when series agrees', () => {
+    const data = bars(40);
+    assert.equal(resolveBarPeriod(data, 60), 60);
+    assert.equal(resolveBarPeriod(data, 86_400), 60); // mismatch → median 1m
+  });
+
+  it('holds lattice density across small zooms (sticky step)', () => {
+    const data = bars(400);
+    const sticky: TimeLatticeSticky = { step: 0, span: 0 };
+    const r0 = { fromIndex: 100, toIndex: 200 }; // span 100 → step 20
+    const a = niceTimeTicks(r0, data, 8, { sticky });
+    assert.equal(sticky.step, 20);
+    // Span 79 wants step 10, but ~21% zoom stays inside hysteresis → hold 20
+    const r1 = { fromIndex: 100, toIndex: 179 };
+    const b = niceTimeTicks(r1, data, 8, { sticky });
+    assert.equal(sticky.step, 20);
+    assert.ok(a.length >= 2 && b.length >= 2);
+    const shared = a.filter((t) =>
+      b.some((u) => Math.abs(u.index - t.index) < 1e-9),
+    );
+    assert.ok(shared.length >= 2, 'sticky zoom must keep lattice indices');
   });
 });

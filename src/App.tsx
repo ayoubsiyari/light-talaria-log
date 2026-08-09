@@ -424,8 +424,12 @@ export default function App() {
   const suppressSessionCommitRef = useRef(false);
   /** User pan/zoom during play detaches camera follow (stops fighting the drag). */
   const [cameraDetached, setCameraDetached] = useState(false);
+  /**
+   * Imperative detach flag — do NOT mirror from React state every render
+   * (that overwrote true→false before setState flushed and re-armed follow,
+   * snapping daily charts back to the tip mid-pan).
+   */
   const cameraDetachedRef = useRef(false);
-  cameraDetachedRef.current = cameraDetached;
   /** Pane ids showing legend … while TF / ticker fills. */
   const [loadingPaneIds, setLoadingPaneIds] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -1038,12 +1042,33 @@ export default function App() {
       setPanes(merged);
 
       // Push engines immediately (don't wait on React) so left-pan history shows.
+      // Remap the *live* camera onto the new buffer — never stomp with the
+      // request-time range (user may have kept dragging during the await).
       for (let i = 0; i < merged.length; i++) {
         if (!needsFetch[i]) continue;
         const p = merged[i]!;
         const chart = getChart(p.id);
         if (!chart || p.bars.length === 0) continue;
+        const prevBars = chart.getBars();
+        const prevRange = chart.getVisibleRange();
+        const keep =
+          prevBars.length > 0
+            ? timeRangeFromVisible(prevBars, prevRange)
+            : null;
         chart.setViewportBars(p.bars);
+        if (keep) {
+          const mapped = visibleRangeFromTimeWindow(
+            p.bars,
+            keep.fromTime,
+            keep.toTime,
+          );
+          if (mapped.toIndex > mapped.fromIndex) {
+            chart.setVisibleRange(mapped.fromIndex, mapped.toIndex, {
+              silent: true,
+            });
+            continue;
+          }
+        }
         chart.setVisibleRange(p.range.fromIndex, p.range.toIndex, {
           silent: true,
         });
@@ -1101,14 +1126,18 @@ export default function App() {
       if (!catalog || !viewportReloadEnabledRef.current) return;
       if (!sessionRef.current.get()) return;
       const playing = replayRef.current.get().playing;
-      const follow = playing && !cameraDetachedRef.current;
+      // Any pane the user panned → stop tip-chasing session camera / fill-ahead.
+      const anyDetached = detachedPanesRef.current.size > 0;
+      const follow =
+        playing && !cameraDetachedRef.current && !anyDetached;
 
       if (playing) {
         sessionRef.current.setCursorTime(cursorTime, { follow, react: false });
 
         // Skip weekend / holiday dead air once the next session is cached.
+        // Don't jump the clock while the user is freely panning history.
         const gapJump = sessionRef.current.suggestGapJump();
-        if (gapJump != null && gapJump > cursorTime) {
+        if (follow && gapJump != null && gapJump > cursorTime) {
           replayRef.current.seek(gapJump, { keepPlaying: true });
           return;
         }
@@ -1116,7 +1145,10 @@ export default function App() {
         // Step order engine on every base bar the cursor passes (§4.1).
         stepOrderEngineRef.current(cursorTime);
         const views = sessionRef.current.getViews();
-        if (opts?.playEdge) detachedPanesRef.current.clear();
+        if (opts?.playEdge) {
+          detachedPanesRef.current.clear();
+          cameraDetachedRef.current = false;
+        }
 
         for (const pane of panesRef.current) {
           const chart = getChart(pane.id);
@@ -1125,14 +1157,15 @@ export default function App() {
           const paneDetached = detachedPanesRef.current.has(pane.id);
 
           // Keep follow alive on every tick for panes the user hasn't panned.
-          // (React props alone are not enough after layout changes mid-play.)
-          if (!paneDetached) {
+          // Never re-attach a detached pane here (that snaps 1D back to the tip).
+          if (!paneDetached && follow) {
             chart.setReplayFollow(true);
           }
 
           if (v && v.bars.length > 0) {
             // Append/patch revealed bars as cursor advances.
-            // Follow uses the same right-anchored camera as pause (no Play jump).
+            // Detached panes still get bars, but syncReplayReveal won't recenter
+            // when engine replayFollow is false.
             chart.syncReplayReveal(v.bars, cursorTime);
           } else {
             // Cache/view not ready — advance paint mask on whatever the engine has.

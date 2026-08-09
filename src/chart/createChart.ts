@@ -361,6 +361,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   let replayCursorTime: number | null = null;
   /** Engine-owned camera follow — avoids React re-applying a stale range after pan. */
   let replayFollow = false;
+  /** Last followed tip index — incremental Play scroll (pan-like grid motion). */
+  let followTipIndex = -1;
   /** Cursor/move/resize on drawings (off while placing a tool or when locked). */
   let drawingInteractEnabled = true;
   /** Brush / highlighter press-drag (on while freehand tool is active). */
@@ -784,17 +786,38 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     Math.max(MIN_VISIBLE, Math.min(MAX_VISIBLE, range.toIndex - range.fromIndex));
 
   /**
-   * Keep the live candle on the right (~90% pad) — same as session derive /
-   * pause commit. Centering here made Play↔Pause jump the whole plot.
+   * Keep the live candle on the right (~90% pad).
+   * While already following, shift by tip-index delta (preserves fractional
+   * zoom/pan offsets) so V-grid + time labels scroll like a manual pan —
+   * not a hard re-anchor that makes the lattice look screen-locked.
    */
   const centerOnReplayCursor = (emit: boolean) => {
     if (bars.length === 0 || replayCursorTime == null) return;
     const anchor = indexAtOrBeforeBars(bars, replayCursorTime);
+    if (
+      replayFollow &&
+      followTipIndex >= 0 &&
+      anchor !== followTipIndex &&
+      Math.abs(anchor - followTipIndex) < currentSpan()
+    ) {
+      const d = anchor - followTipIndex;
+      followTipIndex = anchor;
+      setVisibleRangeInternal(
+        {
+          fromIndex: range.fromIndex + d,
+          toIndex: range.toIndex + d,
+        },
+        emit,
+      );
+      return;
+    }
+    followTipIndex = anchor;
     setVisibleRangeInternal(rangeRightAnchored(anchor, currentSpan()), emit);
   };
 
   const notifyUserGesture = () => {
     replayFollow = false;
+    followTipIndex = -1;
     for (const cb of userGestureListeners) cb();
   };
 
@@ -803,6 +826,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     if (replayCursorTime != null) {
       // Re-attach follow after double-click recenter
       replayFollow = true;
+      followTipIndex = -1;
       const anchor = indexAtOrBeforeBars(bars, replayCursorTime);
       let span = currentSpan();
       // Oversized span after a bad TF camera — collapse so dbl-click recovers.
@@ -812,6 +836,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
           Math.min(span, Math.max(DEFAULT_VISIBLE_BARS, anchor + 1)),
         );
       }
+      followTipIndex = anchor;
       setVisibleRangeInternal(rangeRightAnchored(anchor, span), false);
       return;
     }
@@ -2002,15 +2027,12 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
             ? indexAtOrBeforeBars(bars, cursorTime)
             : -1;
         const tipTime = tip >= 0 && tip < bars.length ? bars[tip]!.time : null;
-        const tipMoved =
-          tip !== prevTip ||
-          (tipTime != null && prevTipTime != null && tipTime !== prevTipTime);
-        if (tipMoved) {
-          // Tip advanced (by index *or* time under a sliding buffer).
-          centerOnReplayCursor(false);
-        } else if (didReplace && keepTime && bars.length > 0) {
-          // Warm-cache slide without tip move: remap by wall-clock so left
-          // history doesn't flash empty.
+        const tipIndexMoved = tip !== prevTip;
+        const tipTimeMoved =
+          tipTime != null && prevTipTime != null && tipTime !== prevTipTime;
+        // Buffer slide under a fixed tip index: keep wall-clock (candles stay put).
+        // Real tip advance: incremental follow scroll (grid moves like pan).
+        if (didReplace && keepTime && bars.length > 0 && !tipIndexMoved) {
           const mapped = visibleRangeFromTimeWindow(
             bars,
             keepTime.fromTime,
@@ -2018,10 +2040,26 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
           );
           if (mapped.toIndex > mapped.fromIndex) {
             setVisibleRangeInternal(mapped, false);
+            if (tip >= 0) followTipIndex = tip;
+          } else if (tipIndexMoved || tipTimeMoved) {
+            centerOnReplayCursor(false);
+          }
+        } else if (tipIndexMoved || tipTimeMoved) {
+          centerOnReplayCursor(false);
+        } else if (didReplace && keepTime && bars.length > 0) {
+          const mapped = visibleRangeFromTimeWindow(
+            bars,
+            keepTime.fromTime,
+            keepTime.toTime,
+          );
+          if (mapped.toIndex > mapped.fromIndex) {
+            setVisibleRangeInternal(mapped, false);
+            if (tip >= 0) followTipIndex = tip;
           } else {
             centerOnReplayCursor(false);
           }
         } else if (didReplace) {
+          followTipIndex = -1;
           centerOnReplayCursor(false);
         }
       } else if (didReplace && keepTime && bars.length > 0) {
@@ -2067,18 +2105,24 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       if (replayFollow === follow) return;
       replayFollow = follow;
       // Pause → drop sticky so auto Y refits once; Play seeds from next resolve.
-      if (!follow) playPriceSticky = null;
+      if (!follow) {
+        playPriceSticky = null;
+        followTipIndex = -1;
+      }
       invalidateScaleCache();
       // Enabling follow must not hard-snap if we are already right-anchored —
       // that was shifting vertical grid / time labels on every Play press.
       if (follow && replayCursorTime != null && bars.length > 0) {
         const tip = indexAtOrBeforeBars(bars, replayCursorTime);
+        followTipIndex = tip;
         const target = rangeRightAnchored(tip, currentSpan());
         const drift = Math.max(
           Math.abs(range.fromIndex - target.fromIndex),
           Math.abs(range.toIndex - target.toIndex),
         );
         if (drift > 0.51) {
+          // Force a true re-anchor (not incremental) on attach.
+          followTipIndex = -1;
           centerOnReplayCursor(false);
         }
       }

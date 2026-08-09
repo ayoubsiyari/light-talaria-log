@@ -624,16 +624,15 @@ function drawTimeAxis(
   ctx.textBaseline = 'top';
 
   // Solid majors only, left→right, culled by measured label width (no overlap).
+  // Keep labels glued to the same tick X as V-grid strokes (no text-only hop).
   const labelTicks = timeTicks
     .filter((t) => t.label !== false && (t.alpha ?? 1) >= 0.99)
     .sort((a, b) => a.index - b.index);
   let lastRight = Number.NEGATIVE_INFINITY;
-  let lastText = '';
   for (const tick of labelTicks) {
     const x = indexToX(tick.index, range, plot);
     if (x < plot.left || x > plot.left + plot.width) continue;
     const text = formatTime(tick.time);
-    if (text === lastText) continue;
     const half = Math.max(
       TIME_LABEL_MIN_GAP_PX / 2,
       ctx.measureText(text).width / 2 + TIME_LABEL_PAD_PX,
@@ -641,7 +640,6 @@ function drawTimeAxis(
     if (x - half < lastRight) continue;
     ctx.fillText(text, x, axisY + 8);
     lastRight = x + half;
-    lastText = text;
   }
 }
 

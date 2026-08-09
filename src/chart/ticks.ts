@@ -189,7 +189,11 @@ export function niceTimeTicks(
 
   const span = range.toIndex - range.fromIndex;
   const period = resolveBarPeriod(bars, opts?.barPeriod);
-  const baseSeq = Math.round(bars[0]!.time / period);
+  // Lattice phase from the tip (stable) — bars[0] slides under Play fill-ahead
+  // and used to re-phase the grid while candles stayed put (labels looked like
+  // they were drifting independently of the strokes).
+  const tipIdx = bars.length - 1;
+  const baseSeq = Math.round(bars[tipIdx]!.time / period) - tipIdx;
   const ideal = Math.max(1e-6, span / Math.max(2, approxCount));
 
   const ticks: TimeTick[] = [];

@@ -37,25 +37,19 @@ export interface TimeTick {
   /** Logical bar index — integer so each line sits on a candle center. */
   index: number;
   time: number;
-  /**
-   * Stroke opacity 0..1. Majors are 1; minors fade during zoom so density
-   * changes don't pop (still candle-aligned).
-   */
+  /** Stroke opacity 0..1 (dense lines fade while zooming). */
   alpha: number;
 }
 
-/**
- * Per-engine sticky octave for the time lattice (`exp` → step = 2^exp).
- */
+/** @deprecated kept so engines can pass a stub; lattice is a pure function of span. */
 export interface TimeLatticeSticky {
-  /** log2(majorStep); -1 = unset */
   exp: number;
 }
 
 export interface NiceTimeTicksOpts {
   /** Declared TF period (seconds). Preferred when it matches the series. */
   barPeriod?: number;
-  /** One object per chart engine. */
+  /** Ignored — accepted for API compat with per-engine paint state. */
   sticky?: TimeLatticeSticky;
 }
 
@@ -66,39 +60,9 @@ export function nestedIndexStep(raw: number): number {
   return 2 ** exp;
 }
 
-/**
- * Sticky octave + fractional position inside it.
- * `frac` in ~[0,1) drives minor-line fade (1 at octave start → 0 at next).
- */
-function stickyOctave(
-  span: number,
-  approxCount: number,
-  sticky?: TimeLatticeSticky,
-): { exp: number; frac: number; majorStep: number } {
-  const raw = Math.max(1, span / Math.max(2, approxCount));
-  const ideal = Math.log2(raw);
-  let exp = sticky && sticky.exp >= 0 ? sticky.exp : Math.floor(ideal);
-
-  // Hysteresis so we don't thrash at octave boundaries.
-  if (ideal >= exp + 0.85) {
-    exp = Math.floor(ideal);
-  } else if (ideal < exp + 0.15) {
-    exp = Math.max(0, Math.floor(ideal));
-  }
-
-  if (sticky) sticky.exp = exp;
-
-  const frac = Math.min(1, Math.max(0, ideal - exp));
-  return { exp, frac, majorStep: 2 ** exp };
-}
-
-/** Smooth fade for minor lines across the octave. */
-function minorAlpha(frac: number): number {
-  // Hold full minors early in the octave, then ease out before the next major.
-  if (frac <= 0.2) return 1;
-  if (frac >= 0.85) return 0;
-  const t = (frac - 0.2) / (0.85 - 0.2);
-  return 1 - t * t * (3 - 2 * t); // smoothstep
+function smoothstep01(t: number): number {
+  const x = Math.min(1, Math.max(0, t));
+  return x * x * (3 - 2 * x);
 }
 
 /**
@@ -187,10 +151,14 @@ function pushLattice(
 }
 
 /**
- * Candle-aligned grid with zoom crossfade.
+ * Candle-aligned grid with continuous zoom crossfade (no sticky pop).
  *
- * Majors + fading minors on power-of-two lattices. Every line sits on a candle
- * center; zoom-out fades half the lines away instead of popping density.
+ * Pure function of visible span:
+ * - coarse lattice (2^{e+1}) always solid
+ * - dense lattice (2^e) fades 1→0 across the octave
+ *
+ * At an octave boundary the roles hand off without jumping indices — every
+ * line stays on a candle center.
  */
 export function niceTimeTicks(
   range: VisibleRange,
@@ -201,29 +169,30 @@ export function niceTimeTicks(
   if (bars.length === 0 || range.toIndex <= range.fromIndex) return [];
 
   const span = range.toIndex - range.fromIndex;
-  const { frac, majorStep } = stickyOctave(span, approxCount, opts?.sticky);
   const period = resolveBarPeriod(bars, opts?.barPeriod);
   const baseSeq = Math.round(bars[0]!.time / period);
 
+  const raw = Math.max(1e-6, span / Math.max(2, approxCount));
   const ticks: TimeTick[] = [];
   const seen = new Set<number>();
 
-  // Majors first (full opacity).
-  pushLattice(ticks, range, bars, period, baseSeq, majorStep, 1, seen);
-
-  // Minors at half step — fade out across the octave before majors thin.
-  if (majorStep >= 2) {
-    pushLattice(
-      ticks,
-      range,
-      bars,
-      period,
-      baseSeq,
-      majorStep / 2,
-      minorAlpha(frac),
-      seen,
-    );
+  // Very zoomed in: a line on every candle.
+  if (raw <= 1) {
+    pushLattice(ticks, range, bars, period, baseSeq, 1, 1, seen);
+    ticks.sort((a, b) => a.index - b.index);
+    return ticks;
   }
+
+  const exact = Math.log2(raw);
+  const exp = Math.max(0, Math.floor(exact));
+  const frac = exact - exp; // [0, 1) — continuous as span changes
+  const stepDense = 2 ** exp;
+  const stepCoarse = 2 ** (exp + 1);
+  // Dense extras fade out before the next octave; coarse stays solid.
+  const denseAlpha = 1 - smoothstep01(frac);
+
+  pushLattice(ticks, range, bars, period, baseSeq, stepCoarse, 1, seen);
+  pushLattice(ticks, range, bars, period, baseSeq, stepDense, denseAlpha, seen);
 
   ticks.sort((a, b) => a.index - b.index);
 

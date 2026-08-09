@@ -530,6 +530,7 @@ function drawGrid(
       .filter((x) => x.a >= 0.02)
       .sort((u, v) => u.a - v.a || u.i - v.i);
     for (const { t, a } of ordered) {
+      // Same X as candle center (no Math.round — that snapped 1px while zooming).
       const x = indexToX(t.index, range, plot) + 0.5;
       if (x < plot.left || x > plot.left + plot.width) continue;
       ctx.globalAlpha = a;

@@ -80,6 +80,7 @@ function drawCandles(
     if (colors.showWick) {
       ctx.strokeStyle = wick;
       ctx.lineWidth = 1;
+      // Same X as the time grid (candle center + 0.5).
       ctx.beginPath();
       ctx.moveTo(x + 0.5, yHigh);
       ctx.lineTo(x + 0.5, yLow);

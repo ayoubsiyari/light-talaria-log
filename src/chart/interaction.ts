@@ -614,7 +614,10 @@ export function attachInteraction(
 
     const anchorIndex = xToIndex(x, range, plot);
     const span = range.toIndex - range.fromIndex;
-    const zoomFactor = e.deltaY > 0 ? 1.12 : 1 / 1.12;
+    // Continuous zoom from wheel/trackpad delta (not coarse 12% notches).
+    // Clamp so a single mouse-wheel tick can't jump a whole octave.
+    const dy = Math.max(-80, Math.min(80, e.deltaY));
+    const zoomFactor = Math.exp(dy * 0.0018);
     let nextSpan = span * zoomFactor;
     nextSpan = Math.max(MIN_VISIBLE, Math.min(MAX_VISIBLE, nextSpan));
 

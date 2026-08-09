@@ -252,15 +252,31 @@ export interface SelectStickyTimeLabelsOpts {
  * instead of hopping when overlap-cull membership changes.
  */
 export function selectStickyTimeLabels(
-  ticks: readonly TimeTick[],
+  ticks: readonly {
+    index: number;
+    time: number;
+    alpha?: number;
+    label?: boolean;
+  }[],
   range: VisibleRange,
   opts: SelectStickyTimeLabelsOpts,
 ): { labels: TimeTick[]; sticky: TimeLabelSticky } {
   const { halfWidthForTime, plotLeft, plotWidth, sticky } = opts;
   const plotRight = plotLeft + plotWidth;
+  const asTick = (t: {
+    index: number;
+    time: number;
+    alpha?: number;
+    label?: boolean;
+  }): TimeTick => ({
+    index: t.index,
+    time: t.time,
+    alpha: t.alpha ?? 1,
+    label: t.label !== false,
+  });
   const candidates = ticks
     .filter((t) => t.label !== false && (t.alpha ?? 1) >= 0.99)
-    .slice()
+    .map(asTick)
     .sort((a, b) => a.index - b.index);
 
   type Placed = { tick: TimeTick; x: number; half: number };

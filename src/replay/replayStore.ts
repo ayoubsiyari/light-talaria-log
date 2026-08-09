@@ -78,13 +78,9 @@ export function createReplayController(): ReplayController {
 
   const clockPeriod = () => timeframeSeconds(baseTf);
 
-  /** How many base-TF bars equal one rate-TF bar. */
-  const clockStepsPerRateBar = () =>
-    Math.max(1, Math.round(timeframeSeconds(rateTf) / timeframeSeconds(baseTf)));
-
   /**
    * Close of the rate-TF candle containing `time` (last base bar in that bucket).
-   * Stepping lands here so higher-TF tips show full OHLC, not the bucket open.
+   * Step/Play land here so higher-TF tips show full OHLC, not the bucket open.
    */
   const rateCandleClose = (time: number): number => {
     const baseP = clockPeriod();
@@ -139,15 +135,31 @@ export function createReplayController(): ReplayController {
     clearWatchdog();
   };
 
-  const advanceClockBars = (clockBars: number) => {
+  /**
+   * Next cursor after advancing `rateBars` forward — same landing as step(+n):
+   * rate-candle *closes* so higher-TF tips show full OHLC (not bucket-open stubs).
+   */
+  const forwardRateCursor = (from: number, rateBars: number): number => {
     const period = clockPeriod();
-    const delta = period * clockBars;
-    const next = Math.min(state.endTime, state.cursorTime + delta);
-    const snapped = Math.min(state.endTime, snapToBar(next, period, state.startTime));
+    const rateP = Math.max(period, timeframeSeconds(rateTf));
+    const curClose = rateCandleClose(from);
+    const next =
+      from < curClose
+        ? curClose + rateP * (rateBars - 1)
+        : curClose + rateP * rateBars;
+    return Math.min(
+      state.endTime,
+      Math.max(state.startTime, snapToBar(next, period, state.startTime)),
+    );
+  };
+
+  /** Play tick: advance by rate-TF bars (speed), landing on closes like step. */
+  const advanceRateBars = (rateBars: number) => {
+    if (rateBars <= 0) return true;
+    const next = forwardRateCursor(state.cursorTime, rateBars);
     // No forward snap (end not on grid, or zero-period) — stop instead of spinning rAF.
-    if (snapped === state.cursorTime) {
-      const atEnd =
-        state.cursorTime >= state.endTime || next >= state.endTime;
+    if (next === state.cursorTime) {
+      const atEnd = state.cursorTime >= state.endTime;
       state = {
         ...state,
         playing: false,
@@ -157,7 +169,7 @@ export function createReplayController(): ReplayController {
       stopRaf();
       return false;
     }
-    state = { ...state, cursorTime: snapped };
+    state = { ...state, cursorTime: next };
     notify();
     if (state.cursorTime >= state.endTime) {
       state = { ...state, playing: false, cursorTime: state.endTime };
@@ -202,7 +214,9 @@ export function createReplayController(): ReplayController {
           typeof performance !== 'undefined' ? performance.now() : 0;
         try {
           if (rateBars > 0) {
-            keepGoing = advanceClockBars(clockStepsPerRateBar() * rateBars);
+            // Land on rate-candle closes (not open + N*rate) — same as step(+n).
+            // Jumping open→open left higher-TF Play tips as 1-bar stubs.
+            keepGoing = advanceRateBars(rateBars);
           }
           if (import.meta.env?.DEV && typeof performance !== 'undefined') {
             const frameMs = performance.now() - frameStart + dtMs;
@@ -304,32 +318,28 @@ export function createReplayController(): ReplayController {
     step(deltaBars) {
       if (deltaBars === 0) return;
       const period = clockPeriod();
-      const rateP = Math.max(period, timeframeSeconds(rateTf));
-      const curClose = rateCandleClose(state.cursorTime);
-      let next: number;
+      let cursorTime: number;
       if (deltaBars > 0) {
-        // Complete the open rate candle first (tip = full OHLC), then step
-        // close → close so each click reveals a finished higher-TF bar.
-        if (state.cursorTime < curClose) {
-          next = curClose + rateP * (deltaBars - 1);
-        } else {
-          next = curClose + rateP * deltaBars;
-        }
+        // Same close-landing as Play — tip = full OHLC on higher TFs.
+        cursorTime = forwardRateCursor(state.cursorTime, deltaBars);
       } else {
+        const rateP = Math.max(period, timeframeSeconds(rateTf));
+        const curClose = rateCandleClose(state.cursorTime);
+        let next: number;
         // Backward: land on previous rate-candle closes.
         if (state.cursorTime > curClose) {
           next = curClose + rateP * (deltaBars + 1);
         } else {
           next = curClose + rateP * deltaBars;
         }
+        cursorTime = Math.min(
+          state.endTime,
+          Math.max(
+            state.startTime,
+            snapToBar(next, period, state.startTime),
+          ),
+        );
       }
-      const cursorTime = Math.min(
-        state.endTime,
-        Math.max(
-          state.startTime,
-          snapToBar(next, period, state.startTime),
-        ),
-      );
       state = { ...state, cursorTime, playing: false };
       stopRaf();
       notify();

@@ -93,6 +93,29 @@ describe('createReplayController', () => {
     ctrl.dispose();
   });
 
+  it('play on 15m lands on candle closes (full tip), not bucket opens', async () => {
+    const ctrl = createReplayController();
+    const open15 = Math.floor(1_700_000_100 / 900) * 900;
+    ctrl.configure(open15, open15 + 86_400, 3600);
+    ctrl.setBaseTf('1m');
+    ctrl.setRateTf('15m');
+    ctrl.setSpeed(20);
+    ctrl.seek(open15);
+    ctrl.play();
+    await new Promise((r) => setTimeout(r, 100));
+    ctrl.pause();
+    const t = ctrl.get().cursorTime;
+    const close0 = open15 + 14 * 60;
+    // Must be on a 15m close grid (open + 14m + N*15m), never a bare bucket open.
+    assert.ok(t >= close0, `cursor ${t} should reach at least first close ${close0}`);
+    assert.equal(
+      (t - close0) % (15 * 60),
+      0,
+      `play cursor ${t} should land on 15m closes, not opens`,
+    );
+    ctrl.dispose();
+  });
+
   it('1m step still advances one base bar', () => {
     const ctrl = createReplayController();
     const t0 = Math.floor(1_700_000_000 / 60) * 60;

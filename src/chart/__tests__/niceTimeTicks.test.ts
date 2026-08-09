@@ -1,5 +1,5 @@
 /**
- * Candle-aligned nested time grid. Run: npm run test:chart
+ * Candle-aligned nested time grid with zoom crossfade. Run: npm run test:chart
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -38,16 +38,17 @@ describe('niceTimeTicks', () => {
     assert.equal(new Set(times).size, times.length, 'duplicate times');
   });
 
-  it('keeps equal logical spacing on integer candle indices', () => {
+  it('keeps majors on integer candle indices with equal spacing', () => {
     const data = bars(400);
     const ticks = niceTimeTicks({ fromIndex: 100, toIndex: 220 }, data, 8);
-    assert.ok(ticks.length >= 3);
-    for (const t of ticks) {
+    const majors = ticks.filter((t) => t.alpha >= 0.95);
+    assert.ok(majors.length >= 3);
+    for (const t of majors) {
       assert.equal(t.index, Math.round(t.index), 'must sit on candle index');
     }
     const gaps: number[] = [];
-    for (let i = 1; i < ticks.length; i++) {
-      gaps.push(ticks[i]!.index - ticks[i - 1]!.index);
+    for (let i = 1; i < majors.length; i++) {
+      gaps.push(majors[i]!.index - majors[i - 1]!.index);
     }
     const step = gaps[0]!;
     for (const g of gaps) {
@@ -57,7 +58,7 @@ describe('niceTimeTicks', () => {
 
   it('scrolls smoothly: tick indices stay put while camera pans', () => {
     const data = bars(300);
-    const sticky: TimeLatticeSticky = { step: 0, span: 0 };
+    const sticky: TimeLatticeSticky = { exp: -1 };
     const r0 = { fromIndex: 100, toIndex: 220 };
     const r1 = { fromIndex: 100.4, toIndex: 220.4 };
     const t0 = niceTimeTicks(r0, data, 8, { sticky });
@@ -99,7 +100,7 @@ describe('niceTimeTicks', () => {
 
   it('moves grid X left when right-anchored tip advances by one bar', () => {
     const data = bars(300);
-    const sticky: TimeLatticeSticky = { step: 0, span: 0 };
+    const sticky: TimeLatticeSticky = { exp: -1 };
     const span = 120;
     const r0 = { fromIndex: 100, toIndex: 100 + span };
     const r1 = { fromIndex: 101, toIndex: 101 + span };
@@ -115,7 +116,7 @@ describe('niceTimeTicks', () => {
   });
 
   it('moves grid X left when buffer slides under a fixed index window', () => {
-    const sticky: TimeLatticeSticky = { step: 0, span: 0 };
+    const sticky: TimeLatticeSticky = { exp: -1 };
     const w0 = bars(120, 1_700_000_000);
     const w1 = bars(120, 1_700_000_000 + 60);
     const range = { fromIndex: 0, toIndex: 120 };
@@ -155,10 +156,12 @@ describe('niceTimeTicks', () => {
     const range = { fromIndex: 10, toIndex: 40 };
     const a = niceTimeTicks(range, short, 8, { barPeriod: day });
     const b = niceTimeTicks(range, long, 8, { barPeriod: day });
-    assert.ok(a.length >= 2 && b.length >= 2);
+    const a0 = a.find((t) => t.alpha >= 0.95)!;
+    const b0 = b.find((t) => t.alpha >= 0.95)!;
+    assert.ok(a0 && b0);
     assert.ok(
-      Math.abs(a[0]!.index - b[0]!.index) < 1e-9,
-      `phase jump: ${a[0]!.index} vs ${b[0]!.index}`,
+      Math.abs(a0.index - b0.index) < 1e-9,
+      `phase jump: ${a0.index} vs ${b0.index}`,
     );
   });
 
@@ -168,49 +171,66 @@ describe('niceTimeTicks', () => {
     assert.equal(resolveBarPeriod(data, 86_400), 60);
   });
 
-  it('holds density across small zooms (octave hysteresis)', () => {
-    const data = bars(400);
-    const sticky: TimeLatticeSticky = { step: 0, span: 0 };
-    const r0 = { fromIndex: 100, toIndex: 200 };
-    niceTimeTicks(r0, data, 8, { sticky });
-    assert.equal(sticky.step, 16);
-    const r1 = { fromIndex: 100, toIndex: 220 };
-    niceTimeTicks(r1, data, 8, { sticky });
-    assert.equal(sticky.step, 16);
+  it('fades minors across a zoom-out octave (no hard pop)', () => {
+    const data = bars(800);
+    const sticky: TimeLatticeSticky = { exp: -1 };
+    // span 80 → raw 10 → exp floor(log2(10))=3 → major 8
+    const dense = niceTimeTicks({ fromIndex: 50, toIndex: 130 }, data, 8, {
+      sticky,
+    });
+    assert.equal(sticky.exp, 3);
+    assert.equal(nestedIndexStep(10), 8);
+    const minorsDense = dense.filter((t) => t.alpha > 0.02 && t.alpha < 0.95);
+    assert.ok(minorsDense.length >= 1, 'expected visible minors when zoomed in');
+
+    // Zoom out within same octave — minors should fade, majors stay put.
+    const mid = niceTimeTicks({ fromIndex: 50, toIndex: 50 + 120 }, data, 8, {
+      sticky,
+    });
+    assert.equal(sticky.exp, 3);
+    const majorsMid = mid.filter((t) => t.alpha >= 0.95).map((t) => t.index);
+    const majorsDense = dense
+      .filter((t) => t.alpha >= 0.95)
+      .map((t) => t.index)
+      .filter((i) => i >= 50 && i < 130);
+    for (const i of majorsDense) {
+      assert.ok(majorsMid.includes(i), `major ${i} vanished mid-zoom`);
+    }
+    const minAlpha = Math.min(
+      ...mid.filter((t) => t.alpha < 0.95 && t.alpha > 0).map((t) => t.alpha),
+      1,
+    );
+    // raw=15 → frac≈0.9 → minors nearly gone
+    assert.ok(minAlpha < 0.5 || mid.every((t) => t.alpha >= 0.95 || t.alpha < 0.02));
   });
 
-  it('zoom-out keeps candle-aligned nested subset (no teleport)', () => {
+  it('zoom-out major lattice stays nested on candles', () => {
     const data = bars(800);
-    const sticky: TimeLatticeSticky = { step: 0, span: 0 };
-    const spans = [80, 160, 320, 640];
+    const sticky: TimeLatticeSticky = { exp: -1 };
+    const spans = [64, 128, 256, 512];
+    let prevMajors: number[] | null = null;
     let prevRange: { fromIndex: number; toIndex: number } | null = null;
-    let prev: ReturnType<typeof niceTimeTicks> | null = null;
-    let prevStep = 0;
     for (const span of spans) {
-      const range = { fromIndex: 50, toIndex: 50 + span };
+      const range = { fromIndex: 40, toIndex: 40 + span };
       const ticks = niceTimeTicks(range, data, 8, { sticky });
-      assert.ok(ticks.length >= 2);
-      for (const t of ticks) {
+      const majors = ticks.filter((t) => t.alpha >= 0.95);
+      assert.ok(majors.length >= 2);
+      for (const t of majors) {
         assert.equal(t.index, Math.round(t.index));
       }
-      assert.equal(sticky.step & (sticky.step - 1), 0);
-      assert.ok(sticky.step >= prevStep);
-      assert.equal(sticky.step, nestedIndexStep(span / 8));
-      if (prevStep > 0) {
-        assert.equal(sticky.step % prevStep, 0);
-      }
-      if (prev && prevRange) {
-        for (const t of ticks) {
+      if (prevMajors && prevRange) {
+        for (const t of majors) {
           if (t.index < prevRange.fromIndex || t.index >= prevRange.toIndex) {
             continue;
           }
-          const was = prev.some((p) => p.index === t.index);
-          assert.ok(was, `teleport at index ${t.index}`);
+          assert.ok(
+            prevMajors.includes(t.index),
+            `major teleport at ${t.index}`,
+          );
         }
       }
-      prev = ticks;
+      prevMajors = majors.map((t) => t.index);
       prevRange = range;
-      prevStep = sticky.step;
     }
   });
 });

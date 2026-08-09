@@ -340,8 +340,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   let hoveredDrawingId: string | null = null;
   let drawingsHidden = false;
   let paneTimeframe: Timeframe | null = null;
-  /** Nested grid density sticky — one per engine (multi-pane safe). */
-  const timeLatticeSticky: TimeLatticeSticky = { step: 0, span: 0 };
+  /** Nested grid octave sticky — one per engine (multi-pane safe). */
+  const timeLatticeSticky: TimeLatticeSticky = { exp: -1 };
   let drawingMagnetMode: MagnetMode = 'off';
   let drawingShiftHeld = false;
   let replayCursorTime: number | null = null;
@@ -1617,8 +1617,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       }
       if (opts?.paneTimeframe !== undefined) {
         if (paneTimeframe !== opts.paneTimeframe) {
-          timeLatticeSticky.step = 0;
-          timeLatticeSticky.span = 0;
+          timeLatticeSticky.exp = -1;
         }
         paneTimeframe = opts.paneTimeframe;
       }

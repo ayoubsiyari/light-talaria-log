@@ -501,7 +501,7 @@ function drawGrid(
   priceScale: PriceScale,
   range: VisibleRange,
   priceTicks: number[],
-  timeTicks: { index: number }[],
+  timeTicks: { index: number; alpha?: number }[],
   colors: ChartColors,
 ): void {
   const { plot } = layout;
@@ -524,16 +524,21 @@ function drawGrid(
   if (colors.showGridV) {
     ctx.strokeStyle = colors.gridVertical;
     ctx.setLineDash(dashFor(colors.gridVStyle));
-    for (const tick of timeTicks) {
-      // No Math.round — candle-aligned pixel snap was the small zoom "tick".
-      // Half-pixel offset keeps 1px strokes crisp under the current transform.
-      const x = indexToX(tick.index, range, plot) + 0.5;
+    // Paint faint minors first, then majors on top.
+    const ordered = timeTicks
+      .map((t, i) => ({ t, i, a: t.alpha ?? 1 }))
+      .filter((x) => x.a >= 0.02)
+      .sort((u, v) => u.a - v.a || u.i - v.i);
+    for (const { t, a } of ordered) {
+      const x = indexToX(t.index, range, plot) + 0.5;
       if (x < plot.left || x > plot.left + plot.width) continue;
+      ctx.globalAlpha = a;
       ctx.beginPath();
       ctx.moveTo(x, plot.top);
       ctx.lineTo(x, gridBottom);
       ctx.stroke();
     }
+    ctx.globalAlpha = 1;
   }
 
   ctx.setLineDash([]);
@@ -574,7 +579,7 @@ function drawTimeAxis(
   ctx: CanvasRenderingContext2D,
   layout: RenderLayout,
   range: VisibleRange,
-  timeTicks: { index: number; time: number }[],
+  timeTicks: { index: number; time: number; alpha?: number }[],
   colors: ChartColors,
 ): void {
   const { plot, height, timeAxisHeight, width } = layout;
@@ -597,6 +602,8 @@ function drawTimeAxis(
   let lastLabel = '';
   let lastLabelX = Number.NEGATIVE_INFINITY;
   for (const tick of timeTicks) {
+    // Labels only on solid majors — fading minors would flicker text.
+    if ((tick.alpha ?? 1) < 0.95) continue;
     const x = indexToX(tick.index, range, plot);
     if (x < plot.left || x > plot.left + plot.width) continue;
     if (x - lastLabelX < TIME_LABEL_MIN_GAP_PX) continue;

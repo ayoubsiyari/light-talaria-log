@@ -37,15 +37,19 @@ export interface TimeTick {
   /** Logical bar index — integer so each line sits on a candle center. */
   index: number;
   time: number;
+  /**
+   * Stroke opacity 0..1. Majors are 1; minors fade during zoom so density
+   * changes don't pop (still candle-aligned).
+   */
+  alpha: number;
 }
 
 /**
- * Per-engine sticky density. Powers of two only so zoom-out drops every other
- * line and survivors stay on the same candles (no rephase / teleport).
+ * Per-engine sticky octave for the time lattice (`exp` → step = 2^exp).
  */
 export interface TimeLatticeSticky {
-  step: number;
-  span: number;
+  /** log2(majorStep); -1 = unset */
+  exp: number;
 }
 
 export interface NiceTimeTicksOpts {
@@ -55,44 +59,46 @@ export interface NiceTimeTicksOpts {
   sticky?: TimeLatticeSticky;
 }
 
-/** Nested lattice step: 1, 2, 4, 8, … (always candle-aligned when integer). */
+/** Nested lattice step: 1, 2, 4, 8, … */
 export function nestedIndexStep(raw: number): number {
   const n = Math.max(1, raw);
-  const exp = Math.round(Math.log2(n));
-  return Math.max(1, 2 ** Math.max(0, exp));
+  const exp = Math.max(0, Math.floor(Math.log2(n)));
+  return 2 ** exp;
 }
 
 /**
- * Octave hysteresis — only double/halve step so the visible lattice is always
- * a subset/superset of the previous frame (candles keep their lines).
+ * Sticky octave + fractional position inside it.
+ * `frac` in ~[0,1) drives minor-line fade (1 at octave start → 0 at next).
  */
-function nestedIndexStepSticky(
+function stickyOctave(
   span: number,
   approxCount: number,
   sticky?: TimeLatticeSticky,
-): number {
-  const raw = span / Math.max(2, approxCount);
-  if (!sticky || sticky.step <= 0) {
-    const step = nestedIndexStep(raw);
-    if (sticky) {
-      sticky.step = step;
-      sticky.span = span;
-    }
-    return step;
+): { exp: number; frac: number; majorStep: number } {
+  const raw = Math.max(1, span / Math.max(2, approxCount));
+  const ideal = Math.log2(raw);
+  let exp = sticky && sticky.exp >= 0 ? sticky.exp : Math.floor(ideal);
+
+  // Hysteresis so we don't thrash at octave boundaries.
+  if (ideal >= exp + 0.85) {
+    exp = Math.floor(ideal);
+  } else if (ideal < exp + 0.15) {
+    exp = Math.max(0, Math.floor(ideal));
   }
 
-  const hi = sticky.step * Math.SQRT2;
-  const lo = sticky.step / Math.SQRT2;
-  let step = sticky.step;
-  if (raw > hi) {
-    while (raw > step * Math.SQRT2) step *= 2;
-  } else if (raw < lo) {
-    while (step > 1 && raw < step / Math.SQRT2) step = Math.max(1, step / 2);
-  }
+  if (sticky) sticky.exp = exp;
 
-  sticky.step = step;
-  sticky.span = span;
-  return step;
+  const frac = Math.min(1, Math.max(0, ideal - exp));
+  return { exp, frac, majorStep: 2 ** exp };
+}
+
+/** Smooth fade for minor lines across the octave. */
+function minorAlpha(frac: number): number {
+  // Hold full minors early in the octave, then ease out before the next major.
+  if (frac <= 0.2) return 1;
+  if (frac >= 0.85) return 0;
+  const t = (frac - 0.2) / (0.85 - 0.2);
+  return 1 - t * t * (3 - 2 * t); // smoothstep
 }
 
 /**
@@ -152,13 +158,39 @@ function timeAtLogicalIndex(
   return bars[0]!.time + index * period;
 }
 
+function pushLattice(
+  ticks: TimeTick[],
+  range: VisibleRange,
+  bars: readonly ChartBar[],
+  period: number,
+  baseSeq: number,
+  step: number,
+  alpha: number,
+  seen: Set<number>,
+): void {
+  if (step < 1 || alpha < 0.02) return;
+  const phase = ((baseSeq % step) + step) % step;
+  let index = Math.ceil((range.fromIndex + phase) / step) * step - phase;
+  if (index < range.fromIndex - 1e-9) index += step;
+  index = Math.round(index);
+
+  for (; index < range.toIndex - 1e-9; index += step) {
+    if (seen.has(index)) continue;
+    seen.add(index);
+    ticks.push({
+      index,
+      time: timeAtLogicalIndex(bars, index, period),
+      alpha,
+    });
+    if (ticks.length > 64) break;
+  }
+}
+
 /**
- * Candle-aligned paper grid.
+ * Candle-aligned grid with zoom crossfade.
  *
- * Every vertical line sits on an integer bar index (candle center). Spacing is
- * a power of two so zoom-out only removes every other line — survivors stay on
- * the same candles. Phase locks to the series sequence so warm-cache slides
- * move the grid with the candles.
+ * Majors + fading minors on power-of-two lattices. Every line sits on a candle
+ * center; zoom-out fades half the lines away instead of popping density.
  */
 export function niceTimeTicks(
   range: VisibleRange,
@@ -169,33 +201,38 @@ export function niceTimeTicks(
   if (bars.length === 0 || range.toIndex <= range.fromIndex) return [];
 
   const span = range.toIndex - range.fromIndex;
-  const step = nestedIndexStepSticky(span, approxCount, opts?.sticky);
+  const { frac, majorStep } = stickyOctave(span, approxCount, opts?.sticky);
   const period = resolveBarPeriod(bars, opts?.barPeriod);
-
-  // Tick when (baseSeq + index) ≡ 0 (mod step) → line through that candle.
   const baseSeq = Math.round(bars[0]!.time / period);
-  const phase = ((baseSeq % step) + step) % step;
-
-  // First integer lattice index ≥ range.fromIndex
-  let index = Math.ceil((range.fromIndex + phase) / step) * step - phase;
-  if (index < range.fromIndex - 1e-9) index += step;
-  // Snap tiny float error onto an integer candle slot.
-  index = Math.round(index);
 
   const ticks: TimeTick[] = [];
-  for (; index < range.toIndex - 1e-9; index += step) {
-    ticks.push({
-      index,
-      time: timeAtLogicalIndex(bars, index, period),
-    });
-    if (ticks.length > 48) break;
+  const seen = new Set<number>();
+
+  // Majors first (full opacity).
+  pushLattice(ticks, range, bars, period, baseSeq, majorStep, 1, seen);
+
+  // Minors at half step — fade out across the octave before majors thin.
+  if (majorStep >= 2) {
+    pushLattice(
+      ticks,
+      range,
+      bars,
+      period,
+      baseSeq,
+      majorStep / 2,
+      minorAlpha(frac),
+      seen,
+    );
   }
+
+  ticks.sort((a, b) => a.index - b.index);
 
   if (ticks.length === 0) {
     const mid = Math.round((range.fromIndex + range.toIndex) / 2);
     ticks.push({
       index: mid,
       time: timeAtLogicalIndex(bars, mid, period),
+      alpha: 1,
     });
   }
 

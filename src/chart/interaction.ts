@@ -658,10 +658,13 @@ export function attachInteraction(
 
     const anchorIndex = xToIndex(x, range, plot);
     const span = range.toIndex - range.fromIndex;
-    // Continuous zoom from wheel/trackpad delta (not coarse 12% notches).
-    // Clamp so a single mouse-wheel tick can't jump a whole octave.
-    const dy = Math.max(-80, Math.min(80, e.deltaY));
-    const zoomFactor = Math.exp(dy * 0.0018);
+    // Pixel-ish delta (LINE/PAGE modes → CSS px), then gentle exponential zoom.
+    // Tiny per-event factors so V-grid density can crossfade (no octave teleport).
+    let dy = e.deltaY;
+    if (e.deltaMode === 1) dy *= 16;
+    else if (e.deltaMode === 2) dy *= layout.height || 400;
+    dy = Math.max(-16, Math.min(16, dy));
+    const zoomFactor = Math.exp(dy * 0.0007);
     let nextSpan = span * zoomFactor;
     nextSpan = Math.max(MIN_VISIBLE, Math.min(MAX_VISIBLE, nextSpan));
 
@@ -711,7 +714,8 @@ function zoomTimeByDrag(callbacks: InteractionCallbacks, dx: number): void {
   const barCount = callbacks.getBarCount();
   const span = range.toIndex - range.fromIndex;
   const mid = (range.fromIndex + range.toIndex) / 2;
-  const factor = dx > 0 ? 1.02 : 1 / 1.02;
+  // Continuous axis-drag zoom (smaller than before — matches wheel feel).
+  const factor = Math.exp(dx * 0.0035);
   let nextSpan = span * factor;
   nextSpan = Math.max(MIN_VISIBLE, Math.min(MAX_VISIBLE, nextSpan));
   callbacks.setRange(

@@ -30,27 +30,28 @@ const plot = { left: 0, width: 1200, top: 0, height: 400 };
 
 describe('niceTimeTicks', () => {
   it('stepAlpha is continuous across octave boundaries (zoom in)', () => {
-    // Crossing ideal 8→7.9 must not jump step-4 from 0 → 1.
+    // 3-octave ease-out fade: at ideal=8, step4 stays clearly visible (not popped).
     const a8 = stepAlpha(4, 8.0);
     const a79 = stepAlpha(4, 7.9);
-    assert.ok(a8 <= 0.02, `at ideal=8, step4 should be hidden (got ${a8})`);
-    assert.ok(a79 <= 0.05, `just inside, step4 still nearly hidden (got ${a79})`);
-    // Further zoom-in fades step4 up smoothly
+    assert.ok(a8 > 0.5 && a8 < 0.95, `at ideal=8, step4 fading (got ${a8})`);
+    assert.ok(a79 >= a8 - 1e-9, 'zoom-in raises denser alpha');
     const a6 = stepAlpha(4, 6);
     const a5 = stepAlpha(4, 5);
     const a4 = stepAlpha(4, 4);
     assert.ok(a6 < a5 && a5 < a4, `fade-in expected: ${a6}, ${a5}, ${a4}`);
     assert.ok(Math.abs(a4 - 1) < 1e-9);
+    // Three octaves denser still nearly gone
+    assert.ok(stepAlpha(1, 8) <= 0.02);
   });
 
   it('stepAlpha is continuous across octave boundaries (zoom out)', () => {
     const a8 = stepAlpha(8, 8);
     const a9 = stepAlpha(8, 9);
     const a15 = stepAlpha(8, 15);
-    const a16 = stepAlpha(8, 16);
+    const a64 = stepAlpha(8, 64);
     assert.ok(Math.abs(a8 - 1) < 1e-9);
     assert.ok(a9 < a8 && a15 < a9, `fade-out expected: ${a8}, ${a9}, ${a15}`);
-    assert.ok(a16 <= 0.02, `at ideal=16 step8 hidden (got ${a16})`);
+    assert.ok(a64 <= 0.02, `at ideal=64 step8 hidden (got ${a64})`);
   });
 
   it('keeps ticks on integer candle indices', () => {
@@ -138,11 +139,11 @@ describe('niceTimeTicks', () => {
     void alphaAt;
   });
 
-  it('labels only on solid ticks', () => {
+  it('labels allowed on any visibly stroked tick', () => {
     const data = bars(400);
     const ticks = niceTimeTicks({ fromIndex: 50, toIndex: 200 }, data, 8);
     for (const t of ticks) {
-      if (t.label) assert.ok(t.alpha >= 0.99, 'label tick must be solid');
+      if (t.label) assert.ok(t.alpha >= 0.2, 'label tick must be visibly stroked');
     }
   });
 });

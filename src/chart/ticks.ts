@@ -65,20 +65,25 @@ function smoothstep01(t: number): number {
   return x * x * (3 - 2 * x);
 }
 
+/** Fade denser lattices across this many octaves (wider = less zoom snap). */
+const FADE_OCTAVES = 3;
+
 /**
  * Opacity for a power-of-two step given ideal bars-per-line.
  * Continuous in `ideal` — no floor/octave pop on zoom in or out.
  *
  * - step >= ideal → solid (coarser than needed)
- * - ideal/2 < step < ideal → fade (one octave denser)
- * - step <= ideal/2 → hidden
+ * - denser within FADE_OCTAVES → smooth fade (ease-out so minors linger)
+ * - denser than that → hidden
  */
 export function stepAlpha(step: number, ideal: number): number {
   if (!(step > 0) || !(ideal > 0)) return 0;
   const rel = Math.log2(ideal) - Math.log2(step);
   if (rel <= 0) return 1;
-  if (rel >= 1) return 0;
-  return 1 - smoothstep01(rel);
+  if (rel >= FADE_OCTAVES) return 0;
+  // Ease-out: denser lines stay readable longer while zooming, then taper.
+  const t = smoothstep01(rel / FADE_OCTAVES);
+  return 1 - t * t;
 }
 
 export function seriesBarPeriod(bars: readonly ChartBar[]): number {
@@ -195,9 +200,9 @@ export function niceTimeTicks(
     const step = 2 ** exp;
     const alpha = stepAlpha(step, ideal);
     if (alpha < 0.02) continue;
-    // Labels only on at-or-coarser-than-ideal (solid) lines — avoids text pop
-    // when denser strokes are still fading in.
-    const label = Math.log2(ideal) - Math.log2(step) <= 0;
+    // Any visible stroke may carry a label; paint fades text with alpha and
+    // culls by pixel gap — avoids hard label density jumps at 0.85.
+    const label = alpha >= 0.2;
     pushLattice(ticks, range, bars, period, baseSeq, step, alpha, label, seen);
   }
 

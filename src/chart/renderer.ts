@@ -621,21 +621,22 @@ function drawTimeAxis(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
 
-  let lastLabel = '';
-  let lastLabelX = Number.NEGATIVE_INFINITY;
-  for (const tick of timeTicks) {
-    // Solid (at-or-coarser) ticks only — fading denser lines must not steal labels.
-    if (tick.label === false) continue;
-    if ((tick.alpha ?? 1) < 0.95) continue;
-    const x = indexToX(tick.index, range, plot);
+  // Majors first so they claim pixel gaps; fainter labels only fill leftovers.
+  const labelTicks = timeTicks
+    .map((t, i) => ({ t, i, a: t.alpha ?? 1 }))
+    .filter((x) => x.t.label !== false && x.a >= 0.2)
+    .sort((u, v) => v.a - u.a || u.i - v.i);
+  const placedX: number[] = [];
+  for (const { t, a } of labelTicks) {
+    const x = indexToX(t.index, range, plot);
     if (x < plot.left || x > plot.left + plot.width) continue;
-    if (x - lastLabelX < TIME_LABEL_MIN_GAP_PX) continue;
-    const label = formatTime(tick.time);
-    if (label === lastLabel) continue;
-    lastLabel = label;
-    lastLabelX = x;
-    ctx.fillText(label, x, axisY + 8);
+    if (placedX.some((px) => Math.abs(px - x) < TIME_LABEL_MIN_GAP_PX)) continue;
+    placedX.push(x);
+    // Fade with stroke opacity — no hard cut when density crosses a threshold.
+    ctx.globalAlpha = a;
+    ctx.fillText(formatTime(t.time), x, axisY + 8);
   }
+  ctx.globalAlpha = 1;
 }
 
 function drawWatermark(

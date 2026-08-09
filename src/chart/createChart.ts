@@ -340,8 +340,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   let hoveredDrawingId: string | null = null;
   let drawingsHidden = false;
   let paneTimeframe: Timeframe | null = null;
-  /** Wall-clock grid anchor — one per engine (multi-pane safe). */
-  const timeLatticeSticky: TimeLatticeSticky = { anchorTime: null };
+  /** Nested grid density sticky — one per engine (multi-pane safe). */
+  const timeLatticeSticky: TimeLatticeSticky = { step: 0, span: 0 };
   let drawingMagnetMode: MagnetMode = 'off';
   let drawingShiftHeld = false;
   let replayCursorTime: number | null = null;
@@ -1617,7 +1617,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       }
       if (opts?.paneTimeframe !== undefined) {
         if (paneTimeframe !== opts.paneTimeframe) {
-          timeLatticeSticky.anchorTime = null;
+          timeLatticeSticky.step = 0;
+          timeLatticeSticky.span = 0;
         }
         paneTimeframe = opts.paneTimeframe;
       }

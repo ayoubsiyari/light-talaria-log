@@ -879,6 +879,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-09 | Grid harden: TF-period pin + integer phase; zoom density sticky; pixel-snapped V lines; time-label min gap | Pan/zoom 1D — no shimmer / density thrash |
 | 2026-08-09 | Grid zoom-out: power-of-two nested lattice (drop lines, never rephase/teleport); octave hysteresis | Zoom out — lines thin in place |
 | 2026-08-09 | Grid: continuous span/N paper (not candle-snapped); sticky wall-clock anchor; no V-line pixel round | Zoom out — lines spread, no small snap |
+| 2026-08-09 | Grid look: candle-aligned integer lattice + pow2 nested zoom (lines on candle centers; zoom thins in place) | Zoom — every line on a candle; no free-float paper |
 
 ---
 

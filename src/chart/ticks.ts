@@ -1,5 +1,4 @@
 import type { ChartBar, VisibleRange } from '@/types/bar';
-import { logicalIndexAtTime } from '@/data/timeframeAgg';
 
 /** Nice step: 1 / 2 / 5 × 10^n covering the range with ~approxCount ticks. */
 export function nicePriceTicks(min: number, max: number, approxCount = 6): number[] {
@@ -35,18 +34,18 @@ function roundToStep(value: number, step: number): number {
 }
 
 export interface TimeTick {
-  /** Logical index — may be fractional; may be < 0 or ≥ bars.length for pad. */
+  /** Logical bar index — integer so each line sits on a candle center. */
   index: number;
   time: number;
 }
 
 /**
- * Per-engine sticky for the time lattice.
- * `anchorTime` pins one world line across zoom so density can change continuously
- * without rephasing onto candle centers.
+ * Per-engine sticky density. Powers of two only so zoom-out drops every other
+ * line and survivors stay on the same candles (no rephase / teleport).
  */
 export interface TimeLatticeSticky {
-  anchorTime: number | null;
+  step: number;
+  span: number;
 }
 
 export interface NiceTimeTicksOpts {
@@ -56,9 +55,49 @@ export interface NiceTimeTicksOpts {
   sticky?: TimeLatticeSticky;
 }
 
+/** Nested lattice step: 1, 2, 4, 8, … (always candle-aligned when integer). */
+export function nestedIndexStep(raw: number): number {
+  const n = Math.max(1, raw);
+  const exp = Math.round(Math.log2(n));
+  return Math.max(1, 2 ** Math.max(0, exp));
+}
+
 /**
- * Stable bar period from the series itself (not the moving viewport).
- * Median gap — weekends must not inflate the period used for pad extrapolation.
+ * Octave hysteresis — only double/halve step so the visible lattice is always
+ * a subset/superset of the previous frame (candles keep their lines).
+ */
+function nestedIndexStepSticky(
+  span: number,
+  approxCount: number,
+  sticky?: TimeLatticeSticky,
+): number {
+  const raw = span / Math.max(2, approxCount);
+  if (!sticky || sticky.step <= 0) {
+    const step = nestedIndexStep(raw);
+    if (sticky) {
+      sticky.step = step;
+      sticky.span = span;
+    }
+    return step;
+  }
+
+  const hi = sticky.step * Math.SQRT2;
+  const lo = sticky.step / Math.SQRT2;
+  let step = sticky.step;
+  if (raw > hi) {
+    while (raw > step * Math.SQRT2) step *= 2;
+  } else if (raw < lo) {
+    while (step > 1 && raw < step / Math.SQRT2) step = Math.max(1, step / 2);
+  }
+
+  sticky.step = step;
+  sticky.span = span;
+  return step;
+}
+
+/**
+ * Median bar period from the series tip sample.
+ * Weekends must not inflate the period used for pad extrapolation.
  */
 export function seriesBarPeriod(bars: readonly ChartBar[]): number {
   if (bars.length < 2) return 60;
@@ -114,12 +153,12 @@ function timeAtLogicalIndex(
 }
 
 /**
- * Continuous paper-stable time grid (not candle-snapped).
+ * Candle-aligned paper grid.
  *
- * Spacing = visibleSpan / approxCount — changes smoothly while zooming.
- * One sticky wall-clock anchor keeps a single line fixed in data space so
- * other lines spread/contract from it (no discrete step rephase / candle snap).
- * Indices may be fractional — lines are free paper, not forced onto bar centers.
+ * Every vertical line sits on an integer bar index (candle center). Spacing is
+ * a power of two so zoom-out only removes every other line — survivors stay on
+ * the same candles. Phase locks to the series sequence so warm-cache slides
+ * move the grid with the candles.
  */
 export function niceTimeTicks(
   range: VisibleRange,
@@ -130,33 +169,21 @@ export function niceTimeTicks(
   if (bars.length === 0 || range.toIndex <= range.fromIndex) return [];
 
   const span = range.toIndex - range.fromIndex;
-  const step = span / Math.max(2, approxCount);
-  if (!(step > 0) || !Number.isFinite(step)) return [];
-
+  const step = nestedIndexStepSticky(span, approxCount, opts?.sticky);
   const period = resolveBarPeriod(bars, opts?.barPeriod);
-  const sticky = opts?.sticky;
-  const mid = (range.fromIndex + range.toIndex) / 2;
 
-  let anchorTime = sticky?.anchorTime ?? null;
-  if (anchorTime == null || !Number.isFinite(anchorTime)) {
-    anchorTime = timeAtLogicalIndex(bars, mid, period);
-    if (sticky) sticky.anchorTime = anchorTime;
-  }
+  // Tick when (baseSeq + index) ≡ 0 (mod step) → line through that candle.
+  const baseSeq = Math.round(bars[0]!.time / period);
+  const phase = ((baseSeq % step) + step) % step;
 
-  let anchorIndex = logicalIndexAtTime(bars, anchorTime);
-  // Soft re-seed if the anchor drifted many viewports away (long pan).
-  if (Math.abs(anchorIndex - mid) > span * 4) {
-    anchorTime = timeAtLogicalIndex(bars, mid, period);
-    if (sticky) sticky.anchorTime = anchorTime;
-    anchorIndex = logicalIndexAtTime(bars, anchorTime);
-  }
-
-  // First line at or after range.fromIndex: anchor + k·step
-  let k = Math.ceil((range.fromIndex - anchorIndex) / step - 1e-12);
-  let index = anchorIndex + k * step;
+  // First integer lattice index ≥ range.fromIndex
+  let index = Math.ceil((range.fromIndex + phase) / step) * step - phase;
+  if (index < range.fromIndex - 1e-9) index += step;
+  // Snap tiny float error onto an integer candle slot.
+  index = Math.round(index);
 
   const ticks: TimeTick[] = [];
-  for (; index < range.toIndex - 1e-9; k += 1, index = anchorIndex + k * step) {
+  for (; index < range.toIndex - 1e-9; index += step) {
     ticks.push({
       index,
       time: timeAtLogicalIndex(bars, index, period),
@@ -165,6 +192,7 @@ export function niceTimeTicks(
   }
 
   if (ticks.length === 0) {
+    const mid = Math.round((range.fromIndex + range.toIndex) / 2);
     ticks.push({
       index: mid,
       time: timeAtLogicalIndex(bars, mid, period),

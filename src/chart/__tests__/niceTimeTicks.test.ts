@@ -30,28 +30,29 @@ const plot = { left: 0, width: 1200, top: 0, height: 400 };
 
 describe('niceTimeTicks', () => {
   it('stepAlpha is continuous across octave boundaries (zoom in)', () => {
-    // 3-octave ease-out fade: at ideal=8, step4 stays clearly visible (not popped).
+    // 2-octave fade: at ideal=8, step4 is mid-fade (not a hard pop).
     const a8 = stepAlpha(4, 8.0);
     const a79 = stepAlpha(4, 7.9);
-    assert.ok(a8 > 0.5 && a8 < 0.95, `at ideal=8, step4 fading (got ${a8})`);
+    assert.ok(a8 > 0.2 && a8 < 0.9, `at ideal=8, step4 fading (got ${a8})`);
     assert.ok(a79 >= a8 - 1e-9, 'zoom-in raises denser alpha');
     const a6 = stepAlpha(4, 6);
     const a5 = stepAlpha(4, 5);
     const a4 = stepAlpha(4, 4);
     assert.ok(a6 < a5 && a5 < a4, `fade-in expected: ${a6}, ${a5}, ${a4}`);
     assert.ok(Math.abs(a4 - 1) < 1e-9);
-    // Three octaves denser still nearly gone
+    // Two octaves denser → hidden (no every-bar curtain on 1m).
+    assert.ok(stepAlpha(2, 8) <= 0.02);
     assert.ok(stepAlpha(1, 8) <= 0.02);
   });
 
   it('stepAlpha is continuous across octave boundaries (zoom out)', () => {
     const a8 = stepAlpha(8, 8);
     const a9 = stepAlpha(8, 9);
-    const a15 = stepAlpha(8, 15);
-    const a64 = stepAlpha(8, 64);
+    const a12 = stepAlpha(8, 12);
+    const a32 = stepAlpha(8, 32);
     assert.ok(Math.abs(a8 - 1) < 1e-9);
-    assert.ok(a9 < a8 && a15 < a9, `fade-out expected: ${a8}, ${a9}, ${a15}`);
-    assert.ok(a64 <= 0.02, `at ideal=64 step8 hidden (got ${a64})`);
+    assert.ok(a9 < a8 && a12 < a9, `fade-out expected: ${a8}, ${a9}, ${a12}`);
+    assert.ok(a32 <= 0.02, `at ideal=32 step8 hidden (got ${a32})`);
   });
 
   it('keeps ticks on integer candle indices', () => {
@@ -123,20 +124,23 @@ describe('niceTimeTicks', () => {
     // ideal = span/8; cross ideal≈8 (span≈64) while zooming in
     const justCoarse = niceTimeTicks({ fromIndex: 40, toIndex: 40 + 65 }, data, 8);
     const justFine = niceTimeTicks({ fromIndex: 40, toIndex: 40 + 63 }, data, 8);
-    const alphaAt = (ticks: ReturnType<typeof niceTimeTicks>, stepPattern: number) => {
-      // pick a tick that sits on stepPattern but not 2*stepPattern relative to peers
-      const solid = ticks.filter((t) => t.index % stepPattern === ticks[0]!.index % stepPattern);
-      const denser = solid.find((t) => t.index % (stepPattern * 2) !== ticks[0]!.index % (stepPattern * 2));
-      return denser?.alpha ?? 0;
-    };
-    // Denser-than-8 lines should stay near-zero across the boundary
     const a0 = Math.max(...justCoarse.filter((t) => t.alpha < 0.99).map((t) => t.alpha), 0);
     const a1 = Math.max(...justFine.filter((t) => t.alpha < 0.99).map((t) => t.alpha), 0);
     assert.ok(
-      Math.abs(a0 - a1) < 0.2,
+      Math.abs(a0 - a1) < 0.25,
       `dense alpha jumped across boundary: ${a0} → ${a1}`,
     );
-    void alphaAt;
+  });
+
+  it('does not emit every-other-bar minors at a normal 1m span', () => {
+    const data = bars(400);
+    const ticks = niceTimeTicks({ fromIndex: 100, toIndex: 220 }, data, 8);
+    let minGap = Infinity;
+    for (let i = 1; i < ticks.length; i++) {
+      minGap = Math.min(minGap, ticks[i]!.index - ticks[i - 1]!.index);
+    }
+    assert.ok(minGap >= 4, `min grid gap should be ≥4 bars (got ${minGap})`);
+    assert.ok(ticks.length <= 40, `too many strokes: ${ticks.length}`);
   });
 
   it('labels only on solid major ticks', () => {

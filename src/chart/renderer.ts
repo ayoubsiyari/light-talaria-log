@@ -547,15 +547,35 @@ function drawGrid(
   if (colors.showGridV) {
     ctx.strokeStyle = colors.gridVertical;
     ctx.setLineDash(dashFor(colors.gridVStyle));
+    // Cull strokes closer than ~36px (keep stronger alpha) so 1m zoom-out
+    // cannot paint a line on every other candle.
+    const MIN_V_GRID_GAP_PX = 36;
+    const candidates = timeTicks
+      .map((t, i) => ({
+        t,
+        i,
+        a: t.alpha ?? 1,
+        x: indexToX(t.index, range, plot) + 0.5,
+      }))
+      .filter(
+        (x) =>
+          x.a >= 0.02 &&
+          x.x >= plot.left &&
+          x.x <= plot.left + plot.width,
+      )
+      .sort((u, v) => u.x - v.x || v.a - u.a);
+    const kept: typeof candidates = [];
+    for (const c of candidates) {
+      const last = kept[kept.length - 1];
+      if (!last || c.x - last.x >= MIN_V_GRID_GAP_PX) {
+        kept.push(c);
+        continue;
+      }
+      if (c.a > last.a) kept[kept.length - 1] = c;
+    }
     // Paint faint minors first, then majors on top.
-    const ordered = timeTicks
-      .map((t, i) => ({ t, i, a: t.alpha ?? 1 }))
-      .filter((x) => x.a >= 0.02)
-      .sort((u, v) => u.a - v.a || u.i - v.i);
-    for (const { t, a } of ordered) {
-      // Same X as candle center (no Math.round — that snapped 1px while zooming).
-      const x = indexToX(t.index, range, plot) + 0.5;
-      if (x < plot.left || x > plot.left + plot.width) continue;
+    kept.sort((u, v) => u.a - v.a || u.i - v.i);
+    for (const { x, a } of kept) {
       ctx.globalAlpha = a;
       ctx.beginPath();
       ctx.moveTo(x, plot.top);

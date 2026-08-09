@@ -65,15 +65,19 @@ function smoothstep01(t: number): number {
   return x * x * (3 - 2 * x);
 }
 
-/** Fade denser lattices across this many octaves (wider = less zoom snap). */
-const FADE_OCTAVES = 3;
+/**
+ * Fade denser lattices across this many octaves.
+ * 3 kept every-2/4-bar minors on screen (1m looked like a striped curtain);
+ * 2 still crossfades zoom without the forest.
+ */
+const FADE_OCTAVES = 2;
 
 /**
  * Opacity for a power-of-two step given ideal bars-per-line.
  * Continuous in `ideal` — no floor/octave pop on zoom in or out.
  *
  * - step >= ideal → solid (coarser than needed)
- * - denser within FADE_OCTAVES → smooth fade (ease-out so minors linger)
+ * - denser within FADE_OCTAVES → smooth fade
  * - denser than that → hidden
  */
 export function stepAlpha(step: number, ideal: number): number {
@@ -81,9 +85,9 @@ export function stepAlpha(step: number, ideal: number): number {
   const rel = Math.log2(ideal) - Math.log2(step);
   if (rel <= 0) return 1;
   if (rel >= FADE_OCTAVES) return 0;
-  // Ease-out: denser lines stay readable longer while zooming, then taper.
+  // Smoothstep fade — linear-ish mid so minors don't linger at high opacity.
   const t = smoothstep01(rel / FADE_OCTAVES);
-  return 1 - t * t;
+  return 1 - t;
 }
 
 export function seriesBarPeriod(bars: readonly ChartBar[]): number {

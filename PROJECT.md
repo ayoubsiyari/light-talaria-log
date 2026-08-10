@@ -918,6 +918,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-10 | Symbol lists by Forex/Futures + TV-style badges (`ChartSymbolBadge` flags / futures pills) in SymbolPicker + Create Session; `chartSymbolBadge.d.ts` | Hard-refresh symbol drop + session pairs; widen `PairSymbol` when futures catalog wired |
 | 2026-08-10 | Fix FX misclassified as Crypto (USDC in USDCHF); open `PairSymbol`; flagged PairPicker; topbar symbol align; Forex/Futures only | Hard-refresh Create Session — full remote catalog + flags in drop |
 | 2026-08-10 | PairPicker portals above session modal (z>100010) so Add pair list is visible again | Hard-refresh → New session → Add pair |
+| 2026-08-10 | Deploy catalog sync skips unchanged packs (FORCE_DISK_IMPORT=1 for full rewrite) | Push code — import logs `N updated, M unchanged` in seconds |
 
 ---
 

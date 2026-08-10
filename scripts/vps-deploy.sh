@@ -59,10 +59,26 @@ if command -v docker >/dev/null 2>&1; then
     sleep 2
   done
   if [ "$API_OK" -eq 1 ]; then
-    # Import disk catalog (idempotent). Large packs may take a few minutes.
-    if docker compose -f docker-compose.yml -f docker-compose.vps.yml exec -T api \
-      node dist/importDiskCatalog.js; then
-      echo "[deploy] disk catalog imported"
+    # Catalog sync: skip datasets already in Postgres (seconds). Full rewrite:
+    #   FORCE_DISK_IMPORT=1 ./scripts/vps-deploy.sh
+    # or: docker compose exec api node dist/importDiskCatalog.js --force
+    if [ "${FORCE_DISK_IMPORT:-0}" = "1" ]; then
+      echo "[deploy] disk catalog FORCE refresh…"
+      IMPORT_OK=0
+      if docker compose -f docker-compose.yml -f docker-compose.vps.yml exec -T \
+        -e FORCE_DISK_IMPORT=1 api node dist/importDiskCatalog.js; then
+        IMPORT_OK=1
+      fi
+    else
+      echo "[deploy] disk catalog sync (unchanged packs skipped)…"
+      IMPORT_OK=0
+      if docker compose -f docker-compose.yml -f docker-compose.vps.yml exec -T \
+        api node dist/importDiskCatalog.js; then
+        IMPORT_OK=1
+      fi
+    fi
+    if [ "$IMPORT_OK" -eq 1 ]; then
+      echo "[deploy] disk catalog synced"
     else
       echo "[deploy] WARN: disk import failed (non-fatal)" >&2
     fi

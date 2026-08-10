@@ -37,11 +37,8 @@ interface DiskSeriesMeta {
 
 type DbDatasetRow = {
   id: string;
-  symbol: string;
-  time_start: number;
-  time_end: number;
-  row_counts: Record<string, number> | null;
-  timeframes: string[] | null;
+  time_start: number | string;
+  time_end: number | string;
 };
 
 type ChunkAgg = { chunks: number };
@@ -73,7 +70,7 @@ async function loadDbSnapshot(): Promise<{
 }> {
   const datasets = new Map<string, DbDatasetRow>();
   const { rows: dsRows } = await query<DbDatasetRow>(
-    `SELECT id, symbol, time_start, time_end, row_counts, timeframes FROM datasets`,
+    `SELECT id, time_start, time_end FROM datasets`,
   );
   for (const r of dsRows) datasets.set(r.id, r);
 
@@ -95,33 +92,6 @@ async function loadDbSnapshot(): Promise<{
   return { datasets, chunks };
 }
 
-function asRowCounts(
-  v: Record<string, number> | string | null | undefined,
-): Record<string, number> {
-  if (!v) return {};
-  if (typeof v === 'string') {
-    try {
-      return JSON.parse(v) as Record<string, number>;
-    } catch {
-      return {};
-    }
-  }
-  return v;
-}
-
-function rowCountsEqual(
-  a: Record<string, number> | string | null | undefined,
-  b: Record<string, number> | string | null | undefined,
-): boolean {
-  const aa = asRowCounts(a);
-  const bb = asRowCounts(b);
-  const keys = new Set([...Object.keys(aa), ...Object.keys(bb)]);
-  for (const k of keys) {
-    if ((Number(aa[k]) || 0) !== (Number(bb[k]) || 0)) return false;
-  }
-  return true;
-}
-
 function diskInSync(
   meta: DiskDatasetMeta,
   db: DbDatasetRow | undefined,
@@ -129,28 +99,26 @@ function diskInSync(
   diskRoot: string,
 ): boolean {
   if (!db) return false;
-  if (db.symbol !== meta.symbol) return false;
-  if ((db.time_start ?? 0) !== (meta.timeStart ?? 0)) return false;
-  if ((db.time_end ?? 0) !== (meta.timeEnd ?? 0)) return false;
-  if (!rowCountsEqual(db.row_counts, meta.rowCounts)) return false;
+  // pg int8 often arrives as string — always coerce.
+  if (Number(db.time_start ?? 0) !== Number(meta.timeStart ?? 0)) return false;
+  if (Number(db.time_end ?? 0) !== Number(meta.timeEnd ?? 0)) return false;
 
   const timeframes =
     Array.isArray(meta.timeframes) && meta.timeframes.length > 0
       ? meta.timeframes
       : [meta.baseTimeframe || '1m'];
-  const dbTfs = Array.isArray(db.timeframes) ? db.timeframes : [];
-  if (timeframes.length !== dbTfs.length) return false;
+
+  let checked = 0;
   for (const tf of timeframes) {
-    if (!dbTfs.includes(tf)) return false;
     const seriesPath = path.join(diskRoot, 'datasets', meta.id, tf, 'series.json');
     const series = readJson<DiskSeriesMeta>(seriesPath);
-    if (!series || !Array.isArray(series.chunkIds)) return false;
+    if (!series || !Array.isArray(series.chunkIds)) continue;
     const agg = chunkAggs.get(`${meta.id}|${tf}`);
-    if (!agg) return false;
-    // Chunk count is enough — avoids re-import when bar_count packing differs.
-    if (agg.chunks !== series.chunkIds.length) return false;
+    if (!agg || Number(agg.chunks) !== series.chunkIds.length) return false;
+    checked += 1;
   }
-  return true;
+  // Need at least one on-disk series matching DB chunk counts.
+  return checked > 0;
 }
 
 async function importDataset(ownerId: string, meta: DiskDatasetMeta): Promise<void> {

@@ -906,6 +906,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-09 | Play×multi-pane orders: exposure runway + pinExtra; soften Play Y; draft merge/clear on Play; freeze pending MARKET tip | 3-pane open EUR+GBP → Play — fills both; Y recovers; Pending line stays put |
 | 2026-08-09 | TradeDock open P&L uses per-symbol mark/spec (not active pane bid); open Dur uses replay cursor | Multi open USDJPY+EUR — dock P&L matches chart (~$ not millions) |
 | 2026-08-10 | Order Preview: SL/TP on chart only after place/drag (not auto on ticket open) | Place Order → only entry Preview; drag SL → SL appears |
+| 2026-08-10 | SymbolPicker Obsidian craft: badge trigger, keyboard list, trading/supporting groups, compare stub chrome | Open symbol drop — search + arrows; touch targets ≥44px |
 | 2026-08-09 | **Feel wave F0–F5:** overlay handles/badges; engine freehand; press-drag place; touch pan-vs-draw; orders/backtest off crosshair path; undo/redo | Manual: hover scrub, brush, trend press-drag, thumb pan, Cmd+Z |
 | 2026-08-09 | Brush Talaria parity: no stride-thin on release; Catmull-Rom α=0.5 paint; no magnet; settings Style+Visibility (hide dash; highlighter widths 8–64) | Draw brush curve — release matches live stroke |
 | 2026-08-09 | Obsidian settings shell (data-sett-v3): tool icon header, pill tabs, Reset/Done, Extend/Labels chips, Show Info; ChromeIcon map for rail + flyout | Open Trend Line settings — match V9 Obsidian chrome; then per-tool Inputs pass |

@@ -98,9 +98,18 @@ sleep 1
 # Export proxy into preview process env so vite.config + apiPlugin see it.
 nohup env TALARIA_API_PROXY="${PREVIEW_PROXY}" \
   npx vite preview --host 0.0.0.0 --port "$PORT" >"$LOG_FILE" 2>&1 &
-sleep 2
 
-if ss -tlnp | grep -q ":${PORT}"; then
+# vite preview can take >2s after a kill — poll instead of one-shot sleep.
+PREVIEW_OK=0
+for i in $(seq 1 30); do
+  if ss -tlnp 2>/dev/null | grep -q ":${PORT}"; then
+    PREVIEW_OK=1
+    break
+  fi
+  sleep 0.5
+done
+
+if [ "$PREVIEW_OK" -eq 1 ]; then
   echo "[deploy] OK → http://$(hostname -I | awk '{print $1}'):${PORT}/"
 else
   echo "[deploy] FAILED — see $LOG_FILE" >&2

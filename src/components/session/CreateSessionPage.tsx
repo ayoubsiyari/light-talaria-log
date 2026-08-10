@@ -859,7 +859,7 @@ export function CreateSessionPage({
                               ? 'Maximum 4 pairs'
                               : availablePairs.length === 0
                                 ? 'No more pairs available'
-                                : 'Add pair…'
+                                : `Add pair… (${availablePairs.length})`
                           }
                           onPick={addPair}
                         />

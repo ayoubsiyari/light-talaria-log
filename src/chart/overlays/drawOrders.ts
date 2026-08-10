@@ -165,6 +165,7 @@ export function drawOrders(
         drawSolidLabel(ctx, plot, scale, entry, label, entryColor, colors.onSolid);
       } else {
         const sideTxt = sideBuy ? 'Buy' : 'Sell';
+        // Draft = ticket Preview (draggable like TV); working = booked Pending.
         const parts = [
           order.draft ? 'Preview' : 'Pending',
           sideTxt,

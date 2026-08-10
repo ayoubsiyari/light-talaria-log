@@ -468,17 +468,14 @@ export function OrderTicket({
       onDraftChange?.(null);
       return;
     }
-    // Chart Preview: entry only until the user places SL/TP (drag or type).
-    // Auto pip defaults stay in the ticket for Buy — they must not paint as a
-    // fake Pending before interaction.
+    // TradingView-style: while the ticket is open, paint entry + enabled SL/TP
+    // so the user can drag them on the chart (Preview, not a booked Pending).
     onDraftChange?.({
       side,
       type,
       entry: entryPx,
-      stopLoss:
-        slOn && slPlaced && Number.isFinite(slPxLive) ? slPxLive : null,
-      takeProfit:
-        tpOn && tpPlaced && Number.isFinite(tpPxLive) ? tpPxLive : null,
+      stopLoss: slOn && Number.isFinite(slPxLive) ? slPxLive : null,
+      takeProfit: tpOn && Number.isFinite(tpPxLive) ? tpPxLive : null,
       size: lots > 0 ? lots : 0.1,
     });
   }, [
@@ -492,8 +489,6 @@ export function OrderTicket({
     tp,
     slOn,
     tpOn,
-    slPlaced,
-    tpPlaced,
     entryPx,
     slPxLive,
     tpPxLive,
@@ -1065,7 +1060,12 @@ export function OrderTicket({
                   tone="var(--down)"
                   onChange={(v) => {
                     setSlOn(v);
-                    if (v && !slPlaced) setSl(entryPx.toFixed(digits));
+                    if (v) {
+                      // Seed at pip distance (not entry) so the line is
+                      // visible + draggable like TradingView.
+                      reseedLevels(entryPx > 0 ? entryPx : lastPx, 'sl');
+                      setSlPlaced(true);
+                    }
                   }}
                 />
                 <span data-order-level-title="">Stop</span>
@@ -1299,7 +1299,10 @@ export function OrderTicket({
                   tone="var(--up)"
                   onChange={(v) => {
                     setTpOn(v);
-                    if (v && !tpPlaced) setTp(entryPx.toFixed(digits));
+                    if (v) {
+                      reseedLevels(entryPx > 0 ? entryPx : lastPx, 'tp');
+                      setTpPlaced(true);
+                    }
                   }}
                 />
                 <span data-order-level-title="">Target</span>

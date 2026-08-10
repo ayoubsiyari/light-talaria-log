@@ -3309,6 +3309,7 @@ export default function App() {
   const handlePlaceOrder = useCallback(() => {
     setLastOrderReject(null);
     setTicketOpen(true);
+    setSelectedOrderId('__draft__');
     setActiveTab('open');
   }, []);
 
@@ -4852,6 +4853,7 @@ export default function App() {
                 setTicketOpen(false);
                 setTicketDraft(null);
                 setTicketLevelPatch(null);
+                setSelectedOrderId((id) => (id === '__draft__' ? null : id));
               }}
               symbol={
                 (panes.find((p) => p.id === activePaneId) ?? panes[0])?.pair ??

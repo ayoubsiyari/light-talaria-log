@@ -468,14 +468,17 @@ export function OrderTicket({
       onDraftChange?.(null);
       return;
     }
-    // Use live pip-distance levels — raw `sl`/`tp` can be ''→0 or a stale
-    // other-pair price after switching the active multi-chart pane.
+    // Chart Preview: entry only until the user places SL/TP (drag or type).
+    // Auto pip defaults stay in the ticket for Buy — they must not paint as a
+    // fake Pending before interaction.
     onDraftChange?.({
       side,
       type,
       entry: entryPx,
-      stopLoss: slOn && Number.isFinite(slPxLive) ? slPxLive : null,
-      takeProfit: tpOn && Number.isFinite(tpPxLive) ? tpPxLive : null,
+      stopLoss:
+        slOn && slPlaced && Number.isFinite(slPxLive) ? slPxLive : null,
+      takeProfit:
+        tpOn && tpPlaced && Number.isFinite(tpPxLive) ? tpPxLive : null,
       size: lots > 0 ? lots : 0.1,
     });
   }, [
@@ -489,6 +492,8 @@ export function OrderTicket({
     tp,
     slOn,
     tpOn,
+    slPlaced,
+    tpPlaced,
     entryPx,
     slPxLive,
     tpPxLive,

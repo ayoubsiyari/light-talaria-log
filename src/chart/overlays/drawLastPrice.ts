@@ -1,6 +1,9 @@
 import type { ChartBar } from '@/types/bar';
 import type { ChartColors } from '../chartTheme';
-import { formatPrice } from '../format';
+import {
+  formatPrice as formatPriceAdaptive,
+  type PriceFormatter,
+} from '../format';
 import type { RenderLayout } from '../renderer';
 import { priceToY, type PriceScale } from '../scales';
 
@@ -19,7 +22,9 @@ export function drawLastPriceLine(
   last: ChartBar,
   priceScale: PriceScale,
   colors: ChartColors,
+  formatPriceFn?: PriceFormatter,
 ): void {
+  const formatPrice = formatPriceFn ?? formatPriceAdaptive;
   const { plot, width, priceAxisWidth } = layout;
   const y = priceToY(last.close, priceScale, plot);
   if (y < plot.top || y > plot.top + plot.height) return;

@@ -921,6 +921,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-10 | PairPicker portals above session modal (z>100010) so Add pair list is visible again | Hard-refresh → New session → Add pair |
 | 2026-08-10 | Compact PairPicker: smaller flags, single-line rows, slim Forex/Futures heads | Hard-refresh Create Session drop |
 | 2026-08-10 | Deploy catalog sync skips unchanged packs (FORCE_DISK_IMPORT=1 for full rewrite) | Push code — import logs `N updated, M unchanged` in seconds |
+| 2026-08-10 | Chart price format per instrument: Y-axis/crosshair/last/orders/drawings + OHLC HUD use `digits`/`tickSize` from pane spec | Multi-pane EUR+USDJPY+NQ — axis decimals match each ticker |
 
 ---
 

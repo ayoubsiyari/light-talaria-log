@@ -61,7 +61,15 @@ export type {
   SeriesType,
   ChartViewOptions,
 } from './types';
-export { formatPrice, formatTime, formatCrosshairTime, formatClockHms } from './format';
+export {
+  formatPrice,
+  formatTime,
+  formatCrosshairTime,
+  formatClockHms,
+  createPriceFormatter,
+  snapPriceToTick,
+} from './format';
+export type { PriceFormat, PriceFormatter } from './format';
 export {
   CHART_TIMEZONES,
   getChartTimezone,

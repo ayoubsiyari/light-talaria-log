@@ -1,8 +1,18 @@
 import type { ChartBar, VisibleRange } from '@/types/bar';
 import { indexToX, type PlotRect } from './scales';
 
+export interface NicePriceTicksOpts {
+  /** When set, axis steps are multiples of the instrument tick (NQ 0.25, FX 0.00001). */
+  tickSize?: number;
+}
+
 /** Nice step: 1 / 2 / 5 × 10^n covering the range with ~approxCount ticks. */
-export function nicePriceTicks(min: number, max: number, approxCount = 6): number[] {
+export function nicePriceTicks(
+  min: number,
+  max: number,
+  approxCount = 6,
+  opts?: NicePriceTicksOpts,
+): number[] {
   if (!(max > min) || approxCount < 2) return [min, max];
 
   const span = max - min;
@@ -14,6 +24,13 @@ export function nicePriceTicks(min: number, max: number, approxCount = 6): numbe
   else if (frac <= 2) step = 2 * pow;
   else if (frac <= 5) step = 5 * pow;
   else step = 10 * pow;
+
+  const tick = opts?.tickSize;
+  if (tick != null && tick > 0 && Number.isFinite(tick)) {
+    // Prefer a nice step that lands on instrument ticks.
+    if (step < tick) step = tick;
+    else step = Math.ceil(step / tick) * tick;
+  }
 
   const start = Math.ceil(min / step) * step;
   const ticks: number[] = [];

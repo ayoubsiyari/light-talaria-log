@@ -58,6 +58,11 @@ import { hitTestBacktestEvent } from './overlays/drawBacktest';
 import { MAX_BARS_IN_MEMORY, VISIBLE_BARS_TARGET } from '@/utils/constants';
 import { subscribeAppearance } from './appearanceStore';
 import { getChartColors } from './chartTheme';
+import {
+  createPriceFormatter,
+  type PriceFormat,
+  type PriceFormatter,
+} from './format';
 import { resolveCrosshair, resolveCrosshairFromLogical } from './crosshair';
 import {
   attachInteraction,
@@ -218,6 +223,9 @@ export interface ChartInstance {
   hitTestOrdersAt: (y: number) => string | null;
   /** Context for SL/TP drag readout + tick snap (no React during drag). */
   setOrderDragContext: (ctx: OrderDragContext | null) => void;
+  /** Y-axis / crosshair / order labels — instrument digits + tick. */
+  setPriceFormat: (fmt: PriceFormat | null) => void;
+  getPriceFormat: () => PriceFormat | null;
   onOrderLevelCommit: (cb: (hit: OrderLevelHit & { price: number; cancelled?: boolean }) => void) => () => void;
   /** Live draft/level drag (rAF-coalesced) — ticket fields while dragging. */
   onOrderLevelLive: (cb: (hit: OrderLevelHit & { price: number }) => void) => () => void;
@@ -724,6 +732,28 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     if (placement) updatePlacementDraft(freePoint);
   };
 
+  let priceFormat: PriceFormat | null = null;
+  let priceFormatter: PriceFormatter | null = null;
+
+  const applyPriceFormat = (fmt: PriceFormat | null) => {
+    const nextDigits = fmt?.digits ?? null;
+    const nextTick = fmt?.tickSize ?? null;
+    const prevDigits = priceFormat?.digits ?? null;
+    const prevTick = priceFormat?.tickSize ?? null;
+    if (nextDigits === prevDigits && nextTick === prevTick) return;
+    priceFormat =
+      nextDigits != null && Number.isFinite(nextDigits)
+        ? {
+            digits: Math.min(12, Math.max(0, Math.floor(nextDigits))),
+            tickSize: nextTick != null && nextTick > 0 ? nextTick : undefined,
+          }
+        : null;
+    priceFormatter = priceFormat ? createPriceFormatter(priceFormat) : null;
+    markSceneDirty();
+    markDrawingsDirty();
+    markOverlayDirty();
+  };
+
   const paintState = () => ({
     bars,
     range,
@@ -745,6 +775,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     selectedOrderId,
     backtestResult,
     marquee,
+    priceFormat,
+    formatPrice: priceFormatter ?? undefined,
   });
 
   const schedulePaint = () => {
@@ -1798,6 +1830,18 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
 
     setOrderDragContext(ctx: OrderDragContext | null) {
       orderDragCtx = ctx;
+      // Keep axis/crosshair digits in sync with the pane's instrument.
+      if (ctx) {
+        applyPriceFormat({ digits: ctx.digits, tickSize: ctx.tickSize });
+      }
+    },
+
+    setPriceFormat(fmt: PriceFormat | null) {
+      applyPriceFormat(fmt);
+    },
+
+    getPriceFormat() {
+      return priceFormat;
     },
 
     onOrderLevelCommit(cb) {

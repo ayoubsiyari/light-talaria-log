@@ -1,5 +1,9 @@
 import type { ChartColors } from '../chartTheme';
-import { formatCrosshairTime, formatPrice } from '../format';
+import {
+  formatCrosshairTime,
+  formatPrice as formatPriceAdaptive,
+  type PriceFormatter,
+} from '../format';
 import { contentBottom, type RenderLayout } from '../renderer';
 import type { CrosshairPoint } from '../types';
 
@@ -8,7 +12,9 @@ export function drawCrosshair(
   layout: RenderLayout,
   point: CrosshairPoint,
   colors: ChartColors,
+  formatPriceFn?: PriceFormatter,
 ): void {
+  const formatPrice = formatPriceFn ?? formatPriceAdaptive;
   const { plot, width, height, priceAxisWidth, timeAxisHeight } = layout;
   const bottom = contentBottom(layout);
 

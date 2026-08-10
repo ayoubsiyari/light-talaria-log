@@ -1,7 +1,11 @@
 import { logicalIndexAtTime } from '@/data/timeframeAgg';
 import { indexToX, priceToY, type PlotRect, type PriceScale } from '@/chart/scales';
 import type { ChartColors } from '@/chart/chartTheme';
-import { formatPrice, formatTime } from '@/chart/format';
+import {
+  formatPrice as formatPriceAdaptive,
+  formatTime,
+  type PriceFormatter,
+} from '@/chart/format';
 import type { ChartBar, VisibleRange } from '@/types/bar';
 import type { Drawing } from '../drawingStore';
 
@@ -28,8 +32,10 @@ export function paintAxisBadges(
   priceScale: PriceScale,
   colors: ChartColors,
   layout: AxisBadgeLayout,
+  formatPriceFn?: PriceFormatter,
 ): void {
   if (selectedIds.size === 0 || bars.length === 0) return;
+  const formatPrice = formatPriceFn ?? formatPriceAdaptive;
 
   const prices = new Set<number>();
   const times = new Set<number>();

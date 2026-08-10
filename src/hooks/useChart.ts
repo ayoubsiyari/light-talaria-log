@@ -62,6 +62,10 @@ export interface UseChartOptions {
   orders?: readonly ChartOrder[];
   selectedOrderId?: string | null;
   onOrderSelect?: (orderId: string | null) => void;
+  /** Instrument price decimals (from InstrumentSpec.digits). */
+  priceDigits?: number;
+  /** Instrument tick for Y-axis alignment. */
+  priceTickSize?: number;
   /** Strategy backtest overlays (markers / equity). */
   backtestResult?: BacktestResult | null;
   drawings?: readonly Drawing[];
@@ -202,6 +206,12 @@ export function useChart(
     }
     if (optionsRef.current.replayFollow !== undefined) {
       instance.setReplayFollow(optionsRef.current.replayFollow);
+    }
+    if (optionsRef.current.priceDigits != null) {
+      instance.setPriceFormat({
+        digits: optionsRef.current.priceDigits,
+        tickSize: optionsRef.current.priceTickSize,
+      });
     }
 
     const interactEnabled =
@@ -624,6 +634,15 @@ export function useChart(
     if (!instance) return;
     instance.setDrawingShiftHeld(options.drawingShiftHeld ?? false);
   }, [options.drawingShiftHeld]);
+
+  useEffect(() => {
+    const instance = instanceRef.current;
+    if (!instance || options.priceDigits == null) return;
+    instance.setPriceFormat({
+      digits: options.priceDigits,
+      tickSize: options.priceTickSize,
+    });
+  }, [options.priceDigits, options.priceTickSize]);
 
   const orderIds = ordersKey(options.orders);
   useEffect(() => {

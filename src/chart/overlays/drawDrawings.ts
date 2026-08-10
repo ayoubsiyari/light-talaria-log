@@ -6,6 +6,7 @@ import {
   type DrawingPaintLayer,
 } from '@/drawings/paint/paintDrawing';
 import type { Timeframe } from '@/types/ui';
+import type { PriceFormatter } from '../format';
 import type { ChartColors } from '../chartTheme';
 import type { PlotRect, PriceScale } from '../scales';
 
@@ -32,6 +33,7 @@ export function drawDrawings(
     timeAxisHeight: number;
   } | null,
   layer: DrawingPaintLayer = 'all',
+  formatPriceFn?: PriceFormatter,
 ): void {
   const ids =
     typeof selectedIds === 'string'
@@ -52,6 +54,7 @@ export function drawDrawings(
     paneTf,
     axisLayout,
     layer,
+    formatPriceFn,
   );
 }
 
@@ -73,6 +76,7 @@ export function drawDrawingEditChrome(
     priceAxisWidth: number;
     timeAxisHeight: number;
   } | null,
+  formatPriceFn?: PriceFormatter,
 ): void {
   paintDrawingEditChrome(
     ctx,
@@ -86,5 +90,6 @@ export function drawDrawingEditChrome(
     colors,
     paneTf,
     axisLayout,
+    formatPriceFn,
   );
 }

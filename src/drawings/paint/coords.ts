@@ -1,4 +1,6 @@
 import type { ChartColors } from '@/chart/chartTheme';
+import type { PriceFormatter } from '@/chart/format';
+import { formatPrice as formatPriceAdaptive } from '@/chart/format';
 import { indexToX, priceToY, type PlotRect, type PriceScale } from '@/chart/scales';
 import { indexAtOrBeforeBars, logicalIndexAtTime } from '@/data/timeframeAgg';
 import type { ChartBar, VisibleRange } from '@/types/bar';
@@ -11,6 +13,12 @@ export interface PaintCtx {
   plot: PlotRect;
   priceScale: PriceScale;
   colors: ChartColors;
+  /** Instrument digits (NQ 2, EURUSD 5). Falls back to adaptive. */
+  formatPrice?: PriceFormatter;
+}
+
+export function fmtPrice(pc: PaintCtx, price: number): string {
+  return (pc.formatPrice ?? formatPriceAdaptive)(price);
 }
 
 export function pointToXY(p: DrawingPoint, pc: PaintCtx): { x: number; y: number } | null {

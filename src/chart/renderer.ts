@@ -5,7 +5,13 @@ import {
 } from '@/data/timeframeAgg';
 import type { Drawing } from '@/drawings/drawingStore';
 import { getChartColors, type ChartColors } from './chartTheme';
-import { formatPrice, formatTime } from './format';
+import {
+  createPriceFormatter,
+  formatPrice as formatPriceAdaptive,
+  formatTime,
+  type PriceFormat,
+  type PriceFormatter,
+} from './format';
 import { drawCrosshair } from './overlays/drawCrosshair';
 import { drawDrawingEditChrome, drawDrawings } from './overlays/drawDrawings';
 import { drawLastPriceLine } from './overlays/drawLastPrice';
@@ -32,6 +38,12 @@ import type { BacktestResult } from '@/types/backtest';
 import type { ChartOrder } from '@/types/order';
 import { drawBacktest } from './overlays/drawBacktest';
 import { drawOrders } from './overlays/drawOrders';
+
+function resolvePriceFormatter(state: PaintState): PriceFormatter {
+  if (state.formatPrice) return state.formatPrice;
+  if (state.priceFormat) return createPriceFormatter(state.priceFormat);
+  return formatPriceAdaptive;
+}
 
 /** Min CSS px between time-axis labels (grid lines still draw). */
 /** Fallback gap when measureText is unavailable; real cull uses text width. */
@@ -200,6 +212,9 @@ export interface PaintState {
   backtestResult?: BacktestResult | null;
   /** Zoom marquee rubber-band in media coords. */
   marquee?: { x0: number; y0: number; x1: number; y1: number } | null;
+  /** Per-pane instrument price format (digits / tick). */
+  priceFormat?: PriceFormat | null;
+  formatPrice?: PriceFormatter;
 }
 
 /**
@@ -246,7 +261,10 @@ export function paintBaseFrame(
       ? priceScale
       : computePriceScale(bars, range, maxBarIndex);
 
-  const priceTicks = nicePriceTicks(scale.min, scale.max, 6);
+  const formatPriceFn = resolvePriceFormatter(state);
+  const priceTicks = nicePriceTicks(scale.min, scale.max, 6, {
+    tickSize: state.priceFormat?.tickSize,
+  });
   const barPeriod =
     state.paneTimeframe != null
       ? timeframeSeconds(state.paneTimeframe)
@@ -293,7 +311,7 @@ export function paintBaseFrame(
   }
 
   if (layout.priceAxisWidth > 0) {
-    drawPriceAxis(ctx, layout, scale, priceTicks, colors);
+    drawPriceAxis(ctx, layout, scale, priceTicks, colors, formatPriceFn);
   }
   if (layout.timeAxisHeight > 0) {
     drawTimeAxis(ctx, layout, range, timeTicks, colors, state.timeLabelSticky);
@@ -303,7 +321,7 @@ export function paintBaseFrame(
   if (options.showLastPrice && colors.showLastPrice) {
     const lastIdx = maxBarIndex ?? bars.length - 1;
     const last = lastIdx >= 0 ? bars[lastIdx] : undefined;
-    if (last) drawLastPriceLine(ctx, layout, last, scale, colors);
+    if (last) drawLastPriceLine(ctx, layout, last, scale, colors, formatPriceFn);
   }
 }
 
@@ -348,6 +366,8 @@ export function paintDrawingsFrame(
       ? priceScale
       : computePriceScale(bars, range, maxBarIndex);
 
+  const formatPriceFn = resolvePriceFormatter(state);
+
   if (!drawingsHidden && drawings?.length) {
     drawDrawings(
       ctx,
@@ -364,6 +384,7 @@ export function paintDrawingsFrame(
       paneTimeframe ?? null,
       null,
       'bodies',
+      formatPriceFn,
     );
   }
 
@@ -388,6 +409,7 @@ export function paintDrawingsFrame(
       range,
       width: layout.width,
       priceAxisWidth: layout.priceAxisWidth,
+      formatPrice: formatPriceFn,
     });
   }
 }
@@ -438,6 +460,7 @@ export function paintOverlayFrame(
       : selectedDrawingId
         ? [selectedDrawingId]
         : [];
+  const formatPriceFn = resolvePriceFormatter(state);
 
   if (!drawingsHidden && drawings?.length) {
     drawDrawingEditChrome(
@@ -457,6 +480,7 @@ export function paintOverlayFrame(
         priceAxisWidth: layout.priceAxisWidth,
         timeAxisHeight: layout.timeAxisHeight,
       },
+      formatPriceFn,
     );
   }
 
@@ -476,6 +500,7 @@ export function paintOverlayFrame(
       null,
       null,
       'all',
+      formatPriceFn,
     );
   }
 
@@ -498,7 +523,7 @@ export function paintOverlayFrame(
   }
 
   if (crosshair && options.crosshairMode !== 'hidden') {
-    drawCrosshair(ctx, layout, crosshair, colors);
+    drawCrosshair(ctx, layout, crosshair, colors, formatPriceFn);
   }
 }
 
@@ -598,6 +623,7 @@ function drawPriceAxis(
   priceScale: PriceScale,
   priceTicks: number[],
   colors: ChartColors,
+  formatPriceFn: PriceFormatter = formatPriceAdaptive,
 ): void {
   const { plot, width, priceAxisWidth } = layout;
   const axisX = width - priceAxisWidth;
@@ -619,7 +645,7 @@ function drawPriceAxis(
   for (const price of priceTicks) {
     const y = priceToY(price, priceScale, plot);
     if (y < plot.top - 4 || y > plot.top + plot.height + 4) continue;
-    ctx.fillText(formatPrice(price), axisX + 6, y);
+    ctx.fillText(formatPriceFn(price), axisX + 6, y);
   }
 }
 

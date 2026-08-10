@@ -1,8 +1,9 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import type { CrosshairPoint, CrosshairMode, SeriesType } from '@/chart';
 import { formatPrice } from '@/chart';
 import { ChartContainer } from '@/components/ChartContainer';
 import { VolumeIndicator } from '@/components/layout/VolumeIndicator';
+import { defaultSpecForSymbol } from '@/orders/instrumentSpec';
 import type { Timeframe } from '@/types/ui';
 
 interface ChartWorkspaceProps {
@@ -16,10 +17,10 @@ interface ChartWorkspaceProps {
   onVolumeOpacityChange: (v: number) => void;
 }
 
-function formatOhlc(point: CrosshairPoint | null): string {
+function formatOhlc(point: CrosshairPoint | null, digits: number): string {
   const bar = point?.bar;
   if (!bar) return 'O —  H —  L —  C —';
-  return `O ${formatPrice(bar.open)}  H ${formatPrice(bar.high)}  L ${formatPrice(bar.low)}  C ${formatPrice(bar.close)}`;
+  return `O ${formatPrice(bar.open, digits)}  H ${formatPrice(bar.high, digits)}  L ${formatPrice(bar.low, digits)}  C ${formatPrice(bar.close, digits)}`;
 }
 
 /**
@@ -39,25 +40,30 @@ export function ChartWorkspace({
 }: ChartWorkspaceProps) {
   const ohlcRef = useRef<HTMLSpanElement>(null);
   const changeRef = useRef<HTMLSpanElement>(null);
+  const priceSpec = useMemo(() => defaultSpecForSymbol(symbol), [symbol]);
 
-  const onCrosshairMove = useCallback((point: CrosshairPoint | null) => {
-    if (ohlcRef.current) {
-      ohlcRef.current.textContent = formatOhlc(point);
-    }
-    if (changeRef.current) {
-      if (point?.bar) {
-        const d = point.bar.close - point.bar.open;
-        const pct = point.bar.open !== 0 ? (d / point.bar.open) * 100 : 0;
-        const sign = d >= 0 ? '+' : '';
-        changeRef.current.textContent = `${sign}${formatPrice(d)} (${sign}${pct.toFixed(2)}%)`;
-        changeRef.current.className = `tabular-nums ${d >= 0 ? 'text-success' : 'text-danger'}`;
-        changeRef.current.hidden = false;
-      } else {
-        changeRef.current.textContent = '';
-        changeRef.current.hidden = true;
+  const onCrosshairMove = useCallback(
+    (point: CrosshairPoint | null) => {
+      const digits = priceSpec.digits;
+      if (ohlcRef.current) {
+        ohlcRef.current.textContent = formatOhlc(point, digits);
       }
-    }
-  }, []);
+      if (changeRef.current) {
+        if (point?.bar) {
+          const d = point.bar.close - point.bar.open;
+          const pct = point.bar.open !== 0 ? (d / point.bar.open) * 100 : 0;
+          const sign = d >= 0 ? '+' : '';
+          changeRef.current.textContent = `${sign}${formatPrice(d, digits)} (${sign}${pct.toFixed(2)}%)`;
+          changeRef.current.className = `tabular-nums ${d >= 0 ? 'text-success' : 'text-danger'}`;
+          changeRef.current.hidden = false;
+        } else {
+          changeRef.current.textContent = '';
+          changeRef.current.hidden = true;
+        }
+      }
+    },
+    [priceSpec.digits],
+  );
 
   return (
     <div className="relative flex-1 min-h-0 min-w-0 bg-background">
@@ -84,6 +90,8 @@ export function ChartWorkspace({
         seriesType={seriesType}
         showVolume={showVolume}
         volumeOpacity={volumeOpacity}
+        priceDigits={priceSpec.digits}
+        priceTickSize={priceSpec.tickSize}
       />
     </div>
   );

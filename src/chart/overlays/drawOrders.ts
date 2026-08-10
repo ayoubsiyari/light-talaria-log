@@ -4,7 +4,10 @@ import { orderHitPx } from '@/utils/touchTarget';
 import { indexAtOrBeforeBars } from '@/data/timeframeAgg';
 import { levelDrag } from '@/orders/levelDrag';
 import type { ChartColors } from '../chartTheme';
-import { formatPrice } from '../format';
+import {
+  formatPrice as formatPriceAdaptive,
+  type PriceFormatter,
+} from '../format';
 import {
   indexToX,
   priceToY,
@@ -28,6 +31,7 @@ export interface DrawOrdersOpts {
   range: VisibleRange;
   width: number;
   priceAxisWidth: number;
+  formatPrice?: PriceFormatter;
 }
 
 function markerColor(fallback: string): string {
@@ -74,6 +78,7 @@ export function drawOrders(
   if (orders.length === 0 && !levelDrag.active) return;
 
   const { buy, sell } = orderColors(colors);
+  const formatPrice = opts?.formatPrice ?? formatPriceAdaptive;
 
   ctx.save();
   ctx.beginPath();
@@ -136,6 +141,7 @@ export function drawOrders(
         colors.muted,
         `${reason}${pnlTxt ? `  ${pnlTxt}` : ''}`,
         colors.onSolid,
+        formatPrice,
       );
       continue;
     }
@@ -262,6 +268,7 @@ export function drawOrders(
         sideBuy,
         markerColor(sideBuy ? buy : sell),
         colors.muted,
+        formatPrice,
       );
     }
   }
@@ -387,6 +394,7 @@ function drawEntryMarker(
   isBuy: boolean,
   arrowColor: string,
   textColor: string,
+  formatPrice: PriceFormatter = formatPriceAdaptive,
 ): void {
   const idx = indexAtOrBeforeBars(bars, createdAt);
   if (idx < 0 || idx >= bars.length) return;
@@ -402,7 +410,7 @@ function drawEntryMarker(
 
   drawTriangleMarker(ctx, x, tipY, isBuy, arrowColor);
 
-  const label = `$${formatPrice(entryPrice)}`;
+  const label = formatPrice(entryPrice);
   ctx.font = '500 10px ui-sans-serif, system-ui, sans-serif';
   ctx.fillStyle = textColor;
   ctx.textAlign = 'center';
@@ -453,6 +461,7 @@ function drawClosedTradeMarks(
   muted: string,
   exitLabel: string,
   onSolid: string,
+  formatPrice: PriceFormatter = formatPriceAdaptive,
 ): void {
   const entryIdx = indexAtOrBeforeBars(bars, entryTime);
   const exitIdx = indexAtOrBeforeBars(bars, exitTime);
@@ -494,7 +503,7 @@ function drawClosedTradeMarks(
     ctx.textAlign = 'center';
     ctx.textBaseline = isBuy ? 'top' : 'bottom';
     ctx.fillText(
-      `$${formatPrice(entryPrice)}`,
+      formatPrice(entryPrice),
       entryX,
       isBuy ? tipY + 7 : tipY - 7,
     );
@@ -541,6 +550,7 @@ function drawAxisChip(
   const y = priceToY(price, scale, plot);
   if (y < plot.top || y > plot.top + plot.height) return;
 
+  const formatPrice = opts.formatPrice ?? formatPriceAdaptive;
   const label = formatPrice(price);
   const axisX = opts.width - opts.priceAxisWidth;
   const labelY = Math.min(

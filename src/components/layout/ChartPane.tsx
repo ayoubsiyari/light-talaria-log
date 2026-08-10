@@ -1,4 +1,4 @@
-import { useCallback, useRef, useSyncExternalStore } from 'react';
+import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import type {
   ChartSyncStore,
   CrosshairMode,
@@ -18,6 +18,7 @@ import { VolumeIndicator } from '@/components/layout/VolumeIndicator';
 import type { Drawing, DrawingPoint } from '@/drawings/drawingStore';
 import type { HitResult } from '@/drawings/hitTest';
 import type { MagnetMode } from '@/drawings/magnet';
+import { defaultSpecForSymbol } from '@/orders/instrumentSpec';
 import type { ChartBar, VisibleRange } from '@/types/bar';
 import type { EnabledIndicator } from '@/types/indicator';
 import type { BacktestResult } from '@/types/backtest';
@@ -89,10 +90,10 @@ export interface ChartPaneProps {
   showBrandWatermark?: boolean;
 }
 
-function formatOhlc(point: CrosshairPoint | null): string {
+function formatOhlc(point: CrosshairPoint | null, digits: number): string {
   const bar = point?.bar;
   if (!bar) return 'O —  H —  L —  C —';
-  return `O ${formatPrice(bar.open)}  H ${formatPrice(bar.high)}  L ${formatPrice(bar.low)}  C ${formatPrice(bar.close)}`;
+  return `O ${formatPrice(bar.open, digits)}  H ${formatPrice(bar.high, digits)}  L ${formatPrice(bar.low, digits)}  C ${formatPrice(bar.close, digits)}`;
 }
 
 /** One synced chart pane — legend is read-only; pair/TF change via TopBar (active pane). */
@@ -151,31 +152,36 @@ export function ChartPane({
   const changeRef = useRef<HTMLSpanElement>(null);
   const sampleRef = useRef(onCrosshairSample);
   sampleRef.current = onCrosshairSample;
+  const priceSpec = useMemo(() => defaultSpecForSymbol(symbol), [symbol]);
   const appearance = useSyncExternalStore(
     subscribeAppearance,
     getAppearance,
     getAppearance,
   );
 
-  const onCrosshairMove = useCallback((point: CrosshairPoint | null) => {
-    sampleRef.current?.(point);
-    if (ohlcRef.current) {
-      ohlcRef.current.textContent = formatOhlc(point);
-    }
-    if (changeRef.current) {
-      if (point?.bar) {
-        const d = point.bar.close - point.bar.open;
-        const pct = point.bar.open !== 0 ? (d / point.bar.open) * 100 : 0;
-        const sign = d >= 0 ? '+' : '';
-        changeRef.current.textContent = `${sign}${formatPrice(d)} (${sign}${pct.toFixed(2)}%)`;
-        changeRef.current.className = `tabular-nums ${d >= 0 ? 'text-success' : 'text-danger'}`;
-        changeRef.current.hidden = false;
-      } else {
-        changeRef.current.textContent = '';
-        changeRef.current.hidden = true;
+  const onCrosshairMove = useCallback(
+    (point: CrosshairPoint | null) => {
+      const digits = priceSpec.digits;
+      sampleRef.current?.(point);
+      if (ohlcRef.current) {
+        ohlcRef.current.textContent = formatOhlc(point, digits);
       }
-    }
-  }, []);
+      if (changeRef.current) {
+        if (point?.bar) {
+          const d = point.bar.close - point.bar.open;
+          const pct = point.bar.open !== 0 ? (d / point.bar.open) * 100 : 0;
+          const sign = d >= 0 ? '+' : '';
+          changeRef.current.textContent = `${sign}${formatPrice(d, digits)} (${sign}${pct.toFixed(2)}%)`;
+          changeRef.current.className = `tabular-nums ${d >= 0 ? 'text-success' : 'text-danger'}`;
+          changeRef.current.hidden = false;
+        } else {
+          changeRef.current.textContent = '';
+          changeRef.current.hidden = true;
+        }
+      }
+    },
+    [priceSpec.digits],
+  );
 
   return (
     <div
@@ -277,6 +283,8 @@ export function ChartPane({
         orders={orders}
         selectedOrderId={selectedOrderId}
         onOrderSelect={onOrderSelect}
+        priceDigits={priceSpec.digits}
+        priceTickSize={priceSpec.tickSize}
         backtestResult={backtestResult}
         syncCrosshair={syncCrosshair}
         syncDateRange={syncDateRange}

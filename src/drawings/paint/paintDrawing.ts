@@ -1,5 +1,5 @@
 import { getChartColors, type ChartColors } from '@/chart/chartTheme';
-import { formatPrice } from '@/chart/format';
+import type { PriceFormatter } from '@/chart/format';
 import { priceToY } from '@/chart/scales';
 import type { ChartBar } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
@@ -31,6 +31,7 @@ import {
   barIndexAtTime,
   clipToPlot,
   extendLine,
+  fmtPrice,
   pointToXY,
   pointsToXY,
   type PaintCtx,
@@ -307,7 +308,7 @@ function paintFibLevels(
     if (showLabels || showPrices) {
       const parts: string[] = [];
       if (showLabels) parts.push(formatFibCoeff(lv.coeff));
-      if (showPrices) parts.push(formatPrice(price));
+      if (showPrices) parts.push(fmtPrice(pc, price));
       labelSlots.push({ y, text: parts.join('  '), color: ls.color });
     }
   }
@@ -1106,7 +1107,7 @@ export function paintDrawing(
         const { ctx, plot, colors } = pc;
         const y = xy[0].y;
         const price = d.points[0].price;
-        const label = formatPrice(price);
+        const label = fmtPrice(pc, price);
         const right = plot.left + plot.width;
         // Leader to plot edge — chip sits on the price axis (outside plot).
         applyStrokeStyle(ctx, { ...style, width: 1, lineStyle: 'dashed' });
@@ -1445,6 +1446,7 @@ export function paintDrawingEditChrome(
     priceAxisWidth: number;
     timeAxisHeight: number;
   } | null,
+  formatPriceFn?: PriceFormatter,
 ): void {
   if (bars.length === 0 || drawings.length === 0) return;
   const selectedSet = new Set(
@@ -1461,6 +1463,7 @@ export function paintDrawingEditChrome(
     plot,
     priceScale,
     colors: colors ?? getChartColors(),
+    formatPrice: formatPriceFn,
   };
 
   for (const d of drawings) {
@@ -1488,6 +1491,7 @@ export function paintDrawingEditChrome(
       priceScale,
       pc.colors,
       axisLayout,
+      formatPriceFn,
     );
   }
 }
@@ -1512,6 +1516,7 @@ export function paintAllDrawings(
     timeAxisHeight: number;
   } | null,
   layer: DrawingPaintLayer = 'all',
+  formatPriceFn?: PriceFormatter,
 ): void {
   if (hidden || bars.length === 0) return;
   const selectedSet = new Set(
@@ -1526,6 +1531,7 @@ export function paintAllDrawings(
     plot,
     priceScale,
     colors: colors ?? getChartColors(),
+    formatPrice: formatPriceFn,
   };
 
   if (layer === 'chrome') {
@@ -1541,6 +1547,7 @@ export function paintAllDrawings(
       colors,
       paneTf,
       axisLayout,
+      formatPriceFn,
     );
     if (draft) {
       paintDrawing(pc, draft, { selected: true, showHandles: true });
@@ -1576,6 +1583,7 @@ export function paintAllDrawings(
       priceScale,
       pc.colors,
       axisLayout,
+      formatPriceFn,
     );
   }
 }

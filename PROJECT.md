@@ -914,6 +914,8 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-09 | Obsidian settings shell (data-sett-v3): tool icon header, pill tabs, Reset/Done, Extend/Labels chips, Show Info; ChromeIcon map for rail + flyout | Open Trend Line settings — match V9 Obsidian chrome; then per-tool Inputs pass |
 | 2026-08-09 | Full Obsidian drawing settings UI: Sett* primitives + Style/Text/Coords/Visibility panes for all tool families (levels grids, visRanges, border/mid/label stubs) | Open settings per tool — controls match V9; paint wiring later |
 | 2026-08-09 | **Full Obsidian chrome UI (UI-first):** TF flyout+custom; symbol/chartType/ind-v2/sett-v2; logo+utils Objects/News stubs; rail cursor/magnet/vis/undo; Order Multi/BE/TSL/notes/shots; trades sort/card; layout thumbs 5–8 | Hard-refresh — click TopBar/rail/Order/trades; stubs OK until wiring |
+| 2026-08-10 | VPS data: packed+catalogued all FirstRate forex (49) + futures (17) M1→1D under `firstrate-*-m1` (66 total); import CSVs cleaned | Pick any FX/futures pair in Datasets — chart loads |
+| 2026-08-10 | Symbol lists by Forex/Futures + TV-style badges (`ChartSymbolBadge` flags / futures pills) in SymbolPicker + Create Session; `chartSymbolBadge.d.ts` | Hard-refresh symbol drop + session pairs; widen `PairSymbol` when futures catalog wired |
 
 ---
 

@@ -2501,11 +2501,38 @@
   text-transform: uppercase;
   color: var(--text);
 }
-[data-tb-drop="symbol"] [data-sym-group="trading"] [data-sym-group-label] {
+[data-tb-drop="symbol"] [data-sym-group="trading"] [data-sym-group-label],
+[data-tb-drop="symbol"] [data-sym-group="forex"] [data-sym-group-label] {
   color: var(--accent);
 }
 [data-tb-drop="symbol"] [data-sym-group="supporting"] [data-sym-group-label] {
   color: var(--support);
+}
+[data-tb-drop="symbol"] [data-sym-group="futures"] [data-sym-group-label] {
+  color: var(--warn, #e0b040);
+}
+[data-tb-drop="symbol"] [data-sym-group="crypto"] [data-sym-group-label] {
+  color: var(--accent-hover, var(--accent));
+}
+[data-tb-drop="symbol"] [data-sym-group="stocks"] [data-sym-group-label] {
+  color: var(--text-muted);
+}
+[data-tb-drop="symbol"] [data-sym-group="futures"] [data-sym-group-head],
+[data-tb-drop="symbol"] [data-sym-group="crypto"] [data-sym-group-head],
+[data-tb-drop="symbol"] [data-sym-group="stocks"] [data-sym-group-head],
+[data-tb-drop="symbol"] [data-sym-group="forex"] [data-sym-group-head] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px 6px;
+  margin-top: 2px;
+}
+[data-tb-drop="symbol"] [data-sym-group="futures"] [data-sym-group-head],
+[data-tb-drop="symbol"] [data-sym-group="crypto"] [data-sym-group-head],
+[data-tb-drop="symbol"] [data-sym-group="stocks"] [data-sym-group-head] {
+  margin-top: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
 }
 [data-tb-drop="symbol"] [data-sym-group-head] em {
   font-style: normal;

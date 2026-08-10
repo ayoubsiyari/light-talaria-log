@@ -8,13 +8,24 @@ import {
 } from 'react';
 import { Popover } from '@heroui/react';
 import { ChromeIcon } from '@/v9/chromeIcons.jsx';
+import {
+  ChartSymbolBadge,
+  normalizeSymForBadge,
+} from '@/v9/chartSymbolBadge.jsx';
 import type { PairSymbol } from '@/types/session';
+import {
+  classifySymbolAsset,
+  formatPairDisplay,
+  groupSymbolsByAsset,
+  symbolSubtitle,
+  type SymbolAssetClass,
+} from '@/symbols/symbolCategory';
 
 interface SymbolOption {
   pair: PairSymbol;
   /** Optional subtitle (e.g. dataset range). */
   hint?: string;
-  /** Live role group — Trading vs Supporting. */
+  /** Live role group — Trading vs Supporting (secondary). */
   role?: 'trading' | 'supporting';
 }
 
@@ -27,67 +38,15 @@ interface SymbolPickerProps {
   disabled?: boolean;
 }
 
-function pairParts(pair: string): { base: string; quote: string; display: string } {
-  const raw = pair.trim();
-  if (raw.includes('/')) {
-    const [base = raw, quote = ''] = raw.split('/');
-    return { base, quote, display: raw };
-  }
-  if (raw.length >= 6) {
-    return {
-      base: raw.slice(0, 3),
-      quote: raw.slice(3, 6),
-      display: `${raw.slice(0, 3)}/${raw.slice(3, 6)}`,
-    };
-  }
-  return { base: raw.slice(0, 3) || raw, quote: '', display: raw };
-}
-
-function SymbolBadge({
-  pair,
-  active,
-  supporting,
-}: {
-  pair: string;
-  active?: boolean;
-  supporting?: boolean;
-}) {
-  const { base } = pairParts(pair);
-  return (
-    <span
-      data-sym-badge=""
-      aria-hidden
-      style={{
-        borderRadius: 5,
-        border: `1px solid ${
-          active
-            ? supporting
-              ? 'color-mix(in oklab, var(--support, #c9a227) 45%, var(--line))'
-              : 'color-mix(in oklab, var(--accent) 45%, var(--line))'
-            : 'var(--line)'
-        }`,
-        background: active
-          ? supporting
-            ? 'color-mix(in oklab, var(--support, #c9a227) 16%, transparent)'
-            : 'var(--accent-quiet)'
-          : 'var(--surface-sunken)',
-        color: active
-          ? supporting
-            ? 'var(--support, #c9a227)'
-            : 'var(--accent)'
-          : 'var(--text-muted)',
-        fontSize: 9,
-        fontWeight: 800,
-        letterSpacing: '0.04em',
-      }}
-    >
-      {base.slice(0, 3).toUpperCase()}
-    </span>
-  );
+function categoryTone(ac: SymbolAssetClass): string {
+  if (ac === 'Futures') return 'var(--warn, #e0b040)';
+  if (ac === 'Crypto') return 'var(--accent)';
+  if (ac === 'Stocks') return 'var(--text-muted)';
+  return 'var(--accent)';
 }
 
 /**
- * Obsidian symbol switcher — Live data-tb-drop="symbol" grammar, elevated craft.
+ * Obsidian symbol switcher — Forex / Futures categories + TV-style flags.
  */
 export function SymbolPicker({
   symbol,
@@ -102,38 +61,29 @@ export function SymbolPicker({
   const searchRef = useRef<HTMLInputElement>(null);
   const listId = useId();
   const label = String(symbol);
-  const activeParts = pairParts(label);
+  const activeDisplay = formatPairDisplay(label);
+  const activeAsset = classifySymbolAsset(label);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return options;
+    if (!q) return [...options];
     return options.filter((o) => {
-      const p = pairParts(o.pair);
+      const display = formatPairDisplay(o.pair).toLowerCase();
+      const ac = classifySymbolAsset(o.pair).toLowerCase();
       return (
         o.pair.toLowerCase().includes(q) ||
-        p.display.toLowerCase().includes(q) ||
-        p.base.toLowerCase().includes(q) ||
-        p.quote.toLowerCase().includes(q) ||
+        display.includes(q) ||
+        ac.includes(q) ||
         (o.hint ?? '').toLowerCase().includes(q)
       );
     });
   }, [options, query]);
 
-  const trading = filtered.filter((o) => (o.role ?? 'trading') === 'trading');
-  const supporting = filtered.filter((o) => o.role === 'supporting');
-  const tradingRows =
-    supporting.length === 0 && trading.length === 0
-      ? filtered
-      : trading.length > 0
-        ? trading
-        : filtered.filter((o) => o.role !== 'supporting');
+  const groups = useMemo(() => groupSymbolsByAsset(filtered), [filtered]);
 
   const flatRows = useMemo(
-    () => [
-      ...tradingRows.map((o) => ({ ...o, role: (o.role ?? 'trading') as 'trading' | 'supporting' })),
-      ...supporting.map((o) => ({ ...o, role: 'supporting' as const })),
-    ],
-    [tradingRows, supporting],
+    () => groups.flatMap((g) => g.items),
+    [groups],
   );
 
   useEffect(() => {
@@ -161,12 +111,19 @@ export function SymbolPicker({
 
   const triggerInner = (
     <>
-      <SymbolBadge pair={label} active />
+      <span data-sym-badge="" className="inline-flex shrink-0">
+        <ChartSymbolBadge
+          sym={normalizeSymForBadge(label)}
+          asset={activeAsset}
+          w={22}
+          h={14}
+        />
+      </span>
       <span
         className="truncate max-w-[5.5rem] sm:max-w-[11rem] text-[13px] font-bold tabular-nums"
         style={{ letterSpacing: '-0.01em' }}
       >
-        {activeParts.display}
+        {activeDisplay}
       </span>
       <span data-tb-chevron="" className="opacity-70 inline-flex">
         <ChromeIcon n="chevDown" s={10} />
@@ -190,132 +147,6 @@ export function SymbolPicker({
       </div>
     );
   }
-
-  const renderGroup = (
-    role: 'trading' | 'supporting',
-    title: string,
-    hint: string,
-    rows: readonly SymbolOption[],
-  ) => {
-    if (rows.length === 0 && filtered.length > 0 && role === 'supporting') return null;
-    if (rows.length === 0 && role === 'trading' && supporting.length > 0) return null;
-    return (
-      <div data-sym-group={role} key={role}>
-        <div data-sym-group-head="" data-role={role}>
-          <span data-sym-group-label="">{title}</span>
-          <em>{hint}</em>
-          <span data-sym-group-count="">{rows.length}</span>
-        </div>
-        {rows.length === 0 ? (
-          <div data-sym-empty="">
-            {role === 'supporting'
-              ? 'No supporting symbols in this session.'
-              : 'No trading symbols match.'}
-          </div>
-        ) : (
-          rows.map((opt) => {
-            const active = opt.pair === symbol;
-            const compared = !active && compare.includes(opt.pair);
-            const supportingRow = role === 'supporting';
-            const parts = pairParts(opt.pair);
-            const flatIndex = flatRows.findIndex((r) => r.pair === opt.pair);
-            const focused = flatIndex === focusIdx;
-            return (
-              <div
-                key={opt.pair}
-                id={`${listId}-${opt.pair}`}
-                role="option"
-                aria-selected={active}
-                data-menu-row=""
-                data-sym-row="1"
-                data-active={active ? '1' : undefined}
-                data-supporting={supportingRow ? '1' : undefined}
-                data-compared={compared ? '1' : undefined}
-                data-focus={focused ? '1' : undefined}
-                className="min-h-11 sm:min-h-10"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  cursor: 'default',
-                  outline: focused
-                    ? '1px solid color-mix(in oklab, var(--accent) 55%, var(--line))'
-                    : undefined,
-                  outlineOffset: -1,
-                  background: active
-                    ? supportingRow
-                      ? 'color-mix(in oklab, var(--support, #c9a227) 12%, transparent)'
-                      : 'var(--accent-quiet)'
-                    : compared
-                      ? 'color-mix(in oklab, var(--down) 8%, transparent)'
-                      : focused
-                        ? 'var(--surface-raised)'
-                        : undefined,
-                  boxShadow: active
-                    ? 'inset 2px 0 0 var(--accent)'
-                    : undefined,
-                }}
-                onMouseEnter={() => setFocusIdx(flatIndex)}
-                onClick={(e) => {
-                  if ((e.target as HTMLElement).closest('[data-sym-compare]')) return;
-                  pick(opt.pair);
-                }}
-              >
-                <SymbolBadge
-                  pair={opt.pair}
-                  active={active}
-                  supporting={supportingRow}
-                />
-                <div data-sym-meta="">
-                  <strong>{parts.display}</strong>
-                  <em>
-                    {compared
-                      ? 'On chart · compare'
-                      : supportingRow
-                        ? active
-                          ? 'Supporting · on chart'
-                          : opt.hint || 'Supporting'
-                        : active
-                          ? 'On this pane'
-                          : opt.hint || (parts.quote ? `${parts.base} · ${parts.quote}` : 'Session symbol')}
-                  </em>
-                </div>
-                {active ? (
-                  <span data-sym-chip={supportingRow ? 'support' : 'chart'}>
-                    {supportingRow ? 'View' : 'Chart'}
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    data-sym-compare=""
-                    data-on={compared ? '1' : undefined}
-                    data-icon="1"
-                    title={
-                      compared
-                        ? 'Remove compare (stub)'
-                        : 'Add compare (stub)'
-                    }
-                    aria-label={
-                      compared
-                        ? `Remove ${opt.pair} from compare`
-                        : `Add ${opt.pair} to compare`
-                    }
-                    className="min-h-11 min-w-11 sm:min-h-7 sm:min-w-7"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      toggleCompare(opt.pair);
-                    }}
-                  >
-                    <ChromeIcon n={compared ? 'x' : 'plus'} s={14} cl="currentColor" />
-                  </button>
-                )}
-              </div>
-            );
-          })
-        )}
-      </div>
-    );
-  };
 
   return (
     <Popover
@@ -355,7 +186,7 @@ export function SymbolPicker({
           data-v9-chrome="1"
           data-sdrop="1"
           data-tb-drop="symbol"
-          className="w-[min(20rem,calc(100vw-1.5rem))] max-h-[min(72dvh,440px)] overflow-hidden flex flex-col"
+          className="w-[min(20.5rem,calc(100vw-1.5rem))] max-h-[min(72dvh,460px)] overflow-hidden flex flex-col"
           style={{
             background: 'var(--surface)',
             border: '1px solid var(--line)',
@@ -380,109 +211,225 @@ export function SymbolPicker({
               }
             }}
           >
-          <div data-tb-drop-search="">
-            <div data-menu-head="" style={{ padding: '10px 12px 4px' }}>
-              Symbols
+            <div data-tb-drop-search="">
+              <div data-menu-head="" style={{ padding: '10px 12px 4px' }}>
+                Symbols
+              </div>
+              <div
+                data-win-search=""
+                style={{ margin: '0 10px 10px', height: 36 }}
+                onClick={() => searchRef.current?.focus()}
+              >
+                <ChromeIcon n="search" s={13} cl="var(--text-faint)" />
+                <input
+                  ref={searchRef}
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search Forex or Futures…"
+                  aria-label="Search symbol"
+                  aria-controls={listId}
+                  style={{
+                    flex: 1,
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    color: 'var(--text)',
+                    fontSize: 13,
+                    padding: 0,
+                    minWidth: 0,
+                  }}
+                />
+                {query ? (
+                  <button
+                    type="button"
+                    data-brand-icon="1"
+                    aria-label="Clear search"
+                    className="min-h-8 min-w-8 inline-flex items-center justify-center"
+                    onClick={() => setQuery('')}
+                  >
+                    <ChromeIcon n="x" s={12} cl="var(--text-faint)" />
+                  </button>
+                ) : null}
+              </div>
             </div>
+
             <div
-              data-win-search=""
-              style={{ margin: '0 10px 10px', height: 36 }}
-              onClick={() => searchRef.current?.focus()}
+              id={listId}
+              role="listbox"
+              aria-label="Session symbols"
+              className="tlr-scroll flex-1 min-h-0 overflow-y-auto"
+              style={{ maxHeight: 340, padding: '0 0 6px' }}
             >
-              <ChromeIcon n="search" s={13} cl="var(--text-faint)" />
-              <input
-                ref={searchRef}
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search symbol…"
-                aria-label="Search symbol"
-                aria-controls={listId}
-                style={{
-                  flex: 1,
-                  background: 'transparent',
-                  border: 'none',
-                  outline: 'none',
-                  color: 'var(--text)',
-                  fontSize: 13,
-                  padding: 0,
-                  minWidth: 0,
-                }}
-              />
-              {query ? (
-                <button
-                  type="button"
-                  data-brand-icon="1"
-                  aria-label="Clear search"
-                  className="min-h-8 min-w-8 inline-flex items-center justify-center"
-                  onClick={() => setQuery('')}
+              {groups.map((group) => (
+                <div
+                  key={group.id}
+                  data-sym-group={group.id.toLowerCase()}
                 >
-                  <ChromeIcon n="x" s={12} cl="var(--text-faint)" />
-                </button>
+                  <div
+                    data-sym-group-head=""
+                    data-role={group.id.toLowerCase()}
+                  >
+                    <span
+                      data-sym-group-label=""
+                      style={{ color: categoryTone(group.id) }}
+                    >
+                      {group.label}
+                    </span>
+                    <em>{group.hint}</em>
+                    <span data-sym-group-count="">{group.items.length}</span>
+                  </div>
+                  {group.items.map((opt) => {
+                    const active = opt.pair === symbol;
+                    const compared = !active && compare.includes(opt.pair);
+                    const display = formatPairDisplay(opt.pair);
+                    const asset = classifySymbolAsset(opt.pair);
+                    const flatIndex = flatRows.findIndex(
+                      (r) => r.pair === opt.pair,
+                    );
+                    const focused = flatIndex === focusIdx;
+                    return (
+                      <div
+                        key={opt.pair}
+                        id={`${listId}-${opt.pair}`}
+                        role="option"
+                        aria-selected={active}
+                        data-menu-row=""
+                        data-sym-row="1"
+                        data-active={active ? '1' : undefined}
+                        data-compared={compared ? '1' : undefined}
+                        data-asset={asset.toLowerCase()}
+                        data-focus={focused ? '1' : undefined}
+                        className="min-h-11 sm:min-h-10"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '6px 10px',
+                          cursor: 'default',
+                          outline: focused
+                            ? '1px solid color-mix(in oklab, var(--accent) 55%, var(--line))'
+                            : undefined,
+                          outlineOffset: -1,
+                          background: active
+                            ? 'var(--accent-quiet)'
+                            : compared
+                              ? 'color-mix(in oklab, var(--down) 8%, transparent)'
+                              : focused
+                                ? 'var(--surface-raised)'
+                                : undefined,
+                          boxShadow: active
+                            ? 'inset 2px 0 0 var(--accent)'
+                            : undefined,
+                        }}
+                        onMouseEnter={() => setFocusIdx(flatIndex)}
+                        onClick={(e) => {
+                          if (
+                            (e.target as HTMLElement).closest(
+                              '[data-sym-compare]',
+                            )
+                          ) {
+                            return;
+                          }
+                          pick(opt.pair);
+                        }}
+                      >
+                        <span data-sym-badge="" className="inline-flex shrink-0">
+                          <ChartSymbolBadge
+                            sym={normalizeSymForBadge(opt.pair)}
+                            asset={asset}
+                            w={22}
+                            h={14}
+                          />
+                        </span>
+                        <div data-sym-meta="">
+                          <strong>{display}</strong>
+                          <em>
+                            {compared
+                              ? 'On chart · compare'
+                              : active
+                                ? `On this pane · ${asset}`
+                                : opt.hint || symbolSubtitle(opt.pair)}
+                          </em>
+                        </div>
+                        {active ? (
+                          <span data-sym-chip="chart">Chart</span>
+                        ) : (
+                          <button
+                            type="button"
+                            data-sym-compare=""
+                            data-on={compared ? '1' : undefined}
+                            data-icon="1"
+                            title={
+                              compared
+                                ? 'Remove compare (stub)'
+                                : 'Add compare (stub)'
+                            }
+                            aria-label={
+                              compared
+                                ? `Remove ${opt.pair} from compare`
+                                : `Add ${opt.pair} to compare`
+                            }
+                            className="min-h-11 min-w-11 sm:min-h-7 sm:min-w-7"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              toggleCompare(opt.pair);
+                            }}
+                          >
+                            <ChromeIcon
+                              n={compared ? 'x' : 'plus'}
+                              s={14}
+                              cl="currentColor"
+                            />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+              {filtered.length === 0 ? (
+                <div data-sym-empty="" style={{ padding: '16px 14px' }}>
+                  No symbols match “{query.trim()}”
+                </div>
               ) : null}
             </div>
-          </div>
 
-          <div
-            id={listId}
-            role="listbox"
-            aria-label="Session symbols"
-            className="tlr-scroll flex-1 min-h-0 overflow-y-auto"
-            style={{ maxHeight: 320, padding: '0 0 6px' }}
-          >
-            {renderGroup(
-              'trading',
-              'Trading',
-              'Switch the active pane',
-              tradingRows,
-            )}
-            {renderGroup(
-              'supporting',
-              'Supporting',
-              'Context legs',
-              supporting,
-            )}
-            {filtered.length === 0 ? (
-              <div data-sym-empty="" style={{ padding: '16px 14px' }}>
-                No symbols match “{query.trim()}”
+            {compare.length > 0 ? (
+              <div
+                style={{
+                  borderTop: '1px solid var(--line)',
+                  padding: '8px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontSize: 11,
+                  color: 'var(--text-faint)',
+                }}
+              >
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: 999,
+                    background: 'var(--down)',
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  Compare · {compare.length} overlay
+                  {compare.length === 1 ? '' : 's'} (stub)
+                </span>
+                <button
+                  type="button"
+                  className="min-h-11 sm:min-h-7 px-2 text-[11px] font-bold text-[color:var(--text-muted)]"
+                  onClick={() => setCompare([])}
+                >
+                  Clear
+                </button>
               </div>
             ) : null}
-          </div>
-
-          {compare.length > 0 ? (
-            <div
-              style={{
-                borderTop: '1px solid var(--line)',
-                padding: '8px 12px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                fontSize: 11,
-                color: 'var(--text-faint)',
-              }}
-            >
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 999,
-                  background: 'var(--down)',
-                  flexShrink: 0,
-                }}
-              />
-              <span style={{ flex: 1, minWidth: 0 }}>
-                Compare · {compare.length} overlay
-                {compare.length === 1 ? '' : 's'} (stub)
-              </span>
-              <button
-                type="button"
-                className="min-h-11 sm:min-h-7 px-2 text-[11px] font-bold text-[color:var(--text-muted)]"
-                onClick={() => setCompare([])}
-              >
-                Clear
-              </button>
-            </div>
-          ) : null}
           </div>
         </Popover.Dialog>
       </Popover.Content>

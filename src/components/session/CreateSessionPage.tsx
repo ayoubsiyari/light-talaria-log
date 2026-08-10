@@ -1,4 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  ChartSymbolBadge,
+  normalizeSymForBadge,
+} from '@/v9/chartSymbolBadge.jsx';
+import {
+  classifySymbolAsset,
+  formatPairDisplay,
+  groupSymbolsByAsset,
+} from '@/symbols/symbolCategory';
 import { Button, Card, Label } from '@heroui/react';
 import { useAuth } from '@/auth/AuthContext';
 import {
@@ -119,24 +128,16 @@ export function CreateSessionPage({
 
   const [selectedPairs, setSelectedPairs] = useState<PairSymbol[]>([]);
 
-  // Seed selection when server catalog first loads
-  useEffect(() => {
-    if (selectedPairs.length === 0 && pairs[0]) {
-      setSelectedPairs([pairs[0]]);
-    }
-  }, [pairs, selectedPairs.length]);
-
   const availableTfs = useMemo(
     () => commonTimeframes(datasets, selectedPairs),
     [datasets, selectedPairs],
   );
 
-  const [timeframe, setTimeframe] = useState<Timeframe | ''>('');
-
-  const effectiveTf: Timeframe | '' = useMemo(() => {
-    if (timeframe && availableTfs.includes(timeframe)) return timeframe;
-    return availableTfs[0] ?? '';
-  }, [availableTfs, timeframe]);
+  /** Chart picks TF — session seeds from finest shared coverage. */
+  const effectiveTf: Timeframe | '' = useMemo(
+    () => availableTfs[0] ?? '',
+    [availableTfs],
+  );
 
   const overlap = useMemo(() => {
     if (!effectiveTf || selectedPairs.length === 0) return null;
@@ -220,6 +221,12 @@ export function CreateSessionPage({
     [pairs, selectedPairs],
   );
 
+  const availablePairGroups = useMemo(
+    () =>
+      groupSymbolsByAsset(availablePairs.map((pair) => ({ pair }))),
+    [availablePairs],
+  );
+
   const sessionRows = useMemo(() => {
     return sessions.map((s) => {
       const view = getOrderJournalView(s.id);
@@ -298,10 +305,7 @@ export function CreateSessionPage({
   };
 
   const removePair = (pair: PairSymbol) => {
-    setSelectedPairs((prev) => {
-      if (prev.length <= 1) return prev;
-      return prev.filter((p) => p !== pair);
-    });
+    setSelectedPairs((prev) => prev.filter((p) => p !== pair));
     setError(null);
   };
 
@@ -866,56 +870,51 @@ export function CreateSessionPage({
                                 ? 'No more pairs available'
                                 : 'Add pair…'}
                           </option>
-                          {availablePairs.map((p) => (
-                            <option key={p} value={p}>
-                              {p}
-                            </option>
+                          {availablePairGroups.map((g) => (
+                            <optgroup key={g.id} label={g.label}>
+                              {g.items.map(({ pair: p }) => (
+                                <option key={p} value={p}>
+                                  {formatPairDisplay(p)}
+                                </option>
+                              ))}
+                            </optgroup>
                           ))}
                         </select>
                         {selectedPairs.length > 0 && (
                           <div className="flex flex-wrap gap-2">
-                            {selectedPairs.map((p) => (
-                              <button
-                                key={p}
-                                type="button"
-                                className="inline-flex items-center gap-1.5 min-h-9 rounded-md border border-border bg-foreground/6 px-2.5 text-sm text-foreground"
-                                onClick={() => removePair(p)}
-                                title={
-                                  selectedPairs.length <= 1
-                                    ? 'At least one pair required'
-                                    : `Remove ${p}`
-                                }
-                                disabled={selectedPairs.length <= 1}
-                              >
-                                <span>{p}</span>
-                                {selectedPairs.length > 1 && (
+                            {selectedPairs.map((p) => {
+                              const asset = classifySymbolAsset(p);
+                              return (
+                                <button
+                                  key={p}
+                                  type="button"
+                                  className="inline-flex items-center gap-2 min-h-11 sm:min-h-9 rounded-md border border-border bg-foreground/6 pl-2 pr-2.5 text-sm text-foreground"
+                                  onClick={() => removePair(p)}
+                                  title={`Remove ${p}`}
+                                >
+                                  <ChartSymbolBadge
+                                    sym={normalizeSymForBadge(p)}
+                                    asset={asset}
+                                    w={22}
+                                    h={14}
+                                  />
+                                  <span className="font-semibold tabular-nums">
+                                    {formatPairDisplay(p)}
+                                  </span>
+                                  <span
+                                    className="text-[9px] font-bold uppercase tracking-wide text-muted"
+                                  >
+                                    {asset}
+                                  </span>
                                   <span className="text-muted" aria-hidden>
                                     ×
                                   </span>
-                                )}
-                              </button>
-                            ))}
+                                </button>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
-                    </Field>
-                    <Field label="Timeframe">
-                      <select
-                        className={fieldClass}
-                        value={effectiveTf}
-                        onChange={(e) => setTimeframe(e.target.value as Timeframe)}
-                        disabled={availableTfs.length === 0}
-                      >
-                        {availableTfs.length === 0 ? (
-                          <option value="">No shared timeframe</option>
-                        ) : (
-                          availableTfs.map((t) => (
-                            <option key={t} value={t}>
-                              {t}
-                            </option>
-                          ))
-                        )}
-                      </select>
                     </Field>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <Field label="Start date *">

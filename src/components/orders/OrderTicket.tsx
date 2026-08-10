@@ -258,8 +258,10 @@ export function OrderTicket({
   const [sizeModeOpen, setSizeModeOpen] = useState(false);
   const [riskVal, setRiskVal] = useState('0.10');
   const [price, setPrice] = useState('');
-  const [tpOn, setTpOn] = useState(true);
-  const [slOn, setSlOn] = useState(true);
+  // Off until the user checks Stop/Target (or drags a level) — do not paint
+  // auto SL/TP on the chart just because Place Order opened.
+  const [tpOn, setTpOn] = useState(false);
+  const [slOn, setSlOn] = useState(false);
   const [sl, setSl] = useState('');
   const [tp, setTp] = useState('');
   const [tif] = useState<TimeInForce>('GTC');
@@ -391,13 +393,16 @@ export function OrderTicket({
     }
   };
 
-  // Open / side flip — seed MARKET entry + SL/TP in *this* symbol's price space.
+  // Open / side flip — seed MARKET entry in *this* symbol's price space.
+  // SL/TP stay off until the user enables them (check) or drags a level.
   useEffect(() => {
     if (!open) return;
     const seed = lastPx.toFixed(digits);
     setType('MARKET');
     setPrice(seed);
     reseedLevels(lastPx);
+    setSlOn(false);
+    setTpOn(false);
     setSlPlaced(false);
     setTpPlaced(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -409,6 +414,8 @@ export function OrderTicket({
     setType('MARKET');
     setPrice(lastPx.toFixed(digits));
     reseedLevels(lastPx);
+    setSlOn(false);
+    setTpOn(false);
     setSlPlaced(false);
     setTpPlaced(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -418,11 +425,23 @@ export function OrderTicket({
     if (!open || type !== 'MARKET') return;
     const seed = lastPx.toFixed(digits);
     setPrice(seed);
-    // Unplaced protective levels track pip distance from live entry — not the
-    // entry price itself (that published SL==entry and broke multi-chart Y).
-    if (!slPlaced) reseedLevels(lastPx, 'sl');
-    if (!tpPlaced) reseedLevels(lastPx, 'tp');
-  }, [open, type, lastPx, digits, slPlaced, tpPlaced, side, slPips, tpPips, pipSize]);
+    // Only track pip distance for levels the user has enabled.
+    if (slOn && !slPlaced) reseedLevels(lastPx, 'sl');
+    if (tpOn && !tpPlaced) reseedLevels(lastPx, 'tp');
+  }, [
+    open,
+    type,
+    lastPx,
+    digits,
+    slOn,
+    tpOn,
+    slPlaced,
+    tpPlaced,
+    side,
+    slPips,
+    tpPips,
+    pipSize,
+  ]);
 
   useEffect(() => {
     if (!open || !levelPatch) return;
@@ -468,8 +487,8 @@ export function OrderTicket({
       onDraftChange?.(null);
       return;
     }
-    // TradingView-style: while the ticket is open, paint entry + enabled SL/TP
-    // so the user can drag them on the chart (Preview, not a booked Pending).
+    // Entry always while ticket open; SL/TP only when the user turned them on
+    // (checkbox or chart drag) — never auto-bracket on Place Order.
     onDraftChange?.({
       side,
       type,

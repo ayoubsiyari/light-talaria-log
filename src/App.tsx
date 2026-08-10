@@ -1508,6 +1508,8 @@ export default function App() {
         maxLot: spec.maxLot,
         baseCurrency: spec.baseCurrency,
         quoteCurrency: spec.quoteCurrency,
+        assetClass: spec.assetClass,
+        quantityUnit: spec.quantityUnit,
         equity: st.account.equity,
         riskPercent: 0.01,
         riskLocked: true,

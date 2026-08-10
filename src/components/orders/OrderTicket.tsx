@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { inferPendingType } from '@/orders/inferPendingType';
-import { defaultSpecForSymbol } from '@/orders/instrumentSpec';
+import {
+  defaultSpecForSymbol,
+  distanceUnitLabel,
+  quantityUnitLabel,
+} from '@/orders/instrumentSpec';
 import { unrealizedPnL } from '@/orders/pnl';
 import type { OrderSide, OrderType, TimeInForce } from '@/orders/orderTypes';
+import { classifySymbolAsset } from '@/symbols/symbolCategory';
 import { ChromeIcon } from '@/v9/chromeIcons.jsx';
 
 const REJECT_MESSAGES: Record<string, string> = {
@@ -257,6 +262,8 @@ export function OrderTicket({
   const [sizeMode, setSizeMode] = useState<SizeMode>('#');
   const [sizeModeOpen, setSizeModeOpen] = useState(false);
   const [riskVal, setRiskVal] = useState('0.10');
+  const assetClassUi = classifySymbolAsset(symbol);
+  const isFutures = assetClassUi === 'Futures';
   const [price, setPrice] = useState('');
   // Off until the user checks Stop/Target (or drags a level) — do not paint
   // auto SL/TP on the chart just because Place Order opened.
@@ -324,6 +331,9 @@ export function OrderTicket({
       bid,
     ],
   );
+  const qtyLabel = quantityUnitLabel(specLike);
+  const qtyLabelLower = qtyLabel.toLowerCase();
+  const distLabel = distanceUnitLabel(specLike);
 
   const slAuto =
     side === 'BUY' ? entryPx - slPips * pipSize : entryPx + slPips * pipSize;
@@ -405,10 +415,12 @@ export function OrderTicket({
     setTpOn(false);
     setSlPlaced(false);
     setTpPlaced(false);
+    setSizeMode('#');
+    setRiskVal(isFutures ? '1' : '0.10');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, side]);
 
-  // Active pane / symbol change in multi-chart — never keep EUR levels on USD/JPY.
+  // Active pane / symbol change — reset size unit defaults (lots vs contracts).
   useEffect(() => {
     if (!open || !(lastPx > 0)) return;
     setType('MARKET');
@@ -418,6 +430,8 @@ export function OrderTicket({
     setTpOn(false);
     setSlPlaced(false);
     setTpPlaced(false);
+    setSizeMode('#');
+    setRiskVal(isFutures ? '1' : '0.10');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol]);
 
@@ -495,7 +509,7 @@ export function OrderTicket({
       entry: entryPx,
       stopLoss: slOn && Number.isFinite(slPxLive) ? slPxLive : null,
       takeProfit: tpOn && Number.isFinite(tpPxLive) ? tpPxLive : null,
-      size: lots > 0 ? lots : 0.1,
+      size: lots > 0 ? lots : isFutures ? 1 : 0.1,
     });
   }, [
     open,
@@ -558,10 +572,12 @@ export function OrderTicket({
   const rrRatio =
     absRisk > 0 && absReward > 0 ? (absReward / absRisk).toFixed(2) : '—';
 
+  const sizeDigits = isFutures ? 0 : 2;
+  const sizeFmt = (n: number) => n.toFixed(sizeDigits);
   const placeLabel =
     effLots <= 0
-      ? `${side === 'BUY' ? 'Buy' : 'Sell'} 0.00 Lots · Set Position Size`
-      : `${side === 'BUY' ? 'Buy' : 'Sell'} ${effLots.toFixed(2)} Lots`;
+      ? `${side === 'BUY' ? 'Buy' : 'Sell'} ${sizeFmt(0)} ${qtyLabel} · Set Position Size`
+      : `${side === 'BUY' ? 'Buy' : 'Sell'} ${sizeFmt(effLots)} ${quantityUnitLabel(specLike, effLots)}`;
 
   const stepPrice = (raw: string, dir: number) => {
     const n = Number(raw);
@@ -573,7 +589,9 @@ export function OrderTicket({
   const stepSize = (dir: number) => {
     const n = Number(riskVal) || 0;
     if (sizeMode === '#') {
-      setRiskVal(Math.max(0, round(n + dir * 0.01, 2)).toFixed(2));
+      const step = isFutures ? 1 : 0.01;
+      const next = Math.max(0, round(n + dir * step, isFutures ? 0 : 2));
+      setRiskVal(isFutures ? String(next) : next.toFixed(2));
       return;
     }
     if (sizeMode === '$') {
@@ -586,20 +604,20 @@ export function OrderTicket({
   const sizeMetaTop =
     sizeMode === '$'
       ? `${freeMargin > 0 ? ((Number(riskVal) / freeMargin) * 100).toFixed(2) : '0.00'}%`
-      : `${effLots.toFixed(2)} lots`;
+      : `${sizeFmt(effLots)} ${qtyLabelLower}`;
   const sizeMetaBottom =
     sizeMode === '#'
       ? `${((reqMargin / Math.max(freeMargin, 1)) * 100).toFixed(2)}% · $${fmt(reqMargin)}`
       : sizeMode === '%'
-        ? `$${fmt((Number(riskVal) / 100) * freeMargin)} · ${effLots.toFixed(2)} lots`
-        : `${effLots.toFixed(2)} lots`;
+        ? `$${fmt((Number(riskVal) / 100) * freeMargin)} · ${sizeFmt(effLots)} ${qtyLabelLower}`
+        : `${sizeFmt(effLots)} ${qtyLabelLower}`;
 
   const submitOrder = () => {
     if (effLots <= 0) return;
     onSubmit({
       side,
       type,
-      size: Number(effLots.toFixed(3)),
+      size: Number(effLots.toFixed(isFutures ? 0 : 3)),
       price: type === 'MARKET' ? undefined : Number(price),
       stopLoss: Number.isFinite(slPxLive) ? slPxLive : undefined,
       takeProfit: Number.isFinite(tpPxLive) ? tpPxLive : undefined,
@@ -700,7 +718,11 @@ export function OrderTicket({
                       setSizeModeOpen(false);
                     }}
                   >
-                    {m === '#' ? '# lots' : m === '$' ? '$ risk' : '% risk'}
+                    {m === '#'
+                      ? `# ${qtyLabelLower}`
+                      : m === '$'
+                        ? '$ risk'
+                        : '% risk'}
                   </button>
                 ))}
               </div>
@@ -800,7 +822,7 @@ export function OrderTicket({
             <ChromeIcon n="chevDown" s={10} />
           </div>
           <div data-order-asset="">
-            <span>Forex</span>
+            <span>{assetClassUi}</span>
             <span aria-hidden style={{ opacity: 0.35 }}>
               ·
             </span>
@@ -907,7 +929,7 @@ export function OrderTicket({
                       flexShrink: 0,
                     }}
                   >
-                    lots
+                    {qtyLabelLower}
                   </span>
                 ) : null}
                 <input
@@ -1196,7 +1218,7 @@ export function OrderTicket({
                       LOSS {fmtMoney(riskAmt)}
                     </span>
                     <span style={{ color: 'var(--text-faint)' }}>
-                      DIST {slDistPips.toFixed(1)} pips
+                      DIST {slDistPips.toFixed(1)} {distLabel}
                     </span>
                   </div>
                   {stopMode === 'be' || autoBe ? (
@@ -1369,7 +1391,7 @@ export function OrderTicket({
                       PROFIT {fmtMoney(rewardAmt)}
                     </span>
                     <span style={{ color: 'var(--text-faint)' }}>
-                      DIST {tpDistPips.toFixed(1)} pips
+                      DIST {tpDistPips.toFixed(1)} {distLabel}
                     </span>
                   </div>
                   {tpMulti ? (

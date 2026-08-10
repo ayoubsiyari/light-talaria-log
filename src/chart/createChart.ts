@@ -104,6 +104,8 @@ export interface OrderDragContext {
   maxLot: number;
   baseCurrency: string;
   quoteCurrency: string;
+  assetClass: 'forex' | 'futures';
+  quantityUnit: 'lot' | 'contract';
   equity: number;
   riskPercent: number;
   riskLocked: boolean;

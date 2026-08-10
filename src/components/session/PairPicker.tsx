@@ -28,8 +28,8 @@ interface PairPickerProps {
 }
 
 /**
- * Create-session pair add — Forex / Futures + TV badges.
- * Portals above the session modal (z-index > modal overlay).
+ * Compact create-session pair menu — Forex / Futures + small TV badges.
+ * Portals above the session modal.
  */
 export function PairPicker({
   options,
@@ -79,17 +79,17 @@ export function PairPicker({
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    const width = Math.min(Math.max(r.width, 280), window.innerWidth - 16);
+    const width = Math.min(Math.max(r.width, 240), 300, window.innerWidth - 16);
     let left = r.left;
     if (left + width > window.innerWidth - 8) {
       left = Math.max(8, window.innerWidth - 8 - width);
     }
-    const below = r.bottom + 6;
-    const maxH = Math.min(420, window.innerHeight * 0.7);
+    const below = r.bottom + 4;
+    const maxH = Math.min(320, window.innerHeight * 0.55);
     const spaceBelow = window.innerHeight - below - 8;
     const top =
-      spaceBelow < 180 && r.top > spaceBelow
-        ? Math.max(8, r.top - 6 - Math.min(maxH, r.top - 8))
+      spaceBelow < 160 && r.top > spaceBelow
+        ? Math.max(8, r.top - 4 - Math.min(maxH, r.top - 8))
         : below;
     setPos({ top, left, width });
   };
@@ -140,7 +140,6 @@ export function PairPicker({
           <div
             ref={panelRef}
             data-v9-chrome="1"
-            data-tb-drop="symbol"
             data-pair-picker=""
             role="dialog"
             aria-label="Select pair"
@@ -149,12 +148,8 @@ export function PairPicker({
               top: pos.top,
               left: pos.left,
               width: pos.width,
-              maxHeight: 'min(70dvh, 420px)',
+              maxHeight: 'min(55dvh, 320px)',
               zIndex: 100020,
-              background: 'var(--surface)',
-              border: '1px solid var(--line)',
-              borderRadius: 8,
-              boxShadow: '0 12px 40px rgba(0,0,0,0.45)',
             }}
             onKeyDown={(e: ReactKeyboardEvent<HTMLDivElement>) => {
               if (e.key === 'ArrowDown') {
@@ -171,54 +166,31 @@ export function PairPicker({
               }
             }}
           >
-            <div data-tb-drop-search="">
-              <div data-menu-head="" style={{ padding: '10px 12px 4px' }}>
-                Pairs · Forex & Futures
-              </div>
-              <div
-                data-win-search=""
-                style={{ margin: '0 10px 10px', height: 36 }}
-                onClick={() => searchRef.current?.focus()}
-              >
-                <ChromeIcon n="search" s={13} cl="var(--text-faint)" />
-                <input
-                  ref={searchRef}
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search Forex or Futures…"
-                  aria-label="Search pairs"
-                  aria-controls={listId}
-                  style={{
-                    flex: 1,
-                    background: 'transparent',
-                    border: 'none',
-                    outline: 'none',
-                    color: 'var(--text)',
-                    fontSize: 13,
-                    padding: 0,
-                    minWidth: 0,
-                  }}
-                />
-              </div>
+            <div data-pp-search="">
+              <ChromeIcon n="search" s={12} cl="var(--text-faint)" />
+              <input
+                ref={searchRef}
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search…"
+                aria-label="Search pairs"
+                aria-controls={listId}
+              />
             </div>
 
             <div
               id={listId}
               role="listbox"
               aria-label="Available pairs"
-              className="tlr-scroll flex-1 min-h-0 overflow-y-auto"
-              style={{ maxHeight: 300, padding: '0 0 6px' }}
+              className="tlr-scroll"
+              data-pp-list=""
             >
               {groups.map((group) => (
-                <div key={group.id} data-sym-group={group.id.toLowerCase()}>
-                  <div
-                    data-sym-group-head=""
-                    data-role={group.id.toLowerCase()}
-                  >
-                    <span data-sym-group-label="">{group.label}</span>
-                    <em>{group.hint}</em>
-                    <span data-sym-group-count="">{group.items.length}</span>
+                <div key={group.id} data-pp-group={group.id.toLowerCase()}>
+                  <div data-pp-group-head="">
+                    <span>{group.label}</span>
+                    <span data-pp-count="">{group.items.length}</span>
                   </div>
                   {group.items.map(({ pair }) => {
                     const display = formatPairDisplay(pair);
@@ -231,59 +203,31 @@ export function PairPicker({
                         type="button"
                         id={`${listId}-${pair}`}
                         role="option"
-                        data-menu-row=""
-                        data-sym-row="1"
+                        aria-selected={focused}
+                        data-pp-row=""
                         data-focus={focused ? '1' : undefined}
-                        data-asset={asset.toLowerCase()}
-                        className="w-full min-h-11 sm:min-h-10 text-left"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 10,
-                          padding: '6px 10px',
-                          background: focused
-                            ? 'var(--accent-quiet)'
-                            : undefined,
-                          color: focused ? 'var(--accent)' : 'var(--text)',
-                          outline: focused
-                            ? '1px solid color-mix(in oklab, var(--accent) 55%, var(--line))'
-                            : undefined,
-                          outlineOffset: -1,
-                        }}
                         onMouseEnter={() => setFocusIdx(flatIndex)}
                         onClick={() => pick(pair)}
                       >
-                        <span
-                          data-sym-badge=""
-                          className="inline-flex shrink-0 items-center"
-                        >
+                        <span data-pp-flag="" aria-hidden>
                           <ChartSymbolBadge
                             sym={normalizeSymForBadge(pair)}
                             asset={asset}
-                            w={22}
-                            h={14}
+                            w={16}
+                            h={11}
                           />
                         </span>
-                        <span data-sym-meta="" className="min-w-0 flex-1">
-                          <strong>{display}</strong>
-                          <em>{symbolSubtitle(pair)}</em>
-                        </span>
-                        <span
-                          className="text-[9px] font-bold uppercase tracking-wide shrink-0"
-                          style={{ color: 'var(--text-faint)' }}
-                        >
-                          {asset}
-                        </span>
+                        <span data-pp-sym="">{display}</span>
                       </button>
                     );
                   })}
                 </div>
               ))}
               {filtered.length === 0 ? (
-                <div data-sym-empty="" style={{ padding: '16px 14px' }}>
+                <div data-pp-empty="">
                   {options.length === 0
-                    ? 'No pairs available from server datasets.'
-                    : `No pairs match “${query.trim()}”`}
+                    ? 'No pairs available.'
+                    : `No match for “${query.trim()}”`}
                 </div>
               ) : null}
             </div>

@@ -23,6 +23,8 @@ export type DragSpec = Pick<
   | 'maxLot'
   | 'baseCurrency'
   | 'quoteCurrency'
+  | 'assetClass'
+  | 'quantityUnit'
 >;
 
 export interface LevelDragState {
@@ -152,7 +154,12 @@ export function moveLevelDrag(
       ctx: { accountCurrency: 'USD', instrumentPrice: levelDrag.entryPrice },
     });
     riskTxt = ` risk ${sized.actualRiskAccount.toFixed(2)}`;
-    lotsTxt = ` lots ${sized.lots.toFixed(2)}`;
+    const unit = asSpec.quantityUnit === 'contract' ? 'cts' : 'lots';
+    const q =
+      asSpec.quantityUnit === 'contract'
+        ? sized.lots.toFixed(0)
+        : sized.lots.toFixed(2);
+    lotsTxt = ` ${unit} ${q}`;
   }
   const rr =
     levelDrag.kind === 'tp' || levelDrag.kind === 'sl'
@@ -161,10 +168,11 @@ export function moveLevelDrag(
 
   // Direct DOM only — never React setState (§8.3)
   const typeBadge = levelDrag.pendingType;
+  const distUnit = asSpec.assetClass === 'futures' ? 'pts' : 'pips';
   el.textContent = [
     typeBadge ? typeBadge : null,
     `${snapped.toFixed(spec.digits)}`,
-    `${pips.toFixed(1)} pips`,
+    `${pips.toFixed(1)} ${distUnit}`,
     rr != null ? `R:R ${rr}` : '',
     riskTxt,
     lotsTxt,

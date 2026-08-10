@@ -864,32 +864,27 @@ export function CreateSessionPage({
                           onPick={addPair}
                         />
                         {selectedPairs.length > 0 && (
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap gap-1.5">
                             {selectedPairs.map((p) => {
                               const asset = classifySymbolAsset(p);
                               return (
                                 <button
                                   key={p}
                                   type="button"
-                                  className="inline-flex items-center gap-2 min-h-11 sm:min-h-9 rounded-md border border-border bg-foreground/6 pl-2 pr-2.5 text-sm text-foreground"
+                                  className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-8 rounded-md border border-border bg-foreground/6 pl-1.5 pr-2 text-[12px] text-foreground"
                                   onClick={() => removePair(p)}
                                   title={`Remove ${p}`}
                                 >
                                   <ChartSymbolBadge
                                     sym={normalizeSymForBadge(p)}
                                     asset={asset}
-                                    w={22}
-                                    h={14}
+                                    w={16}
+                                    h={11}
                                   />
-                                  <span className="font-semibold tabular-nums">
+                                  <span className="font-semibold tabular-nums leading-none">
                                     {formatPairDisplay(p)}
                                   </span>
-                                  <span
-                                    className="text-[9px] font-bold uppercase tracking-wide text-muted"
-                                  >
-                                    {asset}
-                                  </span>
-                                  <span className="text-muted" aria-hidden>
+                                  <span className="text-muted leading-none" aria-hidden>
                                     ×
                                   </span>
                                 </button>

@@ -3,7 +3,13 @@
  * Pure data + helpers — no React, no IDB, no wall clock.
  */
 
+import { matchFuturesRoot } from './futuresSpec';
+
 export type CommissionMode = 'perLot' | 'percent';
+/** Market family — drives size unit (lots vs contracts) and defaults. */
+export type InstrumentAssetClass = 'forex' | 'futures';
+/** Order size unit shown in the ticket / dock. */
+export type QuantityUnit = 'lot' | 'contract';
 
 /**
  * Temporary gate: keep spread / commission / slippage code paths, but force
@@ -28,17 +34,23 @@ export function applyCostPolicy(spec: InstrumentSpec): InstrumentSpec {
 
 export interface InstrumentSpec {
   symbol: string;
+  assetClass: InstrumentAssetClass;
+  /** `lot` for FX/metals spot; `contract` for futures. */
+  quantityUnit: QuantityUnit;
   /** ISO currency of the pair base (e.g. EUR in EURUSD). */
   baseCurrency: string;
   /** ISO currency of the pair quote (e.g. USD in EURUSD). */
   quoteCurrency: string;
-  /** Units per 1.0 lot (FX spot typically 100_000). */
+  /**
+   * FX: units per 1.0 lot (typically 100_000).
+   * Futures: $ (quote) per 1.0 price point × 1 contract (CME multiplier).
+   */
   contractSize: number;
   /** Minimum price increment. */
   tickSize: number;
   /** Display / stored price decimal places. */
   digits: number;
-  /** Pip size (often 10× tick for 5-digit FX). */
+  /** FX pip / futures point size (UI distance + pip-value helpers). */
   pipSize: number;
   minLot: number;
   maxLot: number;
@@ -136,16 +148,72 @@ export function instrumentSymbolKey(symbol: string): string {
   return symbol.replace(/\//g, '').toUpperCase();
 }
 
+/** Singular/plural size label for ticket + dock. */
+export function quantityUnitLabel(
+  spec: Pick<InstrumentSpec, 'quantityUnit'>,
+  count?: number,
+): string {
+  if (spec.quantityUnit === 'contract') {
+    if (count == null) return 'Contracts';
+    return Math.abs(count) === 1 ? 'Contract' : 'Contracts';
+  }
+  if (count == null) return 'Lots';
+  return Math.abs(count) === 1 ? 'Lot' : 'Lots';
+}
+
+/** Short distance unit: pips (FX) vs pts (futures). */
+export function distanceUnitLabel(
+  spec: Pick<InstrumentSpec, 'assetClass'>,
+): string {
+  return spec.assetClass === 'futures' ? 'pts' : 'pips';
+}
+
 export function defaultSpecForSymbol(symbol: string): InstrumentSpec {
+  const key = instrumentSymbolKey(symbol);
+  const fut = matchFuturesRoot(symbol);
+  if (fut) {
+    return applyCostPolicy({
+      symbol: key,
+      assetClass: 'futures',
+      quantityUnit: 'contract',
+      baseCurrency: fut.root,
+      quoteCurrency: fut.quoteCurrency,
+      contractSize: fut.contractSize,
+      tickSize: fut.tickSize,
+      digits: fut.digits,
+      pipSize: fut.pointSize,
+      minLot: 1,
+      maxLot: 500,
+      lotStep: 1,
+      stopLevel: fut.tickSize,
+      typicalSpread: fut.tickSize,
+      baseSlippage: 0,
+      slippagePerAtr: 0,
+      // Approx until SPAN/initial-margin table — keeps 1 contract placeable on $10k.
+      leverage: 40,
+      marginCallLevel: 100,
+      stopOutLevel: 50,
+      commissionMode: 'perLot',
+      commissionPerLot: 0,
+      commissionPercent: 0,
+      swapLong: 0,
+      swapShort: 0,
+      swapTimeUtc: 21 * 3600,
+      tripleSwapWeekday: 3,
+      sessionCloseUtc: 21 * 3600,
+    });
+  }
+
   const { baseCurrency, quoteCurrency } = parseSymbolCurrencies(symbol);
   const jpy = quoteCurrency === 'JPY' || baseCurrency === 'JPY';
   const xau = baseCurrency === 'XAU' || symbol.toUpperCase().includes('XAU');
   const tickSize = xau ? 0.01 : jpy ? 0.001 : 0.00001;
   const pipSize = xau ? 0.1 : jpy ? 0.01 : 0.0001;
   const digits = xau ? 2 : jpy ? 3 : 5;
-  const key = instrumentSymbolKey(symbol);
   return applyCostPolicy({
     symbol: key.slice(0, 6) || key,
+    assetClass: 'forex',
+    quantityUnit: 'lot',
     baseCurrency,
     quoteCurrency,
     contractSize: xau ? 100 : 100_000,
@@ -179,6 +247,8 @@ export function defaultSpecForSymbol(symbol: string): InstrumentSpec {
 export const SPEC_EURUSD: InstrumentSpec = {
   ...defaultSpecForSymbol('EURUSD'),
   symbol: 'EURUSD',
+  assetClass: 'forex',
+  quantityUnit: 'lot',
   baseCurrency: 'EUR',
   quoteCurrency: 'USD',
   contractSize: 100_000,
@@ -191,6 +261,8 @@ export const SPEC_EURUSD: InstrumentSpec = {
 export const SPEC_USDJPY: InstrumentSpec = {
   ...defaultSpecForSymbol('USDJPY'),
   symbol: 'USDJPY',
+  assetClass: 'forex',
+  quantityUnit: 'lot',
   baseCurrency: 'USD',
   quoteCurrency: 'JPY',
   contractSize: 100_000,
@@ -203,6 +275,8 @@ export const SPEC_USDJPY: InstrumentSpec = {
 export const SPEC_EURGBP: InstrumentSpec = {
   ...defaultSpecForSymbol('EURGBP'),
   symbol: 'EURGBP',
+  assetClass: 'forex',
+  quantityUnit: 'lot',
   baseCurrency: 'EUR',
   quoteCurrency: 'GBP',
   contractSize: 100_000,
@@ -210,4 +284,11 @@ export const SPEC_EURGBP: InstrumentSpec = {
   digits: 5,
   pipSize: 0.0001,
   typicalSpread: 0.0002,
+};
+
+export const SPEC_ES: InstrumentSpec = {
+  ...defaultSpecForSymbol('ES'),
+  symbol: 'ES',
+  assetClass: 'futures',
+  quantityUnit: 'contract',
 };

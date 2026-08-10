@@ -2438,10 +2438,41 @@
 
 /* ═══════════ TOPBAR TRIGGERS + SYMBOL / CHART-TYPE DROPS ═══════════ */
 [data-v9-topbar] [data-tb-trigger="1"] {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  line-height: 1 !important;
   background: transparent !important;
   color: var(--text-muted) !important;
   border-radius: 6px !important;
   transition: background var(--motion), color var(--motion), border-color var(--motion) !important;
+}
+/* Symbol pill: stacked flags + label share one vertical center */
+[data-v9-topbar] [data-tb-item="symbol"] {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  line-height: 1 !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  box-sizing: border-box !important;
+}
+[data-v9-topbar] [data-tb-item="symbol"] [data-sym-badge] {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 0 !important;
+  flex-shrink: 0 !important;
+  width: auto !important;
+  height: 14px !important;
+}
+[data-v9-topbar] [data-tb-item="symbol"] [data-sym-badge] > * {
+  display: block !important;
+}
+[data-v9-topbar] [data-tb-item="symbol"] [data-tb-chevron] {
+  display: inline-flex !important;
+  align-items: center !important;
+  line-height: 0 !important;
 }
 /* Chart type: fixed width for longest label ("Hollow Candles") — no ellipsis, no size jump. */
 [data-v9-topbar] [data-tb-item="chartType"] {

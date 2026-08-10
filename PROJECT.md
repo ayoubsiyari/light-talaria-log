@@ -916,6 +916,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-09 | **Full Obsidian chrome UI (UI-first):** TF flyout+custom; symbol/chartType/ind-v2/sett-v2; logo+utils Objects/News stubs; rail cursor/magnet/vis/undo; Order Multi/BE/TSL/notes/shots; trades sort/card; layout thumbs 5–8 | Hard-refresh — click TopBar/rail/Order/trades; stubs OK until wiring |
 | 2026-08-10 | VPS data: packed+catalogued all FirstRate forex (49) + futures (17) M1→1D under `firstrate-*-m1` (66 total); import CSVs cleaned | Pick any FX/futures pair in Datasets — chart loads |
 | 2026-08-10 | Symbol lists by Forex/Futures + TV-style badges (`ChartSymbolBadge` flags / futures pills) in SymbolPicker + Create Session; `chartSymbolBadge.d.ts` | Hard-refresh symbol drop + session pairs; widen `PairSymbol` when futures catalog wired |
+| 2026-08-10 | Fix FX misclassified as Crypto (USDC in USDCHF); open `PairSymbol`; flagged PairPicker; topbar symbol align; Forex/Futures only | Hard-refresh Create Session — full remote catalog + flags in drop |
 
 ---
 

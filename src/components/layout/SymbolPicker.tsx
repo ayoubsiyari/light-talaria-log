@@ -40,8 +40,6 @@ interface SymbolPickerProps {
 
 function categoryTone(ac: SymbolAssetClass): string {
   if (ac === 'Futures') return 'var(--warn, #e0b040)';
-  if (ac === 'Crypto') return 'var(--accent)';
-  if (ac === 'Stocks') return 'var(--text-muted)';
   return 'var(--accent)';
 }
 
@@ -120,12 +118,12 @@ export function SymbolPicker({
         />
       </span>
       <span
-        className="truncate max-w-[5.5rem] sm:max-w-[11rem] text-[13px] font-bold tabular-nums"
+        className="truncate max-w-[5.5rem] sm:max-w-[11rem] text-[13px] font-bold tabular-nums leading-none"
         style={{ letterSpacing: '-0.01em' }}
       >
         {activeDisplay}
       </span>
-      <span data-tb-chevron="" className="opacity-70 inline-flex">
+      <span data-tb-chevron="" className="opacity-70 inline-flex items-center leading-none">
         <ChromeIcon n="chevDown" s={10} />
       </span>
     </>

@@ -60,16 +60,15 @@ function rememberBridge(v8bId: string, sessionId: string): void {
   writeBridgeMap(map);
 }
 
-/** EURUSD → EUR/USD; XAUUSD → XAU/USD */
+/** EURUSD → EUR/USD; XAUUSD → XAU/USD; ES1 → ES1 */
 export function normalizeV8bTicker(raw: string): PairSymbol | null {
   const t = String(raw || '')
     .trim()
     .toUpperCase()
-    .replace(/[^A-Z]/g, '');
+    .replace(/[^A-Z0-9]/g, '');
   if (!t) return null;
-  const withSlash = t.includes('/')
-    ? t
-    : t.length === 6
+  const withSlash =
+    t.length === 6
       ? `${t.slice(0, 3)}/${t.slice(3)}`
       : t;
   const hit = PAIR_OPTIONS.find(
@@ -78,7 +77,8 @@ export function normalizeV8bTicker(raw: string): PairSymbol | null {
       p.id.replace('/', '') === t ||
       p.label.replace(/[^A-Z]/gi, '').toUpperCase() === t,
   );
-  return hit?.id ?? null;
+  if (hit) return hit.id;
+  return withSlash || t;
 }
 
 function mapTimeframe(raw: string | undefined): Timeframe {

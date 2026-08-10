@@ -1,18 +1,12 @@
 import type { Timeframe } from '@/types/ui';
 
-/** FX / CFD pairs available for backtest sessions (Phase 1 catalog). */
-export type PairSymbol =
-  | 'EUR/USD'
-  | 'GBP/USD'
-  | 'USD/JPY'
-  | 'USD/CHF'
-  | 'AUD/USD'
-  | 'USD/CAD'
-  | 'NZD/USD'
-  | 'EUR/JPY'
-  | 'GBP/JPY'
-  | 'XAU/USD';
+/**
+ * Instrument id — FX (`EUR/USD`) or futures root (`ES`, `NQ1`, …).
+ * Open string so remote FirstRate / API catalogs are not truncated.
+ */
+export type PairSymbol = string;
 
+/** Dukascopy download presets (FX). Server catalogs may include more. */
 export const PAIR_OPTIONS: { id: PairSymbol; label: string }[] = [
   { id: 'EUR/USD', label: 'EUR/USD' },
   { id: 'GBP/USD', label: 'GBP/USD' },

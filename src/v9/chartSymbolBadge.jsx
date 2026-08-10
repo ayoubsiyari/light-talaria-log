@@ -610,21 +610,32 @@ export function inferChartAssetClass(ticker) {
   // Dollar index + spot metals — keep in Forex (not stock/futures heuristics).
   if (/^(DXY|USDX|DX|XAUUSD|XAGUSD|XPTUSD|GOLD|SILVER)$/.test(u)) return "Forex";
 
-  if (/(BTC|ETH|BNB|SOL|ADA|XRP|DOGE|DOT|AVAX|LINK|MATIC|UNI|USDT|USDC|PERP|SWAP)/.test(u)) return "Crypto";
+  // FX pairs first — avoids false Crypto hits (USDCHF contains "USDC", USDCAD too).
+  if (u.length === 6) {
+    const b = u.slice(0, 3),
+      q = u.slice(3);
+    if (currencyCountry[b] && currencyCountry[q]) return "Forex";
+  }
+  if (/^[A-Z]{6}$/.test(u)) {
+    const b = u.slice(0, 3),
+      q = u.slice(3);
+    if (currencyCountry[b] || currencyCountry[q]) return "Forex";
+  }
+
+  // Crypto: whole-token / base+stable only — never substring of FX.
+  if (
+    /^(BTC|ETH|BNB|SOL|ADA|XRP|DOGE|DOT|AVAX|LINK|MATIC|UNI)(USD|USDT|USDC)?$/.test(u) ||
+    (/^(BTC|ETH|BNB|SOL|ADA|XRP|DOGE|DOT|AVAX|LINK|MATIC|UNI)/.test(u) &&
+      /(USDT|USDC|USD|PERP|SWAP)$/.test(u))
+  ) {
+    return "Crypto";
+  }
 
   for (const root of FUTURES_ROOTS_FOR_INFER) {
     if (!u.startsWith(root)) continue;
     const rest = u.slice(root.length);
     if (futuresSuffixLooksLikeContract(rest)) return "Futures";
   }
-
-  if (u.length === 6) {
-    const b = u.slice(0, 3),
-      q = u.slice(3);
-    if (currencyCountry[b] && currencyCountry[q]) return "Forex";
-  }
-
-  if (/^[A-Z]{6}$/.test(u)) return "Forex";
 
   const KNOWN_STOCKS = new Set([
     "AAPL", "TSLA", "NVDA", "MSFT", "AMZN", "GOOG", "GOOGL", "META", "NFLX", "AMD", "INTC",

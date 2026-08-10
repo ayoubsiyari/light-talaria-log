@@ -6,8 +6,8 @@ import {
 import {
   classifySymbolAsset,
   formatPairDisplay,
-  groupSymbolsByAsset,
 } from '@/symbols/symbolCategory';
+import { PairPicker } from '@/components/session/PairPicker';
 import { Button, Card, Label } from '@heroui/react';
 import { useAuth } from '@/auth/AuthContext';
 import {
@@ -219,12 +219,6 @@ export function CreateSessionPage({
   const availablePairs = useMemo(
     () => pairs.filter((p) => !selectedPairs.includes(p)),
     [pairs, selectedPairs],
-  );
-
-  const availablePairGroups = useMemo(
-    () =>
-      groupSymbolsByAsset(availablePairs.map((pair) => ({ pair }))),
-    [availablePairs],
   );
 
   const sessionRows = useMemo(() => {
@@ -854,32 +848,21 @@ export function CreateSessionPage({
                       label={`Pairs (up to 4 · ${layoutHint(selectedPairs.length)})`}
                     >
                       <div className="space-y-2">
-                        <select
-                          className={fieldClass}
-                          value=""
-                          disabled={selectedPairs.length >= 4 || availablePairs.length === 0}
-                          onChange={(e) => {
-                            const p = e.target.value as PairSymbol;
-                            if (p) addPair(p);
-                          }}
-                        >
-                          <option value="">
-                            {selectedPairs.length >= 4
+                        <PairPicker
+                          options={availablePairs}
+                          disabled={
+                            selectedPairs.length >= 4 ||
+                            availablePairs.length === 0
+                          }
+                          placeholder={
+                            selectedPairs.length >= 4
                               ? 'Maximum 4 pairs'
                               : availablePairs.length === 0
                                 ? 'No more pairs available'
-                                : 'Add pair…'}
-                          </option>
-                          {availablePairGroups.map((g) => (
-                            <optgroup key={g.id} label={g.label}>
-                              {g.items.map(({ pair: p }) => (
-                                <option key={p} value={p}>
-                                  {formatPairDisplay(p)}
-                                </option>
-                              ))}
-                            </optgroup>
-                          ))}
-                        </select>
+                                : 'Add pair…'
+                          }
+                          onPick={addPair}
+                        />
                         {selectedPairs.length > 0 && (
                           <div className="flex flex-wrap gap-2">
                             {selectedPairs.map((p) => {

@@ -21,6 +21,7 @@ import type {
 } from '@/types/dataset';
 import { newId } from '@/utils/uuid';
 import type { RemoteDatasetMeta } from '@/types/remoteApi';
+import { normalizePairSymbol } from '@/symbols/symbolCategory';
 import { PAIR_OPTIONS, type PairSymbol } from '@/types/session';
 import type { Timeframe } from '@/types/ui';
 
@@ -74,13 +75,16 @@ export function validateDownloadDates(startDate: string, endDate: string): strin
   return null;
 }
 
-/** Map remote API symbol (`EURUSD` or `EUR/USD`) to a catalog PairSymbol. */
+/** Map remote API symbol (`EURUSD`, `EUR/USD`, `ES1`, …) to a catalog PairSymbol. */
 export function remoteSymbolToPair(symbol: string): PairSymbol {
   const raw = symbol.trim().toUpperCase().replace(/\s+/g, '');
-  const compact = raw.replace(/\//g, '');
+  if (!raw) throw new Error('Empty remote symbol');
+  const compact = raw.replace(/[/\-_.]/g, '');
   const match = PAIR_OPTIONS.find((p) => p.id.replace(/\//g, '') === compact);
   if (match) return match.id;
-  throw new Error(`Unsupported remote symbol: ${symbol}`);
+  const normalized = normalizePairSymbol(raw);
+  if (!normalized) throw new Error(`Unsupported remote symbol: ${symbol}`);
+  return normalized;
 }
 
 export function unixToIsoDate(sec: number): string {

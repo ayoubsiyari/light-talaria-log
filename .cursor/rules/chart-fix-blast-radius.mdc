@@ -1,0 +1,35 @@
+---
+description: Chart fix discipline — blast radius, do-not-break, and regression checks
+globs: src/chart/**/*
+alwaysApply: false
+---
+
+# Chart Fix — Blast Radius
+
+When fixing or changing chart engine code, local correctness is not enough. Shared state in `createChart.ts` (camera, dirty flags, layer buffers, crosshair, interaction) means one fix often regresses neighbors.
+
+## Before editing
+1. Name the **target behavior** and the **shared state** it touches (VisibleRange, dirty flags, layer buffers, coords/scales, crosshair, follow mode).
+2. List **blast-radius neighbors** that share that state (series / indicators / overlay paint, pan-zoom, follow, multi-pane, touch).
+3. Prefer the smallest vertical diff. No “while we’re here” refactors in `createChart.ts`.
+
+## Do not break (verify every chart fix)
+- Layer invalidate still correct: series | indicators | overlay
+- Mid-drag / overlay-only paint does **not** force a full series rebuild
+- Pan, wheel zoom, axis drag, follow mode, and camera preserve still work
+- Crosshair snap / OHLC readout still align with logical index
+- Touch / pointer paths still work (~390px mental check)
+- Perf contract untouched: dirty + rAF only; viewport buffer ≤ `MAX_BARS_IN_MEMORY`
+
+## After editing
+1. Run related tests under `src/chart/__tests__/` (not only the new/changed file).
+2. If a neighbor broke in this session, add a **regression test** at the seam before finishing.
+3. In the reply: state what was fixed, what blast radius was checked, and any residual risk.
+
+## Examples
+```text
+❌ BAD: “Fixed crosshair snap” (only touched crosshair.ts, no neighbor check)
+
+✅ GOOD: “Fixed crosshair snap in crosshair.ts. Did not change series/indicator
+paint paths. Checked layer invalidate + pan/zoom/follow. Ran chart tests.”
+```

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Button } from '@heroui/react';
 import {
   getAppearance,
@@ -12,12 +12,10 @@ import {
 } from '@/chart/chartStyleTemplates';
 import { getTheme, setTheme, type ThemeMode } from '@/theme/theme';
 import {
-  ColorSwatches,
   Row,
-  SectionTitle,
   ToggleRow,
-  fieldClass,
 } from '@/components/drawings/settings/SettingsForm';
+import { SettColorSwatch } from '@/components/drawings/settings/obsidian/SettColorSwatch';
 import { CHART_TIMEZONES } from '@/chart/timezone';
 import type {
   AppearanceCrosshairMode,
@@ -72,6 +70,9 @@ const CROSSHAIR_MODES: { id: AppearanceCrosshairMode; label: string }[] = [
   { id: 'hidden', label: 'Hidden' },
 ];
 
+const selectClass =
+  'bg-[color:var(--surface-sunken)] border border-[color:var(--line)] rounded px-2 text-[12px] text-foreground outline-none focus:border-accent';
+
 export function ChartSettingsModal({ onClose }: ChartSettingsModalProps) {
   const [tab, setTab] = useState<SettingsTab>('symbol');
   const [snapshot] = useState<ChartAppearance>(() => getAppearance());
@@ -109,7 +110,17 @@ export function ChartSettingsModal({ onClose }: ChartSettingsModalProps) {
     setAppearance(next);
   };
 
-  const tabLabel = TABS.find((t) => t.id === tab)?.label ?? 'Settings';
+  const applyTemplate = (id: string) => {
+    applyChartStyleTemplate(id);
+    const t = CHART_STYLE_TEMPLATES.find((x) => x.id === id);
+    if (t) {
+      setThemeLocal(t.theme);
+      setTheme(t.theme);
+    }
+    setDraft(getAppearance());
+  };
+
+  const activeTpl = matchTemplateId(draft) ?? '';
 
   return (
     <div
@@ -122,16 +133,26 @@ export function ChartSettingsModal({ onClose }: ChartSettingsModalProps) {
       <div
         data-v9-chrome="1"
         data-sett-v2="1"
+        data-sett-v3="1"
+        data-sett-compact="1"
         data-chrome-win="chart-settings"
-        className="w-full flex flex-col overflow-hidden rounded-xl shadow-xl"
+        className="w-full flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Body: nav | pane — must stay a row (see chrome-rebuild [data-sett-v2-body]) */}
+        <header data-sett-head="">
+          <span data-sett-head-title="">Settings</span>
+          <button
+            type="button"
+            className="min-h-11 min-w-11 rounded-full text-muted hover:text-foreground hover:bg-[color:var(--surface-sunken)]"
+            aria-label="Close"
+            onClick={cancel}
+          >
+            ✕
+          </button>
+        </header>
+
         <div data-sett-v2-body="">
-          <nav data-sett-v2-nav="" data-sett-nav="" aria-label="Chart settings sections">
-            <p className="px-2.5 pt-1.5 pb-2 text-[10px] font-semibold text-muted uppercase tracking-wide">
-              Chart settings
-            </p>
+          <nav data-sett-v2-nav="" data-sett-nav="" aria-label="Settings sections">
             {TABS.map((t) => (
               <button
                 key={t.id}
@@ -146,30 +167,9 @@ export function ChartSettingsModal({ onClose }: ChartSettingsModalProps) {
           </nav>
 
           <div data-sett-v2-main="">
-            <header className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-[color:var(--line)] shrink-0">
-              <h2 className="text-sm font-semibold text-foreground tracking-tight">
-                {tabLabel}
-              </h2>
-              <button
-                type="button"
-                className="min-h-11 min-w-11 rounded-md text-muted hover:text-foreground hover:bg-[color:var(--surface-sunken)]"
-                aria-label="Close"
-                onClick={cancel}
-              >
-                ✕
-              </button>
-            </header>
-
-            <div data-sett-v2-pane="" className="px-4 py-3 space-y-3">
+            <div data-sett-v2-pane="">
               {tab === 'symbol' && (
-                <SymbolTab
-                  draft={draft}
-                  applyLive={applyLive}
-                  onThemeChange={(m) => {
-                    setThemeLocal(m);
-                    setTheme(m);
-                  }}
-                />
+                <SymbolTab draft={draft} applyLive={applyLive} />
               )}
               {tab === 'status' && (
                 <StatusTab draft={draft} applyLive={applyLive} />
@@ -192,8 +192,8 @@ export function ChartSettingsModal({ onClose }: ChartSettingsModalProps) {
                 />
               )}
               {tab === 'trading' && (
-                <div className="space-y-3">
-                  <SectionTitle>Trading</SectionTitle>
+                <>
+                  <SectionH>Trading</SectionH>
                   <ToggleRow
                     label="Show order brackets"
                     checked={true}
@@ -204,14 +204,11 @@ export function ChartSettingsModal({ onClose }: ChartSettingsModalProps) {
                     checked={false}
                     onChange={() => {}}
                   />
-                  <p className="text-[11px] text-muted">
-                    Stub toggles — wire to trading prefs later.
-                  </p>
-                </div>
+                </>
               )}
               {tab === 'buttons' && (
-                <div className="space-y-3">
-                  <SectionTitle>Buttons</SectionTitle>
+                <>
+                  <SectionH>Buttons</SectionH>
                   <ToggleRow
                     label="Place Order CTA"
                     checked={true}
@@ -227,59 +224,44 @@ export function ChartSettingsModal({ onClose }: ChartSettingsModalProps) {
                     checked={true}
                     onChange={() => {}}
                   />
-                  <p className="text-[11px] text-muted">
-                    Stub visibility — wire to chrome prefs later.
-                  </p>
-                </div>
+                </>
               )}
               {tab === 'templates' && (
-                <div className="space-y-2">
-                  <SectionTitle>Templates</SectionTitle>
-                  <p className="text-[11px] text-muted -mt-1">
-                    Full look presets. Apply, then tweak in Candles / Canvas /
-                    Layout.
+                <>
+                  <SectionH>Templates</SectionH>
+                  <p className="text-[11px] text-muted mb-2 -mt-1">
+                    Apply a full look, then tweak colors in Candles / Canvas.
                   </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <div className="flex flex-col gap-0.5">
                     {CHART_STYLE_TEMPLATES.map((t) => {
-                      const active = matchTemplateId(draft) === t.id;
+                      const active = activeTpl === t.id;
                       return (
                         <button
                           key={t.id}
                           type="button"
+                          data-sett-tpl-row=""
+                          data-active={active ? '1' : undefined}
                           title={t.description}
-                          className={[
-                            'rounded-lg border px-2.5 py-2 text-left transition-colors min-h-11',
-                            active
-                              ? 'border-accent bg-accent/10'
-                              : 'border-[color:var(--line)] hover:border-accent/50 hover:bg-[color:var(--surface-sunken)]',
-                          ].join(' ')}
-                          onClick={() => {
-                            applyChartStyleTemplate(t.id);
-                            setThemeLocal(t.theme);
-                            setTheme(t.theme);
-                            setDraft(getAppearance());
-                          }}
+                          onClick={() => applyTemplate(t.id)}
                         >
-                          <div className="flex h-5 overflow-hidden rounded-sm mb-1.5">
+                          <span data-sett-tpl-strip="" aria-hidden="true">
                             {t.preview.map((c, i) => (
-                              <span
-                                key={i}
-                                className="flex-1"
-                                style={{ background: c }}
-                              />
+                              <i key={i} style={{ background: c }} />
                             ))}
-                          </div>
-                          <span className="text-[12px] font-medium text-foreground block truncate">
-                            {t.name}
                           </span>
-                          <span className="text-[10px] text-muted block truncate">
-                            {t.description}
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[13px] font-medium truncate">
+                              {t.name}
+                            </span>
+                            <span className="block text-[11px] text-muted truncate">
+                              {t.description}
+                            </span>
                           </span>
                         </button>
                       );
                     })}
                   </div>
-                </div>
+                </>
               )}
             </div>
           </div>
@@ -288,22 +270,42 @@ export function ChartSettingsModal({ onClose }: ChartSettingsModalProps) {
         <footer
           data-sett-foot=""
           data-win-foot=""
-          className="shrink-0 flex flex-wrap items-center justify-between gap-2 border-t border-[color:var(--line)] px-4 py-2.5 bg-[color:var(--surface)]"
+          className="shrink-0 flex flex-wrap items-center justify-between gap-2 border-t border-[color:var(--line)] bg-[color:var(--surface)]"
         >
-          <Button
-            variant="ghost"
-            size="sm"
-            className="min-h-10"
-            onPress={() => {
-              resetAppearance();
-              setDraft(getAppearance());
-              setThemeLocal('dark');
-              setTheme('dark');
-            }}
-          >
-            Reset defaults
-          </Button>
-          <div className="flex gap-2" data-sett-foot-actions="">
+          <label className="flex items-center gap-2 min-w-0 min-h-11">
+            <span className="text-[12px] text-muted shrink-0">Template</span>
+            <select
+              data-sett-select=""
+              className={`${selectClass} min-w-0 max-w-[160px]`}
+              value={activeTpl}
+              aria-label="Chart template"
+              onChange={(e) => {
+                const id = e.target.value;
+                if (id) applyTemplate(id);
+              }}
+            >
+              <option value="">Custom</option>
+              {CHART_STYLE_TEMPLATES.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex gap-2 items-center" data-sett-foot-actions="">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="min-h-10"
+              onPress={() => {
+                resetAppearance();
+                setDraft(getAppearance());
+                setThemeLocal('dark');
+                setTheme('dark');
+              }}
+            >
+              Reset
+            </Button>
             <Button
               variant="secondary"
               size="sm"
@@ -318,7 +320,7 @@ export function ChartSettingsModal({ onClose }: ChartSettingsModalProps) {
               className="min-h-10"
               onPress={apply}
             >
-              OK
+              Ok
             </Button>
           </div>
         </footer>
@@ -327,111 +329,33 @@ export function ChartSettingsModal({ onClose }: ChartSettingsModalProps) {
   );
 }
 
+function SectionH({ children }: { children: ReactNode }) {
+  return <div data-sett-section-title="">{children}</div>;
+}
+
 function SymbolTab({
   draft,
   applyLive,
-  onThemeChange,
 }: {
   draft: ChartAppearance;
   applyLive: (p: Partial<ChartAppearance>) => void;
-  onThemeChange: (m: ThemeMode) => void;
 }) {
   return (
     <>
-      <SectionTitle>Chart templates</SectionTitle>
-      <p className="text-[11px] text-muted -mt-1 mb-1">
-        Full look: candles, grid, volume, chrome, buttons & selection. Tweak
-        below after applying.
-      </p>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {CHART_STYLE_TEMPLATES.map((t) => {
-          const active = matchTemplateId(draft) === t.id;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              title={t.description}
-              onClick={() => {
-                applyChartStyleTemplate(t.id);
-                onThemeChange(t.theme);
-                applyLive({ ...getAppearance() });
-              }}
-              className={[
-                'rounded-lg border px-2 py-2 text-left transition-colors min-h-11',
-                active
-                  ? 'border-accent bg-accent/10'
-                  : 'border-[color:var(--line)] hover:border-accent/50 hover:bg-[color:var(--surface-sunken)]',
-              ].join(' ')}
-            >
-              <div className="flex h-5 overflow-hidden rounded-sm mb-1.5">
-                {t.preview.map((c, i) => (
-                  <span key={i} className="flex-1" style={{ background: c }} />
-                ))}
-              </div>
-              <span className="text-[11px] font-medium text-foreground block truncate">
-                {t.name}
-              </span>
-              <span className="text-[10px] text-muted block truncate">
-                {t.description}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      <SectionTitle>Chart type</SectionTitle>
-      <Row label="Series">
-        <select
-          value={draft.seriesType}
-          onChange={(e) =>
-            applyLive({ seriesType: e.target.value as AppearanceSeriesType })
-          }
-          className={`${fieldClass} min-h-9`}
-        >
-          {SERIES_TYPES.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-      </Row>
-
-      {draft.seriesType === 'line' && (
-        <>
-          <ColorField
-            label="Line color"
-            value={draft.lineColor}
-            onChange={(c) => applyLive({ lineColor: c })}
-            onClear={() => applyLive({ lineColor: null })}
-          />
-          <Row label="Line width">
-            <input
-              type="range"
-              min={1}
-              max={6}
-              step={1}
-              value={draft.lineWidth}
-              onChange={(e) => applyLive({ lineWidth: Number(e.target.value) })}
-              className="w-32 accent-[var(--accent)]"
-            />
-            <span className="text-xs text-muted w-4">{draft.lineWidth}</span>
-          </Row>
-        </>
-      )}
+      <SectionH>Candles</SectionH>
+      <ToggleRow
+        label="Hollow candles (up)"
+        checked={draft.hollowCandles}
+        onChange={(v) => applyLive({ hollowCandles: v })}
+      />
+      <ToggleRow
+        label="Color based on previous close"
+        checked={draft.colorBasedOnPrevClose}
+        onChange={(v) => applyLive({ colorBasedOnPrevClose: v })}
+      />
 
       {(draft.seriesType === 'candle' || draft.seriesType === 'bar') && (
         <>
-          <SectionTitle>Candles / bars</SectionTitle>
-          <ToggleRow
-            label="Hollow candles (up)"
-            checked={draft.hollowCandles}
-            onChange={(v) => applyLive({ hollowCandles: v })}
-          />
-          <ToggleRow
-            label="Color based on previous close"
-            checked={draft.colorBasedOnPrevClose}
-            onChange={(v) => applyLive({ colorBasedOnPrevClose: v })}
-          />
           {draft.seriesType === 'candle' && (
             <>
               <CandleColorRow
@@ -490,7 +414,50 @@ function SymbolTab({
         </>
       )}
 
-      <SectionTitle>Volume</SectionTitle>
+      <SectionH>Chart type</SectionH>
+      <Row label="Series">
+        <select
+          data-sett-select=""
+          value={draft.seriesType}
+          onChange={(e) =>
+            applyLive({ seriesType: e.target.value as AppearanceSeriesType })
+          }
+          className={selectClass}
+        >
+          {SERIES_TYPES.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+      </Row>
+
+      {draft.seriesType === 'line' && (
+        <>
+          <ColorField
+            label="Line color"
+            value={draft.lineColor}
+            onChange={(c) => applyLive({ lineColor: c })}
+            onClear={() => applyLive({ lineColor: null })}
+          />
+          <Row label="Line width">
+            <input
+              type="range"
+              min={1}
+              max={6}
+              step={1}
+              value={draft.lineWidth}
+              onChange={(e) => applyLive({ lineWidth: Number(e.target.value) })}
+              className="w-28 accent-[var(--accent)]"
+            />
+            <span className="text-[12px] text-muted tabular-nums w-4">
+              {draft.lineWidth}
+            </span>
+          </Row>
+        </>
+      )}
+
+      <SectionH>Volume</SectionH>
       <ToggleRow
         label="Show volume"
         checked={draft.showVolume}
@@ -505,9 +472,9 @@ function SymbolTab({
           value={draft.volumeOpacity}
           disabled={!draft.showVolume}
           onChange={(e) => applyLive({ volumeOpacity: Number(e.target.value) })}
-          className="w-32 accent-[var(--accent)]"
+          className="w-28 accent-[var(--accent)]"
         />
-        <span className="text-xs text-muted w-10">
+        <span className="text-[12px] text-muted tabular-nums w-9">
           {Math.round(draft.volumeOpacity * 100)}%
         </span>
       </Row>
@@ -524,7 +491,7 @@ function StatusTab({
 }) {
   return (
     <>
-      <SectionTitle>Legend</SectionTitle>
+      <SectionH>Status line</SectionH>
       <ToggleRow
         label="Symbol"
         checked={draft.statusShowSymbol}
@@ -546,7 +513,7 @@ function StatusTab({
         onChange={(v) => applyLive({ statusShowChange: v })}
       />
       <ToggleRow
-        label="Volume legend control"
+        label="Volume"
         checked={draft.statusShowVolumeLegend}
         onChange={(v) => applyLive({ statusShowVolumeLegend: v })}
       />
@@ -563,16 +530,17 @@ function ScalesTab({
 }) {
   return (
     <>
-      <SectionTitle>Crosshair</SectionTitle>
+      <SectionH>Crosshair</SectionH>
       <Row label="Mode">
         <select
+          data-sett-select=""
           value={draft.crosshairMode}
           onChange={(e) =>
             applyLive({
               crosshairMode: e.target.value as AppearanceCrosshairMode,
             })
           }
-          className={`${fieldClass} min-h-9`}
+          className={selectClass}
         >
           {CROSSHAIR_MODES.map((m) => (
             <option key={m.id} value={m.id}>
@@ -582,13 +550,13 @@ function ScalesTab({
         </select>
       </Row>
       <ColorField
-        label="Crosshair color"
+        label="Crosshair"
         value={draft.crosshair}
         onChange={(c) => applyLive({ crosshair: c })}
         onClear={() => applyLive({ crosshair: null })}
       />
 
-      <SectionTitle>Last price line</SectionTitle>
+      <SectionH>Last price line</SectionH>
       <ToggleRow
         label="Show last price line"
         checked={draft.showLastPrice}
@@ -601,13 +569,14 @@ function ScalesTab({
       />
       <Row label="Line style">
         <select
+          data-sett-select=""
           value={draft.lastPriceLineStyle}
           onChange={(e) =>
             applyLive({
               lastPriceLineStyle: e.target.value as LastPriceLineStyle,
             })
           }
-          className={`${fieldClass} min-h-9`}
+          className={selectClass}
           disabled={!draft.showLastPrice}
         >
           {LINE_STYLES.map((s) => (
@@ -618,7 +587,7 @@ function ScalesTab({
         </select>
       </Row>
 
-      <SectionTitle>Axes</SectionTitle>
+      <SectionH>Scales</SectionH>
       <ToggleRow
         label="Price scale"
         checked={draft.showPriceScale}
@@ -631,13 +600,14 @@ function ScalesTab({
       />
       <Row label="Timezone">
         <select
+          data-sett-select=""
           value={draft.timezone}
           onChange={(e) =>
             applyLive({
               timezone: e.target.value as ChartTimezoneId,
             })
           }
-          className={`${fieldClass} min-h-11`}
+          className={`${selectClass} max-w-[200px]`}
           aria-label="Chart timezone"
         >
           {CHART_TIMEZONES.map((z) => (
@@ -647,9 +617,6 @@ function ScalesTab({
           ))}
         </select>
       </Row>
-      <p className="text-xs text-muted px-1 -mt-1 mb-2">
-        Axis, crosshair, and replay clock labels. Bar data stays UTC.
-      </p>
       <ColorField
         label="Axis labels"
         value={draft.axisText}
@@ -669,69 +636,35 @@ function CanvasTab({
 }) {
   return (
     <>
-      <SectionTitle>Background</SectionTitle>
+      <SectionH>Chart basic styles</SectionH>
       <ColorField
-        label="Chart background"
+        label="Background"
         value={draft.background}
         onChange={(c) => applyLive({ background: c })}
         onClear={() => applyLive({ background: null })}
       />
+      <ColorStyleRow
+        label="Vert grid lines"
+        color={draft.gridVertical}
+        onColor={(c) => applyLive({ gridVertical: c })}
+        onClearColor={() => applyLive({ gridVertical: null })}
+        style={draft.gridVStyle}
+        onStyle={(s) => applyLive({ gridVStyle: s })}
+        enabled={draft.showGridV}
+        onEnabled={(v) => applyLive({ showGridV: v })}
+      />
+      <ColorStyleRow
+        label="Horz grid lines"
+        color={draft.gridHorizontal}
+        onColor={(c) => applyLive({ gridHorizontal: c })}
+        onClearColor={() => applyLive({ gridHorizontal: null })}
+        style={draft.gridHStyle}
+        onStyle={(s) => applyLive({ gridHStyle: s })}
+        enabled={draft.showGridH}
+        onEnabled={(v) => applyLive({ showGridH: v })}
+      />
 
-      <SectionTitle>Grid</SectionTitle>
-      <ToggleRow
-        label="Horizontal grid"
-        checked={draft.showGridH}
-        onChange={(v) => applyLive({ showGridH: v })}
-      />
-      <ColorField
-        label="Horizontal color"
-        value={draft.gridHorizontal}
-        onChange={(c) => applyLive({ gridHorizontal: c })}
-        onClear={() => applyLive({ gridHorizontal: null })}
-      />
-      <Row label="Horizontal style">
-        <select
-          value={draft.gridHStyle}
-          onChange={(e) =>
-            applyLive({ gridHStyle: e.target.value as GridLineStyle })
-          }
-          className={`${fieldClass} min-h-9`}
-        >
-          {LINE_STYLES.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-      </Row>
-      <ToggleRow
-        label="Vertical grid"
-        checked={draft.showGridV}
-        onChange={(v) => applyLive({ showGridV: v })}
-      />
-      <ColorField
-        label="Vertical color"
-        value={draft.gridVertical}
-        onChange={(c) => applyLive({ gridVertical: c })}
-        onClear={() => applyLive({ gridVertical: null })}
-      />
-      <Row label="Vertical style">
-        <select
-          value={draft.gridVStyle}
-          onChange={(e) =>
-            applyLive({ gridVStyle: e.target.value as GridLineStyle })
-          }
-          className={`${fieldClass} min-h-9`}
-        >
-          {LINE_STYLES.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-      </Row>
-
-      <SectionTitle>Watermark</SectionTitle>
+      <SectionH>Watermark</SectionH>
       <ToggleRow
         label="Show watermark"
         checked={draft.watermarkEnabled}
@@ -744,11 +677,11 @@ function CanvasTab({
           placeholder="e.g. EURUSD"
           disabled={!draft.watermarkEnabled}
           onChange={(e) => applyLive({ watermarkText: e.target.value })}
-          className={`${fieldClass} min-h-9 w-40`}
+          className={`${selectClass} w-36 min-h-9 sm:min-h-[28px]`}
         />
       </Row>
       <ColorField
-        label="Watermark color"
+        label="Watermark"
         value={draft.watermarkColor}
         onChange={(c) => applyLive({ watermarkColor: c })}
         onClear={() => applyLive({ watermarkColor: null })}
@@ -764,26 +697,11 @@ function CanvasTab({
           onChange={(e) =>
             applyLive({ watermarkOpacity: Number(e.target.value) })
           }
-          className="w-32 accent-[var(--accent)]"
+          className="w-28 accent-[var(--accent)]"
         />
-        <span className="text-xs text-muted w-10">
+        <span className="text-[12px] text-muted tabular-nums w-9">
           {Math.round(draft.watermarkOpacity * 100)}%
         </span>
-      </Row>
-      <Row label="Size">
-        <input
-          type="range"
-          min={20}
-          max={96}
-          step={2}
-          value={draft.watermarkFontSize}
-          disabled={!draft.watermarkEnabled}
-          onChange={(e) =>
-            applyLive({ watermarkFontSize: Number(e.target.value) })
-          }
-          className="w-32 accent-[var(--accent)]"
-        />
-        <span className="text-xs text-muted w-8">{draft.watermarkFontSize}</span>
       </Row>
     </>
   );
@@ -802,19 +720,20 @@ function LayoutTab({
 }) {
   return (
     <>
-      <SectionTitle>Theme</SectionTitle>
+      <SectionH>Theme</SectionH>
       <Row label="Color theme">
         <select
+          data-sett-select=""
           value={theme}
           onChange={(e) => onThemeChange(e.target.value as ThemeMode)}
-          className={`${fieldClass} min-h-9`}
+          className={selectClass}
         >
           <option value="dark">Dark</option>
           <option value="light">Light</option>
         </select>
       </Row>
 
-      <SectionTitle>Chrome visibility</SectionTitle>
+      <SectionH>Chrome</SectionH>
       <ToggleRow
         label="Top bar"
         checked={draft.showTopBar}
@@ -831,7 +750,7 @@ function LayoutTab({
         onChange={(v) => applyLive({ showToolbar: v })}
       />
 
-      <SectionTitle>Accent / selection</SectionTitle>
+      <SectionH>Accent</SectionH>
       <ColorField
         label="Accent"
         value={draft.accent}
@@ -844,12 +763,8 @@ function LayoutTab({
         onChange={(c) => applyLive({ accentForeground: c })}
         onClear={() => applyLive({ accentForeground: null })}
       />
-      <p className="text-[11px] text-muted -mt-1 mb-1">
-        Buttons, timeframe chip, tool selection, focus rings. Clear to use theme
-        default.
-      </p>
 
-      <SectionTitle>Chrome colors</SectionTitle>
+      <SectionH>Chrome colors</SectionH>
       <ColorField
         label="Top bar"
         value={draft.topBarBg}
@@ -875,18 +790,16 @@ function LayoutTab({
         onClear={() => applyLive({ chromeText: null })}
       />
       <ColorField
-        label="Panel borders"
+        label="Borders"
         value={draft.chromeBorder}
         onChange={(c) => applyLive({ chromeBorder: c })}
         onClear={() => applyLive({ chromeBorder: null })}
       />
-      <p className="text-[11px] text-muted">
-        Clear a color to fall back to the current light/dark theme token.
-      </p>
     </>
   );
 }
 
+/** TV-style: checkbox + label left, up/down color wells right. */
 function CandleColorRow({
   label,
   enabled,
@@ -907,30 +820,49 @@ function CandleColorRow({
   hideToggle?: boolean;
 }) {
   return (
-    <div className="space-y-2 rounded-lg border border-[color:var(--line)] p-3">
+    <div data-sett-row="">
       {hideToggle ? (
-        <p className="text-sm text-foreground">{label}</p>
+        <span data-sett-label="">{label}</span>
       ) : (
-        <ToggleRow label={label} checked={enabled} onChange={onEnabledChange} />
+        <label
+          data-sett-label=""
+          className="flex items-center gap-2 cursor-pointer min-w-0"
+        >
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => onEnabledChange(e.target.checked)}
+            className="accent-[var(--accent)] w-3.5 h-3.5 rounded-[3px] border border-[color:var(--line)] shrink-0"
+          />
+          <span className="truncate">{label}</span>
+        </label>
       )}
       <div
-        className={
-          enabled ? 'space-y-2' : 'space-y-2 opacity-40 pointer-events-none'
-        }
+        data-sett-acts=""
+        className={enabled ? undefined : 'opacity-40 pointer-events-none'}
       >
-        <div>
-          <p className="text-[11px] text-muted mb-1">Up</p>
-          <ColorPicker value={up} onChange={onUpChange} />
-        </div>
-        <div>
-          <p className="text-[11px] text-muted mb-1">Down</p>
-          <ColorPicker value={down} onChange={onDownChange} />
-        </div>
+        <SettColorSwatch
+          color={up}
+          showOpacity={false}
+          title={`${label} up`}
+          onChange={({ color }) => {
+            if (color) onUpChange(color);
+          }}
+        />
+        <SettColorSwatch
+          color={down}
+          showOpacity={false}
+          title={`${label} down`}
+          onChange={({ color }) => {
+            if (color) onDownChange(color);
+          }}
+        />
       </div>
     </div>
   );
 }
 
+/** Label left, single color well right (theme default = muted well). */
 function ColorField({
   label,
   value,
@@ -944,60 +876,115 @@ function ColorField({
 }) {
   const display = value ?? '#787B86';
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm text-foreground">{label}</span>
-        <button
-          type="button"
-          className="text-[11px] text-muted hover:text-foreground min-h-9 px-2"
-          onClick={onClear}
-        >
-          {value == null ? 'Theme default' : 'Use theme'}
-        </button>
+    <div data-sett-row="">
+      <span data-sett-label="">{label}</span>
+      <div data-sett-acts="">
+        {value == null && (
+          <button
+            type="button"
+            className="text-[11px] text-muted hover:text-foreground min-h-9 px-1"
+            onClick={() => onChange(display)}
+            title="Override theme default"
+          >
+            Theme
+          </button>
+        )}
+        <SettColorSwatch
+          color={display}
+          showOpacity={false}
+          title={label}
+          opacity={value == null ? 0.55 : 1}
+          onChange={({ color }) => {
+            if (color) onChange(color);
+          }}
+        />
+        {value != null && (
+          <button
+            type="button"
+            className="text-[11px] text-muted hover:text-foreground min-h-9 px-1"
+            onClick={onClear}
+            title="Use theme default"
+          >
+            ✕
+          </button>
+        )}
       </div>
-      <ColorPicker value={display} onChange={onChange} />
     </div>
   );
 }
 
-function ColorPicker({
-  value,
-  onChange,
+/** Grid line row: enable + color well + style select (TV canvas pattern). */
+function ColorStyleRow({
+  label,
+  color,
+  onColor,
+  onClearColor,
+  style,
+  onStyle,
+  enabled,
+  onEnabled,
 }: {
-  value: string;
-  onChange: (c: string) => void;
+  label: string;
+  color: string | null;
+  onColor: (c: string) => void;
+  onClearColor: () => void;
+  style: GridLineStyle;
+  onStyle: (s: GridLineStyle) => void;
+  enabled: boolean;
+  onEnabled: (v: boolean) => void;
 }) {
+  const display = color ?? '#787B86';
   return (
-    <div className="flex flex-col items-end gap-1.5">
-      <ColorSwatches value={value} onChange={onChange} />
-      <div className="flex items-center gap-2">
+    <div data-sett-row="">
+      <label
+        data-sett-label=""
+        className="flex items-center gap-2 cursor-pointer min-w-0"
+      >
         <input
-          type="color"
-          value={toHex6(value)}
-          onChange={(e) => onChange(e.target.value)}
-          className="h-9 w-11 cursor-pointer rounded border border-[color:var(--line)] bg-background p-0.5"
-          aria-label="Custom color"
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => onEnabled(e.target.checked)}
+          className="accent-[var(--accent)] w-3.5 h-3.5 rounded-[3px] border border-[color:var(--line)] shrink-0"
         />
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className={`${fieldClass} min-h-9 w-28 font-mono text-xs`}
-          spellCheck={false}
+        <span className="truncate">{label}</span>
+      </label>
+      <div
+        data-sett-acts=""
+        className={enabled ? undefined : 'opacity-40 pointer-events-none'}
+      >
+        <SettColorSwatch
+          color={display}
+          showOpacity={false}
+          title={`${label} color`}
+          opacity={color == null ? 0.55 : 1}
+          onChange={({ color: c }) => {
+            if (c) onColor(c);
+          }}
         />
+        <select
+          data-sett-select=""
+          value={style}
+          onChange={(e) => onStyle(e.target.value as GridLineStyle)}
+          className={selectClass}
+          aria-label={`${label} style`}
+        >
+          {LINE_STYLES.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+        {color != null && (
+          <button
+            type="button"
+            className="text-[11px] text-muted hover:text-foreground min-h-9 px-1"
+            onClick={onClearColor}
+            title="Use theme default"
+          >
+            ✕
+          </button>
+        )}
       </div>
     </div>
   );
-}
-
-function toHex6(c: string): string {
-  if (/^#[0-9a-fA-F]{8}$/.test(c)) return `#${c.slice(1, 7)}`;
-  if (/^#[0-9a-fA-F]{6}$/.test(c)) return c;
-  if (/^#[0-9a-fA-F]{3}$/.test(c)) {
-    const r = c[1]!;
-    const g = c[2]!;
-    const b = c[3]!;
-    return `#${r}${r}${g}${g}${b}${b}`;
-  }
-  return '#787B86';
 }

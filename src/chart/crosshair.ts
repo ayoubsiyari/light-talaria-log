@@ -5,8 +5,9 @@ import type { PlotRect, PriceScale } from './scales';
 import { indexToX, priceToY, xToIndex, yToPrice } from './scales';
 
 /**
- * Resolve pointer → crosshair point (LW Charts parity modes).
- * - normal: free X/Y
+ * Resolve pointer → crosshair point (TradingView-like modes).
+ * - normal: snap X to candle, free Y — date/time is always a real bar (no Sat/Sun
+ *   ghost dates between Fri→Mon on daily FX/futures)
  * - magnet: snap X to bar, Y to close
  * - magnetOhlc: snap X to bar, Y to nearest O/H/L/C
  * - hidden: returns null (caller skips paint)
@@ -36,34 +37,32 @@ export function resolveCrosshair(
 
   const inMainPlot = canvasY <= plot.top + plot.height;
   const rawIndex = xToIndex(canvasX, range, plot);
+  // Outside the bar strip (empty pad) — no candle to attach to.
+  if (rawIndex < -0.5 || rawIndex > bars.length - 0.5) return null;
+
   const barIndex = Math.round(Math.min(bars.length - 1, Math.max(0, rawIndex)));
-  const bar = bars[barIndex] ?? null;
+  const bar = bars[barIndex];
+  if (!bar) return null;
+
+  // All visible modes lock X to the candle center (TV default). Free-X used to
+  // interpolate wall-clock through weekend gaps and show Sat/Sun on daily.
+  const x = indexToX(barIndex, range, plot);
 
   if (mode === 'normal') {
-    // Sub-panes (volume / RSI / MACD): keep free Y. Remapping via main
-    // priceToY(close) snaps the hair into the middle of the price pane.
+    // Free Y on the main plot; sub-panes keep pointer Y.
     const price = inMainPlot
       ? yToPrice(canvasY, priceScale, plot)
-      : (bar?.close ?? yToPrice(plot.top + plot.height, priceScale, plot));
-    const index = rawIndex;
-    // Extrapolate past first/last bar so drawings can sit in empty pad space
-    const time = timeAtLogicalIndex(bars, index) ?? 0;
-    const onBar =
-      rawIndex >= -0.5 && rawIndex <= bars.length - 0.5 ? bars[barIndex] ?? null : null;
+      : bar.close;
     return {
-      x: canvasX,
+      x,
       y: canvasY,
-      index,
-      time,
+      index: barIndex,
+      time: bar.time,
       price,
-      bar: onBar,
-      barIndex: onBar ? barIndex : null,
+      bar,
+      barIndex,
     };
   }
-
-  // Magnet modes: lock X to candle center; Y only on main plot
-  if (!bar) return null;
-  const x = indexToX(barIndex, range, plot);
 
   let price: number;
   if (mode === 'magnet') {
@@ -87,6 +86,51 @@ export function resolveCrosshair(
     price,
     bar,
     barIndex,
+  };
+}
+
+/**
+ * Free pointer → time/price for drawing place/drag (may sit in empty pad).
+ * Not used for the visible crosshair — that snaps candle-to-candle.
+ */
+export function resolveFreePointer(
+  canvasX: number,
+  canvasY: number,
+  bars: readonly ChartBar[],
+  range: VisibleRange,
+  plot: PlotRect,
+  priceScale: PriceScale,
+  contentBottom?: number,
+): CrosshairPoint | null {
+  if (bars.length === 0) return null;
+  const bottom = contentBottom ?? plot.top + plot.height;
+  if (
+    canvasX < plot.left ||
+    canvasX > plot.left + plot.width ||
+    canvasY < plot.top ||
+    canvasY > bottom
+  ) {
+    return null;
+  }
+  const inMainPlot = canvasY <= plot.top + plot.height;
+  const rawIndex = xToIndex(canvasX, range, plot);
+  const barIndex = Math.round(Math.min(bars.length - 1, Math.max(0, rawIndex)));
+  const onBar =
+    rawIndex >= -0.5 && rawIndex <= bars.length - 0.5
+      ? bars[barIndex] ?? null
+      : null;
+  const price = inMainPlot
+    ? yToPrice(canvasY, priceScale, plot)
+    : (onBar?.close ?? yToPrice(plot.top + plot.height, priceScale, plot));
+  const time = timeAtLogicalIndex(bars, rawIndex) ?? 0;
+  return {
+    x: canvasX,
+    y: canvasY,
+    index: rawIndex,
+    time,
+    price,
+    bar: onBar,
+    barIndex: onBar ? barIndex : null,
   };
 }
 
@@ -146,7 +190,9 @@ export function resolveCrosshairFromLogical(
     x,
     y,
     index: barIndex,
-    time: logical.time ?? bar.time,
+    // Always the snapped candle's open time — never a synced interpolated
+    // wall-clock that can land on Sat/Sun between Fri→Mon daily bars.
+    time: bar.time,
     price,
     bar,
     barIndex,

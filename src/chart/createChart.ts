@@ -63,7 +63,11 @@ import {
   type PriceFormat,
   type PriceFormatter,
 } from './format';
-import { resolveCrosshair, resolveCrosshairFromLogical } from './crosshair';
+import {
+  resolveCrosshair,
+  resolveCrosshairFromLogical,
+  resolveFreePointer,
+} from './crosshair';
 import {
   attachInteraction,
   DEFAULT_VISIBLE_BARS,
@@ -674,7 +678,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     }
     const bottom = contentBottom(layout);
     const scale = resolvePriceScale();
-    const visual = resolveCrosshair(
+    // Visible hair: always candle-snapped (no weekend ghost dates on daily).
+    let next = resolveCrosshair(
       hoverX,
       hoverY,
       options.crosshairMode,
@@ -684,33 +689,19 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       scale,
       bottom,
     );
-    // Keep magnetized x/y for paint, but expose free time/price so drawings
-    // can preview/place in empty pad space (unless drawing-magnet snaps later).
-    let next = visual;
-    let freePoint: DrawingPoint | null = null;
-    if (visual && options.crosshairMode !== 'normal') {
-      const free = resolveCrosshair(
-        hoverX,
-        hoverY,
-        'normal',
-        bars,
-        range,
-        layout.plot,
-        scale,
-        bottom,
-      );
-      if (free) {
-        freePoint = { time: free.time, price: free.price };
-        next = {
-          ...visual,
-          time: free.time,
-          price: free.price,
-          index: free.index,
-        };
-      }
-    } else if (visual) {
-      freePoint = { time: visual.time, price: visual.price };
-    }
+    // Drawing place/preview may use free pad coords (separate from hair label).
+    const free = resolveFreePointer(
+      hoverX,
+      hoverY,
+      bars,
+      range,
+      layout.plot,
+      scale,
+      bottom,
+    );
+    const freePoint: DrawingPoint | null = free
+      ? { time: free.time, price: free.price }
+      : null;
 
     // When hovering an indicator pane, report that pane's scale value as price.
     if (next && hoverY != null) {
@@ -1006,11 +997,11 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   applyCssSize();
 
   const mediaToLogical = (x: number, y: number): DrawingPoint | null => {
+    // Drawings may anchor in empty pad — free pointer, not candle-snapped hair.
     const bottom = contentBottom(layout);
-    const free = resolveCrosshair(
+    const free = resolveFreePointer(
       x,
       y,
-      'normal',
       bars,
       range,
       layout.plot,

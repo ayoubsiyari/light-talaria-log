@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CrosshairMode } from '@/chart';
 
 const CROSSHAIR_MODES: { id: CrosshairMode; label: string }[] = [
-  { id: 'normal', label: 'Normal' },
+  { id: 'normal', label: 'Normal (candle)' },
   { id: 'magnet', label: 'Magnet' },
   { id: 'magnetOhlc', label: 'Magnet OHLC' },
   { id: 'hidden', label: 'Hidden' },

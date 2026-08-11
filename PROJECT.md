@@ -926,6 +926,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-10 | Chart price format per instrument: Y-axis/crosshair/last/orders/drawings + OHLC HUD use `digits`/`tickSize` from pane spec | Multi-pane EUR+USDJPY+NQ — axis decimals match each ticker |
 | 2026-08-11 | TF switch: on-demand M1→HTF client agg when packed TF missing; median gap guard (futures session breaks); base-first warm on switch | NQ M1→5m — candles change immediately (not label-only) |
 | 2026-08-11 | Drawings: per-dataset books; `visibleOnTfs` uses selectedTf (not LOD); replay cursor clip; patches go through undo | Multi-pane EUR+NQ drawings isolated; TF visibility + replay tip OK |
+| 2026-08-11 | Crosshair Normal = TV candle snap (X on bar, free Y); stop weekend date interpolate on daily Fri→Mon | 1D hover — only Fri/Mon times, no Sat/Sun |
 
 ---
 

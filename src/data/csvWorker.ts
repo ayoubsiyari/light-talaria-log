@@ -276,6 +276,7 @@ function handleIngest(msg: Extract<CsvWorkerRequest, { type: 'ingest' }>): void 
   } satisfies CsvWorkerResponse);
 }
 
+/** @deprecated Legacy single-TF chunk keys (`symbol_chunk_N`). Prefer `ingest`. */
 function handleParse(msg: Extract<CsvWorkerRequest, { type: 'parse' }>): void {
   const lines = msg.csvText.split('\n');
   const totalLines = Math.max(1, lines.length - 1);
@@ -340,6 +341,7 @@ function handleParse(msg: Extract<CsvWorkerRequest, { type: 'parse' }>): void {
   (self as DedicatedWorkerGlobalScope).postMessage({ type: 'done', meta } satisfies CsvWorkerResponse);
 }
 
+/** @deprecated Quarantined — do not use for session charts; use IDB viewport. */
 function handleParseForChart(msg: Extract<CsvWorkerRequest, { type: 'parseForChart' }>): void {
   const maxBars = Math.max(1, msg.maxBars);
   const ring = createBarStore(maxBars);
@@ -388,6 +390,7 @@ function handleParseForChart(msg: Extract<CsvWorkerRequest, { type: 'parseForCha
   );
 }
 
+/** @deprecated Quarantined — materializes full series; use `ingest` + viewport. */
 function handleParseAll(msg: Extract<CsvWorkerRequest, { type: 'parseAll' }>): void {
   const lines = msg.csvText.split('\n');
   let count = 0;

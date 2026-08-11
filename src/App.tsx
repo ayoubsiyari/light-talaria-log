@@ -36,7 +36,6 @@ import { NotFoundPage } from '@/components/NotFoundPage';
 import { getSession, updateSessionProgress } from '@/sessions/sessionStore';
 import { resolveOpenTimeframe } from '@/sessions/sessionTf';
 import { barsMatchTimeframe } from '@/session/barTfGuard';
-import { LoadingProgress } from '@/components/LoadingProgress';
 import { ChartLoadingScreen } from '@/components/ChartLoadingScreen';
 import { PerfOverlay } from '@/components/perf/PerfOverlay';
 import { getChart } from '@/chart';
@@ -143,7 +142,6 @@ import {
   timeToLogicalIndex,
 } from '@/datasets/seriesViewport';
 import { pickLodTimeframe } from '@/datasets/zoomLod';
-import { useCsvImport } from '@/hooks/useCsvImport';
 import { createReplayController, type ReplayController } from '@/replay/replayStore';
 import type { ChartBar } from '@/types/bar';
 import type { SeriesCatalog } from '@/types/series';
@@ -267,19 +265,22 @@ function cameraSpanForTf(
   fromTf: Timeframe,
   toTf: Timeframe,
 ): number {
+  const fromSec = Math.max(1, timeframeSeconds(fromTf));
+  const toSec = Math.max(1, timeframeSeconds(toTf));
   const wallSec =
     camera.fromTime != null &&
     camera.toTime != null &&
     camera.toTime > camera.fromTime
       ? camera.toTime - camera.fromTime
-      : camera.span * timeframeSeconds(fromTf);
-  const toSec = Math.max(1, timeframeSeconds(toTf));
-  // Must match engine pan clamp (MAX_VISIBLE) — unclamped coarser→finer spans
-  // (e.g. 1h→5m ≈ 2400) snap hard on the first drag and feel like a jump.
-  return Math.max(
-    10,
-    Math.min(VISIBLE_BARS_TARGET, Math.ceil(wallSec / toSec) + 8),
-  );
+      : camera.span * fromSec;
+  const wallBars = Math.ceil(wallSec / toSec) + 8;
+  // Coarser TF: keep bar-count density so candles don't jump to "fat" (120→16).
+  // Finer TF: wall-clock remap, then clamp so first pan cannot snap.
+  const span =
+    toSec > fromSec
+      ? Math.max(wallBars, camera.span)
+      : wallBars;
+  return Math.max(10, Math.min(VISIBLE_BARS_TARGET, span));
 }
 
 function isDrawingTool(tool: ChartToolId): tool is DrawingToolId {
@@ -313,8 +314,6 @@ function replayBounds(
 }
 
 export default function App() {
-  const { state } = useCsvImport();
-  const importing = state.status === 'importing';
   const auth = useAuth();
   const [authBusy, setAuthBusy] = useState(false);
 
@@ -4712,12 +4711,6 @@ export default function App() {
               <Button variant="secondary" className="min-h-11" onPress={handleExitSession}>
                 Back to Backtest
               </Button>
-            </div>
-          )}
-
-          {(importing || state.status === 'error' || state.status === 'done') && (
-            <div className="absolute top-10 left-3 right-3 z-20 max-w-md pointer-events-auto space-y-2">
-              <LoadingProgress state={state} />
             </div>
           )}
 

@@ -941,7 +941,9 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-11 | Sanitize packed HTF low=0 on IDB→bars / warmCache / setViewport (ES 4h comb wicks) | ES 4h — normal candles, no barcode-to-zero |
 | 2026-08-11 | Absurd-wick repair: ES L≈61 with O/H/C≈4800 (not just low=0) — data bug, not Canvas | Hard-refresh ES 4h — HUD L near body, no comb |
 | 2026-08-11 | ES corrupt lows: derivePaneAsync returned dirty bars after cache put; sanitize sync+append paths | ES 15m — no spikes to −14 / floor |
+| 2026-08-11 | Stabilize feel: Normal crosshair snap-X again; clear Play Y-sticky on zoom; keep bar density on HTF; vertical-pan deadband | 1m→1h candles same width; zoom Y re-fits; hair candle-steps |
 | 2026-08-11 | Cursor rule: chart fix blast-radius + do-not-break + regression checks (`.cursor/rules/chart-fix-blast-radius.mdc`) | Use on next `src/chart/` fix session |
+| 2026-08-11 | Pipeline harden I0–I4: quarantine full-series loaders, one ingest path, seam tests, `__talariaPipeline` metrics | I5 streaming/CSV-GC only after explicit go |
 
 ---
 
@@ -1230,6 +1232,52 @@ Gann, Elliott, harmonics, fib spiral/arcs/circles/wedge, pitchforks, emoji/stick
 Raising beta catalog, Gann/Elliott/harmonics, per-pane storage, cloud sync toggles.
 
 **Suggested order:** `F0 → F1 → F2 → F3 → F4 → F5`
+
+---
+
+## Next Work Plan — Data Pipeline Hardening (I0–I5) (2026-08-11)
+
+**Goal:** Harden CSV → IDB → viewport → candles without breaking session open, chart paint, or remote top-up.  
+**Default this wave:** no streaming rewrite, **no automatic CSV deletion**. Packed IDB chunks = runtime source of truth; raw CSV kept for re-ingest recovery.
+
+### Contracts (non-negotiable)
+1. One production ingest path: `ensureDatasetIngested` (local) / `ensureSessionDataFromServer` (remote).
+2. Chart display must never materialize a full series on the main thread / in App state.
+3. `setViewportBars` ≤ `MAX_BARS_IN_MEMORY` (2500); pack format stays 28 B/bar.
+4. CSV retention: keep `datasetCsv` for recovery; do not auto-GC in this wave.
+5. Landmines (quarantined): worker `parseAll`, `parseForChart`, legacy `parse` chunk keys (`symbol_chunk_N`).
+
+### Steps
+
+#### I0 — Plan + contracts
+**Status:** Done (2026-08-11).  
+- [x] Document I0–I5 + contracts in PROJECT.md / DATA_PIPELINE_REPORT / ARCHITECTURE
+
+#### I1 — Quarantine full-series loaders
+**Status:** Done (2026-08-11).  
+- [x] `loadDatasetSeries` / `loadDatasetBars` fail-closed + deprecated
+- [x] Worker handlers kept but marked `@deprecated`
+
+#### I2 — One ingest path hygiene
+**Status:** Done (2026-08-11).  
+- [x] Remove live `useCsvImport` from App shell (Datasets → ingest is canonical)
+- [x] Keep `ImportState` / `LoadingProgress` types for reuse
+
+#### I3 — Seam regression tests
+**Status:** Done (2026-08-11).  
+- [x] Forbidden-API reject tests
+- [x] `seriesChunksHealthy` exported + tested
+- [x] Viewport-cap / edge / warmCache suites stay green
+
+#### I4 — Observability
+**Status:** Done (2026-08-11).  
+- [x] Last-run ingest metrics (`pipelineMetrics` / `window.__talariaPipeline`)
+
+#### I5 — Later (out of scope this wave)
+- [ ] Streaming worker ingest (slice/transfer CSV; lower peak RAM)
+- [ ] Optional CSV GC after verified multi-TF health (separate go-ahead)
+
+**Suggested order:** `I0 → I1 → I2 → I3 → I4` then stop; `I5` only after explicit approval.
 
 ---
 

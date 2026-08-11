@@ -501,7 +501,9 @@ export function attachInteraction(
           );
         }
       }
-      if (dy !== 0) {
+      // Only lock manual Y on a clearly vertical drag. Tiny dy during time-pan
+      // used to freeze auto-scale and make TF/zoom look “broken.”
+      if (dy !== 0 && Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx) * 1.4) {
         panPriceByDrag(callbacks, dy, layout);
       }
       return;

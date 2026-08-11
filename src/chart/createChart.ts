@@ -875,7 +875,20 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     if (next.fromIndex === range.fromIndex && next.toIndex === range.toIndex) {
       return;
     }
+    const prevSpan = range.toIndex - range.fromIndex;
+    const nextSpan = next.toIndex - next.fromIndex;
     range = next;
+    // Zoom in/out changes bar density — drop Play expand-only sticky so Y
+    // re-fits the new window (otherwise candles look vertically crushed).
+    if (
+      playPriceSticky &&
+      Number.isFinite(prevSpan) &&
+      Number.isFinite(nextSpan) &&
+      prevSpan > 0 &&
+      (nextSpan / prevSpan < 0.85 || nextSpan / prevSpan > 1.18)
+    ) {
+      playPriceSticky = null;
+    }
     invalidateScaleCache();
     invalidateHitCache();
     updateCrosshairFromHover();

@@ -1,15 +1,15 @@
 import { CHUNK_SIZE } from '@/utils/constants';
 import {
-  getChunk,
-  getSeriesMeta,
-  hasSeriesIngested,
   openDb,
   putChunk,
   putSeriesMeta,
   getDatasetCsv,
+  getSeriesMeta,
 } from '@/data/idbStore';
 import { getDataset } from '@/datasets/datasetStore';
 import { ingestRemoteDatasetAllTfs } from '@/datasets/ingestRemoteChunks';
+import { recordIngestMetrics } from '@/datasets/pipelineMetrics';
+import { seriesChunksHealthy } from '@/datasets/seriesHealth';
 import { aggregatableTimeframes } from '@/data/timeframeAgg';
 import type { CsvWorkerResponse } from '@/types/bar';
 import type { SeriesCatalog, SeriesMeta } from '@/types/series';
@@ -18,19 +18,6 @@ import type { Timeframe } from '@/types/ui';
 export interface IngestProgress {
   percent: number;
   rowsParsed: number;
-}
-
-async function seriesChunksHealthy(
-  db: IDBDatabase,
-  datasetId: string,
-  baseTf: Timeframe,
-): Promise<boolean> {
-  if (!(await hasSeriesIngested(db, datasetId, baseTf))) return false;
-  const meta = await getSeriesMeta(db, datasetId, baseTf);
-  if (!meta || meta.chunkIds.length === 0) return false;
-  // First chunk must exist (guards partial / wiped IDB)
-  const buf = await getChunk(db, meta.chunkIds[0]!);
-  return buf != null && buf.byteLength > 0;
 }
 
 /**
@@ -44,6 +31,7 @@ export async function ensureDatasetIngested(
   baseTf: Timeframe,
   onProgress?: (p: IngestProgress) => void,
 ): Promise<SeriesCatalog> {
+  const t0 = performance.now();
   const db = await openDb();
   const catalogEntry = getDataset(datasetId);
 
@@ -58,11 +46,26 @@ export async function ensureDatasetIngested(
         'Remote ingest finished but bar chunks are missing from IndexedDB.',
       );
     }
+    recordIngestMetrics({
+      datasetId,
+      source: 'remote',
+      skipped: false,
+      durationMs: performance.now() - t0,
+      rowCount: catalog.rowCounts[baseTf] ?? 0,
+    });
     return catalog;
   }
 
   if (await seriesChunksHealthy(db, datasetId, baseTf)) {
-    return buildCatalog(db, datasetId, baseTf);
+    const catalog = await buildCatalog(db, datasetId, baseTf);
+    recordIngestMetrics({
+      datasetId,
+      source: 'local',
+      skipped: true,
+      durationMs: performance.now() - t0,
+      rowCount: catalog.rowCounts[baseTf] ?? 0,
+    });
+    return catalog;
   }
 
   const csv = await getDatasetCsv(db, datasetId);
@@ -78,6 +81,13 @@ export async function ensureDatasetIngested(
   if (!(await seriesChunksHealthy(db, datasetId, baseTf))) {
     throw new Error('Ingest finished but bar chunks are missing from IndexedDB.');
   }
+  recordIngestMetrics({
+    datasetId,
+    source: 'local',
+    skipped: false,
+    durationMs: performance.now() - t0,
+    rowCount: catalog.rowCounts[baseTf] ?? 0,
+  });
   return catalog;
 }
 

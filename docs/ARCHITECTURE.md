@@ -16,24 +16,29 @@ Low browser memory, low CPU, fast load + fast redraw. The engine is a **dumb vie
 flowchart TB
   subgraph Browser
     UI[HeroUI_Components]
+    ENS[ensureDatasetIngested]
     CC[ChartContainer]
-    VL[viewportLoader]
+    VL[seriesViewport_WarmCache]
     CH[CustomCanvasEngine]
 
-    UI -->|upload CSV| Worker
-    Worker[csvWorker] --> IDB[(IndexedDB)]
+    UI -->|Datasets CSV or remote| ENS
+    ENS -->|worker ingest| Worker
+    Worker[csvWorker] --> IDB[(IndexedDB_barChunks)]
     IDB --> VL
     VL -->|"max 2500 bars"| CH
     CC --> CH
   end
 ```
 
+**Canonical path:** `ensureDatasetIngested` (local) or `ensureSessionDataFromServer` (remote) → packed IDB → viewport ≤2500 → `setViewportBars`.  
+**Quarantined:** `parseAll` / `parseForChart` / legacy `parse` (see PROJECT.md I0–I5). Do not load full series into App for painting.
+
 ---
 
 ## Memory Model
 
 ```
-Full CSV (1M rows)     →  IndexedDB only      →  ~disk, not RAM
+Full CSV (1M rows)     →  IndexedDB only      →  ~disk, not RAM (kept for re-ingest)
 Chunk in worker        →  parse & discard     →  ~5k rows transient
 Chart viewport         →  TypedArray / window →  ~2500 bars max
 Engine buffer          →  viewport only       →  never full series
@@ -46,10 +51,14 @@ Engine buffer          →  viewport only       →  never full series
 | Module | Responsibility |
 |---|---|
 | `binaryBar.ts` | Struct-of-Arrays storage, serialize/deserialize |
-| `csvWorker.ts` | Off-thread CSV parse, chunk writes |
-| `idbStore.ts` | IndexedDB CRUD for bar chunks |
+| `csvWorker.ts` | Off-thread CSV parse / ingest, chunk posts |
+| `idbStore.ts` | IndexedDB CRUD for bar chunks + datasetCsv |
 | `barIndex.ts` | Logical index → time range → chunk ID |
-| `viewportLoader.ts` | Visible range → fetch → `setViewportBars` |
+| `ingestDataset.ts` | Production local/remote ingest orchestration |
+| `seriesHealth.ts` | Meta + first-chunk health gate |
+| `pipelineMetrics.ts` | Last-run ingest debug stats |
+| `seriesViewport.ts` / `warmCache.ts` | Viewport window into engine |
+| `viewportLoader.ts` | Edge prefetch → `setViewportBars` |
 
 ## Indicator modules (`src/indicators/`)
 

@@ -1,5 +1,5 @@
 /**
- * Crosshair time snaps to candle slots; normal mode keeps free X for drawings.
+ * Crosshair snaps candle-to-candle; drawings use resolveFreePointer.
  * Run: npm run test:chart
  */
 import assert from 'node:assert/strict';
@@ -32,14 +32,13 @@ function friMonDaily(): ChartBar[] {
   ];
 }
 
-describe('resolveCrosshair normal: free X + slot time', () => {
+describe('resolveCrosshair normal: snap X + slot time', () => {
   const bars = friMonDaily();
   const range = { fromIndex: -0.5, toIndex: 1.5 };
   const plot = { left: 0, top: 0, width: 200, height: 100 };
   const scale = { min: 90, max: 110 };
 
-  it('keeps free X (drawings track hair) and uses bar.time on the chip', () => {
-    // Pointer halfway between Fri (idx0) and Mon (idx1).
+  it('locks X to candle center and uses bar.time on the chip', () => {
     const mid = resolveCrosshair(
       100,
       50,
@@ -55,8 +54,8 @@ describe('resolveCrosshair normal: free X + slot time', () => {
       mid.time === bars[0]!.time || mid.time === bars[1]!.time,
       `unexpected time ${mid.time}`,
     );
-    // Vertical line follows pointer — not locked to candle center.
-    assert.equal(mid.x, 100);
+    // Vertical line on candle center — not free canvas X.
+    assert.notEqual(mid.x, 100);
     // Free Y (price follows cursor).
     assert.equal(mid.y, 50);
   });
@@ -71,12 +70,10 @@ describe('resolveCrosshair normal: free X + slot time', () => {
   });
 
   it('stays visible in empty pad and steps dates like TV', () => {
-    // Wide camera: pad before Fri and after Mon.
     const wide = { fromIndex: -2, toIndex: 4 };
     const left = resolveCrosshair(5, 50, 'normal', bars, wide, plot, scale);
     assert.ok(left, 'left pad should show hair');
     assert.ok(left.time <= bars[0]!.time);
-    // Moving further left should step to an earlier slot (date keeps changing).
     const leftMore = resolveCrosshair(1, 50, 'normal', bars, wide, plot, scale);
     assert.ok(leftMore);
     assert.ok(leftMore.time <= left.time);

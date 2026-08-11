@@ -1,8 +1,5 @@
-import { unpackBuffer, type BinaryBarStore } from '@/data/binaryBar';
-import { getDatasetCsv, openDb } from '@/data/idbStore';
-import { toChartBars } from '@/data/binaryBar';
-import type { ChartBar, CsvWorkerResponse } from '@/types/bar';
-import { MAX_BARS_IN_MEMORY } from '@/utils/constants';
+import type { BinaryBarStore } from '@/data/binaryBar';
+import type { ChartBar } from '@/types/bar';
 
 export interface LoadDatasetBarsResult {
   bars: ChartBar[];
@@ -16,104 +13,21 @@ export interface LoadDatasetSeriesResult {
   barCount: number;
 }
 
+const QUARANTINE_MSG =
+  'Quarantined (pipeline I1): do not load full CSV into memory for the chart. ' +
+  'Use ensureDatasetIngested + seriesViewport / WarmCache (≤ MAX_BARS_IN_MEMORY).';
+
 /**
- * Load dataset CSV from IndexedDB and parse the full series off-thread
- * into a BinaryBarStore (base for 1m → higher TF aggregation).
+ * @deprecated Full-series CSV parse — fail-closed. Use ensureDatasetIngested.
  */
-export function loadDatasetSeries(datasetId: string): Promise<LoadDatasetSeriesResult> {
-  return new Promise((resolve, reject) => {
-    void (async () => {
-      try {
-        const db = await openDb();
-        const csv = await getDatasetCsv(db, datasetId);
-        if (!csv) {
-          reject(new Error('Dataset CSV not found in storage. Re-download from Datasets.'));
-          return;
-        }
-
-        const worker = new Worker(new URL('@/data/csvWorker.ts', import.meta.url), {
-          type: 'module',
-        });
-
-        worker.onmessage = (e: MessageEvent<CsvWorkerResponse>) => {
-          const msg = e.data;
-          if (msg.type === 'progress') return;
-          if (msg.type === 'error') {
-            worker.terminate();
-            reject(new Error(msg.message));
-            return;
-          }
-          if (msg.type === 'allBars') {
-            const store = unpackBuffer(msg.buffer);
-            worker.terminate();
-            resolve({ store, barCount: msg.barCount });
-          }
-        };
-
-        worker.onerror = (err) => {
-          worker.terminate();
-          reject(new Error(err.message || 'CSV worker failed'));
-        };
-
-        worker.postMessage({ type: 'parseAll', csvText: csv });
-      } catch (err) {
-        reject(err instanceof Error ? err : new Error('Failed to load dataset'));
-      }
-    })();
-  });
+export function loadDatasetSeries(_datasetId: string): Promise<LoadDatasetSeriesResult> {
+  return Promise.reject(new Error(QUARANTINE_MSG));
 }
 
 /**
- * Load dataset CSV and return last ≤ MAX_BARS_IN_MEMORY chart bars (legacy helper).
+ * @deprecated Re-parses whole CSV for last N bars — fail-closed.
+ * Use ensureDatasetIngested + loadViewportAroundTime / WarmCache.
  */
-export function loadDatasetBars(datasetId: string): Promise<LoadDatasetBarsResult> {
-  return new Promise((resolve, reject) => {
-    void (async () => {
-      try {
-        const db = await openDb();
-        const csv = await getDatasetCsv(db, datasetId);
-        if (!csv) {
-          reject(new Error('Dataset CSV not found in storage. Re-download from Datasets.'));
-          return;
-        }
-
-        const worker = new Worker(new URL('@/data/csvWorker.ts', import.meta.url), {
-          type: 'module',
-        });
-
-        worker.onmessage = (e: MessageEvent<CsvWorkerResponse>) => {
-          const msg = e.data;
-          if (msg.type === 'progress') return;
-          if (msg.type === 'error') {
-            worker.terminate();
-            reject(new Error(msg.message));
-            return;
-          }
-          if (msg.type === 'chartBars') {
-            const store = unpackBuffer(msg.buffer);
-            const bars = toChartBars(store, 0, store.length);
-            worker.terminate();
-            resolve({
-              bars,
-              barCount: msg.barCount,
-              totalRows: msg.totalRows,
-            });
-          }
-        };
-
-        worker.onerror = (err) => {
-          worker.terminate();
-          reject(new Error(err.message || 'CSV worker failed'));
-        };
-
-        worker.postMessage({
-          type: 'parseForChart',
-          csvText: csv,
-          maxBars: MAX_BARS_IN_MEMORY,
-        });
-      } catch (err) {
-        reject(err instanceof Error ? err : new Error('Failed to load dataset'));
-      }
-    })();
-  });
+export function loadDatasetBars(_datasetId: string): Promise<LoadDatasetBarsResult> {
+  return Promise.reject(new Error(QUARANTINE_MSG));
 }

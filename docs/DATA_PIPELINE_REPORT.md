@@ -242,18 +242,33 @@ interface VisibleRange { fromIndex: number; toIndex: number; }
 
 ---
 
-## 10. Open gaps (advisor checklist)
+## 10. Pipeline hardening contracts (I0–I5, 2026-08-11)
+
+**Production ingest (only):**
+- Local: Datasets → `downloadAndStoreDataset` → IDB `datasetCsv` → session `ensureDatasetIngested` → worker `ingest`
+- Remote: `ensureSessionDataFromServer` / `ingestRemoteChunksToIdb` → same `barChunks` + `SeriesMeta`
+
+**Forbidden for chart display:**
+- Materializing full history via `parseAll` / `loadDatasetSeries`
+- Loading chart bars by re-parsing whole CSV (`parseForChart` / `loadDatasetBars`)
+- Legacy TopBar `parse` chunk keys (`symbol_chunk_N`) — not the session multi-TF path
+
+**Retention:** Raw CSV stays in IDB for re-ingest recovery. Packed chunks are the paint source of truth. Streaming ingest + optional CSV GC = **I5** (not this wave).
+
+**Debug:** last ingest run → `window.__talariaPipeline` (see `src/datasets/pipelineMetrics.ts`).
+
+## 11. Open gaps (advisor checklist)
 
 1. **TF switch under replay mask** — improved, still edge-case sensitive (LOD, detached camera, engine not ready).
 2. **Clock TF side effect** — changing one pane’s TF can change play step size for all panes (`smallestTimeframe`).
-3. **Legacy CSV upload ≠ session ingest** — two different worker modes.
+3. **Legacy CSV upload ≠ session ingest** — quarantined; session path is canonical.
 4. **Dataset delete** — may leave orphaned bar chunks / meta in IDB.
 5. **No finer-than-base** — cannot invent 1m from a 1h-only download.
-6. **Remote chunk ingest** exists (`ingestRemoteChunks.ts`) but is not wired into Sessions UI.
+6. **Ingest RAM spike** — whole CSV still posted to worker (I5 streaming).
 
 ---
 
-## 11. Suggested questions for the advisor
+## 12. Suggested questions for the advisor
 
 1. Should TF switch preserve **bar count** (current) or **wall-clock window** (TradingView sometimes does both depending on mode)?
 2. Should replay **exit** the mask when the user is not playing (show full history), or always stay in “replay session” mode?

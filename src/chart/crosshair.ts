@@ -8,7 +8,7 @@ import { indexToX, priceToY, xToIndex, yToPrice } from './scales';
  * Resolve pointer → crosshair point (TradingView-like modes).
  * - Time label always uses nearest logical slot (real candle open, or pad virtual)
  *   so Fri→Mon never interpolates Sat/Sun on the chip
- * - normal: free X/Y so drawings stay glued to the hair (no candle-jump drag)
+ * - normal: snap X to candle slot, free Y (drawings use resolveFreePointer separately)
  * - magnet / magnetOhlc: lock X to slot; Y to close / nearest OHLC
  * - Empty pad: date keeps stepping via bar period so the label continues to change
  * - hidden: returns null (caller skips paint)
@@ -48,15 +48,18 @@ export function resolveCrosshair(
   const time =
     (onRealBar ? bar!.time : timeAtLogicalIndex(bars, snapIndex)) ?? edge.time;
 
+  // All visible modes lock the hair X to the candle/pad slot (TV).
+  // Drawings stay free via resolveFreePointer — do not couple them to hair X.
+  const x = indexToX(snapIndex, range, plot);
+
   if (mode === 'normal') {
     const price = inMainPlot
       ? yToPrice(canvasY, priceScale, plot)
       : (bar?.close ?? edge.close);
     return {
-      // Free X — drawings / place preview track the pointer, not candle centers.
-      x: canvasX,
+      x,
       y: canvasY,
-      index: rawIndex,
+      index: snapIndex,
       time,
       price,
       bar,
@@ -64,8 +67,7 @@ export function resolveCrosshair(
     };
   }
 
-  // Magnet modes: lock X to slot; on pad, price snaps to edge candle OHLC/close.
-  const x = indexToX(snapIndex, range, plot);
+  // Magnet modes: on pad, price snaps to edge candle OHLC/close.
   const ref = bar ?? edge;
   let price: number;
   if (mode === 'magnet') {

@@ -32,8 +32,11 @@ export interface DatasetMeta {
 
 /** Worker messages: main → worker */
 export type CsvWorkerRequest =
+  /** @deprecated Legacy single-TF path — prefer `ingest`. */
   | { type: 'parse'; csvText: string; symbol: string; chunkSize: number }
+  /** @deprecated Quarantined — prefer IDB viewport. */
   | { type: 'parseForChart'; csvText: string; maxBars: number }
+  /** @deprecated Quarantined — materializes full series. */
   | { type: 'parseAll'; csvText: string }
   | {
       type: 'ingest';

@@ -13,7 +13,9 @@ export interface ImportState {
 }
 
 /**
- * Phase 2: CSV import via Web Worker → IndexedDB.
+ * @deprecated Legacy TopBar CSV path (worker `parse` / `symbol_chunk_N`).
+ * Production path: Datasets → `downloadAndStoreDataset` → `ensureDatasetIngested`.
+ * Kept for `ImportState` / `LoadingProgress` types only — do not wire into App shell.
  */
 export function useCsvImport() {
   const workerRef = useRef<Worker | null>(null);

@@ -1001,18 +1001,28 @@ export default function App() {
   /**
    * Edge-prefetch / LOD reload for a wall-clock window.
    * When `onlyPaneId` is set (sync off), only that pane is touched.
+   * `skipLod`: history fill only (session-load / left-pad) — never coarsen TF.
+   * Empty-pad wall-clock can span months via index extrapolation and used to
+   * arm LOD → 1D while TopBar still showed selectedTf (e.g. 1m) after reload.
    */
   const applyTimeWindowToPanes = useCallback(
-    async (fromTime: number, toTime: number, onlyPaneId?: string) => {
+    async (
+      fromTime: number,
+      toTime: number,
+      onlyPaneId?: string,
+      opts?: { skipLod?: boolean },
+    ) => {
       if (!catalog || !viewportReloadEnabledRef.current) return;
       const current = panesRef.current;
       if (current.length === 0) return;
 
       const windowSec = Math.max(0, toTime - fromTime);
+      const skipLod = opts?.skipLod === true;
       const lodTfs = current.map((p) => {
+        const floor = p.selectedTf ?? p.timeframe;
+        if (skipLod) return floor;
         const series = seriesForPane(p);
         const available = series?.catalog.timeframes ?? [p.timeframe];
-        const floor = p.selectedTf ?? p.timeframe;
         return pickLodTimeframe({
           windowSec,
           selectedTf: floor,
@@ -1023,7 +1033,7 @@ export default function App() {
 
       const needsFetch = current.map((p, i) => {
         if (onlyPaneId && p.id !== onlyPaneId) return false;
-        if (lodTfs[i] !== p.timeframe) return true;
+        if (!skipLod && lodTfs[i] !== p.timeframe) return true;
         return paneNeedsViewportPrefetch(p, fromTime, toTime);
       });
       if (!needsFetch.some(Boolean)) return;
@@ -2182,8 +2192,11 @@ export default function App() {
           wasPlayingRef.current = false;
           // Right-anchored load often shows empty left pad — pull history now
           // (same path as TradingView-style drag-left), not only after user pans.
+          // skipLod: must not coarsen 1m→1D from extrapolated pad wall-clock.
           if (tr && p0.range.fromIndex < 8) {
-            void applyTimeWindowToPanes(tr.fromTime, tr.toTime, p0.id);
+            void applyTimeWindowToPanes(tr.fromTime, tr.toTime, p0.id, {
+              skipLod: true,
+            });
           }
           if (journalFocus != null) {
             // Ensure viewport/follow settle on the journal entry time after chrome mounts.
@@ -2394,7 +2407,9 @@ export default function App() {
           if (pane && pane.bars.length > 0 && pane.range.fromIndex < 8) {
             const tr = timeRangeFromVisible(pane.bars, pane.range);
             if (tr) {
-              void applyTimeWindowToPanes(tr.fromTime, tr.toTime, activeId);
+              void applyTimeWindowToPanes(tr.fromTime, tr.toTime, activeId, {
+                skipLod: true,
+              });
             }
           }
         }
@@ -4744,6 +4759,7 @@ export default function App() {
                       tr.fromTime,
                       tr.toTime,
                       paneId,
+                      { skipLod: true },
                     );
                   }
                 }

@@ -104,7 +104,11 @@ export async function pushSession(session: BacktestSession): Promise<void> {
 
 export async function pushSessionProgress(
   id: string,
-  patch: { cursorTime?: number; span?: number },
+  patch: {
+    cursorTime?: number;
+    span?: number;
+    selectedTf?: import('@/types/ui').Timeframe;
+  },
 ): Promise<void> {
   if (!isCloudSyncEnabled()) return;
   const prev = progressTimers.get(id);

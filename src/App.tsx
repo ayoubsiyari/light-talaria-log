@@ -34,6 +34,8 @@ import { TopBar } from '@/components/layout/TopBar';
 import { MarketingHome } from '@/components/landing/MarketingHome';
 import { NotFoundPage } from '@/components/NotFoundPage';
 import { getSession, updateSessionProgress } from '@/sessions/sessionStore';
+import { resolveOpenTimeframe } from '@/sessions/sessionTf';
+import { barsMatchTimeframe } from '@/session/barTfGuard';
 import { LoadingProgress } from '@/components/LoadingProgress';
 import { ChartLoadingScreen } from '@/components/ChartLoadingScreen';
 import { PerfOverlay } from '@/components/perf/PerfOverlay';
@@ -1219,7 +1221,7 @@ export default function App() {
     [catalog, paneFromViewport, seriesForPane, syncReplayClockTf],
   );
 
-  /** Save replay cursor (+ zoom) so exit/refresh → reopen resumes mid-session. */
+  /** Save replay cursor (+ zoom + TopBar TF) so exit/refresh resumes mid-session. */
   const persistReplayProgress = useCallback((force = false) => {
     const id = sessionIdRef.current;
     if (!id) return;
@@ -1230,9 +1232,14 @@ export default function App() {
     if (!Number.isFinite(rs.cursorTime) || rs.cursorTime <= 0) return;
     const sess = sessionRef.current.get();
     lastProgressSaveRef.current = now;
+    const activeId = sess?.activePaneId ?? panesRef.current[0]?.id;
+    const activePane =
+      panesRef.current.find((p) => p.id === activeId) ?? panesRef.current[0];
+    const selectedTf = activePane?.selectedTf ?? activePane?.timeframe;
     const updated = updateSessionProgress(id, {
       cursorTime: rs.cursorTime,
       span: sess?.span,
+      ...(selectedTf ? { selectedTf } : {}),
     });
     // Never setState while playing — App re-renders reset chrome / fight DOM scrub.
     if (updated && (force || !rs.playing)) {
@@ -2013,9 +2020,12 @@ export default function App() {
         setCatalog(primary.catalog);
 
         const sharedTfs = intersectTimeframes(seriesList);
-        const openTf = sharedTfs.includes(fresh.timeframe)
-          ? fresh.timeframe
-          : (sharedTfs[0] ?? primary.catalog.baseTf);
+        // Resume last TopBar TF when persisted; else create TF.
+        const openTf = resolveOpenTimeframe(
+          fresh,
+          sharedTfs,
+          primary.catalog.baseTf,
+        );
 
         const { timeStart, timeEnd } = replayBounds(fresh, seriesList);
         const baseTf = primary.catalog.baseTf;
@@ -2065,12 +2075,33 @@ export default function App() {
         });
         if (loadGen !== loadSessionGenRef.current) return;
 
-        const views = sessionRef.current.getViews();
-        const v0 = views['pane-0'];
+        let views = sessionRef.current.getViews();
+        let v0 = views['pane-0'];
         if (!v0 || v0.bars.length === 0) {
           throw new Error(
             `No bars to display for ${primary.pair}. Re-download or pick a different overlap.`,
           );
+        }
+        // Guard: warm cache must not paint a coarser TF (e.g. 1D) under a 1m label.
+        if (
+          v0.bars.length >= 3 &&
+          !barsMatchTimeframe(v0.bars, openTf)
+        ) {
+          await sessionRef.current.setPaneTimeframe('pane-0', openTf);
+          if (loadGen !== loadSessionGenRef.current) return;
+          views = sessionRef.current.getViews();
+          const fixed = views['pane-0'];
+          if (fixed && fixed.bars.length > 0) {
+            v0 = fixed;
+          }
+          if (
+            v0.bars.length >= 3 &&
+            !barsMatchTimeframe(v0.bars, openTf)
+          ) {
+            console.warn(
+              `[session-load] bars still mismatch openTf=${openTf} after refill`,
+            );
+          }
         }
 
         // Propagate real series length so edge-prefetch / pan can fire.
@@ -2094,11 +2125,14 @@ export default function App() {
           // keep defaults
         }
 
+        const barsOk =
+          v0.bars.length < 3 || barsMatchTimeframe(v0.bars, openTf);
         const nextPanes: ChartPaneState[] = [
           {
             id: 'pane-0',
-            timeframe: v0.timeframe,
-            selectedTf: v0.selectedTf,
+            // Never label openTf when bars are clearly another period (1D under 1m).
+            timeframe: barsOk ? openTf : v0.timeframe,
+            selectedTf: openTf,
             bars: v0.bars,
             range: v0.range,
             windowFrom,
@@ -2114,6 +2148,8 @@ export default function App() {
         setPanes(nextPanes);
         setActivePaneId('pane-0');
         setChartLayout('1');
+        // Persist resumed TF so the next reload is sticky even if create TF differed.
+        updateSessionProgress(fresh.id, { selectedTf: openTf }, { skipCloud: true });
 
         const books: Record<string, Drawing[]> = {};
         for (const s of seriesList) {
@@ -2761,6 +2797,16 @@ export default function App() {
       );
       panesRef.current = optimistic;
       setPanes(optimistic);
+      // Sticky TopBar TF for reload (do not wait for async fill).
+      const sid = sessionIdRef.current;
+      if (sid) {
+        const updated = updateSessionProgress(sid, { selectedTf: tf });
+        if (updated) {
+          setSession((prev) =>
+            prev && prev.id === sid ? { ...prev, ...updated } : prev,
+          );
+        }
+      }
 
       const camera = captureLiveCamera(paneId);
       const fromTf = existing.timeframe;

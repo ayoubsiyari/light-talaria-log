@@ -41,8 +41,13 @@ export interface BacktestSession {
   name: string;
   /** Primary pair (first leg) — kept for older UI / labels. */
   pair: PairSymbol;
-  /** Chart ticker / bar timeframe */
+  /** Chart ticker / bar timeframe at session create. */
   timeframe: Timeframe;
+  /**
+   * Last explicit TopBar timeframe pick. Restored on reload so refresh resumes
+   * on 5m/1h/… even when create TF was different. Falls back to `timeframe`.
+   */
+  selectedTf?: Timeframe;
   /** ISO date YYYY-MM-DD (UTC day) — session window inside overlap */
   startDate: string;
   /** ISO date YYYY-MM-DD (UTC day) */

@@ -7,6 +7,7 @@ import type {
 import type { Timeframe } from '@/types/ui';
 import { newId } from '@/utils/uuid';
 import { readScopedOrLegacy, writeScoped } from '@/sync/storageScope';
+import { parseStoredTimeframe } from '@/sessions/sessionTf';
 
 const STORAGE_BASE = 'sessions.v1';
 const LEGACY_KEY = 'fast-chart.sessions.v1';
@@ -14,13 +15,17 @@ const MAX_SESSIONS = 50;
 
 export type PersistOpts = { skipCloud?: boolean };
 
+export type SessionProgressPatch = {
+  cursorTime?: number;
+  span?: number;
+  /** Last TopBar TF — restored on reload. */
+  selectedTf?: Timeframe;
+};
+
 function cloudPushSession(session: BacktestSession): void {
   void import('@/sync/cloudSync').then((m) => m.pushSession(session));
 }
-function cloudPushProgress(
-  id: string,
-  patch: { cursorTime?: number; span?: number },
-): void {
+function cloudPushProgress(id: string, patch: SessionProgressPatch): void {
   void import('@/sync/cloudSync').then((m) => m.pushSessionProgress(id, patch));
 }
 function cloudDeleteSession(id: string): void {
@@ -61,6 +66,7 @@ function normalizeSession(raw: unknown): BacktestSession | null {
     typeof s.span === 'number' && Number.isFinite(s.span) && s.span > 0
       ? s.span
       : undefined;
+  const selectedTf = parseStoredTimeframe(s.selectedTf) ?? undefined;
   const startingBalance =
     typeof s.startingBalance === 'number' &&
     Number.isFinite(s.startingBalance) &&
@@ -83,7 +89,7 @@ function normalizeSession(raw: unknown): BacktestSession | null {
     id: s.id,
     name: s.name ?? `${primary.pair} ${s.timeframe}`,
     pair: primary.pair,
-    timeframe: s.timeframe as Timeframe,
+    timeframe: (parseStoredTimeframe(s.timeframe) ?? s.timeframe) as Timeframe,
     startDate: s.startDate,
     endDate: s.endDate,
     datasetId: primary.datasetId,
@@ -91,6 +97,7 @@ function normalizeSession(raw: unknown): BacktestSession | null {
     createdAt: typeof s.createdAt === 'number' ? s.createdAt : Date.now(),
     ...(cursorTime !== undefined ? { cursorTime } : {}),
     ...(span !== undefined ? { span } : {}),
+    ...(selectedTf !== undefined ? { selectedTf } : {}),
     ...(startingBalance !== undefined ? { startingBalance } : {}),
     ...(strategyId !== undefined ? { strategyId } : {}),
     ...(strategyName !== undefined ? { strategyName } : {}),
@@ -162,6 +169,7 @@ export function createSession(
     name: input.name.trim() || label,
     pair: primary.pair,
     timeframe: input.timeframe,
+    selectedTf: input.timeframe,
     startDate: input.startDate,
     endDate: input.endDate,
     datasetId: primary.datasetId,
@@ -198,7 +206,7 @@ export function upsertSession(
 /** Persist replay progress so reopen/refresh can resume at the last candle. */
 export function updateSessionProgress(
   id: string,
-  patch: { cursorTime?: number; span?: number },
+  patch: SessionProgressPatch,
   opts?: PersistOpts,
 ): BacktestSession | null {
   const all = readAll();
@@ -212,6 +220,8 @@ export function updateSessionProgress(
   if (typeof patch.span === 'number' && Number.isFinite(patch.span) && patch.span > 0) {
     next.span = patch.span;
   }
+  const tf = parseStoredTimeframe(patch.selectedTf);
+  if (tf) next.selectedTf = tf;
   all[idx] = next;
   writeAll(all);
   if (!opts?.skipCloud) cloudPushProgress(id, patch);

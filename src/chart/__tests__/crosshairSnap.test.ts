@@ -69,4 +69,17 @@ describe('resolveCrosshair normal snaps to candles', () => {
       assert.ok(day !== 0 && day !== 6, `got weekend weekday=${day} time=${p.time}`);
     }
   });
+
+  it('stays visible in empty pad (left/right of candles)', () => {
+    // Range shows pad before idx0 and after idx1.
+    const wide = { fromIndex: -2, toIndex: 3 };
+    const left = resolveCrosshair(5, 50, 'normal', bars, wide, plot, scale);
+    assert.ok(left, 'left pad should show hair');
+    assert.equal(left.time, bars[0]!.time);
+    assert.equal(left.x, 5);
+    const right = resolveCrosshair(195, 50, 'normal', bars, wide, plot, scale);
+    assert.ok(right, 'right pad should show hair');
+    assert.equal(right.time, bars[1]!.time);
+    assert.equal(right.x, 195);
+  });
 });

@@ -7,6 +7,36 @@ import {
 import { contentBottom, type RenderLayout } from '../renderer';
 import type { CrosshairPoint } from '../types';
 
+/** Force opaque fill so axis ticks cannot show through (TV-style chips). */
+function opaqueLabelFill(color: string, fallback: string): string {
+  const m = color.match(
+    /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*[\d.]+)?\s*\)/i,
+  );
+  if (m) return `rgb(${m[1]}, ${m[2]}, ${m[3]})`;
+  if (color.startsWith('#') && (color.length === 9 || color.length === 5)) {
+    // #RRGGBBAA / #RGBA → drop alpha
+    return color.length === 9 ? color.slice(0, 7) : `#${color[1]}${color[2]}${color[3]}`;
+  }
+  if (color && color !== 'transparent') return color;
+  return fallback;
+}
+
+/** Solid axis chip: erase underlay, then opaque plate (TradingView). */
+function fillSolidChip(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  colors: ChartColors,
+): void {
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = colors.background;
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = opaqueLabelFill(colors.crosshair, colors.muted);
+  ctx.fillRect(x, y, w, h);
+}
+
 export function drawCrosshair(
   ctx: CanvasRenderingContext2D,
   layout: RenderLayout,
@@ -23,6 +53,7 @@ export function drawCrosshair(
   const cy = point.y;
 
   ctx.save();
+  ctx.globalAlpha = 1;
   ctx.strokeStyle = colors.crosshair;
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 3]);
@@ -43,7 +74,7 @@ export function drawCrosshair(
   ctx.setLineDash([]);
 
   // Center dot — makes cursor/crosshair alignment obvious
-  ctx.fillStyle = colors.crosshair;
+  ctx.fillStyle = opaqueLabelFill(colors.crosshair, colors.muted);
   ctx.beginPath();
   ctx.arc(cx, hy, 2.5, 0, Math.PI * 2);
   ctx.fill();
@@ -64,8 +95,8 @@ export function drawCrosshair(
     bottom - labelH,
   );
 
-  ctx.fillStyle = colors.crosshair;
-  ctx.fillRect(priceX, priceY, priceW, labelH);
+  fillSolidChip(ctx, priceX, priceY, priceW, labelH, colors);
+  // Chart bg text on solid hair plate — readable in dark + light.
   ctx.fillStyle = colors.background;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
@@ -80,8 +111,7 @@ export function drawCrosshair(
   );
   const timeY = height - timeAxisHeight + 4;
 
-  ctx.fillStyle = colors.crosshair;
-  ctx.fillRect(timeX, timeY, timeW, labelH);
+  fillSolidChip(ctx, timeX, timeY, timeW, labelH, colors);
   ctx.fillStyle = colors.background;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';

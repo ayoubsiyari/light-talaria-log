@@ -37,19 +37,51 @@ export function resolveCrosshair(
 
   const inMainPlot = canvasY <= plot.top + plot.height;
   const rawIndex = xToIndex(canvasX, range, plot);
-  // Outside the bar strip (empty pad) — no candle to attach to.
-  if (rawIndex < -0.5 || rawIndex > bars.length - 0.5) return null;
-
+  const onStrip = rawIndex >= -0.5 && rawIndex <= bars.length - 0.5;
   const barIndex = Math.round(Math.min(bars.length - 1, Math.max(0, rawIndex)));
-  const bar = bars[barIndex];
-  if (!bar) return null;
+  const bar = bars[barIndex]!;
 
-  // All visible modes lock X to the candle center (TV default). Free-X used to
-  // interpolate wall-clock through weekend gaps and show Sat/Sun on daily.
+  // Empty left/right pad: keep hair visible (free X/Y). Clamp time to the
+  // nearest edge candle so we don't invent mid-gap weekend dates.
+  if (!onStrip) {
+    const edge = rawIndex < 0 ? bars[0]! : bars[bars.length - 1]!;
+    const price = inMainPlot
+      ? yToPrice(canvasY, priceScale, plot)
+      : edge.close;
+    if (mode === 'magnet' || mode === 'magnetOhlc') {
+      // Magnets still lock to the edge candle when past the strip.
+      const x = indexToX(rawIndex < 0 ? 0 : bars.length - 1, range, plot);
+      const snapPrice =
+        mode === 'magnet'
+          ? edge.close
+          : [edge.open, edge.high, edge.low, edge.close].reduce((best, p) =>
+              Math.abs(p - price) < Math.abs(best - price) ? p : best,
+            );
+      return {
+        x,
+        y: inMainPlot ? priceToY(snapPrice, priceScale, plot) : canvasY,
+        index: rawIndex < 0 ? 0 : bars.length - 1,
+        time: edge.time,
+        price: snapPrice,
+        bar: edge,
+        barIndex: rawIndex < 0 ? 0 : bars.length - 1,
+      };
+    }
+    return {
+      x: canvasX,
+      y: canvasY,
+      index: rawIndex,
+      time: edge.time,
+      price,
+      bar: null,
+      barIndex: null,
+    };
+  }
+
+  // Over candles: lock X to center (TV). Avoids Fri→Mon interpolating Sat/Sun.
   const x = indexToX(barIndex, range, plot);
 
   if (mode === 'normal') {
-    // Free Y on the main plot; sub-panes keep pointer Y.
     const price = inMainPlot
       ? yToPrice(canvasY, priceScale, plot)
       : bar.close;

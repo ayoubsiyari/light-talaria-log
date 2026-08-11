@@ -1714,8 +1714,14 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
 
     setVisibleRange(fromIndex: number, toIndex: number, opts) {
       if (toIndex <= fromIndex) return;
+      // Same clamp as pan/zoom — TF preserve must not leave span > MAX_VISIBLE
+      // or the first drag snaps hard and the chart "jumps".
+      const clamped = clampNavRange(
+        { fromIndex, toIndex },
+        bars.length,
+      );
       // silent: React/replay applying a controlled range — do not echo into sync
-      setVisibleRangeInternal({ fromIndex, toIndex }, !opts?.silent);
+      setVisibleRangeInternal(clamped, !opts?.silent);
     },
 
     getVisibleRange() {

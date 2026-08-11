@@ -1,6 +1,20 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { createPortal } from 'react-dom';
-import { TV_COLOR_PALETTE } from '@/drawings/drawingStyle';
+import {
+  TV_COLOR_GRID,
+  hexToHsv,
+  hsvToHex,
+  loadCustomColors,
+  normalizeHex,
+  saveCustomColor,
+} from './tvColorUtils';
 
 interface SettColorSwatchProps {
   color: string;
@@ -13,8 +27,11 @@ interface SettColorSwatchProps {
   active?: boolean;
 }
 
+type PickerView = 'palette' | 'custom';
+
 /**
- * V9 data-v9-color-swatch — opens a TV palette popover with optional opacity.
+ * TradingView-style color well: palette grid, custom row with +,
+ * and HSV editor when + is pressed.
  */
 export function SettColorSwatch({
   color,
@@ -28,8 +45,13 @@ export function SettColorSwatch({
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const [view, setView] = useState<PickerView>('palette');
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-  const [customHex, setCustomHex] = useState(color);
+  const [customs, setCustoms] = useState<string[]>(() => loadCustomColors());
+  const [draftHex, setDraftHex] = useState(color);
+  const [hsv, setHsv] = useState(() => hexToHsv(color));
+
+  const panelW = view === 'custom' ? 260 : 236;
 
   useLayoutEffect(() => {
     if (!open || !btnRef.current) {
@@ -37,19 +59,22 @@ export function SettColorSwatch({
       return;
     }
     const r = btnRef.current.getBoundingClientRect();
-    const width = 240;
-    const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - panelW - 8));
+    const estH = view === 'custom' ? 280 : showOpacity ? 320 : 260;
     let top = r.bottom + 6;
-    const estH = showOpacity ? 220 : 160;
     if (top + estH > window.innerHeight - 8) {
       top = Math.max(8, r.top - estH - 6);
     }
     setPos({ top, left });
-  }, [open, showOpacity]);
+  }, [open, showOpacity, view, panelW]);
 
   useEffect(() => {
     if (!open) return;
-    setCustomHex(color);
+    const hex = normalizeHex(color) ?? color;
+    setDraftHex(hex);
+    setHsv(hexToHsv(hex));
+    setCustoms(loadCustomColors());
+    setView('palette');
   }, [open, color]);
 
   useEffect(() => {
@@ -60,7 +85,10 @@ export function SettColorSwatch({
       setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape') {
+        if (view === 'custom') setView('palette');
+        else setOpen(false);
+      }
     };
     document.addEventListener('pointerdown', onDoc, true);
     window.addEventListener('keydown', onKey);
@@ -68,10 +96,41 @@ export function SettColorSwatch({
       document.removeEventListener('pointerdown', onDoc, true);
       window.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [open, view]);
+
+  const applyColor = useCallback(
+    (hex: string) => {
+      const n = normalizeHex(hex);
+      if (!n) return;
+      setDraftHex(n);
+      setHsv(hexToHsv(n));
+      onChange({ color: n });
+    },
+    [onChange],
+  );
+
+  const setHsvLive = useCallback(
+    (next: { h: number; s: number; v: number }) => {
+      setHsv(next);
+      const hex = hsvToHex(next.h, next.s, next.v);
+      setDraftHex(hex);
+      onChange({ color: hex });
+    },
+    [onChange],
+  );
+
+  const addCustom = () => {
+    const n = normalizeHex(draftHex);
+    if (!n) return;
+    setCustoms(saveCustomColor(n));
+    onChange({ color: n });
+    setView('palette');
+  };
 
   const active = activeProp ?? open;
   const opacityPct = Math.round(Math.max(0, Math.min(1, opacity)) * 100);
+  const hueColor = hsvToHex(hsv.h, 1, 1);
+  const currentHex = normalizeHex(color) ?? color;
 
   return (
     <>
@@ -104,94 +163,266 @@ export function SettColorSwatch({
           <div
             ref={panelRef}
             data-v9-chrome="1"
-            data-sett-v3="1"
-            className="fixed z-[220] w-[240px] rounded-lg border border-[color:var(--line)] bg-[color:var(--surface)] p-3 space-y-3 shadow-none"
-            style={{ top: pos.top, left: pos.left }}
+            data-tv-cp="1"
+            data-view={view}
+            className="fixed z-[220]"
+            style={{ top: pos.top, left: pos.left, width: panelW }}
             onPointerDown={(e) => e.stopPropagation()}
           >
-            <div className="grid grid-cols-8 gap-1.5">
-              {TV_COLOR_PALETTE.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  title={c}
-                  className={[
-                    'w-6 h-6 rounded-[4px] border transition-shadow',
-                    color.toLowerCase() === c.toLowerCase()
-                      ? 'border-[color:var(--text)] ring-2 ring-[color:var(--text)]/30'
-                      : 'border-[color:var(--line)]',
-                  ].join(' ')}
-                  style={{ backgroundColor: c }}
-                  onClick={() => onChange({ color: c })}
-                />
-              ))}
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={/^#[0-9a-fA-F]{6}$/.test(customHex) ? customHex : '#2962FF'}
-                onChange={(e) => {
-                  setCustomHex(e.target.value);
-                  onChange({ color: e.target.value });
-                }}
-                className="h-8 w-8 cursor-pointer rounded border border-[color:var(--line)] bg-[color:var(--surface-sunken)] p-0.5"
-                aria-label="Custom color"
-              />
-              <input
-                type="text"
-                value={customHex}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setCustomHex(v);
-                  if (/^#[0-9a-fA-F]{6}$/.test(v)) onChange({ color: v });
-                }}
-                className="flex-1 min-h-9 rounded-md border border-[color:var(--line)] bg-[color:var(--surface-sunken)] px-2 text-xs font-mono text-[color:var(--text)] outline-none"
-                spellCheck={false}
-                aria-label="Hex color"
-              />
-            </div>
-            {showOpacity && (
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs text-[color:var(--text-muted)]">
-                  <span>Opacity</span>
-                  <span className="tabular-nums text-[color:var(--text)]">
-                    {opacityPct}%
-                  </span>
+            {view === 'palette' ? (
+              <>
+                <div data-tv-cp-grid="">
+                  {TV_COLOR_GRID.map((c) => {
+                    const selected =
+                      currentHex.toLowerCase() === c.toLowerCase();
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        title={c}
+                        data-tv-cp-cell=""
+                        data-active={selected ? '1' : undefined}
+                        style={{ backgroundColor: c }}
+                        onClick={() => applyColor(c)}
+                      />
+                    );
+                  })}
                 </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min={5}
-                    max={100}
-                    step={1}
-                    value={opacityPct}
-                    onChange={(e) =>
-                      onChange({ opacity: Number(e.target.value) / 100 })
-                    }
-                    className="flex-1 h-1 accent-[var(--accent)]"
-                    aria-label="Opacity"
-                  />
-                  <input
-                    type="number"
-                    min={5}
-                    max={100}
-                    value={opacityPct}
-                    onChange={(e) => {
-                      const n = Math.max(
-                        5,
-                        Math.min(100, Number(e.target.value) || 100),
-                      );
-                      onChange({ opacity: n / 100 });
+
+                <div data-tv-cp-divider="" />
+
+                <div data-tv-cp-customs="">
+                  {customs.map((c) => {
+                    const selected =
+                      currentHex.toLowerCase() === c.toLowerCase();
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        title={c}
+                        data-tv-cp-cell=""
+                        data-active={selected ? '1' : undefined}
+                        style={{ backgroundColor: c }}
+                        onClick={() => applyColor(c)}
+                      />
+                    );
+                  })}
+                  <button
+                    type="button"
+                    data-tv-cp-add=""
+                    aria-label="Add custom color"
+                    title="Add custom color"
+                    onClick={() => {
+                      setHsv(hexToHsv(currentHex));
+                      setDraftHex(normalizeHex(currentHex) ?? '#2962FF');
+                      setView('custom');
                     }}
-                    className="w-14 min-h-9 rounded-md border border-[color:var(--line)] bg-[color:var(--surface-sunken)] px-1.5 text-xs tabular-nums text-[color:var(--text)] outline-none"
-                    aria-label="Opacity percent"
-                  />
+                  >
+                    +
+                  </button>
                 </div>
-              </div>
+
+                {showOpacity && (
+                  <div data-tv-cp-opacity="">
+                    <span data-tv-cp-opacity-lbl="">Opacity</span>
+                    <div data-tv-cp-opacity-row="">
+                      <div
+                        data-tv-cp-opacity-track=""
+                        style={{
+                          backgroundImage: `
+                            linear-gradient(to right, transparent, ${currentHex}),
+                            repeating-conic-gradient(#6b6e76 0% 25%, #9a9da5 0% 50%)
+                          `,
+                          backgroundSize: '100% 100%, 8px 8px',
+                        }}
+                      >
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={opacityPct}
+                          aria-label="Opacity"
+                          onChange={(e) =>
+                            onChange({
+                              opacity: Number(e.target.value) / 100,
+                            })
+                          }
+                        />
+                      </div>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={opacityPct}
+                        aria-label="Opacity percent"
+                        data-tv-cp-opacity-num=""
+                        onChange={(e) => {
+                          const n = Math.max(
+                            0,
+                            Math.min(100, Number(e.target.value) || 0),
+                          );
+                          onChange({ opacity: n / 100 });
+                        }}
+                      />
+                      <span data-tv-cp-opacity-unit="">%</span>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <CustomColorEditor
+                hsv={hsv}
+                draftHex={draftHex}
+                hueColor={hueColor}
+                onHsv={setHsvLive}
+                onHexDraft={setDraftHex}
+                onHexCommit={(hex) => {
+                  const n = normalizeHex(hex);
+                  if (!n) return;
+                  applyColor(n);
+                }}
+                onAdd={addCustom}
+                onBack={() => setView('palette')}
+              />
             )}
           </div>,
           document.body,
         )}
     </>
+  );
+}
+
+function CustomColorEditor({
+  hsv,
+  draftHex,
+  hueColor,
+  onHsv,
+  onHexDraft,
+  onHexCommit,
+  onAdd,
+  onBack,
+}: {
+  hsv: { h: number; s: number; v: number };
+  draftHex: string;
+  hueColor: string;
+  onHsv: (h: { h: number; s: number; v: number }) => void;
+  onHexDraft: (v: string) => void;
+  onHexCommit: (hex: string) => void;
+  onAdd: () => void;
+  onBack: () => void;
+}) {
+  const svRef = useRef<HTMLDivElement>(null);
+  const hueRef = useRef<HTMLDivElement>(null);
+  const live = useRef(hsv);
+  live.current = hsv;
+
+  const pickSv = useCallback(
+    (clientX: number, clientY: number) => {
+      const el = svRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const s = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+      const v = Math.max(0, Math.min(1, 1 - (clientY - r.top) / r.height));
+      onHsv({ h: live.current.h, s, v });
+    },
+    [onHsv],
+  );
+
+  const pickHue = useCallback(
+    (clientY: number) => {
+      const el = hueRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const t = Math.max(0, Math.min(1, (clientY - r.top) / r.height));
+      onHsv({ h: t * 360, s: live.current.s, v: live.current.v });
+    },
+    [onHsv],
+  );
+
+  const armDrag = (
+    e: ReactPointerEvent,
+    move: (clientX: number, clientY: number) => void,
+  ) => {
+    e.preventDefault();
+    const target = e.currentTarget as HTMLElement;
+    target.setPointerCapture(e.pointerId);
+    move(e.clientX, e.clientY);
+    const onMove = (ev: PointerEvent) => move(ev.clientX, ev.clientY);
+    const onUp = () => {
+      target.releasePointerCapture(e.pointerId);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  const preview = hsvToHex(hsv.h, hsv.s, hsv.v);
+
+  return (
+    <div data-tv-cp-custom="">
+      <div data-tv-cp-custom-bar="">
+        <button
+          type="button"
+          data-tv-cp-back=""
+          aria-label="Back to palette"
+          onClick={onBack}
+        >
+          ←
+        </button>
+        <i data-tv-cp-preview="" style={{ backgroundColor: preview }} />
+        <input
+          type="text"
+          value={draftHex.startsWith('#') ? draftHex : `#${draftHex}`}
+          spellCheck={false}
+          aria-label="Hex color"
+          data-tv-cp-hex=""
+          onChange={(e) => {
+            const v = e.target.value;
+            onHexDraft(v);
+            const n = normalizeHex(v);
+            if (n) onHexCommit(n);
+          }}
+        />
+        <button type="button" data-tv-cp-add-btn="" onClick={onAdd}>
+          Add
+        </button>
+      </div>
+
+      <div data-tv-cp-hs="">
+        <div
+          ref={svRef}
+          data-tv-cp-sv=""
+          style={{ backgroundColor: hueColor }}
+          onPointerDown={(e) => armDrag(e, pickSv)}
+        >
+          <i data-tv-cp-sv-white="" />
+          <i data-tv-cp-sv-black="" />
+          <i
+            data-tv-cp-sv-knob=""
+            style={{
+              left: `${hsv.s * 100}%`,
+              top: `${(1 - hsv.v) * 100}%`,
+              backgroundColor: preview,
+            }}
+          />
+        </div>
+        <div
+          ref={hueRef}
+          data-tv-cp-hue=""
+          onPointerDown={(e) =>
+            armDrag(e, (_x, y) => {
+              pickHue(y);
+            })
+          }
+        >
+          <i
+            data-tv-cp-hue-knob=""
+            style={{ top: `${(hsv.h / 360) * 100}%` }}
+          />
+        </div>
+      </div>
+    </div>
   );
 }

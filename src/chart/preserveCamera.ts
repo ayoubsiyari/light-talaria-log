@@ -3,6 +3,7 @@ import {
   logicalIndexAtTime,
   visibleRangeFromTimeWindow,
 } from '@/data/timeframeAgg';
+import { VISIBLE_BARS_TARGET } from '@/utils/constants';
 import { DEFAULT_VISIBLE_BARS } from './interaction';
 import { rangeRightAnchored } from './rangeAnchor';
 
@@ -44,7 +45,9 @@ export function preservedVisibleRange(
   if (bars.length === 0) return { fromIndex: 0, toIndex: 1 };
 
   const tip = bars.length - 1;
-  const spanSafe = Math.max(10, span);
+  // Match engine pan MAX_VISIBLE so preserve never leaves a span that the
+  // first drag will clamp (visible jump after coarser→finer TF).
+  const spanSafe = Math.max(10, Math.min(VISIBLE_BARS_TARGET, span));
   // tipRatio≤0 means the old viewport sat entirely past the tip → blank plot.
   const tipRatioSafe =
     Number.isFinite(tipRatio) && tipRatio > 0.05
@@ -80,8 +83,18 @@ export function preservedVisibleRange(
     range = { fromIndex, toIndex: fromIndex + spanSafe };
   }
 
+  let spanNow = range.toIndex - range.fromIndex;
+  // Wall-clock remap (1h→5m) can exceed pan MAX_VISIBLE — shrink keeping the
+  // right edge so the first drag does not clamp/jump.
+  if (spanNow > VISIBLE_BARS_TARGET) {
+    range = {
+      fromIndex: range.toIndex - VISIBLE_BARS_TARGET,
+      toIndex: range.toIndex,
+    };
+    spanNow = VISIBLE_BARS_TARGET;
+  }
+
   const visible = visibleBarsInRange(bars.length, range);
-  const spanNow = range.toIndex - range.fromIndex;
   // Tip-only / short 15m buffers: wall-clock can map to a huge empty pad with
   // candles crushed on the right — fit zoom to the bars we actually have.
   const crushed =

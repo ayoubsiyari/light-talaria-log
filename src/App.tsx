@@ -158,6 +158,7 @@ import {
   MAX_BACKTEST_BARS,
   MAX_BARS_IN_MEMORY,
   REPLAY_VISIBLE_BARS,
+  VISIBLE_BARS_TARGET,
 } from '@/utils/constants';
 import {
   formatAppRoute,
@@ -271,7 +272,12 @@ function cameraSpanForTf(
       ? camera.toTime - camera.fromTime
       : camera.span * timeframeSeconds(fromTf);
   const toSec = Math.max(1, timeframeSeconds(toTf));
-  return Math.max(10, Math.ceil(wallSec / toSec) + 8);
+  // Must match engine pan clamp (MAX_VISIBLE) — unclamped coarser→finer spans
+  // (e.g. 1h→5m ≈ 2400) snap hard on the first drag and feel like a jump.
+  return Math.max(
+    10,
+    Math.min(VISIBLE_BARS_TARGET, Math.ceil(wallSec / toSec) + 8),
+  );
 }
 
 function isDrawingTool(tool: ChartToolId): tool is DrawingToolId {
@@ -2746,12 +2752,7 @@ export default function App() {
       const convertedSpan = cameraSpanForTf(camera, fromTf, tf);
       // Preserve = wall-clock place + converted bar zoom for the *target* TF.
       cameraPreserveRef.current = { ...camera, span: convertedSpan };
-      // Fill sizing always uses converted span (1m count on 15m is huge/slow).
-      // Restore prior span after paint when Interval sync is off (siblings).
-      const prevSessionSpan = Math.max(
-        10,
-        sessionRef.current.get()?.span ?? camera.span,
-      );
+      // Fill sizing always uses converted (clamped) span for the target TF.
       sessionRef.current.setCamera(camera.anchorTime, convertedSpan);
       setActivePaneId(paneId);
       // Only suppress the setActivePane notify — never hold this across awaits
@@ -2781,16 +2782,16 @@ export default function App() {
           for (const id of targets) {
             getChart(id)?.resetPriceScale();
           }
-          if (syncAll) {
-            const live = getChart(paneId)?.getVisibleRange();
-            if (live) {
-              sessionRef.current.setSpan(
-                Math.max(10, live.toIndex - live.fromIndex),
-              );
-            }
-          } else {
-            sessionRef.current.setSpan(prevSessionSpan);
-          }
+          // Keep the converted (clamped) span — never restore the pre-TF bar
+          // count (e.g. 120 on 1h). That made session heal tip-anchor a short
+          // window while the engine still showed a wide 5m camera → first pan jump.
+          const live = getChart(paneId)?.getVisibleRange();
+          const liveSpan = live
+            ? Math.max(10, live.toIndex - live.fromIndex)
+            : convertedSpan;
+          sessionRef.current.setSpan(
+            Math.min(VISIBLE_BARS_TARGET, Math.max(10, liveSpan)),
+          );
           syncReplayClockTf(panesRef.current);
           markPanesLoading(targets, false);
 
@@ -2803,25 +2804,26 @@ export default function App() {
             replayBufferRef.current.set(paneId, focus.bars);
           }
 
-          // Background history top-up — do not block the first 15m paint.
-          suppressSessionCommitRef.current = false;
+          // Background history top-up — do not block the first paint.
+          // Keep suppress through heal so tip-anchored session views cannot
+          // stomp React mid-switch; never adopt tip ranges onto the live camera.
           const healed = await healViewportIfNeeded(targets, {
             force: true,
             applyCamera: false,
           });
           if (switchGen !== paneSwitchGenRef.current) return;
           if (healed) {
-            commitSessionViews({ adoptRangePaneIds: targets });
+            commitSessionViews(); // bars only — keep engine/React camera
             syncEnginesFromSession({
               paneIds: targets,
               applyCamera: true,
+              keepPreserve: true,
             });
             for (const id of targets) {
               getChart(id)?.resetPriceScale();
             }
-          } else {
-            cameraPreserveRef.current = null;
           }
+          cameraPreserveRef.current = null;
         } finally {
           suppressSessionCommitRef.current = false;
           if (switchGen === paneSwitchGenRef.current) {
@@ -4721,16 +4723,14 @@ export default function App() {
                 getChart(paneId)?.setReplayFollow(false);
                 cameraDetachedRef.current = true;
                 setCameraDetached(true);
-                // Drag toward older time / empty left pad → load history chunk.
-                // (Sync publish also does this; kick here so sync-off never misses.)
+                // Only prefetch when the left pad is truly empty (index < 0).
+                // Firing at fromIndex < 24 mid-drag reloaded buffers after TF
+                // switch and made the chart jump under the pointer.
                 const chart = getChart(paneId);
                 if (!chart) return;
                 const liveBars = chart.getBars();
                 const liveRange = chart.getVisibleRange();
-                if (
-                  liveBars.length > 0 &&
-                  liveRange.fromIndex < 24
-                ) {
+                if (liveBars.length > 0 && liveRange.fromIndex < 0) {
                   const tr = timeRangeFromVisible(liveBars, liveRange);
                   if (tr) {
                     void applyTimeWindowToPanes(

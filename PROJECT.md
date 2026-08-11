@@ -930,6 +930,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-11 | Crosshair stays in empty pad (edge time); solid opaque axis chips | Zoom out → hover left/right of candles — hair + labels stay |
 | 2026-08-11 | Chart settings nav: vertical side tabs (drop data-sett-nav clash with drawing strip) | Open Chart settings — Symbol/Status… stacked left, not a top segment bar |
 | 2026-08-11 | Crosshair empty pad steps dates via logical slots (TV); still no Fri→Mon weekend interpolate on bars | Zoom out → move left of first candle — date keeps changing |
+| 2026-08-11 | Fix pan jump after TF/draw: clamp camera≤MAX_VISIBLE; keep converted session.span; heal no tip-adopt; prefetch only left-pad | 1h→5m then drag — stays put, no teleport |
 
 ---
 

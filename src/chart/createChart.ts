@@ -1,3 +1,4 @@
+import { sanitizeChartBars } from '@/data/ohlcGuard';
 import {
   indexAtOrBeforeBars,
   logicalIndexAtTime,
@@ -1698,13 +1699,14 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
 
     setViewportBars(nextBars: readonly ChartBar[]) {
       const prevBars = bars;
-      if (nextBars.length > MAX_BARS_IN_MEMORY) {
+      const cleaned = sanitizeChartBars(nextBars);
+      if (cleaned.length > MAX_BARS_IN_MEMORY) {
         console.warn(
-          `setViewportBars: ${nextBars.length} exceeds MAX_BARS_IN_MEMORY (${MAX_BARS_IN_MEMORY}); truncating`,
+          `setViewportBars: ${cleaned.length} exceeds MAX_BARS_IN_MEMORY (${MAX_BARS_IN_MEMORY}); truncating`,
         );
-        bars = nextBars.slice(0, MAX_BARS_IN_MEMORY) as ChartBar[];
+        bars = cleaned.slice(0, MAX_BARS_IN_MEMORY) as ChartBar[];
       } else {
-        bars = nextBars.slice() as ChartBar[];
+        bars = cleaned as ChartBar[];
       }
 
       if (bars.length === 0) {
@@ -2162,10 +2164,11 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
 
       if (prevLen === 0 || nextLen < prevLen || !canAppend) {
         const prevBarsSnap = bars;
+        const cleaned = sanitizeChartBars(nextBars);
         bars =
-          nextLen > MAX_BARS_IN_MEMORY
-            ? (nextBars.slice(0, MAX_BARS_IN_MEMORY) as ChartBar[])
-            : (nextBars.slice() as ChartBar[]);
+          cleaned.length > MAX_BARS_IN_MEMORY
+            ? (cleaned.slice(0, MAX_BARS_IN_MEMORY) as ChartBar[])
+            : (cleaned as ChartBar[]);
         // Warm-cache slide / seek: remap MA values by time so overlays stay on
         // the right candles until the full Worker catch-up finishes.
         if (prevLen > 0 && bars.length > 0) {

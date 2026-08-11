@@ -10,6 +10,7 @@
  * 6. On HTF miss/mismatch: aggregate from a finer cached/IDB series (M1→5m)
  *    so TF switch never sticks on the previous candles when packs are lazy.
  */
+import { sanitizeChartBars } from '@/data/ohlcGuard';
 import {
   aggregateChartBars,
   canAggregateFrom,
@@ -459,7 +460,8 @@ export class WarmCache {
     anchorTime: number,
   ): void {
     this.writeEntry(key(datasetId, tf), {
-      bars,
+      // Repair packed low=0 HTF before anything paints (ES 4h comb).
+      bars: sanitizeChartBars(bars),
       anchorTime,
       loadedAt: Date.now(),
       touchedAt: Date.now(),

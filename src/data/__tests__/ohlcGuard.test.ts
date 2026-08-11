@@ -3,7 +3,12 @@
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { isPositiveOhlc, isValidOhlcBar } from '@/data/ohlcGuard';
+import {
+  isPositiveOhlc,
+  isValidOhlcBar,
+  sanitizeChartBars,
+  sanitizeOhlc,
+} from '@/data/ohlcGuard';
 import { computePriceScale } from '@/chart/scales';
 import type { ChartBar } from '@/types/bar';
 
@@ -16,6 +21,39 @@ describe('isPositiveOhlc', () => {
 
   it('rejects inverted OHLC', () => {
     assert.equal(isPositiveOhlc(10, 9, 8, 9.5), false);
+  });
+});
+
+describe('sanitizeOhlc repairs packed low=0 (ES 4h comb)', () => {
+  it('fixes low=0 while keeping real close', () => {
+    const fixed = sanitizeOhlc({ open: 6010, high: 6030, low: 0, close: 6025 });
+    assert.ok(fixed);
+    assert.equal(fixed!.low, Math.min(6010, 6025));
+    assert.equal(fixed!.close, 6025);
+    assert.ok(isPositiveOhlc(fixed!.open, fixed!.high, fixed!.low, fixed!.close));
+  });
+
+  it('repairs a full comb buffer so auto-Y stays near ES', () => {
+    const raw: ChartBar[] = [];
+    for (let i = 0; i < 40; i++) {
+      const c = 6000 + i;
+      raw.push({
+        time: 1_700_000_000 + i * 14_400,
+        open: c - 5,
+        high: c + 10,
+        low: 0, // packed corruption
+        close: c,
+        volume: 1,
+      });
+    }
+    const clean = sanitizeChartBars(raw);
+    assert.equal(clean.length, raw.length);
+    const scale = computePriceScale(clean, {
+      fromIndex: 0,
+      toIndex: clean.length,
+    });
+    assert.ok(scale.min > 1000, `min ${scale.min}`);
+    assert.ok(scale.max < 7000, `max ${scale.max}`);
   });
 });
 

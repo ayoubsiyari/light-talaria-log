@@ -1,4 +1,5 @@
 import type { ChartBarWithVolume } from '@/types/bar';
+import { sanitizeOhlc } from './ohlcGuard';
 
 /** Bytes per bar in packed binary format: time(f64) + ohlcv(f32×5) = 8 + 20 = 28 */
 export const BYTES_PER_BAR = 28;
@@ -28,14 +29,32 @@ export function createBarStore(capacity: number): BinaryBarStore {
 export function toChartBars(store: BinaryBarStore, from: number, to: number): ChartBarWithVolume[] {
   const end = Math.min(to, store.length);
   const bars: ChartBarWithVolume[] = [];
+  let prevClose = 0;
   for (let i = from; i < end; i++) {
+    let ohlc = sanitizeOhlc({
+      open: store.open[i]!,
+      high: store.high[i]!,
+      low: store.low[i]!,
+      close: store.close[i]!,
+    });
+    // Keep logical length stable — flat-fill only when totally unusable.
+    if (!ohlc) {
+      if (!(prevClose > 0)) continue;
+      ohlc = {
+        open: prevClose,
+        high: prevClose,
+        low: prevClose,
+        close: prevClose,
+      };
+    }
+    prevClose = ohlc.close;
     bars.push({
-      time: store.time[i],
-      open: store.open[i],
-      high: store.high[i],
-      low: store.low[i],
-      close: store.close[i],
-      volume: store.volume[i],
+      time: store.time[i]!,
+      open: ohlc.open,
+      high: ohlc.high,
+      low: ohlc.low,
+      close: ohlc.close,
+      volume: store.volume[i]!,
     });
   }
   return bars;

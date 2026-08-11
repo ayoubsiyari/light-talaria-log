@@ -1,4 +1,5 @@
 import type { ChartBar, VisibleRange } from '@/types/bar';
+import { isValidOhlcBar } from '@/data/ohlcGuard';
 import type { ChartColors } from '../chartTheme';
 import type { SeriesType } from '../types';
 import { barWidthPx, indexToX, priceToY, type PlotRect, type PriceScale } from '../scales';
@@ -60,7 +61,7 @@ function drawCandles(
 
   for (let i = from; i <= to; i++) {
     const bar = bars[i];
-    if (!bar) continue;
+    if (!bar || !isValidOhlcBar(bar)) continue;
 
     const x = indexToX(i, range, plot);
     const yOpen = priceToY(bar.open, priceScale, plot);
@@ -116,7 +117,7 @@ function drawOhclBars(
 
   for (let i = from; i <= to; i++) {
     const bar = bars[i];
-    if (!bar) continue;
+    if (!bar || !isValidOhlcBar(bar)) continue;
     const x = indexToX(i, range, plot);
     const yOpen = priceToY(bar.open, priceScale, plot);
     const yClose = priceToY(bar.close, priceScale, plot);
@@ -155,7 +156,7 @@ function drawLine(
   let started = false;
   for (let i = from; i <= to; i++) {
     const bar = bars[i];
-    if (!bar) continue;
+    if (!bar || !isValidOhlcBar(bar)) continue;
     const x = indexToX(i, range, plot);
     const y = priceToY(bar.close, priceScale, plot);
     if (!started) {

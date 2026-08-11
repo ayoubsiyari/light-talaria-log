@@ -1,3 +1,4 @@
+import { isValidOhlcBar } from '@/data/ohlcGuard';
 import { bucketStart, timeframeSeconds } from '@/data/timeframeAgg';
 import { barsMatchTimeframe } from '@/session/barTfGuard';
 import type { ChartBar, VisibleRange } from '@/types/bar';
@@ -58,19 +59,8 @@ export function fullViewportMinBars(span: number): number {
 }
 
 function ohlcOk(b: ChartBar): boolean {
-  const { open, high, low, close } = b;
-  if (
-    !Number.isFinite(open) ||
-    !Number.isFinite(high) ||
-    !Number.isFinite(low) ||
-    !Number.isFinite(close)
-  ) {
-    return false;
-  }
-  if (high < Math.max(open, close)) return false;
-  if (low > Math.min(open, close)) return false;
-  if (high < low) return false;
-  return true;
+  // Strict positive OHLC — empty/holiday zeros must fail integrity.
+  return isValidOhlcBar(b);
 }
 
 /**

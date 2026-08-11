@@ -8,6 +8,7 @@ import type { SeriesMeta } from '@/types/series';
 import { chunkKey } from '@/types/series';
 import type { Timeframe } from '@/types/ui';
 import { createBarStore, packStore, type BinaryBarStore } from './binaryBar';
+import { isPositiveOhlc } from './ohlcGuard';
 import { aggregatableTimeframes, timeframeSeconds } from './timeframeAgg';
 
 function normalizeTime(raw: number): number {
@@ -28,6 +29,8 @@ function parseLine(
   const volume = parts.length >= 6 ? Number(parts[5]) : 0;
   if ([time, open, high, low, close].some(Number.isNaN) || !Number.isFinite(time)) return null;
   if (Number.isNaN(volume)) return null;
+  // Empty CSV cells become 0 — reject (ES/NQ zero prints crush the chart).
+  if (!isPositiveOhlc(open, high, low, close)) return null;
   return { time, open, high, low, close, volume };
 }
 

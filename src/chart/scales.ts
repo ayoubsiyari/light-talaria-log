@@ -1,4 +1,5 @@
 import type { ChartBar, VisibleRange } from '@/types/bar';
+import { isValidOhlcBar } from '@/data/ohlcGuard';
 
 export interface PlotRect {
   left: number;
@@ -28,7 +29,8 @@ export function computePriceScale(
 
   for (let i = from; i <= to; i++) {
     const bar = bars[i];
-    if (!bar) continue;
+    // Skip zero/corrupt prints — one ES low=0 used to crush Y to 0→6000.
+    if (!bar || !isValidOhlcBar(bar)) continue;
     if (bar.low < min) min = bar.low;
     if (bar.high > max) max = bar.high;
   }

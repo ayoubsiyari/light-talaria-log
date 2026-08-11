@@ -2,6 +2,7 @@ import type { ChartBar, VisibleRange } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
 import { MAX_BARS_IN_MEMORY, VISIBLE_BARS_TARGET } from '@/utils/constants';
 import { createBarStore, toChartBars, type BinaryBarStore } from './binaryBar';
+import { isPositiveOhlc, isValidOhlcBar } from './ohlcGuard';
 
 /** Bar period in seconds for each UI timeframe. */
 export function timeframeSeconds(tf: Timeframe): number {
@@ -83,16 +84,29 @@ export function aggregateChartBars(
   if (period <= 0) return base.slice() as ChartBar[];
 
   const out: ChartBar[] = [];
-  let curBucket = bucketStart(base[0]!.time, period);
-  let o = base[0]!.open;
-  let h = base[0]!.high;
-  let l = base[0]!.low;
-  let c = base[0]!.close;
-  let v = base[0]!.volume ?? 0;
+  let started = false;
+  let curBucket = 0;
+  let o = 0;
+  let h = 0;
+  let l = 0;
+  let c = 0;
+  let v = 0;
 
-  for (let i = 1; i < base.length; i++) {
+  for (let i = 0; i < base.length; i++) {
     const bar = base[i]!;
+    // Drop zero/corrupt prints so they never become HTF low=0 spikes.
+    if (!isValidOhlcBar(bar)) continue;
     const b = bucketStart(bar.time, period);
+    if (!started) {
+      started = true;
+      curBucket = b;
+      o = bar.open;
+      h = bar.high;
+      l = bar.low;
+      c = bar.close;
+      v = bar.volume ?? 0;
+      continue;
+    }
     if (b !== curBucket) {
       out.push({ time: curBucket, open: o, high: h, low: l, close: c, volume: v });
       curBucket = b;
@@ -108,7 +122,9 @@ export function aggregateChartBars(
       v += bar.volume ?? 0;
     }
   }
-  out.push({ time: curBucket, open: o, high: h, low: l, close: c, volume: v });
+  if (started) {
+    out.push({ time: curBucket, open: o, high: h, low: l, close: c, volume: v });
+  }
   return out;
 }
 
@@ -124,17 +140,34 @@ export function aggregateBars(base: BinaryBarStore, targetTf: Timeframe): Binary
   const out = createBarStore(base.length);
   let outLen = 0;
 
-  let curBucket = bucketStart(base.time[0], period);
-  let o = base.open[0];
-  let h = base.high[0];
-  let l = base.low[0];
-  let c = base.close[0];
-  let v = base.volume[0];
-  let bucketTime = curBucket;
+  let started = false;
+  let curBucket = 0;
+  let o = 0;
+  let h = 0;
+  let l = 0;
+  let c = 0;
+  let v = 0;
+  let bucketTime = 0;
 
-  for (let i = 1; i < base.length; i++) {
-    const t = base.time[i];
+  for (let i = 0; i < base.length; i++) {
+    const oi = base.open[i]!;
+    const hi = base.high[i]!;
+    const li = base.low[i]!;
+    const ci = base.close[i]!;
+    if (!isPositiveOhlc(oi, hi, li, ci)) continue;
+    const t = base.time[i]!;
     const b = bucketStart(t, period);
+    if (!started) {
+      started = true;
+      curBucket = b;
+      bucketTime = b;
+      o = oi;
+      h = hi;
+      l = li;
+      c = ci;
+      v = base.volume[i]!;
+      continue;
+    }
     if (b !== curBucket) {
       out.time[outLen] = bucketTime;
       out.open[outLen] = o;
@@ -146,26 +179,28 @@ export function aggregateBars(base: BinaryBarStore, targetTf: Timeframe): Binary
 
       curBucket = b;
       bucketTime = b;
-      o = base.open[i];
-      h = base.high[i];
-      l = base.low[i];
-      c = base.close[i];
-      v = base.volume[i];
+      o = oi;
+      h = hi;
+      l = li;
+      c = ci;
+      v = base.volume[i]!;
     } else {
-      if (base.high[i] > h) h = base.high[i];
-      if (base.low[i] < l) l = base.low[i];
-      c = base.close[i];
-      v += base.volume[i];
+      if (hi > h) h = hi;
+      if (li < l) l = li;
+      c = ci;
+      v += base.volume[i]!;
     }
   }
 
-  out.time[outLen] = bucketTime;
-  out.open[outLen] = o;
-  out.high[outLen] = h;
-  out.low[outLen] = l;
-  out.close[outLen] = c;
-  out.volume[outLen] = v;
-  outLen++;
+  if (started) {
+    out.time[outLen] = bucketTime;
+    out.open[outLen] = o;
+    out.high[outLen] = h;
+    out.low[outLen] = l;
+    out.close[outLen] = c;
+    out.volume[outLen] = v;
+    outLen++;
+  }
   out.length = outLen;
 
   // Compact if we over-allocated a lot

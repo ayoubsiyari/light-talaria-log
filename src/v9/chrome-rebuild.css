@@ -629,36 +629,50 @@
   pointer-events: none;
   cursor: default;
 }
+/* Vertical side tabs — must beat any accidental horizontal segment rules */
 [data-sett-v2="1"] [data-sett-v2-nav] {
-  width: 9.5rem;
-  flex: 0 0 9.5rem;
-  padding: 8px 6px;
-  border-right: 1px solid var(--line);
-  background: var(--surface);
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  overflow-x: hidden;
-  overflow-y: auto;
+  width: 10.5rem !important;
+  flex: 0 0 10.5rem !important;
+  padding: 8px 6px !important;
+  margin: 0 !important;
+  border: none !important;
+  border-right: 1px solid var(--line) !important;
+  border-radius: 0 !important;
+  background: var(--surface) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  align-self: stretch !important;
+  gap: 2px !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
   overscroll-behavior: contain;
 }
 [data-sett-v2="1"] [data-sett-v2-nav] button {
   display: flex !important;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
+  width: 100% !important;
+  flex: 0 0 auto !important;
+  min-width: 0 !important;
   min-height: 36px !important;
   height: auto !important;
-  padding: 0 10px !important;
+  padding: 0 12px !important;
   border: none !important;
   border-radius: 6px !important;
   background: transparent !important;
   color: var(--text-muted) !important;
   font-size: 13px !important;
   font-weight: 500 !important;
-  text-align: left;
-  cursor: pointer;
-  flex-shrink: 0;
+  text-align: left !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  cursor: pointer !important;
+  box-shadow: none !important;
+  transform: none !important;
 }
 [data-sett-v2="1"] [data-sett-v2-nav] button:hover {
   background: var(--surface-sunken) !important;
@@ -690,11 +704,22 @@
 }
 [data-sett-v2="1"][data-sett-compact="1"] [data-sett-label],
 [data-sett-v2="1"][data-sett-compact="1"] [data-sett-row] > span[data-lbl] {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 1 1 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
   font-size: 13px !important;
   font-weight: 500 !important;
   color: var(--text) !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
+  line-height: 1.3;
+}
+[data-sett-v2="1"][data-sett-compact="1"] [data-sett-label] span {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
 }
 [data-sett-v2="1"][data-sett-compact="1"] [data-sett-acts] {
   display: flex;
@@ -790,18 +815,22 @@
     flex: 0 0 auto !important;
     flex-direction: row !important;
     flex-wrap: nowrap !important;
-    align-items: stretch;
-    gap: 4px;
-    padding: 6px 8px;
-    border-right: none;
-    border-bottom: 1px solid var(--line);
-    overflow-x: auto;
-    overflow-y: hidden;
+    align-items: stretch !important;
+    gap: 4px !important;
+    padding: 6px 8px !important;
+    margin: 0 !important;
+    border: none !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--line) !important;
+    border-radius: 0 !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
     -webkit-overflow-scrolling: touch;
   }
   [data-sett-v2="1"] [data-sett-v2-nav] button {
     width: auto !important;
-    min-width: max-content;
+    flex: 0 0 auto !important;
+    min-width: max-content !important;
     min-height: 44px !important;
     padding: 0 12px !important;
   }

@@ -133,7 +133,6 @@ export function ChartSettingsModal({ onClose }: ChartSettingsModalProps) {
       <div
         data-v9-chrome="1"
         data-sett-v2="1"
-        data-sett-v3="1"
         data-sett-compact="1"
         data-chrome-win="chart-settings"
         className="w-full flex flex-col overflow-hidden"
@@ -152,7 +151,9 @@ export function ChartSettingsModal({ onClose }: ChartSettingsModalProps) {
         </header>
 
         <div data-sett-v2-body="">
-          <nav data-sett-v2-nav="" data-sett-nav="" aria-label="Settings sections">
+          {/* Do not set data-sett-nav — that attribute is the drawing-tool
+              horizontal segment strip in chrome-settings.css. */}
+          <nav data-sett-v2-nav="" aria-label="Settings sections">
             {TABS.map((t) => (
               <button
                 key={t.id}

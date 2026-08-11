@@ -928,6 +928,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-11 | Drawings: per-dataset books; `visibleOnTfs` uses selectedTf (not LOD); replay cursor clip; patches go through undo | Multi-pane EUR+NQ drawings isolated; TF visibility + replay tip OK |
 | 2026-08-11 | Crosshair Normal = TV candle snap (X on bar, free Y); stop weekend date interpolate on daily Fri→Mon | 1D hover — only Fri/Mon times, no Sat/Sun |
 | 2026-08-11 | Crosshair stays in empty pad (edge time); solid opaque axis chips | Zoom out → hover left/right of candles — hair + labels stay |
+| 2026-08-11 | Chart settings nav: vertical side tabs (drop data-sett-nav clash with drawing strip) | Open Chart settings — Symbol/Status… stacked left, not a top segment bar |
 
 ---
 

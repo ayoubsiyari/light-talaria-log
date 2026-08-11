@@ -933,6 +933,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-11 | Fix pan jump after TF/draw: clamp camera≤MAX_VISIBLE; keep converted session.span; heal no tip-adopt; prefetch only left-pad | 1h→5m then drag — stays put, no teleport |
 | 2026-08-11 | Drawing move fix: Normal crosshair free X again (time chip still slot-snapped); plot-click uses free pointer | Place/drag shapes — tip stuck to hair, no candle jump |
 | 2026-08-11 | Reload candle shear: no fake 800×500 size; sync container size before paint; wick/body share pixel center | Hard-refresh — candles crisp before first pan |
+| 2026-08-11 | Drawing body-drag: move by logical-index Δ (not wall-clock dt) so rect width stays fixed across session gaps | Drag rectangle across NQ gap — candle span unchanged |
 | 2026-08-11 | Cursor rule: chart fix blast-radius + do-not-break + regression checks (`.cursor/rules/chart-fix-blast-radius.mdc`) | Use on next `src/chart/` fix session |
 
 ---

@@ -1,5 +1,6 @@
 import {
   indexAtOrBeforeBars,
+  logicalIndexAtTime,
   timeRangeFromVisible,
   visibleRangeFromTimeWindow,
 } from '@/data/timeframeAgg';
@@ -19,6 +20,7 @@ import {
   magnetSnap,
   type MagnetMode,
 } from '@/drawings/magnet';
+import { translatePointsByLogical } from '@/drawings/moveByLogical';
 import {
   applyChannelWidthDrag,
   isChannelTool,
@@ -161,6 +163,8 @@ interface DrawingDragState {
   /** Snapshot of points for every id in moveIds. */
   originById: Map<string, DrawingPoint[]>;
   anchorTime: number;
+  /** Logical index at grab — body move uses Δindex (not wall-clock dt). */
+  anchorIndex: number;
   anchorPrice: number;
   cursor: string;
 }
@@ -1465,6 +1469,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         originPoints: d.points.map((p) => ({ ...p })),
         originById,
         anchorTime: logical.time,
+        anchorIndex: logicalIndexAtTime(bars, logical.time),
         anchorPrice: logical.price,
         cursor,
       };
@@ -1641,7 +1646,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
             : dr,
         );
       } else {
-        const dt = logical.time - drawingDrag.anchorTime;
+        // Paper chart: move by bar-slot delta so width/height in candles stay
+        // fixed across NQ session gaps (wall-clock +dt stretches the rect).
+        const dIndex =
+          logicalIndexAtTime(bars, logical.time) - drawingDrag.anchorIndex;
         const dp = logical.price - drawingDrag.anchorPrice;
         const moveSet = new Set(drawingDrag.moveIds);
         drawings = drawings.map((dr) => {
@@ -1649,10 +1657,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
           const origin = drawingDrag!.originById.get(dr.id) ?? dr.points;
           return {
             ...dr,
-            points: origin.map((p) => ({
-              time: p.time + dt,
-              price: p.price + dp,
-            })),
+            points: translatePointsByLogical(origin, bars, dIndex, dp),
           };
         });
       }

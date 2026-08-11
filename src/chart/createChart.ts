@@ -1103,16 +1103,13 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       updateCrosshairFromHover();
     },
     onPlotClick: () => {
-      // Always map click in free (normal) space so drawings can land off-candle
-      // in empty pad / future area — chart magnet mode only affects the crosshair paint.
+      // Free pointer (not candle-snapped hair): place/select at the real cursor
+      // so drawings do not jump to bar centers on click.
       if (hoverX === null || hoverY === null) return;
-      const free = mediaToLogical(hoverX, hoverY);
-      if (!free) return;
       const bottom = contentBottom(layout);
-      const point = resolveCrosshair(
+      const point = resolveFreePointer(
         hoverX,
         hoverY,
-        'normal',
         bars,
         range,
         layout.plot,

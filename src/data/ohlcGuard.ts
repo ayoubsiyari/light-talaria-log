@@ -1,7 +1,15 @@
 /**
  * Reject / repair empty/holiday/corrupt prints (common in futures CSV packs).
- * A single open/low ≈ 0 on ES/NQ crushes auto-Y to 0→6000 (“comb” wicks).
+ *
+ * ES 4h often ships low≈0 or low≈60 while O/H/C sit near 4800 — that is
+ * **data**, not a Canvas bug. Rendering correctly draws the wick to that low
+ * and auto-Y collapses. We repair before paint.
  */
+
+/** Low below this fraction of the body is treated as pack corruption. */
+const MIN_LOW_VS_BODY = 0.25;
+/** High above body / this fraction is treated as pack corruption. */
+const MAX_HIGH_VS_BODY = 0.25;
 
 export function isPositiveOhlc(
   open: number,
@@ -25,13 +33,34 @@ export function isPositiveOhlc(
   return true;
 }
 
+/**
+ * True when the wick is implausibly far from the body (ES L=61 with C≈4800).
+ * Real FX 100-pip bars and normal futures ranges stay well inside this gate.
+ */
+export function hasAbsurdWick(
+  open: number,
+  high: number,
+  low: number,
+  close: number,
+): boolean {
+  if (!isPositiveOhlc(open, high, low, close)) return true;
+  const bodyLo = Math.min(open, close);
+  const bodyHi = Math.max(open, close);
+  if (low < bodyLo * MIN_LOW_VS_BODY) return true;
+  if (high > bodyHi / MAX_HIGH_VS_BODY) return true;
+  return false;
+}
+
 export function isValidOhlcBar(bar: {
   open: number;
   high: number;
   low: number;
   close: number;
 }): boolean {
-  return isPositiveOhlc(bar.open, bar.high, bar.low, bar.close);
+  return (
+    isPositiveOhlc(bar.open, bar.high, bar.low, bar.close) &&
+    !hasAbsurdWick(bar.open, bar.high, bar.low, bar.close)
+  );
 }
 
 export interface OhlcFields {
@@ -42,13 +71,12 @@ export interface OhlcFields {
 }
 
 /**
- * Repair common packed-HTF corruption: low/open = 0 while close stays real.
+ * Repair packed corruption: low/open = 0 or absurd near-zero lows (ES L=61).
  * Returns null when there is no usable positive price left.
  */
 export function sanitizeOhlc(bar: OhlcFields): OhlcFields | null {
-  if (isPositiveOhlc(bar.open, bar.high, bar.low, bar.close)) {
-    return bar;
-  }
+  if (isValidOhlcBar(bar)) return bar;
+
   let open = bar.open;
   let high = bar.high;
   let low = bar.low;
@@ -61,13 +89,21 @@ export function sanitizeOhlc(bar: OhlcFields): OhlcFields | null {
     else return null;
   }
   if (!(open > 0)) open = close;
-  if (!(high > 0)) high = Math.max(open, close);
-  if (!(low > 0)) low = Math.min(open, close);
+
+  const bodyLo = Math.min(open, close);
+  const bodyHi = Math.max(open, close);
+
+  if (!(high > 0) || high < bodyHi || high > bodyHi / MAX_HIGH_VS_BODY) {
+    high = bodyHi;
+  }
+  if (!(low > 0) || low > bodyLo || low < bodyLo * MIN_LOW_VS_BODY) {
+    low = bodyLo;
+  }
 
   high = Math.max(high, open, close);
   low = Math.min(low, open, close);
 
-  if (!isPositiveOhlc(open, high, low, close)) return null;
+  if (!isValidOhlcBar({ open, high, low, close })) return null;
   return { open, high, low, close };
 }
 
@@ -88,7 +124,7 @@ export function sanitizeChartBar<T extends OhlcFields & { time: number }>(
   return { ...bar, ...ohlc };
 }
 
-/** In-place sanitize of a viewport buffer (packed IDB may still hold zeros). */
+/** Sanitize a viewport buffer (packed IDB may still hold bad lows). */
 export function sanitizeChartBars<T extends OhlcFields & { time: number }>(
   bars: readonly T[],
 ): T[] {

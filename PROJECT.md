@@ -939,6 +939,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-11 | Persist last TopBar `selectedTf` in session progress; reload opens that TF; barsMatchTimeframe guard on load | Switch to 5m → refresh — resumes 5m, not create TF |
 | 2026-08-11 | Futures zero-print guard: reject OHLC≤0 at CSV/agg; skip in auto-Y + candle paint (ES spike 0→6000) | ES 1h — scale stays ~6000, no giant green spike |
 | 2026-08-11 | Sanitize packed HTF low=0 on IDB→bars / warmCache / setViewport (ES 4h comb wicks) | ES 4h — normal candles, no barcode-to-zero |
+| 2026-08-11 | Absurd-wick repair: ES L≈61 with O/H/C≈4800 (not just low=0) — data bug, not Canvas | Hard-refresh ES 4h — HUD L near body, no comb |
 | 2026-08-11 | Cursor rule: chart fix blast-radius + do-not-break + regression checks (`.cursor/rules/chart-fix-blast-radius.mdc`) | Use on next `src/chart/` fix session |
 
 ---

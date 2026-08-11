@@ -1,9 +1,10 @@
 /**
- * OHLC guard — zeros must not crush ES/NQ auto-Y. Run: npm run test:chart
+ * OHLC guard — zeros / absurd lows must not crush ES auto-Y. Run: npm run test:chart
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  hasAbsurdWick,
   isPositiveOhlc,
   isValidOhlcBar,
   sanitizeChartBars,
@@ -24,24 +25,53 @@ describe('isPositiveOhlc', () => {
   });
 });
 
-describe('sanitizeOhlc repairs packed low=0 (ES 4h comb)', () => {
+describe('hasAbsurdWick', () => {
+  it('flags ES L=61 with body ~4800 (HUD comb case)', () => {
+    assert.equal(hasAbsurdWick(4778.75, 4782.75, 61.6, 4778.25), true);
+    assert.equal(isValidOhlcBar({
+      open: 4778.75,
+      high: 4782.75,
+      low: 61.6,
+      close: 4778.25,
+    }), false);
+  });
+
+  it('keeps normal FX and futures ranges', () => {
+    assert.equal(hasAbsurdWick(1.1, 1.101, 1.099, 1.1005), false);
+    assert.equal(hasAbsurdWick(4800, 4820, 4780, 4810), false);
+  });
+});
+
+describe('sanitizeOhlc repairs packed corruption', () => {
   it('fixes low=0 while keeping real close', () => {
     const fixed = sanitizeOhlc({ open: 6010, high: 6030, low: 0, close: 6025 });
     assert.ok(fixed);
     assert.equal(fixed!.low, Math.min(6010, 6025));
     assert.equal(fixed!.close, 6025);
-    assert.ok(isPositiveOhlc(fixed!.open, fixed!.high, fixed!.low, fixed!.close));
+    assert.ok(isValidOhlcBar(fixed!));
+  });
+
+  it('fixes ES L=61.60 comb wick', () => {
+    const fixed = sanitizeOhlc({
+      open: 4778.75,
+      high: 4782.75,
+      low: 61.6,
+      close: 4778.25,
+    });
+    assert.ok(fixed);
+    assert.equal(fixed!.low, Math.min(4778.75, 4778.25));
+    assert.ok(fixed!.low > 4000);
   });
 
   it('repairs a full comb buffer so auto-Y stays near ES', () => {
     const raw: ChartBar[] = [];
     for (let i = 0; i < 40; i++) {
-      const c = 6000 + i;
+      const c = 4800 + i;
       raw.push({
         time: 1_700_000_000 + i * 14_400,
         open: c - 5,
         high: c + 10,
-        low: 0, // packed corruption
+        low: 60 + (i % 3), // packed near-zero corruption (not exactly 0)
         close: c,
         volume: 1,
       });
@@ -57,7 +87,7 @@ describe('sanitizeOhlc repairs packed low=0 (ES 4h comb)', () => {
   });
 });
 
-describe('computePriceScale ignores zero-low bars', () => {
+describe('computePriceScale ignores bad lows', () => {
   it('does not crush ES-like scale to 0', () => {
     const bars: ChartBar[] = [
       { time: 1, open: 0, high: 6030, low: 0, close: 6025, volume: 1 },

@@ -3,6 +3,13 @@ import {
   type ChartAppearance,
   type ChartTimezoneId,
 } from '@/types/chartAppearance';
+import {
+  contrastOn,
+  contrastPlotMuted,
+  contrastPlotText,
+  ensureContrastText,
+  isLightColor,
+} from '@/chart/contrast';
 
 const TIMEZONE_IDS: ReadonlySet<string> = new Set([
   'utc',
@@ -49,18 +56,6 @@ function setCssVar(name: string, value: string | null | undefined): void {
   }
 }
 
-/** Readable text color on a solid accent fill. */
-function contrastOn(hex: string): string {
-  const h = hex.replace('#', '').slice(0, 6);
-  if (h.length < 6) return '#ffffff';
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  if ([r, g, b].some((n) => Number.isNaN(n))) return '#ffffff';
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return lum > 0.62 ? '#0a0a0a' : '#ffffff';
-}
-
 function setFlag(name: string, on: boolean): void {
   setCssVar(name, on ? '1' : '0');
 }
@@ -75,7 +70,6 @@ export function applyAppearanceToDom(a: ChartAppearance): void {
   setCssVar('--chart-bg', a.background);
   setCssVar('--chart-grid-h', a.gridHorizontal);
   setCssVar('--chart-grid-v', a.gridVertical);
-  setCssVar('--chart-crosshair', a.crosshair);
   setCssVar('--chart-up-body', a.upBody);
   setCssVar('--chart-down-body', a.downBody);
   setCssVar('--chart-up-border', a.upBorder);
@@ -84,12 +78,45 @@ export function applyAppearanceToDom(a: ChartAppearance): void {
   setCssVar('--chart-down-wick', a.downWick);
   setCssVar('--chart-line', a.lineColor);
   setCssVar('--chart-line-width', String(a.lineWidth));
-  setCssVar('--chart-axis-text', a.axisText);
   setCssVar('--chart-last-price-style', a.lastPriceLineStyle);
   setCssVar('--chart-watermark-text', a.watermarkEnabled ? a.watermarkText : '');
-  setCssVar('--chart-watermark-color', a.watermarkColor);
   setCssVar('--chart-watermark-opacity', String(a.watermarkOpacity));
   setCssVar('--chart-watermark-size', String(a.watermarkFontSize));
+
+  // Auto text contrast from plot background when overrides are unset —
+  // keeps axes & status readable on white (or black) plots under any theme.
+  const plotBg = a.background;
+  if (plotBg) {
+    const light = isLightColor(plotBg);
+    const autoText = contrastPlotText(plotBg);
+    const autoMuted = contrastPlotMuted(plotBg);
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.chartBg = light ? 'light' : 'dark';
+    }
+    setCssVar('--chart-overlay-fg', autoText);
+    setCssVar('--chart-overlay-muted', autoMuted);
+    setCssVar(
+      '--chart-axis-text',
+      ensureContrastText(a.axisText, plotBg, 'muted'),
+    );
+    setCssVar(
+      '--chart-watermark-color',
+      ensureContrastText(a.watermarkColor, plotBg, 'muted'),
+    );
+    setCssVar(
+      '--chart-crosshair',
+      ensureContrastText(a.crosshair, plotBg, 'muted'),
+    );
+  } else {
+    if (typeof document !== 'undefined') {
+      delete document.documentElement.dataset.chartBg;
+    }
+    setCssVar('--chart-overlay-fg', null);
+    setCssVar('--chart-overlay-muted', null);
+    setCssVar('--chart-axis-text', a.axisText);
+    setCssVar('--chart-watermark-color', a.watermarkColor);
+    setCssVar('--chart-crosshair', a.crosshair);
+  }
 
   setCssVar('--chrome-topbar', a.topBarBg);
   setCssVar('--chrome-bottombar', a.bottomBarBg);

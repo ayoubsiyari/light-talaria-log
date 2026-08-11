@@ -74,16 +74,17 @@ function drawCandles(
 
     const top = Math.min(yOpen, yClose);
     const h = Math.max(1, Math.abs(yClose - yOpen));
-    const left = x - bodyW / 2;
+    // One pixel center for wick + body (avoids half-px shear on first paint).
+    const xMid = Math.round(x) + 0.5;
+    const left = xMid - bodyW / 2;
     const hollow = colors.hollowCandles && up;
 
     if (colors.showWick) {
       ctx.strokeStyle = wick;
       ctx.lineWidth = 1;
-      // Same X as the time grid (candle center + 0.5).
       ctx.beginPath();
-      ctx.moveTo(x + 0.5, yHigh);
-      ctx.lineTo(x + 0.5, yLow);
+      ctx.moveTo(xMid, yHigh);
+      ctx.lineTo(xMid, yLow);
       ctx.stroke();
     }
 
@@ -191,12 +192,12 @@ export function drawVolume(
   for (let i = from; i <= to; i++) {
     const bar = bars[i];
     if (!bar || !(bar.volume && bar.volume > 0)) continue;
-    const x = indexToX(i, range, volumePlot);
+    const xMid = Math.round(indexToX(i, range, volumePlot)) + 0.5;
     const h = (bar.volume / maxVol) * volumePlot.height;
     const up = isUp(bar, bars[i - 1], colors);
     ctx.fillStyle = up ? colors.upColor : colors.downColor;
     ctx.globalAlpha = baseAlpha;
-    ctx.fillRect(x - bodyW / 2, volumePlot.top + volumePlot.height - h, bodyW, h);
+    ctx.fillRect(xMid - bodyW / 2, volumePlot.top + volumePlot.height - h, bodyW, h);
   }
   ctx.globalAlpha = 1;
 }

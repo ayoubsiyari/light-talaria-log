@@ -160,6 +160,19 @@
     padding-left: env(safe-area-inset-left);
   }
 
+  /*
+   * On-plot DOM chrome (status OHLC, volume/indicator legends).
+   * When Settings sets a chart background, appearanceStore writes
+   * --chart-overlay-fg / --chart-overlay-muted from luminance so
+   * light plots never wash out dark-theme text (and vice versa).
+   */
+  [data-chart-plot] .text-foreground {
+    color: var(--chart-overlay-fg, var(--foreground));
+  }
+  [data-chart-plot] .text-muted {
+    color: var(--chart-overlay-muted, var(--muted));
+  }
+
   /* Layout chrome visibility (chart settings → Layout) */
   html[data-show-topbar='0'] .chrome-topbar {
     display: none !important;

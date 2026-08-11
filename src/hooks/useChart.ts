@@ -281,15 +281,27 @@ export function useChart(
           })
         : () => {};
 
+    const syncChartSize = () => {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) {
+        setChartSize(instance, r.width, r.height);
+      }
+    };
+
     const ro = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
       setChartSize(instance, entry.contentRect.width, entry.contentRect.height);
     });
     ro.observe(el);
+    // Immediate + next-frame sync: first paint used to race layout and stretch
+    // the canvas (wicks off bodies) until the user panned.
+    syncChartSize();
+    const sizeRaf = requestAnimationFrame(syncChartSize);
     ledgerAcquire('observers');
 
     return () => {
+      cancelAnimationFrame(sizeRaf);
       unsubMove();
       unsubClick();
       unsubGesture();

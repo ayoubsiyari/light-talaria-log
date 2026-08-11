@@ -334,8 +334,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   }
   ledgerAcquire('charts');
 
-  let width = container.clientWidth || 800;
-  let height = container.clientHeight || 500;
+  // Never invent a fake size — a wrong buffer + CSS 100% stretches candles
+  // (wicks shear off bodies) until the next full rebuild (e.g. pan).
+  let width = Math.max(0, container.clientWidth);
+  let height = Math.max(0, container.clientHeight);
   let dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
 
   let options: ChartViewOptions = { ...DEFAULT_OPTIONS };
@@ -795,6 +797,34 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     formatPrice: priceFormatter ?? undefined,
   });
 
+  /** Sync media size from the live container before paint (reload/layout race). */
+  const syncSizeFromContainer = (): boolean => {
+    const cw = container.clientWidth;
+    const ch = container.clientHeight;
+    if (cw <= 0 || ch <= 0) return false;
+    const nextDpr =
+      typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    if (cw === width && ch === height && nextDpr === dpr) return true;
+    width = cw;
+    height = ch;
+    dpr = nextDpr;
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.width = Math.max(1, Math.floor(width * dpr));
+    canvas.height = Math.max(1, Math.floor(height * dpr));
+    rebuildLayout();
+    staticCanvas = null;
+    staticCtx = null;
+    drawingsCanvas = null;
+    drawingsCtx = null;
+    invalidateScaleCache();
+    invalidateHitCache();
+    sceneDirty = true;
+    drawingsDirty = true;
+    overlayDirty = true;
+    return true;
+  };
+
   const schedulePaint = () => {
     if (rafId !== null || destroyed) return;
     ledgerAcquire('rafLoops');
@@ -802,6 +832,9 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       rafId = null;
       ledgerRelease('rafLoops');
       if (destroyed || (!sceneDirty && !drawingsDirty && !overlayDirty)) return;
+
+      // Heal stale size before painting — first dirty often lands before RO.
+      if (!syncSizeFromContainer()) return;
 
       ensureLayerBuffers();
       const colors = getChartColors();
@@ -977,6 +1010,11 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   };
 
   const applyCssSize = () => {
+    if (width <= 0 || height <= 0) {
+      // Wait for ResizeObserver / first paint sync — do not invent 800×500.
+      markOverlayDirty();
+      return;
+    }
     dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
     // Fill container in CSS; map pointer via getBoundingClientRect → layout size
     canvas.style.width = '100%';

@@ -932,6 +932,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-11 | Crosshair empty pad steps dates via logical slots (TV); still no Fri→Mon weekend interpolate on bars | Zoom out → move left of first candle — date keeps changing |
 | 2026-08-11 | Fix pan jump after TF/draw: clamp camera≤MAX_VISIBLE; keep converted session.span; heal no tip-adopt; prefetch only left-pad | 1h→5m then drag — stays put, no teleport |
 | 2026-08-11 | Drawing move fix: Normal crosshair free X again (time chip still slot-snapped); plot-click uses free pointer | Place/drag shapes — tip stuck to hair, no candle jump |
+| 2026-08-11 | Reload candle shear: no fake 800×500 size; sync container size before paint; wick/body share pixel center | Hard-refresh — candles crisp before first pan |
 | 2026-08-11 | Cursor rule: chart fix blast-radius + do-not-break + regression checks (`.cursor/rules/chart-fix-blast-radius.mdc`) | Use on next `src/chart/` fix session |
 
 ---

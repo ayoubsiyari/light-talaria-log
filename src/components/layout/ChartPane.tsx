@@ -191,7 +191,8 @@ export function ChartPane({
       onPointerDown={() => {
         if (!selected) onSelect();
       }}
-      className="relative min-h-0 min-w-0 h-full w-full bg-background overflow-hidden"
+      className="relative min-h-0 min-w-0 h-full w-full overflow-hidden bg-[color:var(--chart-bg,var(--background))]"
+      data-chart-plot=""
       data-pane-selected={showSelectionBorder && selected ? 'true' : undefined}
     >
       {/* Soft blue inset frame — above canvas so multi-pane focus is obvious */}

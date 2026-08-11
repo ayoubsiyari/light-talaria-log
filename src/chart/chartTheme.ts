@@ -1,4 +1,9 @@
 import type { GridLineStyle, LastPriceLineStyle } from '@/types/chartAppearance';
+import {
+  contrastPlotGrid,
+  ensureContrastText,
+  isLightColor,
+} from '@/chart/contrast';
 
 /**
  * Maps Hero UI CSS variables (+ appearance overrides) to canvas theme colors.
@@ -86,31 +91,47 @@ function isDarkTheme(): boolean {
 export function getChartColors(): ChartColors {
   const dark = isDarkTheme();
   const themeBg = cssVar('--background', dark ? '#000000' : '#f4f4f5');
-  const themeGrid = cssVar('--border', dark ? 'rgba(30,58,138,0.35)' : 'rgba(0,0,0,0.08)');
+  const themeGrid = cssVar(
+    '--border',
+    dark ? 'rgba(30,58,138,0.35)' : 'rgba(0,0,0,0.08)',
+  );
   const up = cssVar('--success', '#17c964');
   const down = cssVar('--danger', '#f31260');
   const upBody = cssVar('--chart-up-body', up);
   const downBody = cssVar('--chart-down-body', down);
-  const text = cssVar('--foreground', dark ? '#f4f6fb' : '#18181b');
-  const muted = cssVar('--muted', dark ? '#8b95a8' : '#71717a');
+  const themeText = cssVar('--foreground', dark ? '#f4f6fb' : '#18181b');
+  const themeMuted = cssVar('--muted', dark ? '#8b95a8' : '#71717a');
+  const background = cssVar('--chart-bg', themeBg);
+  const lightPlot = isLightColor(background);
+  // Plot-relative text — ignore app theme when chart bg is light under dark UI
+  const text = ensureContrastText(themeText, background, 'text');
+  const muted = ensureContrastText(themeMuted, background, 'muted');
+  const plotGrid = contrastPlotGrid(background);
   const lastStyle = cssVar('--chart-last-price-style', 'dashed');
   const lastPriceLineStyle: LastPriceLineStyle =
     lastStyle === 'solid' || lastStyle === 'dotted' || lastStyle === 'dashed'
       ? lastStyle
       : 'dashed';
 
+  const axisRaw = cssVar('--chart-axis-text', '');
+  const watermarkRaw = cssVar('--chart-watermark-color', '');
+  const crosshairRaw = cssVar('--chart-crosshair', '');
+
   return {
-    background: cssVar('--chart-bg', themeBg),
+    background,
     text,
     muted,
     grid: themeGrid,
-    gridHorizontal: cssVar('--chart-grid-h', themeGrid),
-    gridVertical: cssVar('--chart-grid-v', themeGrid),
+    gridHorizontal: cssVar('--chart-grid-h', plotGrid),
+    gridVertical: cssVar('--chart-grid-v', plotGrid),
     showGridH: cssFlag('--chart-show-grid-h', true),
     showGridV: cssFlag('--chart-show-grid-v', true),
     gridHStyle: cssStyle('--chart-grid-h-style', 'solid'),
     gridVStyle: cssStyle('--chart-grid-v-style', 'solid'),
-    border: cssVar('--separator', dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)'),
+    border: cssVar(
+      '--separator',
+      lightPlot ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.12)',
+    ),
     upColor: upBody,
     downColor: downBody,
     upBody,
@@ -126,8 +147,8 @@ export function getChartColors(): ChartColors {
     colorBasedOnPrevClose: cssFlag('--chart-color-prev-close', false),
     lineColor: cssVar('--chart-line', upBody),
     lineWidth: Math.min(8, Math.max(1, cssNumber('--chart-line-width', 2))),
-    crosshair: cssVar('--chart-crosshair', muted),
-    axisText: cssVar('--chart-axis-text', muted),
+    crosshair: ensureContrastText(crosshairRaw || muted, background, 'muted'),
+    axisText: ensureContrastText(axisRaw || muted, background, 'muted'),
     showPriceScale: cssFlag('--chart-show-price-scale', true),
     showTimeScale: cssFlag('--chart-show-time-scale', true),
     showLastPrice: cssFlag('--chart-show-last-price', true),
@@ -135,12 +156,22 @@ export function getChartColors(): ChartColors {
     lastPriceLineStyle,
     watermarkEnabled: cssFlag('--chart-watermark', false),
     watermarkText: cssVar('--chart-watermark-text', ''),
-    watermarkColor: cssVar('--chart-watermark-color', muted),
-    watermarkOpacity: Math.min(1, Math.max(0, cssNumber('--chart-watermark-opacity', 0.12))),
-    watermarkFontSize: Math.min(120, Math.max(16, cssNumber('--chart-watermark-size', 48))),
+    watermarkColor: ensureContrastText(
+      watermarkRaw || muted,
+      background,
+      'muted',
+    ),
+    watermarkOpacity: Math.min(
+      1,
+      Math.max(0, cssNumber('--chart-watermark-opacity', 0.12)),
+    ),
+    watermarkFontSize: Math.min(
+      120,
+      Math.max(16, cssNumber('--chart-watermark-size', 48)),
+    ),
     accent: cssVar('--accent', '#1e3a8a'),
-    handleFill: cssVar('--surface', dark ? '#05070d' : '#ffffff'),
-    labelBg: dark ? 'rgba(5,7,13,0.92)' : 'rgba(255,255,255,0.92)',
+    handleFill: cssVar('--surface', lightPlot ? '#ffffff' : '#05070d'),
+    labelBg: lightPlot ? 'rgba(255,255,255,0.92)' : 'rgba(5,7,13,0.92)',
     onSolid: '#ffffff',
   };
 }

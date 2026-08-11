@@ -2188,15 +2188,16 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
           }
         }
       } else {
-        const srcTip = nextBars[prevLen - 1]!;
+        const cleanedTip = sanitizeChartBars(nextBars.slice(prevLen - 1));
+        const srcTip = cleanedTip[0] ?? nextBars[prevLen - 1]!;
         const dstTip = bars[prevLen - 1]!;
         dstTip.open = srcTip.open;
         dstTip.high = srcTip.high;
         dstTip.low = srcTip.low;
         dstTip.close = srcTip.close;
         dstTip.volume = srcTip.volume;
-        for (let i = prevLen; i < nextLen; i++) {
-          const b = nextBars[i]!;
+        for (let i = 1; i < cleanedTip.length; i++) {
+          const b = cleanedTip[i]!;
           bars.push({
             time: b.time,
             open: b.open,

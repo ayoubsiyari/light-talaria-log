@@ -5,6 +5,7 @@ import {
 import { barsMatchTimeframe } from '@/session/barTfGuard';
 import type { PaneView, SessionState } from '@/session/sessionState';
 import { warmCache } from '@/session/warmCache';
+import { sanitizeChartBars } from '@/data/ohlcGuard';
 import { bucketStart, timeframeSeconds } from '@/data/timeframeAgg';
 import { formBucketFromClock } from '@/replay/formingBars';
 import { rangeRightAnchored } from '@/chart/rangeAnchor';
@@ -30,13 +31,15 @@ export function derivePaneSync(s: SessionState, paneId: string): PaneView | null
       ? rawCandidate
       : []);
 
-  const bars = truncateAtCursor(
-    raw,
-    s.cursorTime,
-    cfg.tf,
-    s.revealMode,
-    s.baseTf,
-    baseBars,
+  const bars = sanitizeChartBars(
+    truncateAtCursor(
+      raw,
+      s.cursorTime,
+      cfg.tf,
+      s.revealMode,
+      s.baseTf,
+      baseBars,
+    ),
   );
 
   if (import.meta.env?.DEV && s.revealMode === 'replay') {
@@ -96,12 +99,19 @@ export async function derivePaneAsync(
     if (result.bars.length > 0) {
       warmCache.put(cfg.datasetId, cfg.tf, result.bars, s.anchorTime);
     }
+    // Must return sanitized bars — put() cleans the cache copy, but result.bars
+    // was still the dirty IDB pack (ES low≈0/−14 painted before any engine sanitize).
+    const cleaned =
+      warmCache.peek(cfg.datasetId, cfg.tf) ?? sanitizeChartBars(result.bars);
     if (import.meta.env?.DEV && s.revealMode === 'replay') {
-      assertNoLookahead(result.bars, s.cursorTime, cfg.tf, paneId);
+      assertNoLookahead(cleaned, s.cursorTime, cfg.tf, paneId);
     }
     return {
-      bars: result.bars,
-      range: { fromIndex: result.fromIndex, toIndex: result.toIndex },
+      bars: cleaned,
+      range:
+        cleaned.length > 0
+          ? rangeRightAnchored(cleaned.length - 1, s.span)
+          : { fromIndex: result.fromIndex, toIndex: result.toIndex },
       timeframe: cfg.tf,
       selectedTf: cfg.selectedTf,
       datasetId: cfg.datasetId,

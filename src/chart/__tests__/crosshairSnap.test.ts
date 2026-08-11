@@ -70,16 +70,22 @@ describe('resolveCrosshair normal snaps to candles', () => {
     }
   });
 
-  it('stays visible in empty pad (left/right of candles)', () => {
-    // Range shows pad before idx0 and after idx1.
-    const wide = { fromIndex: -2, toIndex: 3 };
+  it('stays visible in empty pad and steps dates like TV', () => {
+    // Wide camera: pad before Fri and after Mon.
+    const wide = { fromIndex: -2, toIndex: 4 };
     const left = resolveCrosshair(5, 50, 'normal', bars, wide, plot, scale);
     assert.ok(left, 'left pad should show hair');
-    assert.equal(left.time, bars[0]!.time);
-    assert.equal(left.x, 5);
+    assert.ok(left.time <= bars[0]!.time);
+    // Moving further left should step to an earlier slot (date keeps changing).
+    const leftMore = resolveCrosshair(1, 50, 'normal', bars, wide, plot, scale);
+    assert.ok(leftMore);
+    assert.ok(leftMore.time <= left.time);
+
     const right = resolveCrosshair(195, 50, 'normal', bars, wide, plot, scale);
     assert.ok(right, 'right pad should show hair');
-    assert.equal(right.time, bars[1]!.time);
-    assert.equal(right.x, 195);
+    assert.ok(right.time >= bars[1]!.time);
+    const rightLess = resolveCrosshair(170, 50, 'normal', bars, wide, plot, scale);
+    assert.ok(rightLess);
+    assert.ok(right.time >= rightLess.time);
   });
 });

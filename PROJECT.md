@@ -929,6 +929,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-11 | Crosshair Normal = TV candle snap (X on bar, free Y); stop weekend date interpolate on daily Fri→Mon | 1D hover — only Fri/Mon times, no Sat/Sun |
 | 2026-08-11 | Crosshair stays in empty pad (edge time); solid opaque axis chips | Zoom out → hover left/right of candles — hair + labels stay |
 | 2026-08-11 | Chart settings nav: vertical side tabs (drop data-sett-nav clash with drawing strip) | Open Chart settings — Symbol/Status… stacked left, not a top segment bar |
+| 2026-08-11 | Crosshair empty pad steps dates via logical slots (TV); still no Fri→Mon weekend interpolate on bars | Zoom out → move left of first candle — date keeps changing |
 
 ---
 

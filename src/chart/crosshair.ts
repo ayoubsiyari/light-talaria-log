@@ -6,10 +6,10 @@ import { indexToX, priceToY, xToIndex, yToPrice } from './scales';
 
 /**
  * Resolve pointer → crosshair point (TradingView-like modes).
- * - normal: snap X to candle, free Y — date/time is always a real bar (no Sat/Sun
- *   ghost dates between Fri→Mon on daily FX/futures)
- * - magnet: snap X to bar, Y to close
- * - magnetOhlc: snap X to bar, Y to nearest O/H/L/C
+ * - Always snaps X to logical bar slots (real candles + empty pad “virtual” slots)
+ * - Over real bars: date = that candle (Fri→Mon never interpolates Sat/Sun)
+ * - Empty pad: date keeps stepping via bar period so the label continues to change
+ * - normal: free Y; magnet / magnetOhlc: snap Y to close / OHLC when on a real bar
  * - hidden: returns null (caller skips paint)
  */
 export function resolveCrosshair(
@@ -37,73 +37,41 @@ export function resolveCrosshair(
 
   const inMainPlot = canvasY <= plot.top + plot.height;
   const rawIndex = xToIndex(canvasX, range, plot);
-  const onStrip = rawIndex >= -0.5 && rawIndex <= bars.length - 0.5;
-  const barIndex = Math.round(Math.min(bars.length - 1, Math.max(0, rawIndex)));
-  const bar = bars[barIndex]!;
-
-  // Empty left/right pad: keep hair visible (free X/Y). Clamp time to the
-  // nearest edge candle so we don't invent mid-gap weekend dates.
-  if (!onStrip) {
-    const edge = rawIndex < 0 ? bars[0]! : bars[bars.length - 1]!;
-    const price = inMainPlot
-      ? yToPrice(canvasY, priceScale, plot)
-      : edge.close;
-    if (mode === 'magnet' || mode === 'magnetOhlc') {
-      // Magnets still lock to the edge candle when past the strip.
-      const x = indexToX(rawIndex < 0 ? 0 : bars.length - 1, range, plot);
-      const snapPrice =
-        mode === 'magnet'
-          ? edge.close
-          : [edge.open, edge.high, edge.low, edge.close].reduce((best, p) =>
-              Math.abs(p - price) < Math.abs(best - price) ? p : best,
-            );
-      return {
-        x,
-        y: inMainPlot ? priceToY(snapPrice, priceScale, plot) : canvasY,
-        index: rawIndex < 0 ? 0 : bars.length - 1,
-        time: edge.time,
-        price: snapPrice,
-        bar: edge,
-        barIndex: rawIndex < 0 ? 0 : bars.length - 1,
-      };
-    }
-    return {
-      x: canvasX,
-      y: canvasY,
-      index: rawIndex,
-      time: edge.time,
-      price,
-      bar: null,
-      barIndex: null,
-    };
-  }
-
-  // Over candles: lock X to center (TV). Avoids Fri→Mon interpolating Sat/Sun.
-  const x = indexToX(barIndex, range, plot);
+  // Nearest slot — may be < 0 or > last (TV empty-pad stepping).
+  const snapIndex = Math.round(rawIndex);
+  const last = bars.length - 1;
+  const onRealBar = snapIndex >= 0 && snapIndex <= last;
+  const bar = onRealBar ? bars[snapIndex]! : null;
+  const edge = snapIndex < 0 ? bars[0]! : bars[last]!;
+  const time =
+    (onRealBar ? bar!.time : timeAtLogicalIndex(bars, snapIndex)) ?? edge.time;
+  const x = indexToX(snapIndex, range, plot);
 
   if (mode === 'normal') {
     const price = inMainPlot
       ? yToPrice(canvasY, priceScale, plot)
-      : bar.close;
+      : (bar?.close ?? edge.close);
     return {
       x,
       y: canvasY,
-      index: barIndex,
-      time: bar.time,
+      index: snapIndex,
+      time,
       price,
       bar,
-      barIndex,
+      barIndex: onRealBar ? snapIndex : null,
     };
   }
 
+  // Magnet modes: on pad, price snaps to edge candle OHLC/close.
+  const ref = bar ?? edge;
   let price: number;
   if (mode === 'magnet') {
-    price = bar.close;
+    price = ref.close;
   } else {
     const cursorPrice = inMainPlot
       ? yToPrice(canvasY, priceScale, plot)
-      : bar.close;
-    const levels = [bar.open, bar.high, bar.low, bar.close];
+      : ref.close;
+    const levels = [ref.open, ref.high, ref.low, ref.close];
     price = levels.reduce((best, p) =>
       Math.abs(p - cursorPrice) < Math.abs(best - cursorPrice) ? p : best,
     );
@@ -113,11 +81,11 @@ export function resolveCrosshair(
   return {
     x,
     y,
-    index: barIndex,
-    time: bar.time,
+    index: snapIndex,
+    time,
     price,
     bar,
-    barIndex,
+    barIndex: onRealBar ? snapIndex : null,
   };
 }
 

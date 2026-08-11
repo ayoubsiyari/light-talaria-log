@@ -17,8 +17,11 @@ import {
   formatPairDisplay,
   groupSymbolsByAsset,
   symbolSubtitle,
+  type SymbolAssetClass,
 } from '@/symbols/symbolCategory';
 import type { PairSymbol } from '@/types/session';
+
+type FilterTab = 'all' | SymbolAssetClass;
 
 interface PairPickerProps {
   options: readonly PairSymbol[];
@@ -28,7 +31,7 @@ interface PairPickerProps {
 }
 
 /**
- * Compact create-session pair menu — Forex / Futures + small TV badges.
+ * Create-session symbol menu — Obsidian Live grammar + Forex / Futures tabs.
  * Portals above the session modal.
  */
 export function PairPicker({
@@ -39,6 +42,7 @@ export function PairPicker({
 }: PairPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [tab, setTab] = useState<FilterTab>('all');
   const [focusIdx, setFocusIdx] = useState(0);
   const [pos, setPos] = useState<{
     top: number;
@@ -50,20 +54,32 @@ export function PairPicker({
   const searchRef = useRef<HTMLInputElement>(null);
   const listId = useId();
 
+  const counts = useMemo(() => {
+    let forex = 0;
+    let futures = 0;
+    for (const p of options) {
+      if (classifySymbolAsset(p) === 'Futures') futures += 1;
+      else forex += 1;
+    }
+    return { forex, futures, all: options.length };
+  }, [options]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return [...options];
     return options.filter((p) => {
+      const asset = classifySymbolAsset(p);
+      if (tab === 'Forex' && asset !== 'Forex') return false;
+      if (tab === 'Futures' && asset !== 'Futures') return false;
+      if (!q) return true;
       const display = formatPairDisplay(p).toLowerCase();
-      const ac = classifySymbolAsset(p).toLowerCase();
       return (
         p.toLowerCase().includes(q) ||
         display.includes(q) ||
-        ac.includes(q) ||
+        asset.toLowerCase().includes(q) ||
         symbolSubtitle(p).toLowerCase().includes(q)
       );
     });
-  }, [options, query]);
+  }, [options, query, tab]);
 
   const groups = useMemo(
     () => groupSymbolsByAsset(filtered.map((pair) => ({ pair }))),
@@ -79,17 +95,17 @@ export function PairPicker({
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    const width = Math.min(Math.max(r.width, 240), 300, window.innerWidth - 16);
+    const width = Math.min(300, Math.max(r.width, 268), window.innerWidth - 16);
     let left = r.left;
     if (left + width > window.innerWidth - 8) {
       left = Math.max(8, window.innerWidth - 8 - width);
     }
-    const below = r.bottom + 4;
-    const maxH = Math.min(320, window.innerHeight * 0.55);
+    const below = r.bottom + 6;
+    const maxH = Math.min(380, window.innerHeight * 0.62);
     const spaceBelow = window.innerHeight - below - 8;
     const top =
-      spaceBelow < 160 && r.top > spaceBelow
-        ? Math.max(8, r.top - 4 - Math.min(maxH, r.top - 8))
+      spaceBelow < 200 && r.top > spaceBelow
+        ? Math.max(8, r.top - 6 - Math.min(maxH, r.top - 8))
         : below;
     setPos({ top, left, width });
   };
@@ -125,14 +141,29 @@ export function PairPicker({
   }, [open]);
 
   useEffect(() => {
+    setFocusIdx(0);
+  }, [tab, query]);
+
+  useEffect(() => {
     setFocusIdx((i) => Math.min(i, Math.max(0, flatRows.length - 1)));
   }, [flatRows.length]);
 
-  const pick = (pair: PairSymbol) => {
-    onPick(pair);
+  const close = () => {
     setOpen(false);
     setQuery('');
+    setTab('all');
   };
+
+  const pick = (pair: PairSymbol) => {
+    onPick(pair);
+    close();
+  };
+
+  const tabs: { id: FilterTab; label: string; n: number }[] = [
+    { id: 'all', label: 'All', n: counts.all },
+    { id: 'Forex', label: 'Forex', n: counts.forex },
+    { id: 'Futures', label: 'Futures', n: counts.futures },
+  ];
 
   const panel =
     open && pos
@@ -140,16 +171,21 @@ export function PairPicker({
           <div
             ref={panelRef}
             data-v9-chrome="1"
+            data-sdrop="1"
+            data-tb-drop="symbol"
             data-pair-picker=""
             role="dialog"
             aria-label="Select pair"
-            className="fixed flex flex-col overflow-hidden"
             style={{
+              position: 'fixed',
               top: pos.top,
               left: pos.left,
               width: pos.width,
-              maxHeight: 'min(55dvh, 320px)',
               zIndex: 100020,
+              maxHeight: 'min(62dvh, 380px)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
             }}
             onKeyDown={(e: ReactKeyboardEvent<HTMLDivElement>) => {
               if (e.key === 'ArrowDown') {
@@ -166,17 +202,65 @@ export function PairPicker({
               }
             }}
           >
-            <div data-pp-search="">
-              <ChromeIcon n="search" s={12} cl="var(--text-faint)" />
-              <input
-                ref={searchRef}
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search…"
-                aria-label="Search pairs"
-                aria-controls={listId}
-              />
+            <div data-tb-drop-search="">
+              <div data-menu-head="" style={{ padding: '10px 12px 4px' }}>
+                Symbols
+              </div>
+              <div
+                data-win-search=""
+                style={{ margin: '0 10px 8px', height: 32 }}
+                onClick={() => searchRef.current?.focus()}
+              >
+                <ChromeIcon n="search" s={12} cl="var(--text-faint)" />
+                <input
+                  ref={searchRef}
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search symbol…"
+                  aria-label="Search pairs"
+                  aria-controls={listId}
+                  style={{
+                    flex: 1,
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    color: 'var(--text)',
+                    fontSize: 12,
+                    padding: 0,
+                    minWidth: 0,
+                  }}
+                />
+                {query ? (
+                  <button
+                    type="button"
+                    data-brand-icon="1"
+                    aria-label="Clear search"
+                    className="inline-flex items-center justify-center min-h-8 min-w-8"
+                    onClick={() => setQuery('')}
+                  >
+                    <ChromeIcon n="x" s={11} cl="var(--text-faint)" />
+                  </button>
+                ) : null}
+              </div>
+              <div data-pp-tabs="" role="tablist" aria-label="Market">
+                {tabs.map((t) =>
+                  t.n === 0 && t.id !== 'all' ? null : (
+                    <button
+                      key={t.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={tab === t.id}
+                      data-pp-tab=""
+                      data-on={tab === t.id ? '1' : undefined}
+                      onClick={() => setTab(t.id)}
+                    >
+                      {t.label}
+                      <em>{t.n}</em>
+                    </button>
+                  ),
+                )}
+              </div>
             </div>
 
             <div
@@ -184,50 +268,71 @@ export function PairPicker({
               role="listbox"
               aria-label="Available pairs"
               className="tlr-scroll"
-              data-pp-list=""
+              style={{
+                flex: 1,
+                minHeight: 0,
+                overflowY: 'auto',
+                maxHeight: 280,
+                padding: '0 0 6px',
+              }}
             >
               {groups.map((group) => (
-                <div key={group.id} data-pp-group={group.id.toLowerCase()}>
-                  <div data-pp-group-head="">
-                    <span>{group.label}</span>
-                    <span data-pp-count="">{group.items.length}</span>
-                  </div>
+                <div key={group.id} data-sym-group={group.id.toLowerCase()}>
+                  {tab === 'all' ? (
+                    <div
+                      data-sym-group-head=""
+                      data-role={group.id.toLowerCase()}
+                    >
+                      <span data-sym-group-label="">{group.label}</span>
+                      <em>{group.hint}</em>
+                      <span data-sym-group-count="">{group.items.length}</span>
+                    </div>
+                  ) : null}
                   {group.items.map(({ pair }) => {
                     const display = formatPairDisplay(pair);
                     const asset = classifySymbolAsset(pair);
                     const flatIndex = flatRows.indexOf(pair);
                     const focused = flatIndex === focusIdx;
                     return (
-                      <button
+                      <div
                         key={pair}
-                        type="button"
                         id={`${listId}-${pair}`}
                         role="option"
                         aria-selected={focused}
-                        data-pp-row=""
+                        data-menu-row=""
+                        data-sym-row="1"
                         data-focus={focused ? '1' : undefined}
+                        data-asset={asset.toLowerCase()}
+                        style={{ cursor: 'pointer' }}
                         onMouseEnter={() => setFocusIdx(flatIndex)}
                         onClick={() => pick(pair)}
                       >
-                        <span data-pp-flag="" aria-hidden>
+                        <div data-sym-badge="">
                           <ChartSymbolBadge
                             sym={normalizeSymForBadge(pair)}
                             asset={asset}
-                            w={16}
-                            h={11}
+                            w={18}
+                            h={12}
                           />
+                        </div>
+                        <div data-sym-meta="">
+                          <strong>{display}</strong>
+                        </div>
+                        <span data-pp-type="" data-kind={asset.toLowerCase()}>
+                          {asset === 'Futures' ? 'FUT' : 'FX'}
                         </span>
-                        <span data-pp-sym="">{display}</span>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
               ))}
               {filtered.length === 0 ? (
-                <div data-pp-empty="">
+                <div data-sym-empty="" style={{ padding: '18px 14px' }}>
                   {options.length === 0
-                    ? 'No pairs available.'
-                    : `No match for “${query.trim()}”`}
+                    ? 'No pairs available from server datasets.'
+                    : query
+                      ? `No symbols match “${query.trim()}”`
+                      : 'No symbols in this market.'}
                 </div>
               ) : null}
             </div>
@@ -243,21 +348,17 @@ export function PairPicker({
         type="button"
         disabled={disabled}
         data-pair-picker-trigger=""
+        data-open={open ? '1' : undefined}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
-        className={[
-          'w-full min-h-11 sm:min-h-10 inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-left outline-none',
-          'focus-visible:border-accent',
-          disabled ? 'opacity-50 pointer-events-none' : '',
-        ].join(' ')}
         onClick={() => {
           if (disabled) return;
           setOpen((o) => !o);
         }}
       >
-        <span className="flex-1 min-w-0 truncate text-muted">{placeholder}</span>
-        <ChromeIcon n="chevDown" s={12} cl="var(--text-muted)" />
+        <span data-pp-trigger-label="">{placeholder}</span>
+        <ChromeIcon n="chevDown" s={11} cl="currentColor" />
       </button>
       {panel}
     </>

@@ -7,13 +7,17 @@
  * 4. Miss: never blocks — returns [] or nearest *coarser* cached TF as placeholder
  *    and kicks async fill (epoch-guarded). Never returns a finer TF.
  * 5. Replay fill-ahead uses a compact forward-biased window (not a larger budget).
+ * 6. On HTF miss/mismatch: aggregate from a finer cached/IDB series (M1→5m)
+ *    so TF switch never sticks on the previous candles when packs are lazy.
  */
-import { timeframeSeconds } from '@/data/timeframeAgg';
-import { getDataset } from '@/datasets/datasetStore';
-import { scheduleRemoteChunkGc } from '@/datasets/idbChunkGc';
-import { ensureRemoteTimeCoverage } from '@/datasets/ingestRemoteChunks';
+import {
+  aggregateChartBars,
+  canAggregateFrom,
+  timeframeSeconds,
+} from '@/data/timeframeAgg';
 import { loadViewportAroundTime } from '@/datasets/seriesViewport';
 import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
+import { barsMatchTimeframe } from '@/session/barTfGuard';
 import type { ChartBar } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
 import { CHUNK_SIZE, MAX_BARS_IN_MEMORY } from '@/utils/constants';
@@ -37,6 +41,11 @@ export interface WarmCacheFillOpts {
    * first click paints the new interval (not the previous candles).
    */
   awaitRemote?: boolean;
+  /**
+   * When true, do not roll up from a finer TF (packed reload after remote).
+   * Default false — TF switch can paint HTF from M1 immediately.
+   */
+  skipAggregate?: boolean;
 }
 
 function key(datasetId: string, tf: Timeframe): CacheKey {
@@ -185,23 +194,82 @@ export class WarmCache {
       );
 
       // Always serve IDB first — never block replay/multi-pane on network.
-      const vp = await loadViewportAroundTime(
-        datasetId,
-        tf,
-        anchorTime,
-        Math.min(MAX_BARS_IN_MEMORY, Math.max(span * 3, span + 64)),
-        {
-          aheadRatio: opts?.aheadRatio ?? 0.05,
-          windowBars,
-        },
-      );
+      let bars: ChartBar[] = [];
+      try {
+        const vp = await loadViewportAroundTime(
+          datasetId,
+          tf,
+          anchorTime,
+          Math.min(MAX_BARS_IN_MEMORY, Math.max(span * 3, span + 64)),
+          {
+            aheadRatio: opts?.aheadRatio ?? 0.05,
+            windowBars,
+          },
+        );
+        bars = vp.bars as ChartBar[];
+      } catch {
+        // No IDB (tests / private mode) — fall through to client aggregate.
+        bars = [];
+      }
       if (this.epochs.get(k) !== epoch) return this.store.get(k)?.bars ?? [];
-      const bars = vp.bars as ChartBar[];
-      this.writeEntry(k, { bars, anchorTime, loadedAt: Date.now(), touchedAt: Date.now() });
+      let usedClientAgg = false;
+
+      // Packed HTF missing / wrong period under this key → roll up from finer TF.
+      // Critical for lazy remote sessions (base+open only) e.g. NQ M1 → 5m click.
+      if (
+        !opts?.skipAggregate &&
+        (bars.length === 0 || !barsMatchTimeframe(bars, tf))
+      ) {
+        const aggregated = await this.aggregateFromFiner(
+          datasetId,
+          tf,
+          anchorTime,
+          span,
+          windowBars,
+          opts,
+          epoch,
+        );
+        if (this.epochs.get(k) !== epoch) return this.store.get(k)?.bars ?? [];
+        if (aggregated && aggregated.length > 0) {
+          bars = aggregated;
+          usedClientAgg = true;
+        }
+      }
+
+      this.writeEntry(k, {
+        bars,
+        anchorTime,
+        loadedAt: Date.now(),
+        touchedAt: Date.now(),
+      });
+
+      // Client-aggregated HTF already matches — paint immediately. Optionally
+      // upgrade to a server pack in the background (never wipe agg on miss).
+      if (
+        usedClientAgg &&
+        bars.length > 0 &&
+        barsMatchTimeframe(bars, tf)
+      ) {
+        void this.tryUpgradePacked(
+          datasetId,
+          tf,
+          anchorTime,
+          span,
+          windowBars,
+          epoch,
+        );
+        return bars;
+      }
 
       // Remote top-up when history and/or tip is short. Symbol switches onto a
       // higher TF often have empty IDB — fetching only *ahead* of the cursor
       // left replay truncate with a single forming candle.
+      // Lazy imports keep unit tests free of UI/jsx datasetStore deps.
+      const { getDataset } = await import('@/datasets/datasetStore');
+      const { ensureRemoteTimeCoverage } = await import(
+        '@/datasets/ingestRemoteChunks'
+      );
+      const { scheduleRemoteChunkGc } = await import('@/datasets/idbChunkGc');
       const entry = getDataset(datasetId);
       if (!entry || entry.source === 'remote') {
         const tfSec = timeframeSeconds(tf);
@@ -271,6 +339,110 @@ export class WarmCache {
     } finally {
       if (this.inflight.get(k) === epoch) this.inflight.delete(k);
     }
+  }
+
+  /** Background: replace client-agg with packed HTF when the server has it. */
+  private async tryUpgradePacked(
+    datasetId: string,
+    tf: Timeframe,
+    anchorTime: number,
+    span: number,
+    windowBars: number,
+    epoch: number,
+  ): Promise<void> {
+    const k = key(datasetId, tf);
+    try {
+      const { getDataset } = await import('@/datasets/datasetStore');
+      const entry = getDataset(datasetId);
+      if (entry && entry.source !== 'remote') return;
+      const { ensureRemoteTimeCoverage } = await import(
+        '@/datasets/ingestRemoteChunks'
+      );
+      const tfSec = timeframeSeconds(tf);
+      const fetched = await ensureRemoteTimeCoverage(
+        datasetId,
+        tf,
+        anchorTime - windowBars * tfSec,
+        anchorTime + Math.max(tfSec * 2, Math.floor(span * 0.1 * tfSec)),
+        { maxBars: Math.min(CHUNK_SIZE, Math.max(500, windowBars)) },
+      );
+      if (!fetched || this.epochs.get(k) !== epoch) return;
+      const vp = await loadViewportAroundTime(
+        datasetId,
+        tf,
+        anchorTime,
+        Math.min(MAX_BARS_IN_MEMORY, Math.max(span * 3, span + 64)),
+        { aheadRatio: 0.05, windowBars },
+      );
+      if (this.epochs.get(k) !== epoch) return;
+      const packed = vp.bars as ChartBar[];
+      if (packed.length === 0 || !barsMatchTimeframe(packed, tf)) return;
+      this.writeEntry(k, {
+        bars: packed,
+        anchorTime,
+        loadedAt: Date.now(),
+        touchedAt: Date.now(),
+      });
+    } catch {
+      /* keep client-aggregated bars */
+    }
+  }
+
+  /**
+   * Build `tf` by aggregating a finer series already in cache/IDB.
+   * Prefers the finest available source (usually 1m).
+   */
+  private async aggregateFromFiner(
+    datasetId: string,
+    tf: Timeframe,
+    anchorTime: number,
+    span: number,
+    windowBars: number,
+    opts: WarmCacheFillOpts | undefined,
+    targetEpoch: number,
+  ): Promise<ChartBar[] | null> {
+    const k = key(datasetId, tf);
+    const targetSec = timeframeSeconds(tf);
+    // Finest → coarsest among sources strictly finer than target.
+    const sources = TF_FALLBACK_ORDER.filter(
+      (src) =>
+        timeframeSeconds(src) < targetSec && canAggregateFrom(src, tf),
+    );
+
+    for (const src of sources) {
+      if (this.epochs.get(k) !== targetEpoch) return null;
+      const srcSec = timeframeSeconds(src);
+      const srcWindow = Math.min(
+        MAX_BARS_IN_MEMORY,
+        Math.max(
+          128,
+          Math.ceil(windowBars * (targetSec / srcSec)) + 128,
+        ),
+      );
+
+      let srcBars = this.peek(datasetId, src);
+      const peekOk =
+        srcBars != null &&
+        srcBars.length >= 8 &&
+        barsMatchTimeframe(srcBars, src);
+      if (!peekOk) {
+        srcBars = await this.fill(datasetId, src, anchorTime, span, {
+          aheadRatio: opts?.aheadRatio ?? 0.05,
+          windowBars: srcWindow,
+          // Pull base from remote if needed so HTF agg can paint on first click.
+          awaitRemote: opts?.awaitRemote === true,
+        });
+      }
+      if (this.epochs.get(k) !== targetEpoch) return null;
+      if (!srcBars || srcBars.length < 3) continue;
+      if (!barsMatchTimeframe(srcBars, src)) continue;
+
+      const aggregated = aggregateChartBars(srcBars, tf);
+      if (aggregated.length >= 2 && barsMatchTimeframe(aggregated, tf)) {
+        return aggregated;
+      }
+    }
+    return null;
   }
 
   peek(datasetId: string, tf: Timeframe): ChartBar[] | null {

@@ -21,6 +21,7 @@ export {
 } from './barIndex';
 export {
   aggregateBars,
+  aggregateChartBars,
   aggregatableTimeframes,
   anchorTimeFromRange,
   bucketStart,

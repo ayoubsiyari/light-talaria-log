@@ -71,6 +71,48 @@ export function smallestTimeframe(tfs: readonly Timeframe[]): Timeframe {
 }
 
 /**
+ * Aggregate ChartBar[] (typically 1m viewport) into a coarser TF.
+ * Used for on-demand HTF when packed series is missing from IDB/remote.
+ */
+export function aggregateChartBars(
+  base: readonly ChartBar[],
+  targetTf: Timeframe,
+): ChartBar[] {
+  if (base.length === 0) return [];
+  const period = timeframeSeconds(targetTf);
+  if (period <= 0) return base.slice() as ChartBar[];
+
+  const out: ChartBar[] = [];
+  let curBucket = bucketStart(base[0]!.time, period);
+  let o = base[0]!.open;
+  let h = base[0]!.high;
+  let l = base[0]!.low;
+  let c = base[0]!.close;
+  let v = base[0]!.volume ?? 0;
+
+  for (let i = 1; i < base.length; i++) {
+    const bar = base[i]!;
+    const b = bucketStart(bar.time, period);
+    if (b !== curBucket) {
+      out.push({ time: curBucket, open: o, high: h, low: l, close: c, volume: v });
+      curBucket = b;
+      o = bar.open;
+      h = bar.high;
+      l = bar.low;
+      c = bar.close;
+      v = bar.volume ?? 0;
+    } else {
+      if (bar.high > h) h = bar.high;
+      if (bar.low < l) l = bar.low;
+      c = bar.close;
+      v += bar.volume ?? 0;
+    }
+  }
+  out.push({ time: curBucket, open: o, high: h, low: l, close: c, volume: v });
+  return out;
+}
+
+/**
  * Aggregate a base OHLCV series (typically 1m) into a coarser timeframe.
  * Returns a new BinaryBarStore. Same TF → copy.
  */

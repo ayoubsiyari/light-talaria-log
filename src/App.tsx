@@ -2964,6 +2964,8 @@ export default function App() {
         }
       }
 
+      // Click-click: 1st click anchors + rubber-band preview; Nth click commits.
+      // (2-point tools also support press-drag via onPlaceDrag.)
       const result = placeDrawingPoint(activeTool, draftPoints, snapped);
       if (result.status === 'pending') {
         setDraftPoints(result.points);
@@ -3046,7 +3048,11 @@ export default function App() {
     [activeTool, catalog, finishPlacedDrawing, persistDrawings, session],
   );
 
-  /** Fixed-2 press-drag place (trend/rect/fib…) — commit on end. */
+  /**
+   * Fixed-2 press-drag place (trend/rect/fib…):
+   * hold+drag → live preview → release commits.
+   * Tap (no move) is handled as click-click via onChartPoint instead.
+   */
   const handlePlaceDrag = useCallback(
     (phase: 'start' | 'end', points: readonly DrawingPoint[]) => {
       if (!session || !catalog) return;
@@ -3055,6 +3061,7 @@ export default function App() {
       if (def.points.kind !== 'fixed' || def.points.count !== 2) return;
 
       if (phase === 'start') {
+        // Sync React draft so tool switch / Esc can cancel; engine paints live tip.
         setDraftPoints(points.length ? [points[0]!] : []);
         return;
       }

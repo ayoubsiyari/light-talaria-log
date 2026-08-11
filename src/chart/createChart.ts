@@ -385,7 +385,10 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   let freehandStrokeEnabled = false;
   /** Fixed-2 tool press-drag place (trend/rect/fib…). */
   let placeDragEnabled = false;
+  /** Pointer-down armed for place-drag (engine-only until movement). */
   let placeDragActive = false;
+  /** True after pointer moved enough — commit on release; else fall through to click-click. */
+  let placeDragMoved = false;
   /** Engine-owned freehand samples (React only sees complete stroke). */
   let freehandPoints: DrawingPoint[] = [];
   let freehandActive = false;
@@ -594,6 +597,22 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       }
       return;
     }
+    const def = getTool(placement.tool);
+    // Multi-point tools: no ghost until first click (or place-drag arm).
+    // 1-point tools (hline/vline/text): follow cursor as preview before click.
+    if (
+      !placement.freehandActive &&
+      !placeDragActive &&
+      placement.points.length === 0 &&
+      def.points.kind === 'fixed' &&
+      def.points.count > 1
+    ) {
+      if (draftDrawing !== null) {
+        draftDrawing = null;
+        markOverlayDirty();
+      }
+      return;
+    }
     let tip = hover;
     if (tip && !placement.freehandActive) {
       tip = magnetSnap(tip, bars, drawingMagnetMode);
@@ -605,7 +624,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         drawingShiftHeld,
       );
     }
-    // Freehand: points already include the stroke (App/rAF). Else rubber-band to hover.
+    // Freehand: points already include the stroke. Else rubber-band tip onto anchors.
     const pts =
       placement.freehandActive || !tip
         ? placement.points
@@ -1047,8 +1066,9 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   };
 
   const resetPlaceDrag = () => {
-    if (!placeDragActive) return;
+    if (!placeDragActive && !placeDragMoved) return;
     placeDragActive = false;
+    placeDragMoved = false;
     if (placement) {
       placement = { ...placement, points: [] };
     }
@@ -1193,6 +1213,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       if (!placeDragEnabled || !placement || placeDragActive || freehandActive) return false;
       const def = getTool(placement.tool);
       if (def.points.kind !== 'fixed' || def.points.count !== 2) return false;
+      // Click-click already has point 1 — do not arm drag (2nd click via onPlotClick).
       if (placement.points.length > 0) return false;
       if (!drawingsHidden && drawings.length > 0) {
         const existing = hitTestDrawings(
@@ -1210,10 +1231,13 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       let pt = mediaToLogical(x, y);
       if (!pt) return false;
       pt = magnetSnap(pt, bars, drawingMagnetMode);
+      // Arm in the engine only — do NOT notify React yet.
+      // Tap without move → cancel + onPlotClick (true click-click).
+      // Move → emit start, then end on release (press-drag place).
       placeDragActive = true;
+      placeDragMoved = false;
       placement = { ...placement, points: [pt], freehandActive: false };
       updatePlacementDraft(pt);
-      emitPlaceDrag('start', [pt]);
       return true;
     },
     movePlaceDrag: (x, y) => {
@@ -1228,11 +1252,18 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         bars,
         drawingShiftHeld,
       );
+      if (!placeDragMoved) {
+        placeDragMoved = true;
+        const p0 = placement.points[0];
+        if (p0) emitPlaceDrag('start', [p0]);
+      }
       updatePlacementDraft(tip);
     },
     endPlaceDrag: (x, y) => {
       if (!placeDragActive || !placement) return;
+      const moved = placeDragMoved;
       placeDragActive = false;
+      placeDragMoved = false;
       let tip = mediaToLogical(x, y);
       if (tip) {
         tip = magnetSnap(tip, bars, drawingMagnetMode);
@@ -1254,11 +1285,13 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       placement = { ...placement, points: [] };
       draftDrawing = null;
       markOverlayDirty();
-      if (pts.length >= 2) {
+      // Only commit if the pointer actually dragged (interaction already gates this).
+      if (moved && pts.length >= 2) {
         emitPlaceDrag('end', pts);
       }
     },
     cancelPlaceDrag: () => {
+      // Tap: drop engine arm so onPlotClick can start click-click cleanly.
       resetPlaceDrag();
     },
     beginDrawingDrag: (x, y, opts) => {
@@ -2341,6 +2374,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       freehandStrokeEnabled = false;
       placeDragEnabled = false;
       placeDragActive = false;
+      placeDragMoved = false;
       freehandActive = false;
       freehandPoints = [];
       marqueeZoomEnabled = false;

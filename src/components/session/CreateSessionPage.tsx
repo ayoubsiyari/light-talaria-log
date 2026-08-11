@@ -864,16 +864,16 @@ export function CreateSessionPage({
                           onPick={addPair}
                         />
                         {selectedPairs.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5">
+                          <div className="flex flex-wrap gap-1.5" data-pp-chips="">
                             {selectedPairs.map((p) => {
                               const asset = classifySymbolAsset(p);
                               return (
                                 <button
                                   key={p}
                                   type="button"
-                                  className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-8 rounded-md border border-border bg-foreground/6 pl-1.5 pr-2 text-[12px] text-foreground"
+                                  data-pp-chip=""
                                   onClick={() => removePair(p)}
-                                  title={`Remove ${p}`}
+                                  title={`Remove ${formatPairDisplay(p)}`}
                                 >
                                   <ChartSymbolBadge
                                     sym={normalizeSymForBadge(p)}
@@ -881,12 +881,8 @@ export function CreateSessionPage({
                                     w={16}
                                     h={11}
                                   />
-                                  <span className="font-semibold tabular-nums leading-none">
-                                    {formatPairDisplay(p)}
-                                  </span>
-                                  <span className="text-muted leading-none" aria-hidden>
-                                    ×
-                                  </span>
+                                  <span>{formatPairDisplay(p)}</span>
+                                  <span aria-hidden>×</span>
                                 </button>
                               );
                             })}

@@ -385,9 +385,8 @@ export function createSessionController() {
           windowBars,
         };
 
-        await warmCache.fill(datasetId, tf, anchor, span, fastOpts);
-        if (!state) return;
-
+        // Warm base TF first so HTF fill can aggregate M1→5m on pack miss
+        // (remote sessions only fetch base+open at start — NQ 5m often empty).
         if (tf !== state.baseTf) {
           const baseSpan = Math.min(
             MAX_BARS_IN_MEMORY,
@@ -407,9 +406,13 @@ export function createSessionController() {
               awaitRemote: false,
               aheadRatio: 0.1,
               windowBars: Math.min(MAX_BARS_IN_MEMORY, baseSpan + 200),
+              skipAggregate: true,
             },
           );
         }
+        if (!state) return;
+
+        await warmCache.fill(datasetId, tf, anchor, span, fastOpts);
         if (!state) return;
 
         const cur = state.panes[paneId];

@@ -9,7 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test:session": "node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/session/__tests__/tfSwitch.property.test.ts",
+    "test:session": "node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/session/__tests__/*.test.ts",
     "test:orders": "node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/orders/__tests__/*.test.ts",
     "test:analytics": "node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/analytics/__tests__/*.test.ts",
     "test:strategy": "node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/strategy/__tests__/*.test.ts",

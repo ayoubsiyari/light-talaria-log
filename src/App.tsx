@@ -66,6 +66,8 @@ import {
   type Drawing,
   type DrawingPoint,
 } from '@/drawings/drawingStore';
+
+const EMPTY_DRAWINGS: Drawing[] = [];
 import {
   bringDrawingsToFront,
   copyDrawings,
@@ -408,7 +410,21 @@ export default function App() {
   layoutSyncRef.current = layoutSync;
   const { themeAttr: chromeThemeAttr, presetId: chromePresetId } = useChromeTheme();
 
-  const [drawings, setDrawings] = useState<Drawing[]>([]);
+  /** Per-dataset drawing books — multi-pane/symbol isolation. */
+  const [drawingBooks, setDrawingBooks] = useState<Record<string, Drawing[]>>(
+    {},
+  );
+  const drawingBooksRef = useRef(drawingBooks);
+  drawingBooksRef.current = drawingBooks;
+  const drawingHistoryByDsRef = useRef(new Map<string, DrawingHistory>());
+  const historyForDataset = useCallback((datasetId: string) => {
+    let h = drawingHistoryByDsRef.current.get(datasetId);
+    if (!h) {
+      h = new DrawingHistory();
+      drawingHistoryByDsRef.current.set(datasetId, h);
+    }
+    return h;
+  }, []);
   const [draftPoints, setDraftPoints] = useState<DrawingPoint[]>([]);
   const [selectedDrawingIds, setSelectedDrawingIds] = useState<string[]>([]);
   const selectedDrawingId =
@@ -428,9 +444,7 @@ export default function App() {
   const [replayTick, setReplayTick] = useState(0);
   /** Engine owns live freehand samples — React only tracks mode for placement tool id. */
   const freehandActiveRef = useRef(false);
-  const drawingHistoryRef = useRef(new DrawingHistory());
-  const drawingsRef = useRef(drawings);
-  drawingsRef.current = drawings;
+  const drawingsRef = useRef<Drawing[]>([]);
 
   const syncStoreRef = useRef<ChartSyncStore | null>(null);
   const replayRef = useRef<ReplayController>(createReplayController());
@@ -751,6 +765,10 @@ export default function App() {
   );
 
   const activePane = panes.find((p) => p.id === activePaneId) ?? panes[0] ?? null;
+  const activeDatasetId =
+    activePane?.datasetId ?? catalog?.datasetId ?? '';
+  const drawings = drawingBooks[activeDatasetId] ?? EMPTY_DRAWINGS;
+  drawingsRef.current = drawings;
 
   /**
    * TF picker list: active pane’s catalog when interval sync is off;
@@ -824,17 +842,45 @@ export default function App() {
   );
 
   const persistDrawings = useCallback(
-    (next: Drawing[], opts?: { skipHistory?: boolean }) => {
+    (
+      next: Drawing[],
+      opts?: { skipHistory?: boolean; datasetId?: string },
+    ) => {
+      const ds = opts?.datasetId ?? activeDatasetId;
+      if (!ds) return;
       if (!opts?.skipHistory) {
-        drawingHistoryRef.current.push(drawingsRef.current);
+        historyForDataset(ds).push(drawingBooksRef.current[ds] ?? []);
       }
-      setDrawings(next);
-      if (session && catalog) {
-        saveDrawings(`${session.id}:${catalog.datasetId}`, next);
+      setDrawingBooks((prev) => ({ ...prev, [ds]: next }));
+      if (session) {
+        saveDrawings(`${session.id}:${ds}`, next);
       }
     },
-    [session, catalog],
+    [session, activeDatasetId, historyForDataset],
   );
+
+  /** Ensure a dataset book is loaded (symbol switch / new pane). */
+  const ensureDrawingBook = useCallback(
+    (datasetId: string) => {
+      if (!session || !datasetId) return;
+      if (drawingBooksRef.current[datasetId]) return;
+      const loaded = loadDrawings(`${session.id}:${datasetId}`);
+      setDrawingBooks((prev) =>
+        prev[datasetId] ? prev : { ...prev, [datasetId]: loaded },
+      );
+    },
+    [session],
+  );
+
+  // Drop selection that does not belong to the focused instrument book.
+  useEffect(() => {
+    if (!activeDatasetId) return;
+    const book = drawingBooksRef.current[activeDatasetId] ?? EMPTY_DRAWINGS;
+    setSelectedDrawingIds((ids) => {
+      const next = ids.filter((id) => book.some((d) => d.id === id));
+      return next.length === ids.length ? ids : next;
+    });
+  }, [activeDatasetId]);
 
   const replayState = replayRef.current.get();
   void replayTick;
@@ -2053,9 +2099,17 @@ export default function App() {
         setActivePaneId('pane-0');
         setChartLayout('1');
 
-        const key = `${fresh.id}:${primary.datasetId}`;
-        drawingHistoryRef.current.clear();
-        setDrawings(loadDrawings(key));
+        const books: Record<string, Drawing[]> = {};
+        for (const s of seriesList) {
+          books[s.datasetId] = loadDrawings(`${fresh.id}:${s.datasetId}`);
+        }
+        if (!books[primary.datasetId]) {
+          books[primary.datasetId] = loadDrawings(
+            `${fresh.id}:${primary.datasetId}`,
+          );
+        }
+        drawingHistoryByDsRef.current.clear();
+        setDrawingBooks(books);
         const startingBalance =
           typeof fresh.startingBalance === 'number' &&
           Number.isFinite(fresh.startingBalance) &&
@@ -2168,17 +2222,25 @@ export default function App() {
 
   useEffect(() => {
     const onUndo = () => {
-      const prev = drawingHistoryRef.current.undo(drawingsRef.current);
+      const ds = activeDatasetId;
+      if (!ds) return;
+      const prev = historyForDataset(ds).undo(
+        drawingBooksRef.current[ds] ?? [],
+      );
       if (prev) {
-        persistDrawings(prev, { skipHistory: true });
+        persistDrawings(prev, { skipHistory: true, datasetId: ds });
         setSelectedDrawingIds([]);
         setSettingsOpen(false);
       }
     };
     const onRedo = () => {
-      const next = drawingHistoryRef.current.redo(drawingsRef.current);
+      const ds = activeDatasetId;
+      if (!ds) return;
+      const next = historyForDataset(ds).redo(
+        drawingBooksRef.current[ds] ?? [],
+      );
       if (next) {
-        persistDrawings(next, { skipHistory: true });
+        persistDrawings(next, { skipHistory: true, datasetId: ds });
         setSelectedDrawingIds([]);
         setSettingsOpen(false);
       }
@@ -2189,7 +2251,7 @@ export default function App() {
       window.removeEventListener('talaria:drawings-undo', onUndo);
       window.removeEventListener('talaria:drawings-redo', onRedo);
     };
-  }, [persistDrawings]);
+  }, [persistDrawings, activeDatasetId, historyForDataset]);
 
   // Settings modal ↔ TopBar / volume: keep view state in sync with appearance store
   useEffect(() => {
@@ -2797,6 +2859,9 @@ export default function App() {
       }
       if (!sessionRef.current.get()) return;
 
+      // Load this instrument's drawing book before the pane paints it.
+      ensureDrawingBook(series.datasetId);
+
       // Drop in-flight / pending pan-LOD so it cannot overwrite this symbol switch.
       lodReloadCancelRef.current?.();
       prefetchGenRef.current += 1;
@@ -2891,6 +2956,7 @@ export default function App() {
       catalog,
       captureLiveCamera,
       commitSessionViews,
+      ensureDrawingBook,
       healViewportIfNeeded,
       markPanesLoading,
       pushOrdersToPanes,
@@ -3091,8 +3157,8 @@ export default function App() {
   };
 
   const handleEngineDrawingsChange = useCallback(
-    (next: readonly Drawing[]) => {
-      persistDrawings([...next]);
+    (datasetId: string, next: readonly Drawing[]) => {
+      persistDrawings([...next], { datasetId });
     },
     [persistDrawings],
   );
@@ -3112,47 +3178,47 @@ export default function App() {
 
   const patchDrawingById = useCallback(
     (id: string, patch: Partial<Drawing>) => {
-      setDrawings((prev) => {
-        const next = prev.map((d) => (d.id === id ? { ...d, ...patch } : d));
-        if (session && catalog) {
-          saveDrawings(`${session.id}:${catalog.datasetId}`, next);
-        }
-        return next;
-      });
+      const ds = activeDatasetId;
+      if (!ds) return;
+      const prev = drawingBooksRef.current[ds] ?? [];
+      persistDrawings(
+        prev.map((d) => (d.id === id ? { ...d, ...patch } : d)),
+        { datasetId: ds },
+      );
     },
-    [session, catalog],
+    [activeDatasetId, persistDrawings],
   );
 
   const deleteDrawingById = useCallback(
     (id: string) => {
-      setDrawings((prev) => {
-        const cur = prev.find((d) => d.id === id);
-        if (cur?.locked) return prev;
-        const next = prev.filter((d) => d.id !== id);
-        if (session && catalog) {
-          saveDrawings(`${session.id}:${catalog.datasetId}`, next);
-        }
-        return next;
-      });
-      setSelectedDrawingIds((cur) => cur.filter((x) => x !== id));
+      const ds = activeDatasetId;
+      if (!ds) return;
+      const prev = drawingBooksRef.current[ds] ?? [];
+      const cur = prev.find((d) => d.id === id);
+      if (cur?.locked) return;
+      persistDrawings(
+        prev.filter((d) => d.id !== id),
+        { datasetId: ds },
+      );
+      setSelectedDrawingIds((curIds) => curIds.filter((x) => x !== id));
       setSettingsOpen(false);
     },
-    [session, catalog],
+    [activeDatasetId, persistDrawings],
   );
 
   const patchSelectedDrawing = useCallback(
     (patch: Partial<Drawing>) => {
       if (selectedDrawingIds.length === 0) return;
+      const ds = activeDatasetId;
+      if (!ds) return;
       const idSet = new Set(selectedDrawingIds);
-      setDrawings((prev) => {
-        const next = prev.map((d) => (idSet.has(d.id) ? { ...d, ...patch } : d));
-        if (session && catalog) {
-          saveDrawings(`${session.id}:${catalog.datasetId}`, next);
-        }
-        return next;
-      });
+      const prev = drawingBooksRef.current[ds] ?? [];
+      persistDrawings(
+        prev.map((d) => (idSet.has(d.id) ? { ...d, ...patch } : d)),
+        { datasetId: ds },
+      );
     },
-    [selectedDrawingIds, session, catalog],
+    [selectedDrawingIds, activeDatasetId, persistDrawings],
   );
 
   const reorderSelected = useCallback(
@@ -3169,15 +3235,15 @@ export default function App() {
 
   const replaceSelectedDrawing = useCallback(
     (next: Drawing) => {
-      setDrawings((prev) => {
-        const mapped = prev.map((d) => (d.id === next.id ? next : d));
-        if (session && catalog) {
-          saveDrawings(`${session.id}:${catalog.datasetId}`, mapped);
-        }
-        return mapped;
-      });
+      const ds = activeDatasetId;
+      if (!ds) return;
+      const prev = drawingBooksRef.current[ds] ?? [];
+      persistDrawings(
+        prev.map((d) => (d.id === next.id ? next : d)),
+        { datasetId: ds },
+      );
     },
-    [session, catalog],
+    [activeDatasetId, persistDrawings],
   );
 
   const deleteSelectedDrawing = () => {
@@ -3220,7 +3286,8 @@ export default function App() {
     setPanes([]);
     panesRef.current = [];
     seriesRef.current = [];
-    setDrawings([]);
+    setDrawingBooks({});
+    drawingHistoryByDsRef.current.clear();
     setDraftPoints([]);
     setSelectedDrawingIds([]);
     setSettingsOpen(false);
@@ -4608,7 +4675,8 @@ export default function App() {
               syncCrosshair={layoutSync.crosshair}
               syncDateRange={layoutSync.dateRange || layoutSync.time}
               loadingPaneIds={loadingPaneIds}
-              drawings={drawings}
+              drawingBooks={drawingBooks}
+              activeDatasetId={activeDatasetId}
               placement={placement}
               selectedDrawingId={selectedDrawingId}
               selectedDrawingIds={selectedDrawingIds}
@@ -4807,28 +4875,26 @@ export default function App() {
             onDelete={deleteDrawingById}
             onDeleteAll={clearDrawings}
             onBulkHide={(ids) => {
-              setDrawings((prev) => {
-                const idSet = new Set(ids);
-                const next = prev.map((d) =>
+              const ds = activeDatasetId;
+              if (!ds) return;
+              const idSet = new Set(ids);
+              const prev = drawingBooksRef.current[ds] ?? [];
+              persistDrawings(
+                prev.map((d) =>
                   idSet.has(d.id) ? { ...d, visible: false } : d,
-                );
-                if (session && catalog) {
-                  saveDrawings(`${session.id}:${catalog.datasetId}`, next);
-                }
-                return next;
-              });
+                ),
+                { datasetId: ds },
+              );
             }}
             onBulkLock={(ids, locked) => {
-              setDrawings((prev) => {
-                const idSet = new Set(ids);
-                const next = prev.map((d) =>
-                  idSet.has(d.id) ? { ...d, locked } : d,
-                );
-                if (session && catalog) {
-                  saveDrawings(`${session.id}:${catalog.datasetId}`, next);
-                }
-                return next;
-              });
+              const ds = activeDatasetId;
+              if (!ds) return;
+              const idSet = new Set(ids);
+              const prev = drawingBooksRef.current[ds] ?? [];
+              persistDrawings(
+                prev.map((d) => (idSet.has(d.id) ? { ...d, locked } : d)),
+                { datasetId: ds },
+              );
             }}
             onBulkDelete={(ids) => {
               const locked = new Set(

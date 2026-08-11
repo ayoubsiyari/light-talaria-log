@@ -197,8 +197,13 @@ export interface PaintState {
   selectedDrawingIds?: readonly string[] | null;
   hoveredDrawingId?: string | null;
   drawingsHidden?: boolean;
-  /** Pane TF — filters drawings with per-interval visibility. */
+  /** Pane TF — bar period / time lattice (LOD effective TF). */
   paneTimeframe?: import('@/types/ui').Timeframe | null;
+  /**
+   * User-selected interval for `visibleOnTfs` (not LOD-coarsened TF).
+   * Falls back to paneTimeframe when unset.
+   */
+  drawingVisibilityTf?: import('@/types/ui').Timeframe | null;
   /** Per-engine zoom density sticky for the time lattice. */
   timeLatticeSticky?: TimeLatticeSticky;
   /** Stable time-axis label times across pan (mutated each paint). */
@@ -369,6 +374,7 @@ export function paintDrawingsFrame(
   const formatPriceFn = resolvePriceFormatter(state);
 
   if (!drawingsHidden && drawings?.length) {
+    const visTf = state.drawingVisibilityTf ?? paneTimeframe ?? null;
     drawDrawings(
       ctx,
       drawings,
@@ -381,10 +387,11 @@ export function paintDrawingsFrame(
       null,
       false,
       null,
-      paneTimeframe ?? null,
+      visTf,
       null,
       'bodies',
       formatPriceFn,
+      replayCursorTime ?? null,
     );
   }
 
@@ -437,6 +444,7 @@ export function paintOverlayFrame(
     hoveredDrawingId,
     drawingsHidden,
     paneTimeframe,
+    drawingVisibilityTf,
     replayCursorTime,
     marquee,
   } = state;
@@ -461,6 +469,7 @@ export function paintOverlayFrame(
         ? [selectedDrawingId]
         : [];
   const formatPriceFn = resolvePriceFormatter(state);
+  const visTf = drawingVisibilityTf ?? paneTimeframe ?? null;
 
   if (!drawingsHidden && drawings?.length) {
     drawDrawingEditChrome(
@@ -473,7 +482,7 @@ export function paintOverlayFrame(
       colors,
       ids,
       hoveredDrawingId ?? null,
-      paneTimeframe ?? null,
+      visTf,
       {
         width: layout.width,
         height: layout.height,
@@ -481,6 +490,7 @@ export function paintOverlayFrame(
         timeAxisHeight: layout.timeAxisHeight,
       },
       formatPriceFn,
+      replayCursorTime ?? null,
     );
   }
 

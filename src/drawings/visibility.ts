@@ -50,6 +50,31 @@ export function isDrawingVisibleOnTf(
   return v.includes(tf);
 }
 
+/**
+ * Replay reveal gate — hide drawings that exist entirely after the cursor
+ * (no lookahead annotations). Keep if any anchor is at/before the tip.
+ */
+export function isDrawingVisibleAtCursor(
+  d: Drawing,
+  cursorTime: number | null | undefined,
+): boolean {
+  if (cursorTime == null || !Number.isFinite(cursorTime)) return true;
+  if (d.points.length === 0) return true;
+  for (const p of d.points) {
+    if (Number.isFinite(p.time) && p.time <= cursorTime) return true;
+  }
+  return false;
+}
+
+/** Combined TF + replay visibility (paint / hit-test). */
+export function isDrawingVisibleOnChart(
+  d: Drawing,
+  tf: Timeframe | null | undefined,
+  cursorTime?: number | null,
+): boolean {
+  return isDrawingVisibleOnTf(d, tf) && isDrawingVisibleAtCursor(d, cursorTime);
+}
+
 export function toggleVisibleOnTf(
   current: DrawingVisibleOnTfs | undefined,
   tf: Timeframe,

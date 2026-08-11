@@ -4,7 +4,7 @@ import { priceToY } from '@/chart/scales';
 import type { ChartBar } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
 import type { Drawing } from '../drawingStore';
-import { isDrawingVisibleOnTf } from '../visibility';
+import { isDrawingVisibleOnChart } from '../visibility';
 import { applyFillStyle, applyStrokeStyle, extendModeToPaint, type DrawingStyle } from '../drawingStyle';
 import {
   defaultFibLevelsFor,
@@ -1447,6 +1447,7 @@ export function paintDrawingEditChrome(
     timeAxisHeight: number;
   } | null,
   formatPriceFn?: PriceFormatter,
+  cursorTime?: number | null,
 ): void {
   if (bars.length === 0 || drawings.length === 0) return;
   const selectedSet = new Set(
@@ -1468,7 +1469,7 @@ export function paintDrawingEditChrome(
 
   for (const d of drawings) {
     if (d.visible === false) continue;
-    if (!isDrawingVisibleOnTf(d, paneTf)) continue;
+    if (!isDrawingVisibleOnChart(d, paneTf, cursorTime)) continue;
     const isSelected = selectedSet.has(d.id);
     const isHovered = d.id === hoveredId;
     if (!isSelected && !isHovered) continue;
@@ -1517,6 +1518,7 @@ export function paintAllDrawings(
   } | null,
   layer: DrawingPaintLayer = 'all',
   formatPriceFn?: PriceFormatter,
+  cursorTime?: number | null,
 ): void {
   if (hidden || bars.length === 0) return;
   const selectedSet = new Set(
@@ -1548,6 +1550,7 @@ export function paintAllDrawings(
       paneTf,
       axisLayout,
       formatPriceFn,
+      cursorTime,
     );
     if (draft) {
       paintDrawing(pc, draft, { selected: true, showHandles: true });
@@ -1558,7 +1561,7 @@ export function paintAllDrawings(
   const showHandles = layer === 'all';
   for (const d of drawings) {
     if (d.visible === false) continue;
-    if (!isDrawingVisibleOnTf(d, paneTf)) continue;
+    if (!isDrawingVisibleOnChart(d, paneTf, cursorTime)) continue;
     const isSelected = selectedSet.has(d.id);
     const isHovered = d.id === hoveredId;
     paintDrawing(pc, d, { selected: isSelected, showHandles: showHandles && isSelected });

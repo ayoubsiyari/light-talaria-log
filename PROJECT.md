@@ -925,6 +925,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-10 | Deploy catalog sync skips unchanged packs (FORCE_DISK_IMPORT=1 for full rewrite) | Push code — import logs `N updated, M unchanged` in seconds |
 | 2026-08-10 | Chart price format per instrument: Y-axis/crosshair/last/orders/drawings + OHLC HUD use `digits`/`tickSize` from pane spec | Multi-pane EUR+USDJPY+NQ — axis decimals match each ticker |
 | 2026-08-11 | TF switch: on-demand M1→HTF client agg when packed TF missing; median gap guard (futures session breaks); base-first warm on switch | NQ M1→5m — candles change immediately (not label-only) |
+| 2026-08-11 | Drawings: per-dataset books; `visibleOnTfs` uses selectedTf (not LOD); replay cursor clip; patches go through undo | Multi-pane EUR+NQ drawings isolated; TF visibility + replay tip OK |
 
 ---
 
@@ -1037,7 +1038,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | Per-TF Visibility + object tree | Done |
 | Zoom marquee / Alt-clone / Shift-constrain | Done |
 | Patterns / Elliott / Gann / pitchforks | **Beta** — behind “More tools”; not product-complete |
-| Multi-pane drawings | **Shared** by session+dataset (all panes); not per-pane (see D6) |
+| Multi-pane drawings | **Per-dataset books** (`sessionId:datasetId`); each pane paints its own instrument |
 
 **Architectural rules (non-negotiable):**
 1. Anchors stay `{ time, price }` forever.

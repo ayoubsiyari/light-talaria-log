@@ -252,6 +252,8 @@ export interface ChartInstance {
       selectedIds?: readonly string[] | null;
       hidden?: boolean;
       paneTimeframe?: Timeframe | null;
+      /** User-selected TF for visibleOnTfs (not LOD effective TF). */
+      drawingVisibilityTf?: Timeframe | null;
     },
   ) => void;
   /** Drawing magnet for place preview + handle drag. */
@@ -368,6 +370,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
   let hoveredDrawingId: string | null = null;
   let drawingsHidden = false;
   let paneTimeframe: Timeframe | null = null;
+  /** Visibility filter TF — selectedTf; falls back to paneTimeframe when null. */
+  let drawingVisibilityTf: Timeframe | null = null;
   /** Nested grid octave sticky — one per engine (multi-pane safe). */
   const timeLatticeSticky: TimeLatticeSticky = { exp: -1 };
   /** Time-axis label identity — keeps labels scrolling with candles when V-grid is off. */
@@ -582,7 +586,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       range,
       layout.plot,
       resolvePriceScale(),
-      paneTimeframe,
+      drawingVisibilityTf ?? paneTimeframe,
+      replayCursorTime,
     );
     hitCacheX = x;
     hitCacheY = y;
@@ -785,6 +790,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     hoveredDrawingId,
     drawingsHidden,
     paneTimeframe,
+    drawingVisibilityTf,
     timeLatticeSticky,
     timeLabelSticky,
     replayCursorTime,
@@ -1168,7 +1174,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
           range,
           layout.plot,
           resolvePriceScale(),
-          paneTimeframe,
+          drawingVisibilityTf ?? paneTimeframe,
+          replayCursorTime,
         );
         if (existing) return false;
       }
@@ -1224,7 +1231,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
           range,
           layout.plot,
           resolvePriceScale(),
-          paneTimeframe,
+          drawingVisibilityTf ?? paneTimeframe,
+          replayCursorTime,
         );
         if (existing) return false;
       }
@@ -1954,6 +1962,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     setDrawings(next, draft = null, opts) {
       const prevHidden = drawingsHidden;
       const prevTf = paneTimeframe;
+      const prevVisTf = drawingVisibilityTf;
       const listChanged = drawingDrag != null || drawings !== next;
       // Don't clobber in-flight drag geometry with a stale React snapshot.
       if (drawingDrag) {
@@ -1992,12 +2001,18 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         }
         paneTimeframe = opts.paneTimeframe;
       }
+      if (opts?.drawingVisibilityTf !== undefined) {
+        drawingVisibilityTf = opts.drawingVisibilityTf;
+      }
       if (hoveredDrawingId && !next.some((d) => d.id === hoveredDrawingId)) {
         hoveredDrawingId = null;
       }
       invalidateHitCache();
       const bodiesChanged =
-        listChanged || prevHidden !== drawingsHidden || prevTf !== paneTimeframe;
+        listChanged ||
+        prevHidden !== drawingsHidden ||
+        prevTf !== paneTimeframe ||
+        prevVisTf !== drawingVisibilityTf;
       if (bodiesChanged) markDrawingsDirty();
       else markOverlayDirty(); // selection / hover chrome only
     },
@@ -2284,7 +2299,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
         range,
         layout.plot,
         resolvePriceScale(),
-        paneTimeframe,
+        drawingVisibilityTf ?? paneTimeframe,
+        replayCursorTime,
       );
     },
 

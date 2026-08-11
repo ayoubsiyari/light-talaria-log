@@ -28,22 +28,29 @@ import type {
   LastPriceLineStyle,
 } from '@/types/chartAppearance';
 
-type SettingsTab = 'symbol' | 'status' | 'scales' | 'canvas' | 'layout' | 'trading' | 'buttons' | 'templates';
+type SettingsTab =
+  | 'symbol'
+  | 'status'
+  | 'scales'
+  | 'canvas'
+  | 'layout'
+  | 'trading'
+  | 'buttons'
+  | 'templates';
 
 interface ChartSettingsModalProps {
   onClose: () => void;
 }
 
-/** Live data-sett-v2 nav labels; existing panes kept + stub tabs. */
-const TABS: { id: SettingsTab; label: string; icon: string }[] = [
-  { id: 'symbol', label: 'Candles', icon: '▮' },
-  { id: 'canvas', label: 'Canvas', icon: '✎' },
-  { id: 'scales', label: 'Time & scale', icon: '↕' },
-  { id: 'trading', label: 'Trading', icon: '⇄' },
-  { id: 'buttons', label: 'Buttons', icon: '▢' },
-  { id: 'templates', label: 'Templates', icon: '▣' },
-  { id: 'status', label: 'Status line', icon: '≡' },
-  { id: 'layout', label: 'Layout', icon: '◫' },
+const TABS: { id: SettingsTab; label: string }[] = [
+  { id: 'symbol', label: 'Candles' },
+  { id: 'canvas', label: 'Canvas' },
+  { id: 'scales', label: 'Time & scale' },
+  { id: 'trading', label: 'Trading' },
+  { id: 'buttons', label: 'Buttons' },
+  { id: 'templates', label: 'Templates' },
+  { id: 'status', label: 'Status line' },
+  { id: 'layout', label: 'Layout' },
 ];
 
 const LINE_STYLES: { id: GridLineStyle; label: string }[] = [
@@ -102,9 +109,11 @@ export function ChartSettingsModal({ onClose }: ChartSettingsModalProps) {
     setAppearance(next);
   };
 
+  const tabLabel = TABS.find((t) => t.id === tab)?.label ?? 'Settings';
+
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-background/70 p-2 sm:p-4"
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/55 p-2 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Chart settings"
@@ -114,166 +123,205 @@ export function ChartSettingsModal({ onClose }: ChartSettingsModalProps) {
         data-v9-chrome="1"
         data-sett-v2="1"
         data-chrome-win="chart-settings"
-        className="w-full max-w-3xl max-h-[92dvh] flex flex-col sm:flex-row overflow-hidden rounded-xl border border-[color:var(--line)] bg-[color:var(--surface)] shadow-none"
+        className="w-full flex flex-col overflow-hidden rounded-xl shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <nav
-          data-sett-nav=""
-          className="sm:w-48 shrink-0 border-b sm:border-b-0 sm:border-r border-[color:var(--line)] bg-[color:var(--surface-sunken)] p-2 flex sm:flex-col gap-1 overflow-x-auto"
-        >
-          <p className="hidden sm:block px-2 py-2 text-xs font-semibold text-muted uppercase tracking-wide">
-            Chart settings
-          </p>
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              data-active={tab === t.id ? '1' : undefined}
-              data-sett-nav-item={t.id}
-              onClick={() => setTab(t.id)}
-              className={[
-                'flex items-center gap-2 min-h-11 px-3 rounded-md text-sm text-left shrink-0',
-                tab === t.id
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-foreground hover:bg-background/70',
-              ].join(' ')}
-            >
-              <span className="opacity-70 w-4 text-center">{t.icon}</span>
-              {t.label}
-            </button>
-          ))}
-        </nav>
+        {/* Body: nav | pane — must stay a row (see chrome-rebuild [data-sett-v2-body]) */}
+        <div data-sett-v2-body="">
+          <nav data-sett-v2-nav="" data-sett-nav="" aria-label="Chart settings sections">
+            <p className="px-2.5 pt-1.5 pb-2 text-[10px] font-semibold text-muted uppercase tracking-wide">
+              Chart settings
+            </p>
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                data-active={tab === t.id ? '1' : undefined}
+                data-sett-nav-item={t.id}
+                onClick={() => setTab(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
 
-        <div className="flex-1 min-w-0 flex flex-col min-h-0">
-          <header className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border shrink-0">
-            <h2 className="text-sm font-semibold text-foreground">
-              {TABS.find((t) => t.id === tab)?.label ?? 'Settings'}
-            </h2>
-            <button
-              type="button"
-              className="min-h-11 min-w-11 rounded-full text-muted hover:text-foreground hover:bg-background/70"
-              aria-label="Close"
-              onClick={cancel}
-            >
-              ✕
-            </button>
-          </header>
+          <div data-sett-v2-main="">
+            <header className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-[color:var(--line)] shrink-0">
+              <h2 className="text-sm font-semibold text-foreground tracking-tight">
+                {tabLabel}
+              </h2>
+              <button
+                type="button"
+                className="min-h-11 min-w-11 rounded-md text-muted hover:text-foreground hover:bg-[color:var(--surface-sunken)]"
+                aria-label="Close"
+                onClick={cancel}
+              >
+                ✕
+              </button>
+            </header>
 
-          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-            {tab === 'symbol' && (
-              <SymbolTab
-                draft={draft}
-                applyLive={applyLive}
-                onThemeChange={(m) => {
-                  setThemeLocal(m);
-                  setTheme(m);
-                }}
-              />
-            )}
-            {tab === 'status' && (
-              <StatusTab draft={draft} applyLive={applyLive} />
-            )}
-            {tab === 'scales' && (
-              <ScalesTab draft={draft} applyLive={applyLive} />
-            )}
-            {tab === 'canvas' && (
-              <CanvasTab draft={draft} applyLive={applyLive} />
-            )}
-            {tab === 'layout' && (
-              <LayoutTab
-                draft={draft}
-                applyLive={applyLive}
-                theme={theme}
-                onThemeChange={(m) => {
-                  setThemeLocal(m);
-                  setTheme(m);
-                }}
-              />
-            )}
-            {tab === 'trading' && (
-              <div className="space-y-3">
-                <SectionTitle>Trading</SectionTitle>
-                <ToggleRow
-                  label="Show order brackets"
-                  checked={true}
-                  onChange={() => {}}
+            <div data-sett-v2-pane="" className="px-4 py-3 space-y-3">
+              {tab === 'symbol' && (
+                <SymbolTab
+                  draft={draft}
+                  applyLive={applyLive}
+                  onThemeChange={(m) => {
+                    setThemeLocal(m);
+                    setTheme(m);
+                  }}
                 />
-                <ToggleRow
-                  label="Confirm order placement"
-                  checked={false}
-                  onChange={() => {}}
+              )}
+              {tab === 'status' && (
+                <StatusTab draft={draft} applyLive={applyLive} />
+              )}
+              {tab === 'scales' && (
+                <ScalesTab draft={draft} applyLive={applyLive} />
+              )}
+              {tab === 'canvas' && (
+                <CanvasTab draft={draft} applyLive={applyLive} />
+              )}
+              {tab === 'layout' && (
+                <LayoutTab
+                  draft={draft}
+                  applyLive={applyLive}
+                  theme={theme}
+                  onThemeChange={(m) => {
+                    setThemeLocal(m);
+                    setTheme(m);
+                  }}
                 />
-                <p className="text-[11px] text-muted">
-                  Stub toggles — wire to trading prefs later.
-                </p>
-              </div>
-            )}
-            {tab === 'buttons' && (
-              <div className="space-y-3">
-                <SectionTitle>Buttons</SectionTitle>
-                <ToggleRow label="Place Order CTA" checked={true} onChange={() => {}} />
-                <ToggleRow label="Replay controls" checked={true} onChange={() => {}} />
-                <ToggleRow label="Utility icons" checked={true} onChange={() => {}} />
-                <p className="text-[11px] text-muted">
-                  Stub visibility — wire to chrome prefs later.
-                </p>
-              </div>
-            )}
-            {tab === 'templates' && (
-              <div className="space-y-2">
-                <SectionTitle>Templates</SectionTitle>
-                {CHART_STYLE_TEMPLATES.map((t) => {
-                  const active = matchTemplateId(draft) === t.id;
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      className={[
-                        'w-full flex items-center gap-2 min-h-11 px-2 rounded-md text-left text-sm border',
-                        active
-                          ? 'border-accent bg-accent/10'
-                          : 'border-border hover:bg-background/70',
-                      ].join(' ')}
-                      onClick={() => {
-                        applyChartStyleTemplate(t.id);
-                        setDraft(getAppearance());
-                      }}
-                    >
-                      <span className="flex-1 font-medium">{t.name}</span>
-                      {active ? (
-                        <span className="text-[10px] text-accent">Active</span>
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <footer className="shrink-0 flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="min-h-11"
-              onPress={() => {
-                resetAppearance();
-                setDraft(getAppearance());
-                setThemeLocal('dark');
-                setTheme('dark');
-              }}
-            >
-              Reset defaults
-            </Button>
-            <div className="flex gap-2">
-              <Button variant="secondary" size="sm" className="min-h-11" onPress={cancel}>
-                Cancel
-              </Button>
-              <Button variant="primary" size="sm" className="min-h-11" onPress={apply}>
-                OK
-              </Button>
+              )}
+              {tab === 'trading' && (
+                <div className="space-y-3">
+                  <SectionTitle>Trading</SectionTitle>
+                  <ToggleRow
+                    label="Show order brackets"
+                    checked={true}
+                    onChange={() => {}}
+                  />
+                  <ToggleRow
+                    label="Confirm order placement"
+                    checked={false}
+                    onChange={() => {}}
+                  />
+                  <p className="text-[11px] text-muted">
+                    Stub toggles — wire to trading prefs later.
+                  </p>
+                </div>
+              )}
+              {tab === 'buttons' && (
+                <div className="space-y-3">
+                  <SectionTitle>Buttons</SectionTitle>
+                  <ToggleRow
+                    label="Place Order CTA"
+                    checked={true}
+                    onChange={() => {}}
+                  />
+                  <ToggleRow
+                    label="Replay controls"
+                    checked={true}
+                    onChange={() => {}}
+                  />
+                  <ToggleRow
+                    label="Utility icons"
+                    checked={true}
+                    onChange={() => {}}
+                  />
+                  <p className="text-[11px] text-muted">
+                    Stub visibility — wire to chrome prefs later.
+                  </p>
+                </div>
+              )}
+              {tab === 'templates' && (
+                <div className="space-y-2">
+                  <SectionTitle>Templates</SectionTitle>
+                  <p className="text-[11px] text-muted -mt-1">
+                    Full look presets. Apply, then tweak in Candles / Canvas /
+                    Layout.
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {CHART_STYLE_TEMPLATES.map((t) => {
+                      const active = matchTemplateId(draft) === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          title={t.description}
+                          className={[
+                            'rounded-lg border px-2.5 py-2 text-left transition-colors min-h-11',
+                            active
+                              ? 'border-accent bg-accent/10'
+                              : 'border-[color:var(--line)] hover:border-accent/50 hover:bg-[color:var(--surface-sunken)]',
+                          ].join(' ')}
+                          onClick={() => {
+                            applyChartStyleTemplate(t.id);
+                            setThemeLocal(t.theme);
+                            setTheme(t.theme);
+                            setDraft(getAppearance());
+                          }}
+                        >
+                          <div className="flex h-5 overflow-hidden rounded-sm mb-1.5">
+                            {t.preview.map((c, i) => (
+                              <span
+                                key={i}
+                                className="flex-1"
+                                style={{ background: c }}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-[12px] font-medium text-foreground block truncate">
+                            {t.name}
+                          </span>
+                          <span className="text-[10px] text-muted block truncate">
+                            {t.description}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-          </footer>
+          </div>
         </div>
+
+        <footer
+          data-sett-foot=""
+          data-win-foot=""
+          className="shrink-0 flex flex-wrap items-center justify-between gap-2 border-t border-[color:var(--line)] px-4 py-2.5 bg-[color:var(--surface)]"
+        >
+          <Button
+            variant="ghost"
+            size="sm"
+            className="min-h-10"
+            onPress={() => {
+              resetAppearance();
+              setDraft(getAppearance());
+              setThemeLocal('dark');
+              setTheme('dark');
+            }}
+          >
+            Reset defaults
+          </Button>
+          <div className="flex gap-2" data-sett-foot-actions="">
+            <Button
+              variant="secondary"
+              size="sm"
+              className="min-h-10"
+              onPress={cancel}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              className="min-h-10"
+              onPress={apply}
+            >
+              OK
+            </Button>
+          </div>
+        </footer>
       </div>
     </div>
   );
@@ -292,7 +340,8 @@ function SymbolTab({
     <>
       <SectionTitle>Chart templates</SectionTitle>
       <p className="text-[11px] text-muted -mt-1 mb-1">
-        Full look: candles, grid, volume, chrome, buttons & selection. Tweak below after applying.
+        Full look: candles, grid, volume, chrome, buttons & selection. Tweak
+        below after applying.
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {CHART_STYLE_TEMPLATES.map((t) => {
@@ -305,14 +354,13 @@ function SymbolTab({
               onClick={() => {
                 applyChartStyleTemplate(t.id);
                 onThemeChange(t.theme);
-                // Keep modal draft in sync with store after full apply
                 applyLive({ ...getAppearance() });
               }}
               className={[
                 'rounded-lg border px-2 py-2 text-left transition-colors min-h-11',
                 active
                   ? 'border-accent bg-accent/10'
-                  : 'border-border hover:border-accent/50 hover:bg-background/60',
+                  : 'border-[color:var(--line)] hover:border-accent/50 hover:bg-[color:var(--surface-sunken)]',
               ].join(' ')}
             >
               <div className="flex h-5 overflow-hidden rounded-sm mb-1.5">
@@ -323,7 +371,9 @@ function SymbolTab({
               <span className="text-[11px] font-medium text-foreground block truncate">
                 {t.name}
               </span>
-              <span className="text-[10px] text-muted block truncate">{t.description}</span>
+              <span className="text-[10px] text-muted block truncate">
+                {t.description}
+              </span>
             </button>
           );
         })}
@@ -597,7 +647,7 @@ function ScalesTab({
           ))}
         </select>
       </Row>
-      <p className="text-xs text-muted-foreground px-1 -mt-1 mb-2">
+      <p className="text-xs text-muted px-1 -mt-1 mb-2">
         Axis, crosshair, and replay clock labels. Bar data stays UTC.
       </p>
       <ColorField
@@ -795,7 +845,8 @@ function LayoutTab({
         onClear={() => applyLive({ accentForeground: null })}
       />
       <p className="text-[11px] text-muted -mt-1 mb-1">
-        Buttons, timeframe chip, tool selection, focus rings. Clear to use theme default.
+        Buttons, timeframe chip, tool selection, focus rings. Clear to use theme
+        default.
       </p>
 
       <SectionTitle>Chrome colors</SectionTitle>
@@ -856,13 +907,17 @@ function CandleColorRow({
   hideToggle?: boolean;
 }) {
   return (
-    <div className="space-y-2 rounded-lg border border-border p-3">
+    <div className="space-y-2 rounded-lg border border-[color:var(--line)] p-3">
       {hideToggle ? (
         <p className="text-sm text-foreground">{label}</p>
       ) : (
         <ToggleRow label={label} checked={enabled} onChange={onEnabledChange} />
       )}
-      <div className={enabled ? 'space-y-2' : 'space-y-2 opacity-40 pointer-events-none'}>
+      <div
+        className={
+          enabled ? 'space-y-2' : 'space-y-2 opacity-40 pointer-events-none'
+        }
+      >
         <div>
           <p className="text-[11px] text-muted mb-1">Up</p>
           <ColorPicker value={up} onChange={onUpChange} />
@@ -920,7 +975,7 @@ function ColorPicker({
           type="color"
           value={toHex6(value)}
           onChange={(e) => onChange(e.target.value)}
-          className="h-9 w-11 cursor-pointer rounded border border-border bg-background p-0.5"
+          className="h-9 w-11 cursor-pointer rounded border border-[color:var(--line)] bg-background p-0.5"
           aria-label="Custom color"
         />
         <input

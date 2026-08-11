@@ -34,6 +34,7 @@ export function drawDrawings(
   } | null,
   layer: DrawingPaintLayer = 'all',
   formatPriceFn?: PriceFormatter,
+  cursorTime?: number | null,
 ): void {
   const ids =
     typeof selectedIds === 'string'
@@ -55,6 +56,7 @@ export function drawDrawings(
     axisLayout,
     layer,
     formatPriceFn,
+    cursorTime,
   );
 }
 
@@ -77,6 +79,7 @@ export function drawDrawingEditChrome(
     timeAxisHeight: number;
   } | null,
   formatPriceFn?: PriceFormatter,
+  cursorTime?: number | null,
 ): void {
   paintDrawingEditChrome(
     ctx,
@@ -91,5 +94,6 @@ export function drawDrawingEditChrome(
     paneTf,
     axisLayout,
     formatPriceFn,
+    cursorTime,
   );
 }

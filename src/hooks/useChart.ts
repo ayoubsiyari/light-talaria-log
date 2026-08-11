@@ -76,8 +76,10 @@ export interface UseChartOptions {
   selectedDrawingId?: string | null;
   selectedDrawingIds?: readonly string[] | null;
   drawingsHidden?: boolean;
-  /** Pane TF for per-interval drawing visibility. */
+  /** Pane TF for time lattice / LOD (effective displayed TF). */
   paneTimeframe?: Timeframe;
+  /** User-selected TF for drawing `visibleOnTfs` (not LOD). */
+  drawingVisibilityTf?: Timeframe;
   /** Drawing magnet (place + handle drag). */
   drawingMagnetMode?: MagnetMode;
   /** Shift held for H/V/45° constrain. */
@@ -190,6 +192,7 @@ export function useChart(
         selectedIds: ids,
         hidden: optionsRef.current.drawingsHidden ?? false,
         paneTimeframe: optionsRef.current.paneTimeframe ?? null,
+        drawingVisibilityTf: optionsRef.current.drawingVisibilityTf ?? null,
       });
     }
     if (optionsRef.current.drawingMagnetMode) {
@@ -614,6 +617,7 @@ export function useChart(
       selectedIds: ids,
       hidden: options.drawingsHidden ?? false,
       paneTimeframe: options.paneTimeframe ?? null,
+      drawingVisibilityTf: options.drawingVisibilityTf ?? null,
     });
   }, [
     options.drawings,
@@ -621,6 +625,7 @@ export function useChart(
     options.selectedDrawingIds,
     options.drawingsHidden,
     options.paneTimeframe,
+    options.drawingVisibilityTf,
   ]);
 
   useEffect(() => {

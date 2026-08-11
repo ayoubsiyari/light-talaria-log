@@ -32,6 +32,8 @@ export interface ChartPaneProps {
   initialRange?: VisibleRange | null;
   symbol: string;
   timeframe: Timeframe;
+  /** User-selected interval (floor) — drawing visibility; may differ from LOD TF. */
+  selectedTf?: Timeframe;
   /** True while TF / ticker data is warming for this pane. */
   dataLoading?: boolean;
   selected: boolean;
@@ -104,6 +106,7 @@ export function ChartPane({
   initialRange = null,
   symbol,
   timeframe,
+  selectedTf,
   dataLoading = false,
   selected,
   onSelect,
@@ -265,6 +268,7 @@ export function ChartPane({
         selectedDrawingIds={selectedDrawingIds}
         drawingsHidden={drawingsHidden}
         paneTimeframe={timeframe}
+        drawingVisibilityTf={selectedTf ?? timeframe}
         drawingMagnetMode={drawingMagnetMode}
         drawingShiftHeld={drawingShiftHeld}
         replayCursorTime={replayCursorTime}

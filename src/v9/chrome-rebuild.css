@@ -493,11 +493,15 @@
 }
 
 /* ═══════════ CHART SETTINGS (left nav + panes) ═══════════ */
+/* Outer shell is COLUMN (body + footer). Nav|pane live in [data-sett-v2-body]
+   as a ROW — never put nav/pane as direct children of [data-sett-v2] or the
+   column !important below creates a black void beside the nav. */
 [data-sett-v2="1"] {
-  min-width: 560px !important;
-  min-height: 440px !important;
-  max-width: min(920px, calc(100vw - 32px)) !important;
-  max-height: min(820px, calc(100vh - 32px)) !important;
+  width: min(920px, calc(100vw - 24px)) !important;
+  min-width: 0 !important;
+  height: min(720px, calc(100dvh - 24px)) !important;
+  max-width: min(920px, calc(100vw - 24px)) !important;
+  max-height: min(820px, calc(100dvh - 24px)) !important;
   border-radius: 8px !important;
   overflow: hidden !important;
   background: var(--surface) !important;
@@ -506,6 +510,23 @@
   flex-direction: column !important;
   /* Keep position from inline style (fixed). Do not set position here —
      !important would override the portal's fixed centering and hide the window. */
+}
+[data-sett-v2="1"] > [data-sett-v2-body] {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: stretch !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  min-width: 0 !important;
+  background: var(--surface);
+}
+[data-sett-v2="1"] [data-sett-v2-main] {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  background: var(--surface);
 }
 [data-sett-v2="1"] [data-sett-resize] {
   position: absolute;
@@ -589,47 +610,82 @@
   pointer-events: none;
   cursor: default;
 }
-[data-sett-v2="1"] [data-sett-v2-body] {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
 [data-sett-v2="1"] [data-sett-v2-nav] {
-  width: 140px;
-  flex-shrink: 0;
-  padding: 10px 8px;
+  width: 11rem;
+  flex: 0 0 11rem;
+  padding: 8px;
   border-right: 1px solid var(--line);
   background: var(--surface-sunken);
   display: flex;
   flex-direction: column;
   gap: 2px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 [data-sett-v2="1"] [data-sett-v2-nav] button {
   display: flex !important;
   align-items: center;
   gap: 8px;
   width: 100%;
-  height: 36px !important;
+  min-height: 44px !important;
+  height: auto !important;
   padding: 0 10px !important;
   border: none !important;
   border-radius: 6px !important;
   background: transparent !important;
   color: var(--text-muted) !important;
-  font-size: 12px !important;
+  font-size: 13px !important;
   font-weight: 600 !important;
   text-align: left;
-  cursor: default;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 [data-sett-v2="1"] [data-sett-v2-nav] button[data-active="1"] {
-  background: var(--surface) !important;
-  color: var(--text) !important;
-  border: 1px solid var(--line) !important;
+  background: var(--accent) !important;
+  color: var(--cta-fg, #fff) !important;
+  border: none !important;
 }
 [data-sett-v2="1"] [data-sett-v2-pane] {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
-  padding: 14px 16px 18px !important;
+  overscroll-behavior: contain;
+}
+/* Narrow viewports: stack nav above pane, horizontal tab strip */
+@media (max-width: 639px) {
+  [data-sett-v2="1"] {
+    width: calc(100vw - 16px) !important;
+    height: min(92dvh, 720px) !important;
+    max-height: calc(100dvh - 16px) !important;
+  }
+  [data-sett-v2="1"] > [data-sett-v2-body] {
+    flex-direction: column !important;
+  }
+  [data-sett-v2="1"] [data-sett-v2-nav] {
+    width: 100% !important;
+    flex: 0 0 auto !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch;
+    gap: 4px;
+    padding: 8px;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+  [data-sett-v2="1"] [data-sett-v2-nav] > p {
+    display: none;
+  }
+  [data-sett-v2="1"] [data-sett-v2-nav] button {
+    width: auto !important;
+    min-width: max-content;
+    padding: 0 12px !important;
+  }
 }
 [data-sett-v2="1"] [data-sett-v2-pane][data-canvas-fixed="1"] {
   display: flex;

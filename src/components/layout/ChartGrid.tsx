@@ -29,7 +29,10 @@ interface ChartGridProps {
   onVolumeOpacityChange: (v: number) => void;
   enabledIndicators: readonly EnabledIndicator[];
   onEnabledIndicatorsChange: (next: EnabledIndicator[]) => void;
-  drawings: readonly Drawing[];
+  /** Per-dataset drawing books (key = datasetId). */
+  drawingBooks: Readonly<Record<string, readonly Drawing[]>>;
+  /** Active pane dataset — selection chrome only on this book. */
+  activeDatasetId: string;
   placement?: DrawingPlacement | null;
   selectedDrawingId?: string | null;
   selectedDrawingIds?: readonly string[] | null;
@@ -52,7 +55,7 @@ interface ChartGridProps {
   ) => void;
   onCrosshairSample?: (point: CrosshairPoint | null) => void;
   onUserGesture?: (paneId: string) => void;
-  onDrawingsChange?: (drawings: readonly Drawing[]) => void;
+  onDrawingsChange?: (datasetId: string, drawings: readonly Drawing[]) => void;
   onDrawingSelect?: (drawingIds: readonly string[]) => void;
   onFreehandStroke?: (
     phase: 'start' | 'move' | 'end',
@@ -110,7 +113,8 @@ export function ChartGrid({
   onVolumeOpacityChange,
   enabledIndicators,
   onEnabledIndicatorsChange,
-  drawings,
+  drawingBooks,
+  activeDatasetId,
   placement = null,
   selectedDrawingId = null,
   selectedDrawingIds = null,
@@ -200,6 +204,7 @@ export function ChartGrid({
               initialRange={pane.range}
               symbol={pane.pair}
               timeframe={pane.timeframe}
+              selectedTf={pane.selectedTf}
               dataLoading={loadingPaneIds?.has(pane.id) ?? false}
               selected={pane.id === activePaneId}
               onSelect={() => onSelectPane(pane.id)}
@@ -211,10 +216,16 @@ export function ChartGrid({
               onVolumeOpacityChange={onVolumeOpacityChange}
               enabledIndicators={enabledIndicators}
               onEnabledIndicatorsChange={onEnabledIndicatorsChange}
-              drawings={drawings}
-              placement={placement}
-              selectedDrawingId={selectedDrawingId}
-              selectedDrawingIds={selectedDrawingIds}
+              drawings={drawingBooks[pane.datasetId] ?? []}
+              placement={
+                pane.datasetId === activeDatasetId ? placement : null
+              }
+              selectedDrawingId={
+                pane.datasetId === activeDatasetId ? selectedDrawingId : null
+              }
+              selectedDrawingIds={
+                pane.datasetId === activeDatasetId ? selectedDrawingIds : null
+              }
               drawingsHidden={drawingsHidden}
               drawingMagnetMode={drawingMagnetMode}
               drawingShiftHeld={drawingShiftHeld}
@@ -233,7 +244,11 @@ export function ChartGrid({
               onUserGesture={
                 onUserGesture ? () => onUserGesture(pane.id) : undefined
               }
-              onDrawingsChange={onDrawingsChange}
+              onDrawingsChange={
+                onDrawingsChange
+                  ? (next) => onDrawingsChange(pane.datasetId, next)
+                  : undefined
+              }
               onDrawingSelect={onDrawingSelect}
               onFreehandStroke={onFreehandStroke}
               onPlaceDrag={onPlaceDrag}

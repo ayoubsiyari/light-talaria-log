@@ -24,7 +24,7 @@ import {
   rectEdgeMidpoints,
 } from './rectHandles';
 import { asBool } from './toolSettings';
-import { isDrawingVisibleOnTf } from './visibility';
+import { isDrawingVisibleOnChart } from './visibility';
 
 /** Approximate text label hit box (no canvas measure on the hot path). */
 function nearTextLabel(
@@ -541,13 +541,15 @@ export function hitTestDrawings(
   plot: PlotRect,
   priceScale: PriceScale,
   paneTf?: Timeframe | null,
+  /** Replay tip — hide future-only drawings (lookahead). */
+  cursorTime?: number | null,
 ): HitResult | null {
   const HANDLE_PX = drawingHandleHitPx();
   // Reverse so last-drawn is on top
   for (let i = drawings.length - 1; i >= 0; i--) {
     const d = drawings[i]!;
     if (d.visible === false) continue;
-    if (!isDrawingVisibleOnTf(d, paneTf)) continue;
+    if (!isDrawingVisibleOnChart(d, paneTf, cursorTime)) continue;
     // Locked: no handle grab; body still hittable for selection (pan passthrough via beginDrag).
     const HIT_PX = drawingHitPx(d.style.width ?? 1);
     const pts: Array<{ x: number; y: number }> = [];

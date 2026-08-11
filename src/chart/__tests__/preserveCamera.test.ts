@@ -100,4 +100,19 @@ describe('preservedVisibleRange', () => {
     assert.ok(visible >= 6);
     assert.ok(visible / span >= 0.2, `candles crushed: ${visible}/${span}`);
   });
+
+  it('tip-anchor without from/to uses converted span (explicit TF pick)', () => {
+    // Dense 1m buffer after leaving a months-wide 4h camera.
+    const data = bars(2000, 1_704_067_200, 60);
+    const tip = data[data.length - 1]!.time;
+    const range = preservedVisibleRange(
+      data,
+      { anchorTime: tip }, // no fromTime/toTime
+      180,
+      0.9,
+    );
+    const span = range.toIndex - range.fromIndex;
+    assert.ok(Math.abs(span - 180) < 1e-6, `span ${span} should follow converted`);
+    assert.ok(visibleBarsInRange(data.length, range) >= 8);
+  });
 });

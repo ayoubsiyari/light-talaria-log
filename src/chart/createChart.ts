@@ -2242,7 +2242,9 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
             keepTime.toTime,
           );
           if (mapped.toIndex > mapped.fromIndex) {
-            setVisibleRangeInternal(mapped, false);
+            // Always clamp — unclamped May→Aug remap on a tip-only 1m/5m
+            // buffer paints hairlines + date jumps until the user pans.
+            setVisibleRangeInternal(clampNavRange(mapped, bars.length), false);
             if (tip >= 0) followTipIndex = tip;
           } else {
             centerOnReplayCursor(false);
@@ -2269,7 +2271,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
           keepTime.toTime,
         );
         if (mapped.toIndex > mapped.fromIndex) {
-          setVisibleRangeInternal(mapped, false);
+          setVisibleRangeInternal(clampNavRange(mapped, bars.length), false);
         }
       }
       invalidateScaleCache();

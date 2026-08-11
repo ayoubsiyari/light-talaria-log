@@ -2750,8 +2750,15 @@ export default function App() {
       const camera = captureLiveCamera(paneId);
       const fromTf = existing.timeframe;
       const convertedSpan = cameraSpanForTf(camera, fromTf, tf);
-      // Preserve = wall-clock place + converted bar zoom for the *target* TF.
-      cameraPreserveRef.current = { ...camera, span: convertedSpan };
+      // Explicit TF pick: tip-anchor with converted bar count — do NOT keep the
+      // old months-wide from/to. That remapped onto 1m/5m as a crushed pad
+      // (hairline candles / wild spikes) and immediately re-armed LOD → 4h
+      // while TopBar still said 1m.
+      cameraPreserveRef.current = {
+        anchorTime: camera.anchorTime,
+        span: convertedSpan,
+        tipRatio: camera.tipRatio,
+      };
       // Fill sizing always uses converted (clamped) span for the target TF.
       sessionRef.current.setCamera(camera.anchorTime, convertedSpan);
       setActivePaneId(paneId);

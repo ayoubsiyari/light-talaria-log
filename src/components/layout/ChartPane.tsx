@@ -221,8 +221,15 @@ export function ChartPane({
           {appearance.statusShowInterval && (
             <span
               className={`inline-flex items-center ${selected ? 'text-accent' : 'text-muted'}`}
+              title={
+                selectedTf && selectedTf !== timeframe
+                  ? `Selected ${selectedTf}; zoom LOD showing ${timeframe}`
+                  : undefined
+              }
             >
-              {timeframe}
+              {selectedTf && selectedTf !== timeframe
+                ? `${selectedTf}→${timeframe}`
+                : timeframe}
               {!appearance.statusShowSymbol && dataLoading && <LoadingDots />}
             </span>
           )}

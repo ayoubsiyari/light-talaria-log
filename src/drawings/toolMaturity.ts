@@ -8,7 +8,7 @@ import type { DrawingToolId } from './toolRegistry';
  */
 export type ToolMaturity = 'full' | 'approx' | 'beta';
 
-/** Tier 1 + Tier 2 (D3–D5). */
+/** Tier 1 + Tier 2 (D3–D5) + common shapes. */
 const FULL_TOOLS: readonly DrawingToolId[] = [
   'hline',
   'horizontalRay',
@@ -17,6 +17,9 @@ const FULL_TOOLS: readonly DrawingToolId[] = [
   'vline',
   'extendedLine',
   'rectangle',
+  'circle',
+  'ellipse',
+  'triangle',
   'longPosition',
   'shortPosition',
   'datePriceRange',
@@ -40,10 +43,7 @@ const APPROX_TOOLS: readonly DrawingToolId[] = [
   'fibExtension',
   'fibChannel',
   'path',
-  'circle',
-  'ellipse',
   'polyline',
-  'triangle',
   'rotatedRectangle',
   'note',
   'priceNote',

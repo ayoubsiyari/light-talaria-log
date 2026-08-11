@@ -59,9 +59,16 @@ const TOOLBAR_GROUPS: {
   },
   {
     id: 'shapes',
-    label: 'Brushes, Arrows & Shapes',
+    label: 'Shapes',
+    chromeIcon: 'rect',
+    categories: ['shapes'],
+    section: 'draw',
+  },
+  {
+    id: 'brushes',
+    label: 'Brushes & Arrows',
     chromeIcon: 'draw',
-    categories: ['brushes', 'arrows', 'shapes'],
+    categories: ['brushes', 'arrows'],
     section: 'draw',
   },
   {

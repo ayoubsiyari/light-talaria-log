@@ -350,6 +350,23 @@ function hitPaintedBody(
     }
   }
 
+  if (type === 'triangle' && pts.length >= 3) {
+    if (nearPolySegments(x, y, pts.slice(0, 3), hitPx, true)) return true;
+    // Barycentric interior hit
+    const [a, b, c] = pts;
+    const area = (p: { x: number; y: number }, q: { x: number; y: number }, r: { x: number; y: number }) =>
+      (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+    const a0 = area(a!, b!, c!);
+    if (Math.abs(a0) < 1e-6) return false;
+    const a1 = area({ x, y }, b!, c!);
+    const a2 = area(a!, { x, y }, c!);
+    const a3 = area(a!, b!, { x, y });
+    const same =
+      (a0 >= 0 && a1 >= 0 && a2 >= 0 && a3 >= 0) ||
+      (a0 <= 0 && a1 <= 0 && a2 <= 0 && a3 <= 0);
+    return same;
+  }
+
   if (type === 'brush' || type === 'highlighter' || type === 'path' || type === 'polyline') {
     return nearPolySegments(x, y, pts, hitPx, type === 'polyline');
   }

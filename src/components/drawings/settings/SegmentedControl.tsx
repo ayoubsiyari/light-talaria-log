@@ -8,6 +8,7 @@ export interface SegmentOption<T extends string | number> {
   title?: string;
 }
 
+/** Matches floating drawing toolbar button active/hover language. */
 export function SegmentedControl<T extends string | number>({
   options,
   value,
@@ -21,7 +22,7 @@ export function SegmentedControl<T extends string | number>({
 }) {
   return (
     <div
-      className="inline-flex items-center gap-0.5 rounded-md border border-border bg-background/50 p-0.5"
+      className="inline-flex w-full items-center gap-0.5 rounded-md border border-border bg-background/40 p-0.5"
       role="group"
       aria-label={ariaLabel}
     >
@@ -34,9 +35,9 @@ export function SegmentedControl<T extends string | number>({
             title={opt.title ?? opt.label}
             onClick={() => onChange(opt.id)}
             className={[
-              'min-h-9 min-w-9 px-2 rounded-[4px] flex items-center justify-center text-xs transition-colors',
+              'flex-1 min-h-9 min-w-0 px-1.5 rounded-[4px] flex items-center justify-center text-xs transition-colors',
               active
-                ? 'bg-foreground text-background'
+                ? 'bg-accent/20 text-accent'
                 : 'text-muted hover:text-foreground hover:bg-background/80',
             ].join(' ')}
           >

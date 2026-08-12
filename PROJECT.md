@@ -952,6 +952,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-12 | TF 5m→1m keeps same candle count (finer no longer wall-clock zooms out); 1m→5m density unchanged | Switch 5m→1m — same ~N candles, not hundreds |
 | 2026-08-12 | Color/style flyout: opaque `--surface-raised` plate (was near-black `--surface`, looked transparent on chart) | Open drawing style — panel reads solid vs chart |
 | 2026-08-12 | Style trigger: one icon-sized button (color + line chip) matching toolbar peers | Floating bar — style control same size as settings/lock |
+| 2026-08-12 | Style flyout chrome = drawing toolbar (`bg-surface` / border / accent segments) | Open style — same plate + blue active as settings bar |
 
 ---
 

@@ -1665,9 +1665,9 @@
 [data-tv-cp="1"] {
   border-radius: 8px !important;
   overflow: hidden !important;
-  /* Solid raised plate — never chart-black / never translucent */
-  background: var(--surface-raised, var(--surface-tertiary, #141416)) !important;
-  border: 1px solid var(--line-strong, var(--line)) !important;
+  /* Same plate as floating drawing toolbar / more menu */
+  background: var(--surface) !important;
+  border: 1px solid var(--border, var(--line)) !important;
   box-shadow: none !important;
   padding: 10px !important;
   box-sizing: border-box !important;
@@ -1680,10 +1680,12 @@
 [data-v9-chrome][data-style-flyout] > [data-tv-cp="1"] {
   border: none !important;
   border-radius: 0 !important;
-  background: transparent !important; /* parent already solid opaque */
+  background: transparent !important;
 }
+/* Match DrawingFloatingToolbar shell (bg-surface + border-border + shadow) */
 [data-style-flyout] {
-  background: var(--surface-raised, var(--surface-tertiary, #141416)) !important;
+  background: var(--surface) !important;
+  border-color: var(--border, var(--line)) !important;
   opacity: 1 !important;
 }
 [data-tv-cp="1"] [data-tv-cp-grid] {
@@ -1703,7 +1705,7 @@
   box-sizing: border-box;
 }
 [data-tv-cp="1"] [data-tv-cp-cell][data-active="1"] {
-  outline: 2px solid var(--text);
+  outline: 2px solid var(--accent);
   outline-offset: 0;
   border-color: var(--surface) !important;
   z-index: 1;

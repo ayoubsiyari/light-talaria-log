@@ -90,13 +90,12 @@ export function SettColorSwatch({
           <div
             ref={panelRef}
             data-style-flyout="1"
-            className="fixed z-[220] rounded-lg overflow-hidden border border-[color:var(--line-strong,var(--line))]"
+            data-drawing-toolbar="1"
+            className="fixed z-[220] rounded-lg overflow-hidden border border-border bg-surface text-foreground shadow-xl"
             style={{
               top: pos.top,
               left: pos.left,
               width: 236,
-              background:
-                'var(--surface-raised, var(--surface-tertiary, #141416))',
             }}
             onPointerDown={(e) => e.stopPropagation()}
           >

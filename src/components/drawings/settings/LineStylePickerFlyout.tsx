@@ -95,12 +95,9 @@ export function LineStylePickerFlyout({
       ref={panelRef}
       data-v9-chrome="1"
       data-style-flyout="1"
-      className="fixed z-[200] w-[248px] rounded-lg border border-[color:var(--line-strong,var(--line))] text-foreground overflow-hidden"
-      style={{
-        top: pos.top,
-        left: pos.left,
-        background: 'var(--surface-raised, var(--surface-tertiary, #141416))',
-      }}
+      data-drawing-toolbar="1"
+      className="fixed z-[200] w-[248px] rounded-lg border border-border bg-surface text-foreground shadow-xl overflow-hidden"
+      style={{ top: pos.top, left: pos.left }}
       onPointerDown={(e) => e.stopPropagation()}
     >
       <ObsidianColorPanel
@@ -112,9 +109,9 @@ export function LineStylePickerFlyout({
       />
 
       {showLineControls && (
-        <div className="px-2.5 pb-3 pt-1 space-y-3 border-t border-[color:var(--line)]">
-          <div className="space-y-1.5">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+        <div className="px-2.5 pb-2.5 pt-1 space-y-2.5 border-t border-border">
+          <div className="space-y-1">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">
               Thickness
             </div>
             <SegmentedControl
@@ -145,8 +142,8 @@ export function LineStylePickerFlyout({
           </div>
 
           {!hideDash && (
-            <div className="space-y-1.5">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+            <div className="space-y-1">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">
                 Line style
               </div>
               <SegmentedControl

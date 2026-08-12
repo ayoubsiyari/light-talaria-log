@@ -10,11 +10,14 @@ export function isCoarsePointer(): boolean {
 
 /**
  * Line / body hit radius for drawings (media px).
- * Fat invisible stroke (~Talaria max(16, stroke*5)) so lines are easy to grab.
+ * Touch stays fat for fat-finger grabs; fine pointer (mouse/trackpad) is
+ * tighter so nearby shapes do not magnetically steal chart pan.
  */
 export function drawingHitPx(strokeWidth = 1): number {
-  const fat = Math.max(16, strokeWidth * 5);
-  return isCoarsePointer() ? Math.max(24, fat) : fat;
+  if (isCoarsePointer()) {
+    return Math.max(24, strokeWidth * 5);
+  }
+  return Math.max(8, strokeWidth * 3);
 }
 
 /** Handle hit radius for drawings (media px). Coarse ≈44px diameter. */

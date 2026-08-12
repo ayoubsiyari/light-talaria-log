@@ -945,6 +945,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-11 | Cursor rule: chart fix blast-radius + do-not-break + regression checks (`.cursor/rules/chart-fix-blast-radius.mdc`) | Use on next `src/chart/` fix session |
 | 2026-08-11 | Pipeline harden I0–I4: quarantine full-series loaders, one ingest path, seam tests, `__talariaPipeline` metrics | I5 streaming/CSV-GC only after explicit go |
 | 2026-08-12 | Drawings TV: filled shapes hit stroke only; active tool places on top (no select/deselect under fill) | Place rect over existing fill; drag only from border |
+| 2026-08-12 | Fix sticky pan near shapes: unselected body no longer claims drag; no select-clear on pan press; tighter fine hit | Trackpad pan through drawings; select then drag to move |
 
 ---
 

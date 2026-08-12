@@ -55,7 +55,6 @@ import {
 } from '@/orders/levelDrag';
 import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
 import { markChartPaint } from '@/perf/perfMonitor';
-import { isCoarsePointer } from '@/utils/touchTarget';
 import { hitTestOrderLevel, hitTestOrders } from './overlays/drawOrders';
 import { hitTestBacktestEvent } from './overlays/drawBacktest';
 import { MAX_BARS_IN_MEMORY, VISIBLE_BARS_TARGET } from '@/utils/constants';
@@ -1349,20 +1348,19 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       }
       const hit = hitDrawingAt(x, y);
       if (!hit) {
-        if (!opts?.additive) {
-          selectedDrawingIds = [];
-          for (const cb of drawingSelectListeners) cb([]);
-          markOverlayDirty(); // selection chrome only
-        }
+        // Do not clear selection here — that fired React + tore down chrome on
+        // every pan press (trackpad feels sticky). Empty click deselects via
+        // onPlotClick → App handleChartPoint.
         return false;
       }
       let d = drawings.find((dr) => dr.id === hit.drawingId);
       if (!d) return false;
 
-      // Touch: pan wins over unselected body hits — tap still selects via plot click.
-      // Selected bodies + any handle still claim immediately.
+      // Pan wins over unselected body hits (mouse/trackpad + touch).
+      // Fat stroke hit used to claim the gesture so the chart felt stuck near
+      // shapes; tap still selects via plot click. Selected bodies + handles
+      // still claim immediately for move/resize.
       if (
-        isCoarsePointer() &&
         hit.handleIndex == null &&
         !selectedDrawingIds.includes(d.id) &&
         !opts?.additive
@@ -2086,18 +2084,39 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
 
     setReplayCursorTime(time) {
       if (replayCursorTime === time) return;
+      const prevMaxBar =
+        replayCursorTime != null && bars.length > 0
+          ? indexAtOrBeforeBars(bars, replayCursorTime)
+          : -1;
       const prevTip =
         replayFollow && replayCursorTime != null && bars.length > 0
-          ? indexAtOrBeforeBars(bars, replayCursorTime)
+          ? prevMaxBar
           : -1;
       replayCursorTime = time;
       // Only shift the camera when the tip bar index changes — same-bucket
       // patches must not re-snap the range (grid labels jumped on Play/Pause).
+      let cameraMoved = false;
       if (replayFollow && time != null) {
         const tip = indexAtOrBeforeBars(bars, time);
-        if (tip !== prevTip) centerOnReplayCursor(false);
+        if (tip !== prevTip) {
+          const beforeFrom = range.fromIndex;
+          const beforeTo = range.toIndex;
+          centerOnReplayCursor(false);
+          cameraMoved =
+            range.fromIndex !== beforeFrom || range.toIndex !== beforeTo;
+        }
       }
-      markDirty();
+      const nextMaxBar =
+        time != null && bars.length > 0
+          ? indexAtOrBeforeBars(bars, time)
+          : -1;
+      // Series paint mask only changes when tip bar index / camera moves.
+      // Same-bar cursor scrub → drawings + orders + overlay only (no candle rebuild).
+      if (cameraMoved || nextMaxBar !== prevMaxBar) {
+        markSceneDirty();
+      } else {
+        markDrawingsDirty();
+      }
     },
 
     patchFormingBar(forming) {

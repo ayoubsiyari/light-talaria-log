@@ -336,16 +336,16 @@ export function BottomBar({
       >
         <div
           data-rp-zone="date"
-          className="flex flex-col items-start justify-center h-full flex-shrink-0 overflow-hidden box-border"
+          className="flex flex-col items-start justify-center h-full flex-shrink-0 box-border"
         >
           <span data-rp-date="">{dateLine}</span>
-          <div className="relative flex items-baseline gap-1.5 whitespace-nowrap max-w-full overflow-hidden">
+          <div className="relative flex items-baseline gap-1.5 whitespace-nowrap max-w-full">
             <span data-rp-clock="">{clock}</span>
             <button
               ref={tzBtnRef}
               type="button"
               data-rp-tz=""
-              className="min-h-11 min-w-11 px-1 text-left underline-offset-2 hover:underline"
+              className="h-auto min-h-0 min-w-0 px-0.5 py-0 text-left underline-offset-2 hover:underline"
               aria-label="Chart timezone"
               aria-haspopup="listbox"
               aria-expanded={tzMenuOpen}

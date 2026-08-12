@@ -18,6 +18,9 @@ interface TemplateMenuProps {
   onApply: (t: DrawingTemplate) => void;
   /** Obsidian header icon trigger (default: labeled footer button). */
   variant?: 'button' | 'icon';
+  /** Extra classes for the icon trigger (floating toolbar sizing). */
+  triggerClassName?: string;
+  disabled?: boolean;
 }
 
 /**
@@ -30,6 +33,8 @@ export function TemplateMenu({
   meta,
   onApply,
   variant = 'button',
+  triggerClassName,
+  disabled = false,
 }: TemplateMenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -106,8 +111,15 @@ export function TemplateMenu({
           type="button"
           data-tpl-trigger=""
           data-brand-icon="1"
-          className="inline-flex items-center justify-center text-[color:var(--text-muted)] hover:text-[color:var(--text)]"
-          onClick={() => setOpen((v) => !v)}
+          disabled={disabled}
+          className={
+            triggerClassName ??
+            'inline-flex items-center justify-center text-[color:var(--text-muted)] hover:text-[color:var(--text)]'
+          }
+          onClick={() => {
+            if (disabled) return;
+            setOpen((v) => !v);
+          }}
           aria-expanded={open}
           aria-haspopup="menu"
           title="Template"

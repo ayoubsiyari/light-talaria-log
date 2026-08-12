@@ -2674,35 +2674,58 @@ body.light-mode .nav-badge-tooltip {
   width: 168px !important;
   max-width: 30% !important;
   min-width: 118px !important;
-  padding: 0 12px 0 4px !important;
-  gap: 3px !important;
+  padding: 4px 12px 4px 4px !important;
+  gap: 2px !important;
   border-right: 1px solid var(--line) !important;
+  overflow: hidden !important;
+  justify-content: center !important;
 }
 [data-replay-v2="1"] [data-rp-date] {
+  display: block !important;
   font-family: var(--font-ui) !important;
   font-size: 10px !important;
   font-weight: 650 !important;
   letter-spacing: 0.04em !important;
   text-transform: uppercase !important;
   color: var(--text-faint) !important;
-  line-height: 1 !important;
+  line-height: 1.2 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  /* Avoid ascender clip inside the 44px transport row */
+  padding-top: 1px !important;
 }
 [data-replay-v2="1"] [data-rp-clock] {
+  display: inline-block !important;
   font-family: var(--font-ui) !important;
-  font-size: 14px !important;
+  font-size: 13px !important;
   font-weight: 650 !important;
   letter-spacing: -0.01em !important;
   font-variant-numeric: tabular-nums !important;
   color: var(--text) !important;
-  line-height: 1 !important;
+  line-height: 1.2 !important;
 }
 [data-replay-v2="1"] [data-rp-tz] {
+  display: inline-flex !important;
+  align-items: center !important;
+  height: auto !important;
+  min-height: 0 !important;
+  min-width: 0 !important;
+  padding: 0 2px !important;
   font-family: var(--font-ui) !important;
   font-size: 10px !important;
   font-weight: 600 !important;
   letter-spacing: 0.04em !important;
   text-transform: uppercase !important;
   color: var(--text-faint) !important;
+  line-height: 1.2 !important;
+  /* Expand hit target without blowing the 44px row */
+  position: relative !important;
+}
+[data-replay-v2="1"] [data-rp-tz]::after {
+  content: "";
+  position: absolute;
+  inset: -12px -8px;
 }
 [data-replay-v2="1"] [data-rp-zone="controls"] {
   justify-content: center !important;

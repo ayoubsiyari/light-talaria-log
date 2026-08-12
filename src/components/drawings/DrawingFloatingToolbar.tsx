@@ -9,6 +9,8 @@ import {
   LineStylePickerFlyout,
   styleToPickerValue,
 } from '@/components/drawings/settings/LineStylePickerFlyout';
+import { TemplateMenu } from '@/components/drawings/settings/TemplateMenu';
+import { ChromeIcon } from '@/v9/chromeIcons.jsx';
 
 interface DrawingFloatingToolbarProps {
   drawing: Drawing;
@@ -24,11 +26,15 @@ interface DrawingFloatingToolbarProps {
   onBringToFront?: () => void;
   onSendToBack?: () => void;
   onEditText?: () => void;
+  /** Optional alert hook — TV parity; omit to show disabled stub. */
+  onAlert?: () => void;
 }
 
 /**
- * TradingView-style floating bar above a selected drawing:
- * style picker · settings · lock · delete · more
+ * TradingView-style floating bar above a selected drawing.
+ *
+ * Common chrome (every tool): template · settings · alert · lock · delete · more
+ * Tool-specific middle: stroke / fill / width / dash (style flyout)
  */
 export function DrawingFloatingToolbar({
   drawing,
@@ -43,6 +49,7 @@ export function DrawingFloatingToolbar({
   onBringToFront,
   onSendToBack,
   onEditText,
+  onAlert,
 }: DrawingFloatingToolbarProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -52,6 +59,7 @@ export function DrawingFloatingToolbar({
   const toolSettings = getToolSettings(drawing.type);
   const style = drawing.style;
   const canEditText = !!tool.needsText || drawing.type === 'callout';
+  const showFill = toolSettings.styleSections.includes('fill');
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -90,30 +98,54 @@ export function DrawingFloatingToolbar({
     <div
       className="pointer-events-auto relative flex items-center gap-0.5 rounded-lg border border-border bg-surface text-foreground shadow-xl px-1.5 py-1 max-w-full overflow-x-auto overscroll-x-contain"
       onPointerDown={(e) => e.stopPropagation()}
+      data-drawing-toolbar="1"
     >
-      <span className="px-1 text-muted/50 select-none text-xs tracking-widest" title={tool.label}>
+      {/* Drag grip */}
+      <span
+        className="px-1 text-muted/50 select-none text-xs tracking-widest"
+        title={tool.label}
+      >
         ⠿
       </span>
 
-      <div className="w-px h-5 bg-border mx-0.5" />
+      <div className="w-px h-5 bg-border mx-0.5 shrink-0" />
 
+      {/* ── Common: template (all tools) ── */}
+      <TemplateMenu
+        variant="icon"
+        type={drawing.type}
+        style={style}
+        meta={drawing.meta ?? {}}
+        disabled={disabled}
+        triggerClassName={btn(false)}
+        onApply={(t) => onChange({ style: t.style, meta: t.meta })}
+      />
+
+      <div className="w-px h-5 bg-border mx-0.5 shrink-0" />
+
+      {/* ── Tool-specific style middle ── */}
       {!suppressStyleFlyout && (
         <>
           <StyleTriggerButton
             ref={styleBtnRef}
             style={style}
+            showFill={showFill && style.fill}
+            fillColor={style.fillColor || style.color}
+            fillOpacity={style.fillOpacity}
             disabled={disabled}
             active={pickerOpen}
             onClick={() => setPickerOpen((v) => !v)}
           />
-          <div className="w-px h-5 bg-border mx-0.5" />
+          <div className="w-px h-5 bg-border mx-0.5 shrink-0" />
         </>
       )}
 
+      {/* ── Common: settings · alert · lock · delete · more ── */}
       <button
         type="button"
         title="Settings"
         className={btn(false)}
+        disabled={disabled}
         onClick={onOpenSettings}
       >
         <IconSettings />
@@ -121,8 +153,19 @@ export function DrawingFloatingToolbar({
 
       <button
         type="button"
+        title={onAlert ? 'Add alert' : 'Alert (coming soon)'}
+        className={btn(false)}
+        disabled={disabled || !onAlert}
+        onClick={() => onAlert?.()}
+      >
+        <ChromeIcon n="bell" s={16} />
+      </button>
+
+      <button
+        type="button"
         title={drawing.locked ? 'Unlock' : 'Lock'}
         className={btn(!!drawing.locked)}
+        disabled={disabled}
         onClick={() => onChange({ locked: !drawing.locked })}
       >
         <IconLock />
@@ -141,11 +184,12 @@ export function DrawingFloatingToolbar({
         <IconTrash />
       </button>
 
-      <div className="relative" ref={moreRef}>
+      <div className="relative shrink-0" ref={moreRef}>
         <button
           type="button"
           title="More"
           className={btn(moreOpen)}
+          disabled={disabled}
           onClick={() => setMoreOpen((v) => !v)}
         >
           ···

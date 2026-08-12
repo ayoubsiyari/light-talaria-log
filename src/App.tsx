@@ -3054,13 +3054,8 @@ export default function App() {
 
       if (!isDrawingTool(activeTool)) return;
 
-      // Clicking an existing drawing while a tool is active → select instead
-      if (hit && draftPoints.length === 0) {
-        setSelectedDrawingIds([hit.drawingId]);
-        setSettingsOpen(false);
-        setActiveTool('cursor');
-        return;
-      }
+      // Active tool owns the plot — place on top; do not steal into select/deselect.
+      // (Cursor tool still selects via the branch above; fills are stroke-hit only.)
 
       let snapped = magnetSnap(
         { time: point.time, price: point.price },

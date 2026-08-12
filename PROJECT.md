@@ -944,6 +944,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-11 | Stabilize feel: Normal crosshair snap-X again; clear Play Y-sticky on zoom; keep bar density on HTF; vertical-pan deadband | 1m→1h candles same width; zoom Y re-fits; hair candle-steps |
 | 2026-08-11 | Cursor rule: chart fix blast-radius + do-not-break + regression checks (`.cursor/rules/chart-fix-blast-radius.mdc`) | Use on next `src/chart/` fix session |
 | 2026-08-11 | Pipeline harden I0–I4: quarantine full-series loaders, one ingest path, seam tests, `__talariaPipeline` metrics | I5 streaming/CSV-GC only after explicit go |
+| 2026-08-12 | Drawings TV: filled shapes hit stroke only; active tool places on top (no select/deselect under fill) | Place rect over existing fill; drag only from border |
 
 ---
 

@@ -134,6 +134,33 @@ function nearBoxEdge(
   );
 }
 
+/** Distance to ellipse perimeter (axis-aligned); TV: stroke-only, fill never claims. */
+function nearEllipseEdge(
+  x: number,
+  y: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  hitPx: number,
+): boolean {
+  const cx = (x0 + x1) / 2;
+  const cy = (y0 + y1) / 2;
+  const rx = Math.abs(x1 - x0) / 2;
+  const ry = Math.abs(y1 - y0) / 2;
+  if (rx < 1e-6 || ry < 1e-6) {
+    return Math.hypot(x - cx, y - cy) <= hitPx;
+  }
+  // Normalize to unit circle; distance from radius-1 is a cheap stroke approx.
+  const nx = (x - cx) / rx;
+  const ny = (y - cy) / ry;
+  const r = Math.hypot(nx, ny);
+  if (r < 1e-9) return false;
+  const distNorm = Math.abs(r - 1);
+  const scale = Math.hypot(nx * rx, ny * ry) / r; // px per unit along ray
+  return distNorm * scale <= hitPx;
+}
+
 function nearPolySegments(
   x: number,
   y: number,
@@ -330,41 +357,24 @@ function hitPaintedBody(
       type === 'ellipse' ||
       type === 'circle')
   ) {
-    if (nearBoxEdge(x, y, pts[0]!.x, pts[0]!.y, pts[1]!.x, pts[1]!.y, hitPx)) {
-      return true;
+    // Stroke/border only — fill must not steal select/drag (TradingView parity).
+    if (type === 'ellipse' || type === 'circle') {
+      return nearEllipseEdge(
+        x,
+        y,
+        pts[0]!.x,
+        pts[0]!.y,
+        pts[1]!.x,
+        pts[1]!.y,
+        hitPx,
+      );
     }
-    // Fill hit for solid shapes (not measure boxes — stroke/edge only).
-    if (
-      type === 'rectangle' ||
-      type === 'ellipse' ||
-      type === 'circle' ||
-      type === 'gannBox' ||
-      type === 'gannSquare' ||
-      type === 'gannSquareFixed'
-    ) {
-      const left = Math.min(pts[0]!.x, pts[1]!.x);
-      const right = Math.max(pts[0]!.x, pts[1]!.x);
-      const top = Math.min(pts[0]!.y, pts[1]!.y);
-      const bottom = Math.max(pts[0]!.y, pts[1]!.y);
-      if (x >= left && x <= right && y >= top && y <= bottom) return true;
-    }
+    return nearBoxEdge(x, y, pts[0]!.x, pts[0]!.y, pts[1]!.x, pts[1]!.y, hitPx);
   }
 
   if (type === 'triangle' && pts.length >= 3) {
-    if (nearPolySegments(x, y, pts.slice(0, 3), hitPx, true)) return true;
-    // Barycentric interior hit
-    const [a, b, c] = pts;
-    const area = (p: { x: number; y: number }, q: { x: number; y: number }, r: { x: number; y: number }) =>
-      (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
-    const a0 = area(a!, b!, c!);
-    if (Math.abs(a0) < 1e-6) return false;
-    const a1 = area({ x, y }, b!, c!);
-    const a2 = area(a!, { x, y }, c!);
-    const a3 = area(a!, b!, { x, y });
-    const same =
-      (a0 >= 0 && a1 >= 0 && a2 >= 0 && a3 >= 0) ||
-      (a0 <= 0 && a1 <= 0 && a2 <= 0 && a3 <= 0);
-    return same;
+    // Stroke only — interior fill does not claim clicks.
+    return nearPolySegments(x, y, pts.slice(0, 3), hitPx, true);
   }
 
   if (type === 'brush' || type === 'highlighter' || type === 'path' || type === 'polyline') {

@@ -1208,21 +1208,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       orderLevelDragging ? 'ns-resize' : (drawingDrag?.cursor ?? null),
     beginFreehandStroke: (x, y) => {
       if (!freehandStrokeEnabled || !placement) return false;
-      // Prefer select over stroke when pressing an existing drawing (plot click).
-      if (!drawingsHidden && drawings.length > 0) {
-        const existing = hitTestDrawings(
-          x,
-          y,
-          drawings,
-          bars,
-          range,
-          layout.plot,
-          resolvePriceScale(),
-          drawingVisibilityTf ?? paneTimeframe,
-          replayCursorTime,
-        );
-        if (existing) return false;
-      }
+      // Tool owns the plot — draw through existing shapes (TV: place on top).
       const pt = resolveFreehandPoint(x, y);
       if (!pt) return false;
       freehandActive = true;
@@ -1266,20 +1252,7 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       if (def.points.kind !== 'fixed' || def.points.count !== 2) return false;
       // Click-click already has point 1 — do not arm drag (2nd click via onPlotClick).
       if (placement.points.length > 0) return false;
-      if (!drawingsHidden && drawings.length > 0) {
-        const existing = hitTestDrawings(
-          x,
-          y,
-          drawings,
-          bars,
-          range,
-          layout.plot,
-          resolvePriceScale(),
-          drawingVisibilityTf ?? paneTimeframe,
-          replayCursorTime,
-        );
-        if (existing) return false;
-      }
+      // Tool owns the plot — place through existing shapes (select only with cursor).
       let pt = mediaToLogical(x, y);
       if (!pt) return false;
       pt = magnetSnap(pt, bars, drawingMagnetMode);

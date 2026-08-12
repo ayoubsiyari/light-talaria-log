@@ -4651,6 +4651,7 @@ export default function App() {
         onStopBacktest={handleStopStrategy}
       />
 
+      {/* Rail full-height beside chart + bottom chrome (not under the replay bar). */}
       <div className="flex-1 min-h-0 flex">
         <LeftToolbar
           activeTool={activeTool}
@@ -4668,7 +4669,8 @@ export default function App() {
           onDrawingsHiddenChange={setDrawingsHidden}
         />
 
-        <div className="flex-1 min-w-0 min-h-0 flex flex-row relative bg-background">
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col relative bg-background">
+        <div className="flex-1 min-w-0 min-h-0 flex flex-row relative min-h-0">
           <div className="flex-1 min-w-0 min-h-0 flex flex-col relative">
           {loadStatus === 'loading' && (
             <div className="absolute inset-0 z-30 bg-background">
@@ -5044,7 +5046,6 @@ export default function App() {
             />
           )}
         </div>
-      </div>
 
       <BottomBar
         activeTab={activeTab}
@@ -5302,6 +5303,8 @@ export default function App() {
           />
         ) : null}
       </BottomBar>
+        </div>
+      </div>
     </div>
     </AuthGate>
   );

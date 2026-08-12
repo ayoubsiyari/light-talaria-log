@@ -307,7 +307,7 @@ export function LeftToolbar({
       ref={rootRef}
       data-v9-chrome="1"
       data-v9-rail="1"
-      className="chrome-toolbar v8b-rail relative shrink-0 z-40 overflow-visible [@media(hover:none)]:w-12"
+      className="chrome-toolbar v8b-rail relative shrink-0 z-40 self-stretch overflow-visible bg-[color:var(--chrome-toolbar,var(--surface))] [@media(hover:none)]:w-12"
     >
       <div className="h-full w-full flex flex-col items-stretch py-1 px-0.5 overflow-y-auto overscroll-contain">
         {/* 1 — Cursor + drawing tools */}

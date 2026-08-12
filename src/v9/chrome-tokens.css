@@ -474,7 +474,8 @@
 [data-v9-rail] {
   width: var(--rail-w) !important;
   border-right: 1px solid var(--line) !important;
-  background: var(--surface) !important;
+  background: var(--chrome-toolbar, var(--surface)) !important;
+  isolation: isolate;
 }
 
 [data-v9-order-rail] {

@@ -15,7 +15,10 @@
 [data-v9-app] .v8b-rail {
   width: var(--rail-w, 48px);
   border-right: 1px solid var(--line);
-  background: var(--surface);
+  background: var(--chrome-toolbar, var(--surface));
+  /* Opaque plate — chart must never paint through the tool rail */
+  isolation: isolate;
+  z-index: 40;
 }
 
 [data-v9-app] .v8b-rail-divider {

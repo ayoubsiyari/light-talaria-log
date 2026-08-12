@@ -81,7 +81,19 @@ const DOUBLE_TAP_MS = 300;
 const DOUBLE_TAP_PX = 12;
 const LONG_PRESS_MS = 500;
 const LONG_PRESS_MOVE_PX = 10;
-const PAN_ARM_PX = 3;
+/** Cumulative drag from press before pan claims the gesture (click vs pan). */
+export const PAN_ARM_PX = 3;
+
+/** True when the pointer has moved far enough from press to arm pan. */
+export function shouldArmPan(
+  originX: number,
+  originY: number,
+  x: number,
+  y: number,
+  thresholdPx: number = PAN_ARM_PX,
+): boolean {
+  return Math.hypot(x - originX, y - originY) >= thresholdPx;
+}
 
 type DragMode =
   | 'pan'
@@ -117,6 +129,9 @@ export function attachInteraction(
   let lastMediaY = 0;
   let panArmed = false;
   let drawingMoved = false;
+  /** Plot press origin — pan arm uses cumulative distance (not per-event dx). */
+  let panOriginX = 0;
+  let panOriginY = 0;
 
   /** Active pointers (max 2 used for pinch). */
   const pointers = new Map<number, Ptr>();
@@ -371,6 +386,8 @@ export function attachInteraction(
     activePointerId = e.pointerId;
     lastMediaX = x;
     lastMediaY = y;
+    panOriginX = x;
+    panOriginY = y;
     panArmed = false;
     drawingMoved = false;
     longPressFired = false;
@@ -429,11 +446,6 @@ export function attachInteraction(
       return;
     }
 
-    const dx = x - lastMediaX;
-    const dy = y - lastMediaY;
-    lastMediaX = x;
-    lastMediaY = y;
-
     // Cancel long-press once the finger moves
     if (longPressTimer != null) {
       if (Math.hypot(x - longPressX, y - longPressY) >= LONG_PRESS_MOVE_PX) {
@@ -441,6 +453,56 @@ export function attachInteraction(
       }
     }
     if (longPressFired) return;
+
+    // Pan arms from press origin. Per-event dx on trackpads is often 1px
+    // (< PAN_ARM_PX), which used to never arm — chart felt stuck while held.
+    if (dragMode === 'pan') {
+      callbacks.onHover(x, y);
+      if (!panArmed) {
+        if (!shouldArmPan(panOriginX, panOriginY, x, y)) return;
+        panArmed = true;
+        cancelLongPress();
+        canvas.style.cursor = 'grabbing';
+        callbacks.onUserGesture?.();
+        lastMediaX = x;
+        lastMediaY = y;
+        return;
+      }
+      const dx = x - lastMediaX;
+      const dy = y - lastMediaY;
+      lastMediaX = x;
+      lastMediaY = y;
+      if (dx === 0 && dy === 0) return;
+
+      if (dx !== 0) {
+        const plot = layout.plot;
+        const range = callbacks.getRange();
+        const span = range.toIndex - range.fromIndex;
+        if (plot.width > 0 && span > 0) {
+          const dIndex = -(dx / plot.width) * span;
+          callbacks.setRange(
+            clampRange(
+              {
+                fromIndex: range.fromIndex + dIndex,
+                toIndex: range.toIndex + dIndex,
+              },
+              callbacks.getBarCount(),
+            ),
+          );
+        }
+      }
+      // Only lock manual Y on a clearly vertical drag. Tiny dy during time-pan
+      // used to freeze auto-scale and make TF/zoom look “broken.”
+      if (dy !== 0 && Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx) * 1.4) {
+        panPriceByDrag(callbacks, dy, layout);
+      }
+      return;
+    }
+
+    const dx = x - lastMediaX;
+    const dy = y - lastMediaY;
+    lastMediaX = x;
+    lastMediaY = y;
 
     if (dragMode === 'drawing') {
       callbacks.onHover(x, y);
@@ -470,42 +532,6 @@ export function attachInteraction(
       if (Math.hypot(dx, dy) >= 1) drawingMoved = true;
       callbacks.moveMarqueeZoom?.(x, y);
       setCursorForZone(zone, x, y);
-      return;
-    }
-
-    if (dragMode === 'pan') {
-      callbacks.onHover(x, y);
-      if (!panArmed) {
-        if (Math.hypot(dx, dy) < PAN_ARM_PX) return;
-        panArmed = true;
-        cancelLongPress();
-        canvas.style.cursor = 'grabbing';
-        callbacks.onUserGesture?.();
-      }
-      if (dx === 0 && dy === 0) return;
-
-      if (dx !== 0) {
-        const plot = layout.plot;
-        const range = callbacks.getRange();
-        const span = range.toIndex - range.fromIndex;
-        if (plot.width > 0 && span > 0) {
-          const dIndex = -(dx / plot.width) * span;
-          callbacks.setRange(
-            clampRange(
-              {
-                fromIndex: range.fromIndex + dIndex,
-                toIndex: range.toIndex + dIndex,
-              },
-              callbacks.getBarCount(),
-            ),
-          );
-        }
-      }
-      // Only lock manual Y on a clearly vertical drag. Tiny dy during time-pan
-      // used to freeze auto-scale and make TF/zoom look “broken.”
-      if (dy !== 0 && Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx) * 1.4) {
-        panPriceByDrag(callbacks, dy, layout);
-      }
       return;
     }
 

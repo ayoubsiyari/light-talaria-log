@@ -77,6 +77,11 @@ import {
   sendDrawingsToBack,
 } from '@/drawings/drawingClipboard';
 import { DrawingHistory } from '@/drawings/drawingHistory';
+import {
+  capDrawingPoints,
+  enforceDrawingBookLimits,
+  MAX_DRAWINGS_PER_BOOK,
+} from '@/drawings/drawingLimits';
 import { applyShiftConstrainIfNeeded } from '@/drawings/constrain';
 import { placeDrawingPoint } from '@/drawings/drawingInteraction';
 import type { HitResult } from '@/drawings/hitTest';
@@ -855,12 +860,33 @@ export default function App() {
     ) => {
       const ds = opts?.datasetId ?? activeDatasetId;
       if (!ds) return;
-      if (!opts?.skipHistory) {
-        historyForDataset(ds).push(drawingBooksRef.current[ds] ?? []);
+      const prev = drawingBooksRef.current[ds] ?? [];
+      // Soft book cap — refuse growth past limit (deletes / edits still apply).
+      // Undo/redo (skipHistory) may restore a legacy oversized book → trim on load rules.
+      if (opts?.skipHistory) {
+        const loaded = enforceDrawingBookLimits(next, { forLoad: true }).drawings;
+        setDrawingBooks((prevBooks) => ({ ...prevBooks, [ds]: loaded }));
+        if (session) saveDrawings(`${session.id}:${ds}`, loaded);
+        return;
       }
-      setDrawingBooks((prev) => ({ ...prev, [ds]: next }));
+      const capped = enforceDrawingBookLimits(next);
+      if (!capped.ok && next.length > prev.length) {
+        toast.info('Drawing limit reached', {
+          description:
+            capped.reason === 'count'
+              ? `Max ${MAX_DRAWINGS_PER_BOOK} drawings per symbol. Delete some to add more.`
+              : 'Drawing book is too large to save. Simplify freehand strokes or delete some.',
+          timeout: 4500,
+        });
+        return;
+      }
+      const list = capped.ok ? capped.drawings : next.map(capDrawingPoints);
+      if (!opts?.skipHistory) {
+        historyForDataset(ds).push(prev);
+      }
+      setDrawingBooks((prevBooks) => ({ ...prevBooks, [ds]: list }));
       if (session) {
-        saveDrawings(`${session.id}:${ds}`, next);
+        saveDrawings(`${session.id}:${ds}`, list);
       }
     },
     [session, activeDatasetId, historyForDataset],

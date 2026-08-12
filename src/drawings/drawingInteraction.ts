@@ -1,5 +1,11 @@
 import type { Drawing, DrawingPoint } from './drawingStore';
 import { createDrawing } from './drawingStore';
+import {
+  capFreehandPoints,
+  downsamplePoints,
+  MAX_FREEHAND_POINTS,
+  MAX_POLYLINE_POINTS,
+} from './drawingLimits';
 import { syncRiskRewardMeta } from './positionMath';
 import { getTool, type DrawingToolId } from './toolRegistry';
 
@@ -57,7 +63,7 @@ export function placeDrawingPoint(
         Math.abs(last.time - point.time) < 0.5 &&
         Math.abs(last.price - point.price) < 1e-6;
       let next = tipDup || existing.length === 0 ? existing : [...existing, point];
-      next = sanitizeFreehandPoints(next);
+      next = capFreehandPoints(sanitizeFreehandPoints(next), MAX_FREEHAND_POINTS);
       if (next.length < 2) return { status: 'ignore' };
       return {
         status: 'complete',
@@ -88,6 +94,15 @@ export function placeDrawingPoint(
 
   if (mode.kind === 'polyline') {
     if (opts?.finishPolyline && existing.length >= mode.min) {
+      const pts = downsamplePoints(existing, MAX_POLYLINE_POINTS);
+      return {
+        status: 'complete',
+        drawing: createDrawing(tool, pts),
+        points: [],
+      };
+    }
+    if (existing.length >= MAX_POLYLINE_POINTS) {
+      // Hard stop — finish with current vertices rather than unbounded growth.
       return {
         status: 'complete',
         drawing: createDrawing(tool, existing),

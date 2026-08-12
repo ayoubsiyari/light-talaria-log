@@ -5,6 +5,10 @@ import { cloneStyle, type DrawingStyle } from './drawingStyle';
 import { getDrawingTemplate } from './drawingTemplates';
 import { defaultMetaFor, resolveMeta } from './toolSettings';
 import {
+  enforceDrawingBookLimits,
+  MAX_DRAWING_BOOK_JSON_CHARS,
+} from './drawingLimits';
+import {
   normalizeVisibleOnTfs,
   type DrawingVisibleOnTfs,
 } from './visibility';
@@ -99,28 +103,30 @@ function normalizeDrawing(raw: unknown): Drawing | null {
   };
 }
 
+function normalizeBook(raw: unknown): Drawing[] {
+  if (!Array.isArray(raw)) return [];
+  const list = raw.map(normalizeDrawing).filter((d): d is Drawing => d != null);
+  return enforceDrawingBookLimits(list, { forLoad: true }).drawings;
+}
+
 export function loadDrawings(sessionKey: string): Drawing[] {
   try {
     const scoped = localStorage.getItem(drawingsKey(sessionKey));
     if (scoped) {
-      const parsed: unknown = JSON.parse(scoped);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.map(normalizeDrawing).filter((d): d is Drawing => d != null);
+      return normalizeBook(JSON.parse(scoped));
     }
     // Legacy unscoped drawings only for anonymous — never into another account.
     if (getStorageUserId()) return [];
     const v2 = localStorage.getItem(LEGACY_V2_PREFIX + sessionKey);
     if (v2) {
       localStorage.setItem(drawingsKey(sessionKey), v2);
-      const parsed: unknown = JSON.parse(v2);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.map(normalizeDrawing).filter((d): d is Drawing => d != null);
+      return normalizeBook(JSON.parse(v2));
     }
     const v1 = localStorage.getItem(LEGACY_V1_PREFIX + sessionKey);
     if (v1) {
       const migrated = migrateLegacy(JSON.parse(v1));
       if (migrated.length > 0) saveDrawings(sessionKey, migrated, { skipCloud: true });
-      return migrated;
+      return enforceDrawingBookLimits(migrated, { forLoad: true }).drawings;
     }
     return [];
   } catch {
@@ -133,10 +139,23 @@ export function saveDrawings(
   drawings: Drawing[],
   opts?: PersistOpts,
 ): void {
-  localStorage.setItem(drawingsKey(sessionKey), JSON.stringify(drawings));
+  const capped = enforceDrawingBookLimits(drawings, { forLoad: true }).drawings;
+  const json = JSON.stringify(capped);
+  if (json.length > MAX_DRAWING_BOOK_JSON_CHARS) {
+    console.warn(
+      `[drawings] skip persist: JSON ${json.length} > ${MAX_DRAWING_BOOK_JSON_CHARS}`,
+    );
+    return;
+  }
+  try {
+    localStorage.setItem(drawingsKey(sessionKey), json);
+  } catch (err) {
+    console.warn('[drawings] localStorage persist failed', err);
+    return;
+  }
   if (!opts?.skipCloud) {
     void import('@/sync/cloudSync').then((m) =>
-      m.schedulePushDrawings(sessionKey, drawings),
+      m.schedulePushDrawings(sessionKey, capped),
     );
   }
 }

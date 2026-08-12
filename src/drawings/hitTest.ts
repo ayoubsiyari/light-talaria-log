@@ -181,6 +181,46 @@ function nearPolySegments(
   return false;
 }
 
+/** Cheap reject before segment/fill math — skip unbounded rays / axes. */
+function isBoundedHitType(type: Drawing['type']): boolean {
+  return !(
+    type === 'hline' ||
+    type === 'vline' ||
+    type === 'crossLine' ||
+    type === 'ray' ||
+    type === 'horizontalRay' ||
+    type === 'extendedLine' ||
+    type === 'trendLine' ||
+    type === 'infoLine' ||
+    type === 'trendAngle' ||
+    type === 'arrow' ||
+    type === 'arrowMarker' ||
+    type === 'parallelChannel' ||
+    type === 'flatTopBottom' ||
+    type === 'disjointChannel'
+  );
+}
+
+function outsidePtsBBox(
+  x: number,
+  y: number,
+  pts: Array<{ x: number; y: number }>,
+  pad: number,
+): boolean {
+  if (pts.length === 0) return true;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const p of pts) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return x < minX - pad || x > maxX + pad || y < minY - pad || y > maxY + pad;
+}
+
 /** Hit painted geometry for one drawing (handles checked by caller). */
 function hitPaintedBody(
   x: number,
@@ -566,6 +606,15 @@ export function hitTestDrawings(
     for (const p of d.points) {
       const xy = toXY(p, bars, range, plot, priceScale);
       if (xy) pts.push(xy);
+    }
+    // BBox early-out for bounded shapes (brush/rect/etc.) — skip fat freehand math.
+    const pad = Math.max(HIT_PX, HANDLE_PX) + 2;
+    if (
+      isBoundedHitType(d.type) &&
+      pts.length >= 2 &&
+      outsidePtsBBox(x, y, pts, pad)
+    ) {
+      continue;
     }
     // Brush: only endpoints are handles (body drag moves the stroke).
     // Positions: hit right-edge level handles (entry/SL/TP).

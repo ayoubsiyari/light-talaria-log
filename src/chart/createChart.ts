@@ -55,6 +55,10 @@ import {
 } from '@/orders/levelDrag';
 import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
 import { markChartPaint } from '@/perf/perfMonitor';
+import {
+  capFreehandPoints,
+  MAX_FREEHAND_POINTS,
+} from '@/drawings/drawingLimits';
 import { hitTestOrderLevel, hitTestOrders } from './overlays/drawOrders';
 import { hitTestBacktestEvent } from './overlays/drawBacktest';
 import { MAX_BARS_IN_MEMORY, VISIBLE_BARS_TARGET } from '@/utils/constants';
@@ -1094,7 +1098,15 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     ) {
       return;
     }
-    freehandPoints = [...freehandPoints, pt];
+    // Live cap: downsample in place so a long brush stroke cannot balloon RAM.
+    if (freehandPoints.length >= MAX_FREEHAND_POINTS) {
+      freehandPoints = capFreehandPoints(
+        [...freehandPoints, pt],
+        MAX_FREEHAND_POINTS,
+      );
+    } else {
+      freehandPoints = [...freehandPoints, pt];
+    }
     if (placement) {
       placement = {
         ...placement,
@@ -2159,6 +2171,19 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       // Capture wall-clock window before buffer replace (sliding warm-cache).
       const keepTime =
         prevLen > 0 ? timeRangeFromVisible(bars, range) : null;
+      // Tip snapshot before mutate — used to skip full series paint when only
+      // the replay cursor advanced inside an unchanged tip bar.
+      const prevTipBar =
+        prevLen > 0
+          ? {
+              time: bars[prevLen - 1]!.time,
+              open: bars[prevLen - 1]!.open,
+              high: bars[prevLen - 1]!.high,
+              low: bars[prevLen - 1]!.low,
+              close: bars[prevLen - 1]!.close,
+              volume: bars[prevLen - 1]!.volume,
+            }
+          : null;
 
       // Grow/patch when the visible prefix is unchanged; otherwise full replace.
       const canAppend =
@@ -2227,6 +2252,21 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       replayCursorTime = cursorTime;
 
       const didReplace = prevLen === 0 || nextLen < prevLen || !canAppend;
+      const tipBarChanged = (() => {
+        if (didReplace) return true;
+        if (nextLen !== prevLen) return true;
+        if (!prevTipBar || prevLen === 0) return true;
+        const b = nextBars[prevLen - 1]!;
+        return (
+          prevTipBar.time !== b.time ||
+          prevTipBar.open !== b.open ||
+          prevTipBar.high !== b.high ||
+          prevTipBar.low !== b.low ||
+          prevTipBar.close !== b.close ||
+          prevTipBar.volume !== b.volume
+        );
+      })();
+      const rangeBeforeFollow = { fromIndex: range.fromIndex, toIndex: range.toIndex };
       if (replayFollow) {
         const tip =
           cursorTime != null && bars.length > 0
@@ -2285,9 +2325,15 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       }
       invalidateScaleCache();
       invalidateHitCache();
-      // Keep order overlays on the same paint as the tip advance (Play).
-      markSceneDirty();
-      markOverlayDirty();
+      const cameraMoved =
+        range.fromIndex !== rangeBeforeFollow.fromIndex ||
+        range.toIndex !== rangeBeforeFollow.toIndex;
+      // Play tip morph / buffer replace → series. Cursor-only same tip → drawings layer.
+      if (didReplace || tipBarChanged || cameraMoved) {
+        markSceneDirty();
+      } else {
+        markDrawingsDirty();
+      }
 
       // Trailing tip recompute (Worker) — coalesced by the hook.
       if (

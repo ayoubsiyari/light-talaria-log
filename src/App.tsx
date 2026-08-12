@@ -39,7 +39,10 @@ import { barsMatchTimeframe } from '@/session/barTfGuard';
 import { ChartLoadingScreen } from '@/components/ChartLoadingScreen';
 import { PerfOverlay } from '@/components/perf/PerfOverlay';
 import { getChart } from '@/chart';
-import { preservedVisibleRange } from '@/chart/preserveCamera';
+import {
+  cameraSpanForTf,
+  preservedVisibleRange,
+} from '@/chart/preserveCamera';
 /**
  * Per-switch camera preserve.
  * Wall-clock from/to pin the place; tipRatio/span are fallbacks only.
@@ -262,30 +265,6 @@ function applyPreservedCamera(
   if (bars.length === 0) return;
   const range = preservedVisibleRange(bars, preserved, span, tipRatio);
   chart.setVisibleRange(range.fromIndex, range.toIndex, { silent: true });
-}
-
-/** Convert a live camera's bar zoom into the target TF's bar count. */
-function cameraSpanForTf(
-  camera: LiveCamera,
-  fromTf: Timeframe,
-  toTf: Timeframe,
-): number {
-  const fromSec = Math.max(1, timeframeSeconds(fromTf));
-  const toSec = Math.max(1, timeframeSeconds(toTf));
-  const wallSec =
-    camera.fromTime != null &&
-    camera.toTime != null &&
-    camera.toTime > camera.fromTime
-      ? camera.toTime - camera.fromTime
-      : camera.span * fromSec;
-  const wallBars = Math.ceil(wallSec / toSec) + 8;
-  // Coarser TF: keep bar-count density so candles don't jump to "fat" (120→16).
-  // Finer TF: wall-clock remap, then clamp so first pan cannot snap.
-  const span =
-    toSec > fromSec
-      ? Math.max(wallBars, camera.span)
-      : wallBars;
-  return Math.max(10, Math.min(VISIBLE_BARS_TARGET, span));
 }
 
 function isDrawingTool(tool: ChartToolId): tool is DrawingToolId {

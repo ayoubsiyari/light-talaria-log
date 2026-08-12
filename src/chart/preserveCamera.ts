@@ -1,6 +1,8 @@
 import type { ChartBar, VisibleRange } from '@/types/bar';
+import type { Timeframe } from '@/types/ui';
 import {
   logicalIndexAtTime,
+  timeframeSeconds,
   visibleRangeFromTimeWindow,
 } from '@/data/timeframeAgg';
 import { VISIBLE_BARS_TARGET } from '@/utils/constants';
@@ -12,6 +14,35 @@ export interface PreservedCamera {
   fromTime?: number;
   toTime?: number;
   anchorTime?: number;
+  span?: number;
+}
+
+/**
+ * Convert live bar zoom into the target TF's bar count.
+ * Always prefer the same candle density (bar count). Coarser TF used to shrink
+ * by wall-clock (120×1m → 16×15m fat candles); finer TF blew out by wall-clock
+ * (120×5m → ~600×1m). Keep `camera.span` both ways; only pad coarser when
+ * wall-clock needs slightly more bars than the old count.
+ */
+export function cameraSpanForTf(
+  camera: { span: number; fromTime?: number; toTime?: number },
+  fromTf: Timeframe,
+  toTf: Timeframe,
+): number {
+  const fromSec = Math.max(1, timeframeSeconds(fromTf));
+  const toSec = Math.max(1, timeframeSeconds(toTf));
+  const wallSec =
+    camera.fromTime != null &&
+    camera.toTime != null &&
+    camera.toTime > camera.fromTime
+      ? camera.toTime - camera.fromTime
+      : camera.span * fromSec;
+  const wallBars = Math.ceil(wallSec / toSec) + 8;
+  const span =
+    toSec > fromSec
+      ? Math.max(wallBars, camera.span) // coarser: never fewer candles than now
+      : camera.span; // finer: same candle count (not wall-clock zoom-out)
+  return Math.max(10, Math.min(VISIBLE_BARS_TARGET, span));
 }
 
 const MIN_VISIBLE_BARS = 8;

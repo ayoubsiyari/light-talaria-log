@@ -949,6 +949,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-12 | Drawing harden: replay cursor-only → drawings dirty; freehand≤800; book≤200 + JSON budget; undo byte trim; hit bbox early-out | Long Play + many shapes stays smooth; toast at book cap |
 | 2026-08-12 | Fix stuck hold-drag pan: arm from press-origin distance (trackpad 1px events never reached PAN_ARM) | Hold + drag pans smoothly on mouse/trackpad |
 | 2026-08-12 | Fix stuck continuous vertical price-pan: latch on cumulative dy (per-event dy>10 froze trackpad up/down) | Hold + drag up/down keeps moving without re-press |
+| 2026-08-12 | TF 5m→1m keeps same candle count (finer no longer wall-clock zooms out); 1m→5m density unchanged | Switch 5m→1m — same ~N candles, not hundreds |
 
 ---
 

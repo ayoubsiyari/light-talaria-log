@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { ChartBar } from '@/types/bar';
 import {
+  cameraSpanForTf,
   preservedVisibleRange,
   visibleBarsInRange,
 } from '@/chart/preserveCamera';
@@ -21,6 +22,27 @@ function bars(n: number, start = 1_704_067_200, step = 900): ChartBar[] {
   }
   return out;
 }
+
+describe('cameraSpanForTf', () => {
+  it('5m→1m keeps the same candle count (no wall-clock zoom-out)', () => {
+    const span = cameraSpanForTf(
+      { span: 120, fromTime: 1_000_000, toTime: 1_000_000 + 120 * 300 },
+      '5m',
+      '1m',
+    );
+    assert.equal(span, 120);
+  });
+
+  it('1m→5m keeps bar density (no fat candles)', () => {
+    const span = cameraSpanForTf(
+      { span: 120, fromTime: 1_000_000, toTime: 1_000_000 + 120 * 60 },
+      '1m',
+      '5m',
+    );
+    // wallBars ≈ 32; max(32, 120) = 120
+    assert.equal(span, 120);
+  });
+});
 
 describe('preservedVisibleRange', () => {
   it('wall-clock remap keeps candles filling the plot on 1m→15m', () => {

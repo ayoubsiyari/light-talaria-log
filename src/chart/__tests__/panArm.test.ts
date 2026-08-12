@@ -4,7 +4,11 @@
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { PAN_ARM_PX, shouldArmPan } from '@/chart/interaction';
+import {
+  PAN_ARM_PX,
+  shouldArmPan,
+  shouldLatchPricePan,
+} from '@/chart/interaction';
 
 describe('shouldArmPan', () => {
   it('does not arm on a single 1px step (old per-event trap)', () => {
@@ -21,5 +25,20 @@ describe('shouldArmPan', () => {
     // √(2²+2²)≈2.83 < 3; need a bit more
     assert.equal(shouldArmPan(0, 0, 2, 2), false);
     assert.equal(shouldArmPan(0, 0, 3, 3), true);
+  });
+});
+
+describe('shouldLatchPricePan', () => {
+  it('latches on cumulative vertical drag (not per-event dy)', () => {
+    // 12px up from origin, little X → latch (continuous trackpad steps add up)
+    assert.equal(shouldLatchPricePan(50, 100, 51, 88), true);
+  });
+
+  it('does not latch on mostly-horizontal time pan', () => {
+    assert.equal(shouldLatchPricePan(50, 100, 80, 95), false);
+  });
+
+  it('does not latch before vertical threshold', () => {
+    assert.equal(shouldLatchPricePan(0, 0, 0, 9), false);
   });
 });

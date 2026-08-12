@@ -1368,10 +1368,8 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
       let d = drawings.find((dr) => dr.id === hit.drawingId);
       if (!d) return false;
 
-      // Pan wins over unselected body hits (mouse/trackpad + touch).
-      // Fat stroke hit used to claim the gesture so the chart felt stuck near
-      // shapes; tap still selects via plot click. Selected bodies + handles
-      // still claim immediately for move/resize.
+      // Pan wins over unselected body hits — tap still selects via plot click.
+      // Selected bodies + any handle still claim immediately.
       if (
         hit.handleIndex == null &&
         !selectedDrawingIds.includes(d.id) &&

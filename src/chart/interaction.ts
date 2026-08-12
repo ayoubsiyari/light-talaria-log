@@ -84,6 +84,13 @@ const LONG_PRESS_MOVE_PX = 10;
 /** Cumulative drag from press before pan claims the gesture (click vs pan). */
 export const PAN_ARM_PX = 3;
 
+/**
+ * Cumulative |dy| from press before price-scale pan latches for this gesture.
+ * Per-event dy>10 blocked continuous trackpad vertical drags (felt stuck until
+ * release + re-press).
+ */
+export const PRICE_PAN_LATCH_PX = 10;
+
 /** True when the pointer has moved far enough from press to arm pan. */
 export function shouldArmPan(
   originX: number,
@@ -93,6 +100,21 @@ export function shouldArmPan(
   thresholdPx: number = PAN_ARM_PX,
 ): boolean {
   return Math.hypot(x - originX, y - originY) >= thresholdPx;
+}
+
+/** Latch vertical price-pan once the gesture is clearly vertical from origin. */
+export function shouldLatchPricePan(
+  originX: number,
+  originY: number,
+  x: number,
+  y: number,
+  latchPx: number = PRICE_PAN_LATCH_PX,
+): boolean {
+  const totalDx = x - originX;
+  const totalDy = y - originY;
+  return (
+    Math.abs(totalDy) >= latchPx && Math.abs(totalDy) > Math.abs(totalDx) * 1.4
+  );
 }
 
 type DragMode =
@@ -132,6 +154,8 @@ export function attachInteraction(
   /** Plot press origin — pan arm uses cumulative distance (not per-event dx). */
   let panOriginX = 0;
   let panOriginY = 0;
+  /** Once true, apply every dy to price scale for the rest of this press. */
+  let pricePanLatched = false;
 
   /** Active pointers (max 2 used for pinch). */
   const pointers = new Map<number, Ptr>();
@@ -226,6 +250,7 @@ export function attachInteraction(
     if (!m) return;
     dragMode = 'pinch';
     panArmed = true;
+    pricePanLatched = false;
     pinchPrevDist = m.dist;
     pinchPrevMidX = m.midX;
     pinchPrevMidY = m.midY;
@@ -389,6 +414,7 @@ export function attachInteraction(
     panOriginX = x;
     panOriginY = y;
     panArmed = false;
+    pricePanLatched = false;
     drawingMoved = false;
     longPressFired = false;
     canvas.setPointerCapture(e.pointerId);
@@ -464,9 +490,9 @@ export function attachInteraction(
         cancelLongPress();
         canvas.style.cursor = 'grabbing';
         callbacks.onUserGesture?.();
-        lastMediaX = x;
-        lastMediaY = y;
-        return;
+        // Apply cumulative delta from press (don't drop the arming motion).
+        lastMediaX = panOriginX;
+        lastMediaY = panOriginY;
       }
       const dx = x - lastMediaX;
       const dy = y - lastMediaY;
@@ -491,9 +517,12 @@ export function attachInteraction(
           );
         }
       }
-      // Only lock manual Y on a clearly vertical drag. Tiny dy during time-pan
-      // used to freeze auto-scale and make TF/zoom look “broken.”
-      if (dy !== 0 && Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx) * 1.4) {
+      // Price pan: latch on cumulative vertical intent from press, then apply
+      // every dy. Per-event |dy|>10 made continuous up/down feel stuck.
+      if (!pricePanLatched && shouldLatchPricePan(panOriginX, panOriginY, x, y)) {
+        pricePanLatched = true;
+      }
+      if (pricePanLatched && dy !== 0) {
         panPriceByDrag(callbacks, dy, layout);
       }
       return;
@@ -592,6 +621,7 @@ export function attachInteraction(
     dragMode = null;
     activePointerId = null;
     panArmed = false;
+    pricePanLatched = false;
     drawingMoved = false;
     longPressFired = false;
     try {

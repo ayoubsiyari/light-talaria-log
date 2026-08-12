@@ -2,11 +2,11 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   LINE_WIDTHS,
-  TV_COLOR_PALETTE,
   type DrawingStyle,
   type LineStyleKind,
 } from '@/drawings/drawingStyle';
 import { SegmentedControl } from '@/components/drawings/settings/SegmentedControl';
+import { ObsidianColorPanel } from '@/components/drawings/settings/obsidian/ObsidianColorPanel';
 
 const LINE_STYLES: { id: LineStyleKind; dash: string; title: string }[] = [
   { id: 'solid', dash: '', title: 'Solid' },
@@ -37,8 +37,8 @@ interface LineStylePickerFlyoutProps {
 }
 
 /**
- * Unified TV color / opacity / thickness / dash flyout.
- * Portals to document.body so chart overflow cannot clip it.
+ * Obsidian style flyout: TV color panel + thickness / dash.
+ * No native browser color input.
  */
 export function LineStylePickerFlyout({
   open,
@@ -53,7 +53,6 @@ export function LineStylePickerFlyout({
   const widths = widthPresets?.length ? widthPresets : LINE_WIDTHS;
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-  const [customHex, setCustomHex] = useState(value.color);
 
   useLayoutEffect(() => {
     if (!open || !anchorEl) {
@@ -61,10 +60,10 @@ export function LineStylePickerFlyout({
       return;
     }
     const r = anchorEl.getBoundingClientRect();
-    const width = 260;
+    const width = 248;
     const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
     let top = r.bottom + 6;
-    const estHeight = showLineControls ? 280 : 200;
+    const estHeight = showLineControls ? 420 : 300;
     if (top + estHeight > window.innerHeight - 8) {
       top = Math.max(8, r.top - estHeight - 6);
     }
@@ -73,27 +72,17 @@ export function LineStylePickerFlyout({
 
   useEffect(() => {
     if (!open) return;
-    setCustomHex(value.color);
-  }, [open, value.color]);
-
-  useEffect(() => {
-    if (!open) return;
     const onDoc = (e: PointerEvent) => {
       const t = e.target as Node;
       if (panelRef.current?.contains(t) || anchorEl?.contains(t)) return;
       onClose();
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
     const onScroll = () => onClose();
     document.addEventListener('pointerdown', onDoc, true);
-    window.addEventListener('keydown', onKey);
     window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', onScroll);
     return () => {
       document.removeEventListener('pointerdown', onDoc, true);
-      window.removeEventListener('keydown', onKey);
       window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', onScroll);
     };
@@ -101,100 +90,35 @@ export function LineStylePickerFlyout({
 
   if (!open || !pos) return null;
 
-  const opacityPct = Math.round(value.opacity * 100);
-
   return createPortal(
     <div
       ref={panelRef}
-      className="fixed z-[200] w-[260px] rounded-lg border border-border bg-surface text-foreground shadow-xl p-3 space-y-3"
+      data-v9-chrome="1"
+      className="fixed z-[200] w-[248px] rounded-lg border border-[color:var(--line)] bg-[color:var(--surface)] text-foreground overflow-hidden"
       style={{ top: pos.top, left: pos.left }}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <div className="grid grid-cols-8 gap-1.5">
-        {TV_COLOR_PALETTE.map((c) => (
-          <button
-            key={c}
-            type="button"
-            title={c}
-            className={[
-              'w-6 h-6 rounded-[4px] border transition-shadow',
-              value.color.toLowerCase() === c.toLowerCase()
-                ? 'border-foreground ring-2 ring-foreground/40'
-                : 'border-border hover:border-muted',
-            ].join(' ')}
-            style={{ backgroundColor: c }}
-            onClick={() => onChange({ color: c })}
-          />
-        ))}
-      </div>
-
-      <div className="flex items-center gap-2">
-        <input
-          type="color"
-          value={/^#[0-9a-fA-F]{6}$/.test(customHex) ? customHex : '#2962FF'}
-          onChange={(e) => {
-            setCustomHex(e.target.value);
-            onChange({ color: e.target.value });
-          }}
-          className="h-8 w-8 cursor-pointer rounded border border-border bg-background p-0.5"
-          aria-label="Custom color"
-          title="Custom color"
-        />
-        <input
-          type="text"
-          value={customHex}
-          onChange={(e) => {
-            const v = e.target.value;
-            setCustomHex(v);
-            if (/^#[0-9a-fA-F]{6}$/.test(v)) onChange({ color: v });
-          }}
-          className="flex-1 min-h-9 rounded-md border border-border bg-background px-2 text-xs font-mono text-foreground outline-none focus:border-accent"
-          spellCheck={false}
-          aria-label="Hex color"
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between text-xs text-muted">
-          <span>Opacity</span>
-          <span className="tabular-nums text-foreground">{opacityPct}%</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="range"
-            min={5}
-            max={100}
-            step={1}
-            value={opacityPct}
-            onChange={(e) => onChange({ opacity: Number(e.target.value) / 100 })}
-            className="flex-1 h-1 accent-[var(--accent)]"
-            aria-label="Opacity"
-          />
-          <input
-            type="number"
-            min={5}
-            max={100}
-            value={opacityPct}
-            onChange={(e) => {
-              const n = Math.max(5, Math.min(100, Number(e.target.value) || 100));
-              onChange({ opacity: n / 100 });
-            }}
-            className="w-14 min-h-9 rounded-md border border-border bg-background px-1.5 text-xs tabular-nums text-foreground outline-none focus:border-accent"
-            aria-label="Opacity percent"
-          />
-        </div>
-      </div>
+      <ObsidianColorPanel
+        color={value.color}
+        opacity={value.opacity}
+        showOpacity
+        onChange={(partial) => onChange(partial)}
+        onRequestClose={onClose}
+      />
 
       {showLineControls && (
-        <>
+        <div className="px-2.5 pb-3 pt-1 space-y-3 border-t border-[color:var(--line)]">
           <div className="space-y-1.5">
-            <div className="text-xs text-muted">Thickness</div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+              Thickness
+            </div>
             <SegmentedControl
               ariaLabel="Line thickness"
               value={
                 (widths as readonly number[]).includes(value.width)
                   ? value.width
-                  : (widths.find((w) => w >= value.width) ?? widths[widths.length - 1]!)
+                  : (widths.find((w) => w >= value.width) ??
+                    widths[widths.length - 1]!)
               }
               onChange={(w) => onChange({ width: w })}
               options={widths.map((w) => ({
@@ -203,7 +127,12 @@ export function LineStylePickerFlyout({
                 content: (
                   <span
                     className="block w-5 rounded-full bg-current"
-                    style={{ height: Math.max(1, Math.min(8, w / (widths.length > 4 ? 8 : 1))) }}
+                    style={{
+                      height: Math.max(
+                        1,
+                        Math.min(8, w / (widths.length > 4 ? 8 : 1)),
+                      ),
+                    }}
                   />
                 ),
               }))}
@@ -212,7 +141,9 @@ export function LineStylePickerFlyout({
 
           {!hideDash && (
             <div className="space-y-1.5">
-              <div className="text-xs text-muted">Line style</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                Line style
+              </div>
               <SegmentedControl
                 ariaLabel="Line style"
                 value={value.lineStyle}
@@ -237,7 +168,7 @@ export function LineStylePickerFlyout({
               />
             </div>
           )}
-        </>
+        </div>
       )}
     </div>,
     document.body,

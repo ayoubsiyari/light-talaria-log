@@ -1,4 +1,5 @@
 export { SettColorSwatch } from './SettColorSwatch';
+export { ObsidianColorPanel } from './ObsidianColorPanel';
 export { SettCheckbox, SettLineGrid, SettRow, SettRule, SettSec } from './SettCheckbox';
 export { SettEndpointDropdown } from './SettEndpointDropdown';
 export {

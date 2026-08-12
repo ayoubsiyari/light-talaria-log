@@ -1671,6 +1671,12 @@
   padding: 10px !important;
   box-sizing: border-box !important;
   color: var(--text);
+  width: 100%;
+}
+/* Embedded inside another chrome shell (style flyout) — drop outer chrome */
+[data-v9-chrome] > [data-tv-cp="1"] {
+  border: none !important;
+  border-radius: 0 !important;
 }
 [data-tv-cp="1"] [data-tv-cp-grid] {
   display: grid;

@@ -94,8 +94,13 @@ export function LineStylePickerFlyout({
     <div
       ref={panelRef}
       data-v9-chrome="1"
-      className="fixed z-[200] w-[248px] rounded-lg border border-[color:var(--line)] bg-[color:var(--surface)] text-foreground overflow-hidden"
-      style={{ top: pos.top, left: pos.left }}
+      data-style-flyout="1"
+      className="fixed z-[200] w-[248px] rounded-lg border border-[color:var(--line-strong,var(--line))] text-foreground overflow-hidden"
+      style={{
+        top: pos.top,
+        left: pos.left,
+        background: 'var(--surface-raised, var(--surface-tertiary, #141416))',
+      }}
       onPointerDown={(e) => e.stopPropagation()}
     >
       <ObsidianColorPanel

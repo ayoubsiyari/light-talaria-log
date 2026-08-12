@@ -89,8 +89,15 @@ export function SettColorSwatch({
         createPortal(
           <div
             ref={panelRef}
-            className="fixed z-[220]"
-            style={{ top: pos.top, left: pos.left, width: 236 }}
+            data-style-flyout="1"
+            className="fixed z-[220] rounded-lg overflow-hidden border border-[color:var(--line-strong,var(--line))]"
+            style={{
+              top: pos.top,
+              left: pos.left,
+              width: 236,
+              background:
+                'var(--surface-raised, var(--surface-tertiary, #141416))',
+            }}
             onPointerDown={(e) => e.stopPropagation()}
           >
             <ObsidianColorPanel

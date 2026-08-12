@@ -2,15 +2,15 @@ import { forwardRef } from 'react';
 import type { DrawingStyle, LineStyleKind } from '@/drawings/drawingStyle';
 
 function dashFor(kind: LineStyleKind): string | undefined {
-  if (kind === 'dashed') return '7 4';
-  if (kind === 'dotted') return '2 4';
-  if (kind === 'dashdot') return '7 4 2 4';
+  if (kind === 'dashed') return '4 3';
+  if (kind === 'dotted') return '1.5 2.5';
+  if (kind === 'dashdot') return '4 2.5 1.5 2.5';
   return undefined;
 }
 
 /**
- * Compact TV-style trigger: stroke chip (+ optional fill) + line preview + width.
- * Opens the shared LineStylePickerFlyout when clicked.
+ * Icon-sized TV-style trigger: one button with stroke (+ optional fill) preview.
+ * Opens LineStylePickerFlyout when clicked.
  */
 export const StyleTriggerButton = forwardRef<
   HTMLButtonElement,
@@ -38,51 +38,58 @@ export const StyleTriggerButton = forwardRef<
   },
   ref,
 ) {
+  const strokeW = Math.min(3, Math.max(1.25, style.width));
   return (
     <button
       ref={ref}
       type="button"
       title={title}
+      aria-label={`${title}: ${style.width}px`}
       disabled={disabled}
       onClick={onClick}
       className={[
-        'min-h-11 sm:min-h-8 px-2 rounded-md border flex items-center gap-1.5 transition-colors shrink-0',
+        'min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 sm:h-8 px-1.5 rounded-md flex items-center justify-center transition-colors shrink-0',
         disabled ? 'opacity-40 cursor-not-allowed' : '',
         active
-          ? 'border-accent bg-accent/10'
-          : 'border-border hover:border-accent/60 bg-background/60',
+          ? 'bg-accent/20 text-accent'
+          : 'text-muted hover:text-foreground hover:bg-background/80',
       ].join(' ')}
     >
-      <span
-        className="w-4 h-4 rounded-[3px] border border-border shrink-0"
-        style={{ backgroundColor: style.color, opacity: style.opacity }}
-        title="Stroke"
-      />
-      {showFill && (
+      <span className="relative block w-[18px] h-[18px]" aria-hidden>
+        {/* Fill underlay (shapes) */}
+        {showFill && (
+          <span
+            className="absolute inset-[3px] rounded-[2px]"
+            style={{
+              backgroundColor: fillColor || style.color,
+              opacity: Math.max(0.2, fillOpacity),
+            }}
+          />
+        )}
+        {/* Stroke swatch */}
         <span
-          className="w-4 h-4 rounded-[3px] border border-border shrink-0"
-          style={{
-            backgroundColor: fillColor || style.color,
-            opacity: Math.max(0.15, fillOpacity),
-          }}
-          title="Fill"
+          className="absolute left-0 top-0 w-[10px] h-[10px] rounded-[2px] border border-border/80"
+          style={{ backgroundColor: style.color, opacity: style.opacity }}
         />
-      )}
-      <svg width="28" height="12" viewBox="0 0 28 12" className="shrink-0">
-        <line
-          x1="2"
-          y1="6"
-          x2="26"
-          y2="6"
-          stroke={style.color}
-          strokeWidth={Math.max(1, style.width)}
-          strokeLinecap="round"
-          strokeDasharray={dashFor(style.lineStyle)}
-          opacity={style.opacity}
-        />
-      </svg>
-      <span className="text-[11px] tabular-nums text-muted leading-none">
-        {style.width}px
+        {/* Line style preview */}
+        <svg
+          className="absolute inset-x-0 bottom-[1px]"
+          width="18"
+          height="6"
+          viewBox="0 0 18 6"
+        >
+          <line
+            x1="1"
+            y1="3"
+            x2="17"
+            y2="3"
+            stroke={style.color}
+            strokeWidth={strokeW}
+            strokeLinecap="round"
+            strokeDasharray={dashFor(style.lineStyle)}
+            opacity={style.opacity}
+          />
+        </svg>
       </span>
     </button>
   );

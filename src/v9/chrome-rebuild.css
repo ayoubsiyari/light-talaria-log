@@ -1665,18 +1665,26 @@
 [data-tv-cp="1"] {
   border-radius: 8px !important;
   overflow: hidden !important;
-  background: var(--surface) !important;
-  border: 1px solid var(--line) !important;
+  /* Solid raised plate — never chart-black / never translucent */
+  background: var(--surface-raised, var(--surface-tertiary, #141416)) !important;
+  border: 1px solid var(--line-strong, var(--line)) !important;
   box-shadow: none !important;
   padding: 10px !important;
   box-sizing: border-box !important;
   color: var(--text);
   width: 100%;
+  opacity: 1 !important;
 }
-/* Embedded inside another chrome shell (style flyout) — drop outer chrome */
-[data-v9-chrome] > [data-tv-cp="1"] {
+/* Embedded inside style flyout — inherit parent plate, drop double border */
+[data-style-flyout] > [data-tv-cp="1"],
+[data-v9-chrome][data-style-flyout] > [data-tv-cp="1"] {
   border: none !important;
   border-radius: 0 !important;
+  background: transparent !important; /* parent already solid opaque */
+}
+[data-style-flyout] {
+  background: var(--surface-raised, var(--surface-tertiary, #141416)) !important;
+  opacity: 1 !important;
 }
 [data-tv-cp="1"] [data-tv-cp-grid] {
   display: grid;

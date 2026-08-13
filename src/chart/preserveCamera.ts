@@ -126,17 +126,19 @@ export function preservedVisibleRange(
   }
 
   const visible = visibleBarsInRange(bars.length, range);
-  // Tip-only / short 15m buffers: wall-clock can map to a huge empty pad with
-  // candles crushed on the right — fit zoom to the bars we actually have.
-  const crushed =
-    visible > 0 && spanNow > 0 && visible / spanNow < 0.2;
-  if (visible < MIN_VISIBLE_BARS || crushed) {
+  // Short HTF buffer after 1m→4h: do NOT shrink span to fit the few bars we
+  // have — that made candles huge. Keep the preserved bar count (left pad
+  // empty until history heals). Only fall back when we have almost no bars.
+  if (visible < MIN_VISIBLE_BARS && tip + 1 < MIN_VISIBLE_BARS) {
     const fitted = Math.max(10, Math.ceil((tip + 1) / 0.85));
     const fallbackSpan = Math.max(
       10,
       Math.min(spanSafe, Math.max(fitted, Math.min(DEFAULT_VISIBLE_BARS, tip + 1))),
     );
     return rangeRightAnchored(tip, fallbackSpan);
+  }
+  if (visible < MIN_VISIBLE_BARS || (visible > 0 && spanNow > 0 && visible / spanNow < 0.2)) {
+    return rangeRightAnchored(tip, spanSafe);
   }
   return range;
 }

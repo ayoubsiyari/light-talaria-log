@@ -24,20 +24,20 @@ interface MarketingHomeProps {
 }
 
 const CONTRACT = `<!--
-THESIS: A dark editorial portfolio as the Talaria-Log door — full-bleed HLS atmosphere and a floating pill nav instead of a SaaS feature-grid homepage.
-OWN-WORLD: Near-black HSL tokens, Inter + italic Instrument Serif, steel-blue accent gradient, hairline strokes, rounded-full chrome, bento project cards.
-STORY: Visitor arrives through a 000–100 load, meets the name, scrolls selected work / journal / explorations, and reaches out.
-FIRST VIEWPORT: Full-bleed muted video, centered serif name, cycling role line, two pill CTAs; floating top-center pill nav with TL mark; SCROLL indicator at the bottom.
-FORM: Brief-pinned recreation of the specified portfolio landing (user-locked). Seed key: brief-pinned.
+THESIS: A dark editorial door for Talaria-Log — full-bleed atmosphere and a floating pill nav, selling replay, backtest, journal, and a viewport chart.
+OWN-WORLD: Near-black HSL tokens, Inter + italic Instrument Serif, steel-blue accent gradient, hairline strokes, rounded-full chrome, bento tape stills.
+STORY: Visitor learns this is a trading chart/backtest/journal tool, sees the mechanism, and starts free.
+FIRST VIEWPORT: Full-bleed muted video, centered serif Talaria-Log, cycling replay/backtest/journal/chart, Start free + See how it works; floating pill nav with TL + Sign in.
+FORM: Brief-pinned editorial chrome, product-truth content. Seed key: brief-pinned.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 -->`;
 
 /**
- * Marketing home — dark portfolio landing (brief-pinned visual world).
+ * Marketing home — editorial chrome, Talaria-Log product story.
  */
 export function MarketingHome({
-  onStartFree: _onStartFree,
-  onOpenApp: _onOpenApp,
+  onStartFree,
+  onOpenApp,
 }: MarketingHomeProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [activeId, setActiveId] = useState('hero');
@@ -54,7 +54,7 @@ export function MarketingHome({
 
   useEffect(() => {
     if (isLoading) return;
-    const ids = ['hero', 'work', 'resume'] as const;
+    const ids = ['hero', 'features', 'journal'] as const;
     const onScroll = () => {
       let current: string = 'hero';
       for (const id of ids) {
@@ -74,15 +74,15 @@ export function MarketingHome({
       <AnimatePresence>
         {isLoading ? <LoadingScreen onComplete={onLoadComplete} /> : null}
       </AnimatePresence>
-      <Navbar activeId={activeId} />
+      <Navbar activeId={activeId} onSignIn={onOpenApp} />
       <main>
-        <HeroSection ready={!isLoading} />
-        <SelectedWorks />
-        <JournalSection />
-        <Explorations />
+        <HeroSection ready={!isLoading} onStartFree={onStartFree} />
+        <SelectedWorks onOpen={onStartFree} />
+        <JournalSection onOpen={onStartFree} />
+        <Explorations onStartFree={onStartFree} />
         <StatsSection />
       </main>
-      <ContactFooter />
+      <ContactFooter onStartFree={onStartFree} onSignIn={onOpenApp} />
     </div>
   );
 }

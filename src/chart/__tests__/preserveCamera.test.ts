@@ -107,20 +107,34 @@ describe('preservedVisibleRange', () => {
     assert.ok(span <= 1500, `span ${span} must be ≤ pan MAX_VISIBLE`);
   });
 
-  it('fits zoom when tip-only 15m buffer would crush candles', () => {
-    const data = bars(6); // short post-switch buffer
+  it('keeps preserved span on short HTF buffer (1m→4h must not fatten)', () => {
+    // Few 4h bars loaded; span asks for 120 — keep width, don't fit-zoom.
+    const data = bars(16, 1_704_067_200, 14_400);
     const tip = data[data.length - 1]!.time;
-    const fromTime = tip - 1200 * 60; // ~1m-sized wall window
     const range = preservedVisibleRange(
       data,
-      { fromTime, toTime: tip, anchorTime: tip },
-      80,
+      { anchorTime: tip },
+      120,
+      0.9,
+    );
+    const span = range.toIndex - range.fromIndex;
+    assert.ok(
+      Math.abs(span - 120) < 1e-6,
+      `expected span 120 after short HTF buffer, got ${span}`,
+    );
+  });
+
+  it('fits only when almost no bars exist', () => {
+    const data = bars(4);
+    const tip = data[data.length - 1]!.time;
+    const range = preservedVisibleRange(
+      data,
+      { anchorTime: tip },
+      120,
       0.9,
     );
     const visible = visibleBarsInRange(data.length, range);
-    const span = range.toIndex - range.fromIndex;
-    assert.ok(visible >= 6);
-    assert.ok(visible / span >= 0.2, `candles crushed: ${visible}/${span}`);
+    assert.ok(visible >= 4);
   });
 
   it('tip-anchor without from/to uses converted span (explicit TF pick)', () => {

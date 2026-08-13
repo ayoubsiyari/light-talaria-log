@@ -1,20 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
-import { CONTACT_EMAIL, ROLES, scrollToId } from '@/components/landing/landingData';
+import { HERO, HERO_VERBS, scrollToId } from '@/components/landing/landingData';
 import { GradientHoverRing } from '@/components/landing/GradientHoverRing';
 import { HlsBackground } from '@/components/landing/HlsBackground';
 
 interface HeroSectionProps {
   ready: boolean;
+  onStartFree: () => void;
 }
 
-export function HeroSection({ ready }: HeroSectionProps) {
+export function HeroSection({ ready, onStartFree }: HeroSectionProps) {
   const rootRef = useRef<HTMLElement>(null);
-  const [roleIndex, setRoleIndex] = useState(0);
+  const [verbIndex, setVerbIndex] = useState(0);
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      setRoleIndex((i) => (i + 1) % ROLES.length);
+      setVerbIndex((i) => (i + 1) % HERO_VERBS.length);
     }, 2000);
     return () => window.clearInterval(id);
   }, []);
@@ -59,39 +60,39 @@ export function HeroSection({ ready }: HeroSectionProps) {
 
       <div className="relative z-10 mx-auto max-w-4xl pt-24 pb-28 text-center md:pt-28">
         <p className="blur-in mb-8 text-xs uppercase tracking-[0.3em] text-muted">
-          Collection &apos;26
+          {HERO.eyebrow}
         </p>
         <h1 className="name-reveal mb-6 font-display text-5xl leading-[0.9] tracking-tight text-text-primary italic sm:text-6xl md:text-8xl lg:text-9xl">
           Talaria-Log
         </h1>
         <p className="blur-in mb-6 text-base text-muted md:text-lg">
-          A{' '}
+          Built to{' '}
           <span
-            key={roleIndex}
+            key={verbIndex}
             className="animate-role-fade-in inline-block font-display italic text-text-primary"
           >
-            {ROLES[roleIndex]}
+            {HERO_VERBS[verbIndex]}
           </span>{' '}
-          lives in Chicago.
+          history without freezing the tab.
         </p>
-        <p className="blur-in mx-auto mb-12 max-w-md text-sm text-muted md:text-base">
-          Designing seamless digital interactions by focusing on the unique nuances which
-          bring systems to life.
+        <p className="blur-in mx-auto mb-12 max-w-xl text-sm text-muted md:text-base">
+          {HERO.sub}
         </p>
         <div className="blur-in inline-flex flex-col items-stretch gap-4 sm:flex-row sm:items-center">
           <GradientHoverRing
-            onClick={() => scrollToId('work')}
+            onClick={onStartFree}
             innerClassName="bg-text-primary px-7 py-3.5 text-sm text-bg transition-colors duration-300 group-hover:bg-bg group-hover:text-text-primary"
           >
-            See Works
+            {HERO.primaryCta}
           </GradientHoverRing>
           <GradientHoverRing
-            href={`mailto:${CONTACT_EMAIL}`}
+            onClick={() => scrollToId('features')}
             innerClassName="border-2 border-stroke bg-bg px-7 py-3.5 text-sm text-text-primary transition-colors duration-300 group-hover:border-transparent"
           >
-            Reach out...
+            {HERO.secondaryCta}
           </GradientHoverRing>
         </div>
+        <p className="blur-in mt-4 text-xs text-muted">{HERO.footnote}</p>
       </div>
 
       <div className="absolute bottom-8 left-1/2 z-10 flex -translate-x-1/2 flex-col items-center gap-3">

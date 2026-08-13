@@ -951,11 +951,13 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-12 | Fix stuck continuous vertical price-pan: latch on cumulative dy (per-event dy>10 froze trackpad up/down) | Hold + drag up/down keeps moving without re-press |
 | 2026-08-12 | TF 5m→1m keeps same candle count (finer no longer wall-clock zooms out); 1m→5m density unchanged | Switch 5m→1m — same ~N candles, not hundreds |
 | 2026-08-13 | Candles/volume use continuous X (drop Math.round snap) so slow pan/zoom no longer vibrates | Slow drag/zoom — candles glide without shaking |
+| 2026-08-13 | TF preserve: short HTF buffer keeps bar-count span (no fit-zoom fat candles on 1m→4h) | 1m→4h same candle width; vibrate paint untouched |
 | 2026-08-12 | Color/style flyout: opaque `--surface-raised` plate (was near-black `--surface`, looked transparent on chart) | Open drawing style — panel reads solid vs chart |
 | 2026-08-12 | Style trigger: one icon-sized button (color + line chip) matching toolbar peers | Floating bar — style control same size as settings/lock |
 | 2026-08-12 | Style flyout chrome = drawing toolbar (`bg-surface` / border / accent segments) | Open style — same plate + blue active as settings bar |
 | 2026-08-13 | Opacity value bordered box + track size; fill color chip on floating bar for fill tools | Rect/shape select — stroke + fill buttons; opacity % has border |
 | 2026-08-13 | Rebuilt marketing home as dark editorial portfolio (GSAP/Framer/HLS, Talaria-Log name/logo, template copy) | Hard-refresh `/#/` — loader → hero video → work/journal/explorations |
+| 2026-08-13 | Remapped landing copy/CTAs to replay, backtest, journal, and the canvas chart (kept editorial chrome) | Hard-refresh `/#/` — Start free / Sign in / product sections |
 | 2026-08-13 | Landing Explorations: desktop-only pin/parallax; mobile stays static stack | Resize <768 — no pin; desktop scrub columns |
 
 ---

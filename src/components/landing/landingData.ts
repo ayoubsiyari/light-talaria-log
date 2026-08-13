@@ -1,117 +1,121 @@
+import { featuresCopy } from '@landing-content/features';
+import { heroCopy } from '@landing-content/hero';
+import { howItWorksCopy } from '@landing-content/howItWorks';
+import { journalCopy } from '@landing-content/journal';
+
 export const HLS_SRC =
   'https://stream.mux.com/Aa02T7oM1wH5Mk5EEVDYhbZ1ChcdhRsS2m1NYyx4Ua1g.m3u8';
 
-export const CONTACT_EMAIL = 'hello@talaria-log.com';
+export const LOADING_WORDS = ['Replay', 'Backtest', 'Journal'] as const;
 
-export const LOADING_WORDS = ['Design', 'Create', 'Inspire'] as const;
-
-export const ROLES = ['Creative', 'Fullstack', 'Founder', 'Scholar'] as const;
+export const HERO_VERBS = ['replay', 'backtest', 'journal', 'chart'] as const;
 
 export const NAV_LINKS = [
   { id: 'hero', label: 'Home' },
-  { id: 'work', label: 'Work' },
-  { id: 'resume', label: 'Resume' },
+  { id: 'features', label: 'Chart' },
+  { id: 'journal', label: 'Journal' },
 ] as const;
 
-export const PROJECTS = [
+export const FEATURES = [
   {
-    title: 'Automotive Motion',
-    image: '/landing/work-automotive.jpg',
+    id: featuresCopy.cards[0].id,
+    title: featuresCopy.cards[0].title,
+    body: featuresCopy.cards[0].body,
+    variant: 'replay' as const,
     span: 'md:col-span-7',
     aspect: 'aspect-[16/10] md:aspect-[16/11]',
   },
   {
-    title: 'Urban Architecture',
-    image: '/landing/work-architecture.jpg',
+    id: featuresCopy.cards[1].id,
+    title: featuresCopy.cards[1].title,
+    body: featuresCopy.cards[1].body,
+    variant: 'candles' as const,
     span: 'md:col-span-5',
     aspect: 'aspect-[16/10] md:aspect-[4/5]',
   },
   {
-    title: 'Human Perspective',
-    image: '/landing/work-human.jpg',
+    id: featuresCopy.cards[2].id,
+    title: featuresCopy.cards[2].title,
+    body: featuresCopy.cards[2].body,
+    variant: 'equity' as const,
     span: 'md:col-span-5',
     aspect: 'aspect-[16/10] md:aspect-[4/5]',
   },
   {
-    title: 'Brand Identity',
-    image: '/landing/work-brand.jpg',
+    id: featuresCopy.cards[4].id,
+    title: featuresCopy.cards[4].title,
+    body: featuresCopy.cards[4].body,
+    variant: 'journal' as const,
     span: 'md:col-span-7',
     aspect: 'aspect-[16/10] md:aspect-[16/11]',
   },
 ] as const;
 
-export const JOURNAL_ENTRIES = [
-  {
-    title: 'The quiet power of negative space',
-    image: '/landing/journal-1.jpg',
-    readTime: '4 min',
-    date: 'Mar 12, 2026',
-  },
-  {
-    title: 'Why motion should feel inevitable',
-    image: '/landing/journal-2.jpg',
-    readTime: '6 min',
-    date: 'Feb 28, 2026',
-  },
-  {
-    title: 'Building systems that breathe',
-    image: '/landing/journal-3.jpg',
-    readTime: '5 min',
-    date: 'Feb 14, 2026',
-  },
-  {
-    title: 'Notes on restraint',
-    image: '/landing/journal-4.jpg',
-    readTime: '3 min',
-    date: 'Jan 30, 2026',
-  },
-] as const;
+export const JOURNAL_ENTRIES = journalCopy.entries.map((entry) => ({
+  instrument: entry.instrument,
+  note: entry.note,
+  pnl: entry.pnl,
+  positive: entry.positive,
+  date: entry.date,
+  tags: entry.tags,
+}));
 
-export const EXPLORATIONS = [
+export const SURFACES = [
   {
-    title: 'Chromatic Dust',
-    image: '/landing/explore-1.jpg',
+    title: howItWorksCopy.steps[0].title,
+    body: howItWorksCopy.steps[0].body,
+    variant: 'candles' as const,
     rotate: -6,
   },
   {
-    title: 'Mesh Horizon',
-    image: '/landing/explore-2.jpg',
+    title: howItWorksCopy.steps[1].title,
+    body: howItWorksCopy.steps[1].body,
+    variant: 'panes' as const,
     rotate: 4,
   },
   {
-    title: 'Soft Geometry',
-    image: '/landing/explore-3.jpg',
+    title: howItWorksCopy.steps[2].title,
+    body: howItWorksCopy.steps[2].body,
+    variant: 'equity' as const,
     rotate: -3,
   },
   {
-    title: 'Liquid Field',
-    image: '/landing/explore-4.jpg',
+    title: 'Bar-by-bar replay',
+    body: 'Step the right edge as the cursor. Viewport-only loads keep memory flat.',
+    variant: 'replay' as const,
     rotate: 7,
   },
   {
-    title: 'Ember Grain',
-    image: '/landing/explore-5.jpg',
+    title: 'Drawings on the tape',
+    body: 'Trend, fib, and levels live on the chart — not in a separate notebook.',
+    variant: 'drawings' as const,
     rotate: -5,
   },
   {
-    title: 'Folded Light',
-    image: '/landing/explore-6.jpg',
+    title: 'Session journal',
+    body: journalCopy.sub,
+    variant: 'journal' as const,
     rotate: 3,
   },
 ] as const;
 
+/** Product facts (engine budgets), not customer claims. */
 export const STATS = [
-  { value: '20+', label: 'Years Experience' },
-  { value: '95+', label: 'Projects Done' },
-  { value: '200%', label: 'Satisfied Clients' },
+  { value: '≤2500', label: 'bars in viewport memory' },
+  { value: 'Worker', label: 'backtests & indicators' },
+  { value: '1m→1D', label: 'LOD without a freeze' },
 ] as const;
 
-export const SOCIALS = [
-  { label: 'Twitter', href: 'https://twitter.com' },
-  { label: 'LinkedIn', href: 'https://linkedin.com' },
-  { label: 'Dribbble', href: 'https://dribbble.com' },
-  { label: 'GitHub', href: 'https://github.com' },
+export const FOOTER_LINKS = [
+  { label: 'Chart', id: 'features' },
+  { label: 'Journal', id: 'journal' },
 ] as const;
+
+export const HERO = heroCopy;
+
+export const JOURNAL_COPY = journalCopy;
+
+export const MARQUEE = 'REPLAY THE MARKET • KEEP THE RECEIPTS • ';
 
 export function scrollToId(id: string): void {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });

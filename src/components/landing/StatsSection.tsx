@@ -3,7 +3,7 @@ import { STATS } from '@/components/landing/landingData';
 
 export function StatsSection() {
   return (
-    <section id="resume" className="bg-bg py-16 md:py-24">
+    <section id="engine" className="bg-bg py-16 md:py-24">
       <div className="mx-auto grid max-w-[1200px] grid-cols-1 gap-10 px-6 md:grid-cols-3 md:gap-8 md:px-10 lg:px-16">
         {STATS.map((stat, i) => (
           <motion.div

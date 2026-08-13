@@ -1,10 +1,17 @@
 import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
-import { CONTACT_EMAIL, SOCIALS } from '@/components/landing/landingData';
+import { FOOTER_LINKS, MARQUEE, scrollToId } from '@/components/landing/landingData';
 import { GradientHoverRing } from '@/components/landing/GradientHoverRing';
 import { HlsBackground } from '@/components/landing/HlsBackground';
+import { finalCtaCopy } from '@landing-content/finalCta';
+import { footerCopy } from '@landing-content/footer';
 
-export function ContactFooter() {
+interface ContactFooterProps {
+  onStartFree: () => void;
+  onSignIn: () => void;
+}
+
+export function ContactFooter({ onStartFree, onSignIn }: ContactFooterProps) {
   const marqueeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -25,8 +32,7 @@ export function ContactFooter() {
     return () => ctx.revert();
   }, []);
 
-  const phrase = 'BUILDING THE FUTURE • ';
-  const line = phrase.repeat(10);
+  const line = MARQUEE.repeat(10);
 
   return (
     <footer id="contact" className="relative overflow-hidden bg-bg pt-16 pb-8 md:pt-20 md:pb-12">
@@ -44,36 +50,41 @@ export function ContactFooter() {
         </div>
 
         <div className="mx-auto flex max-w-[1200px] flex-col items-center px-6 py-12 text-center md:px-10">
-          <p className="mb-6 text-xs uppercase tracking-[0.3em] text-muted">Get in touch</p>
+          <h2 className="mb-6 max-w-xl text-2xl text-text-primary md:text-4xl">
+            Open a session and run your first{' '}
+            <span className="font-display italic">backtest</span>.
+          </h2>
           <GradientHoverRing
-            href={`mailto:${CONTACT_EMAIL}`}
+            onClick={onStartFree}
             innerClassName="bg-surface px-8 py-3.5 text-base text-text-primary backdrop-blur-md md:text-lg"
           >
-            {CONTACT_EMAIL}
+            {finalCtaCopy.button}
           </GradientHoverRing>
+          <p className="mt-4 text-xs text-muted">{finalCtaCopy.footnote}</p>
         </div>
 
         <div className="mx-auto flex max-w-[1200px] flex-col items-center justify-between gap-6 px-6 md:flex-row md:px-10 lg:px-16">
-          <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2" aria-label="Social">
-            {SOCIALS.map((s) => (
-              <a
-                key={s.label}
-                href={s.href}
-                target="_blank"
-                rel="noreferrer"
-                className="min-h-11 inline-flex items-center text-sm text-muted transition-colors hover:text-text-primary"
+          <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2" aria-label="Footer">
+            {FOOTER_LINKS.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => scrollToId(s.id)}
+                className="inline-flex min-h-11 items-center text-sm text-muted transition-colors hover:text-text-primary"
               >
                 {s.label}
-              </a>
+              </button>
             ))}
+            <button
+              type="button"
+              onClick={onSignIn}
+              className="inline-flex min-h-11 items-center text-sm text-muted transition-colors hover:text-text-primary"
+            >
+              Sign in
+            </button>
           </nav>
-          <p className="flex min-h-11 items-center gap-2 text-sm text-muted">
-            <span
-              className="inline-block h-2 w-2 rounded-full bg-emerald-400"
-              style={{ animation: 'landing-pulse 1.8s ease-in-out infinite' }}
-              aria-hidden="true"
-            />
-            Available for projects
+          <p className="max-w-md text-center text-xs leading-relaxed text-muted md:text-right">
+            {footerCopy.disclaimer}
           </p>
         </div>
       </div>

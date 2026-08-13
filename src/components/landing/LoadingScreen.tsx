@@ -63,7 +63,7 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.6, ease: [0.25, 0.1, 0.25, 1] }}
       >
-        Portfolio
+        Talaria
       </motion.p>
 
       <div className="flex h-full items-center justify-center px-6">

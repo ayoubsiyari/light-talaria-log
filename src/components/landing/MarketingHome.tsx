@@ -19,11 +19,11 @@ interface MarketingHomeProps {
 }
 
 const CONTRACT = `<!--
-THESIS: The actual Talaria-Log chart is the door — official wing mark, product type, real screens for replay, journal, orders, news, indicators, and strategy.
-OWN-WORLD: Near-black surfaces, Helvetica Now / Neue UI + Blauer Nue / Exo 2 display (same as V9 chrome), brand-blue gradient, framed product shots.
-STORY: Visitor recognizes the trading tool, sees the chart and journal, and starts free.
-FIRST VIEWPORT: 160px wing logo + Talaria-Log wordmark beside the EUR/USD 1m chart screenshot; Start free / See how it works.
-FORM: Product-truth editorial shell. Seed key: brief-pinned.
+THESIS: A product homepage for a replay/backtest/journal chart — FX Replay information order, TradingView-scale screenshot, Talaria-Log facts only.
+OWN-WORLD: Near-black bar chrome, Helvetica Now + Exo 2, brand-blue CTAs, framed product shots, starfield behind the mark.
+STORY: Visitor sees the chart, understands replay + journal, starts free.
+FIRST VIEWPORT: Sticky top bar, wing mark, headline, Start free, then a full-width EUR/USD 1m screenshot.
+FORM: Category-standard trading-tool homepage. Seed key: canon-fxreplay-tradingview.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 -->`;
 
@@ -80,7 +80,7 @@ export function MarketingHome({
       <AnimatePresence>
         {isLoading ? <LoadingScreen onComplete={onLoadComplete} /> : null}
       </AnimatePresence>
-      <Navbar activeId={activeId} onSignIn={onOpenApp} />
+      <Navbar activeId={activeId} onSignIn={onOpenApp} onStartFree={onStartFree} />
       <main>
         <HeroSection ready={!isLoading} onStartFree={onStartFree} />
         <SelectedWorks onOpen={onStartFree} />

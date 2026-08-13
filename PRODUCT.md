@@ -50,6 +50,7 @@ Open / evolving:
 - UI design system: **Hero UI** tokens and components (`docs/DESIGN.md`)
 - Default theme: dark
 - Voice for product UI: precise, tool-like, scan-friendly — not marketing-first on app surfaces
+- Marketing homepage grammar: product-tool landing in the FX Replay / TradingView mold (sticky bar, headline + CTA, full-width product screenshot). Do not copy their copy, logos, or unverified claims.
 
 ## Evidence on Hand
 

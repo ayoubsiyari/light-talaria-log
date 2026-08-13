@@ -961,10 +961,18 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-13 | Volume legend = same chip as overlays (swatch · eye · gear · trash); stack with SMA | Enable Volume + SMA — matching legend rows |
 | 2026-08-13 | Indicators menu → Obsidian browser: nav counts, Find…, abbr+desc rows, pin/+, Done | Open Indicators — matches Live sidebar/list layout |
 | 2026-08-13 | TF bar: Interval left + solid-accent pin chips; drop stars + custom m/H/D/W/M · + | Open Interval — Minutes/Hours · star pins · composer |
+| 2026-08-13 | Interval drop: visible border + edge shadow on Popover shell (sdrop was killing plate) | Open Interval — clear outline vs chart |
 | 2026-08-13 | Rebuilt marketing home as dark editorial portfolio (GSAP/Framer/HLS, Talaria-Log name/logo, template copy) | Hard-refresh `/#/` — loader → hero video → work/journal/explorations |
 | 2026-08-13 | Remapped landing copy/CTAs to replay, backtest, journal, and the canvas chart (kept editorial chrome) | Hard-refresh `/#/` — Start free / Sign in / product sections |
 | 2026-08-13 | Landing Explorations: desktop-only pin/parallax; mobile stays static stack | Resize <768 — no pin; desktop scrub columns |
 | 2026-08-13 | Landing home uses product shots + official wing mark + Helvetica Now / Exo 2 (same as V9 chrome) | Hard-refresh `/#/` — big logo, chart screenshot, Start free |
+| 2026-08-13 | Restored spinning brand-blue ring on the mark; Ken Burns pan on product shots | Hard-refresh `/#/` — ring in nav/hero; shots drift |
+| 2026-08-13 | Hero: wing mark only (no ring) + canvas starfield; shots still pan | Hard-refresh `/#/` — stars behind logo |
+| 2026-08-13 | Landing grammar → FX Replay / TradingView product homepage (bar, hero shot, feature rows) | Hard-refresh `/#/` — sticky bar + full-width chart |
+| 2026-08-13 | Hero: soft chart screenshot under the starfield dots | Hard-refresh `/#/` — candles wash + dots on top |
+| 2026-08-13 | Hero: raise bg chart opacity; drop framed product shot | Hard-refresh `/#/` — wash only, no inset chart |
+| 2026-08-13 | Hero starfield: visible drift + twinkle | Hard-refresh `/#/` — dots float and pulse |
+| 2026-08-13 | Revert neon close-line overlay on hero | Hard-refresh `/#/` — wash + dots only |
 
 ---
 

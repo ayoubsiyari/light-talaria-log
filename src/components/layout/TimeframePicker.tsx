@@ -230,12 +230,21 @@ export function TimeframePicker({
           </span>
           <ChromeIcon n="arrowDn" s={11} />
         </Popover.Trigger>
-        <Popover.Content placement="bottom start" className="p-0 z-[100]">
+        <Popover.Content
+          placement="bottom start"
+          className={[
+            'p-0 z-[100] overflow-hidden',
+            'w-[min(15.5rem,calc(100vw-1.5rem))]',
+            'rounded-[var(--radius-panel)]',
+            'border border-[color:var(--line-strong,var(--border,var(--line)))]',
+            'bg-[color:var(--surface)]',
+            'shadow-[0_0_0_1px_color-mix(in_oklab,var(--foreground)_12%,transparent),0_12px_32px_color-mix(in_oklab,black_55%,transparent)]',
+          ].join(' ')}
+        >
           <Popover.Dialog
             data-v9-chrome="1"
-            data-sdrop="1"
             data-tb-drop="tf"
-            className="w-[min(15.5rem,calc(100vw-1.5rem))] max-h-[min(70dvh,420px)] overflow-hidden flex flex-col bg-[color:var(--surface)] border border-[color:var(--line)] rounded-[var(--radius-panel,8px)] shadow-none"
+            className="max-h-[min(70dvh,420px)] overflow-hidden flex flex-col w-full bg-transparent border-0 shadow-none rounded-none outline-none"
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
           >
             <div className="tlr-scroll flex-1 min-h-0 overflow-y-auto py-1.5">

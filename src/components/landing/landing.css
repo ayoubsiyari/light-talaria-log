@@ -60,6 +60,21 @@
   }
 }
 
+@keyframes ken-burns {
+  0% {
+    transform: scale(1.12) translate(0%, 0%);
+  }
+  40% {
+    transform: scale(1.2) translate(-3.5%, -2%);
+  }
+  70% {
+    transform: scale(1.16) translate(2%, -3.5%);
+  }
+  100% {
+    transform: scale(1.12) translate(0%, 0%);
+  }
+}
+
 .accent-gradient {
   background-image: linear-gradient(
     90deg,
@@ -85,6 +100,37 @@
   );
   background-size: 300% 300%;
   animation: gradient-shift 6s ease infinite;
+}
+
+.landing-shot-pan {
+  animation: ken-burns 22s ease-in-out infinite;
+  transform-origin: center top;
+  will-change: transform;
+}
+
+/* Soft chart wash under the hero starfield. */
+.hero-bg-shot {
+  opacity: 0.52;
+  filter: blur(0.6px) saturate(0.95);
+  transform: scale(1.04);
+  transform-origin: center center;
+}
+
+.hero-bg-veil {
+  background:
+    radial-gradient(
+      ellipse 80% 60% at 50% 42%,
+      transparent 0%,
+      hsl(var(--lp-bg) / 0.12) 45%,
+      hsl(var(--lp-bg) / 0.55) 100%
+    ),
+    linear-gradient(
+      to bottom,
+      hsl(var(--lp-bg) / 0.35) 0%,
+      transparent 22%,
+      transparent 72%,
+      hsl(var(--lp-bg)) 100%
+    );
 }
 
 .landing-page {
@@ -141,7 +187,13 @@ html.landing-locked body {
 @media (prefers-reduced-motion: reduce) {
   .animate-scroll-down,
   .animate-role-fade-in,
-  .landing-gradient-border {
+  .landing-gradient-border,
+  .landing-shot-pan {
     animation: none !important;
+  }
+
+  .landing-shot-pan {
+    transform: none;
+    will-change: auto;
   }
 }

@@ -23,11 +23,11 @@ export function JournalSection({ onOpen }: JournalSectionProps) {
           }
         />
 
-        <div className="mb-8 overflow-hidden rounded-2xl border border-stroke bg-surface">
+        <div className="relative mb-8 aspect-[16/9] overflow-hidden rounded-2xl border border-stroke bg-surface">
           <img
             src="/landing/shot-journal.png"
             alt="Talaria-Log journal with open, pending, and closed trades"
-            className="block h-auto w-full object-cover object-top"
+            className="landing-shot-pan absolute inset-0 h-full w-full object-cover object-top"
           />
         </div>
 

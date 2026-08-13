@@ -1,10 +1,10 @@
 export const heroCopy = {
   eyebrow: "BACKTEST · CHART · JOURNAL",
   h1: "Replay the market. Keep the receipts.",
-  sub: "TALARIA-LOG loads historical FX bars, runs strategy backtests on a fast canvas chart, and saves every run to a local journal — so you can see whether the edge is real before you size up.",
+  sub: "Load historical FX bars, step through them bar by bar, run a backtest on a fast canvas chart, and save every fill to a local journal — before you size up.",
   primaryCta: "Start free",
-  secondaryCta: "See how it works",
-  footnote: "Create a free account to open sessions and charts.",
+  secondaryCta: "See the chart",
+  footnote: "Free account. No credit card required.",
   metrics: {
     equity: "+184.2%",
     pf: "PF 1.71",

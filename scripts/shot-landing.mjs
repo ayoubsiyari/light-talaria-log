@@ -68,6 +68,14 @@ async function run() {
   await new Promise((r) => setTimeout(r, 600));
   await shot(mobile, 'mobile-journal.png');
 
+  await mobile.evaluate(() => document.getElementById('explorations')?.scrollIntoView());
+  await new Promise((r) => setTimeout(r, 600));
+  await shot(mobile, 'mobile-explorations.png');
+
+  await mobile.evaluate(() => document.getElementById('resume')?.scrollIntoView());
+  await new Promise((r) => setTimeout(r, 600));
+  await shot(mobile, 'mobile-stats.png');
+
   await browser.close();
 }
 

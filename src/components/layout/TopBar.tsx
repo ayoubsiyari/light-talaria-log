@@ -116,13 +116,14 @@ export function TopBar({
       type="button"
       data-tb-item="utils"
       data-tb-util={id}
+      data-tb-icon-btn="1"
       data-v9-utility=""
       title={label}
       aria-label={label}
       className="v8b-chrome-btn !h-9 !min-h-11 sm:!min-h-9 !w-9 !min-w-11 sm:!min-w-9 !px-0 justify-center"
       onClick={onClick}
     >
-      <ChromeIcon n={icon} s={15} />
+      <ChromeIcon n={icon} s={18} />
     </button>
   );
 
@@ -223,7 +224,10 @@ export function TopBar({
 
         <span className="v8b-sep" aria-hidden />
 
-        <div className="hidden sm:flex items-center gap-0">
+        <div
+          data-tb-utils="1"
+          className="hidden sm:flex items-center gap-0 self-center"
+        >
           <LayoutPicker
             layout={chartLayout}
             onLayoutChange={onChartLayoutChange}
@@ -239,9 +243,22 @@ export function TopBar({
           {utilBtn('screenshot', 'screenshot', 'Screenshot (stub)', () => {
             /* stub */
           })}
+          {showThemeToggle && (
+            <ThemeToggle
+              compact
+              className="v8b-chrome-btn !h-9 !min-h-11 sm:!min-h-9 !w-9 !min-w-11 sm:!min-w-9 !px-0"
+            />
+          )}
         </div>
 
-        {showThemeToggle && <ThemeToggle compact />}
+        {showThemeToggle && (
+          <div className="sm:hidden self-center">
+            <ThemeToggle
+              compact
+              className="v8b-chrome-btn !h-9 !min-h-11 sm:!min-h-9 !w-9 !min-w-11 sm:!min-w-9 !px-0"
+            />
+          </div>
+        )}
         {backtestParams && onBacktestParamsChange ? (
           <BacktestRunMenu
             running={backtestRunning}

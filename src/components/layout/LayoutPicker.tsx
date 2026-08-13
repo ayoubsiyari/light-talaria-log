@@ -32,18 +32,20 @@ function LayoutThumb({
   w?: number;
   h?: number;
 }) {
-  const pad = 3;
+  /* Keep glyph weight with peer 18px toolbar icons (less inset on small thumbs). */
+  const pad = Math.min(w, h) <= 20 ? 1.25 : 3;
   const iw = w - pad * 2;
   const ih = h - pad * 2;
   const stroke = active ? 'var(--accent)' : 'var(--line-strong)';
   const fill = active ? 'var(--accent-quiet)' : 'var(--surface-sunken)';
   return (
     <svg
+      data-chrome-icon="1"
       width={w}
       height={h}
       viewBox={`0 0 ${w} ${h}`}
       aria-hidden
-      style={{ display: 'block' }}
+      style={{ display: 'block', flexShrink: 0 }}
     >
       <rect
         x={pad}
@@ -73,14 +75,14 @@ function LayoutThumb({
 
 function LayoutGlyph({
   layout,
-  size = 16,
+  size = 18,
 }: {
   layout: ChartLayout;
   size?: number;
 }) {
   const { n, li } = variantIndexForLayout(layout);
   const lines = LAYOUT_LY_LINES[n - 1]?.[li] ?? [];
-  return <LayoutThumb lines={lines} active={false} w={size + 4} h={size} />;
+  return <LayoutThumb lines={lines} active={false} w={size} h={size} />;
 }
 
 function SyncToggle({
@@ -111,7 +113,7 @@ function SyncToggle({
         className="absolute top-[2px] h-[14px] w-[14px] rounded-full transition-transform"
         style={{
           left: checked ? 16 : 2,
-          background: checked ? '#fff' : 'var(--text-muted)',
+          background: checked ? 'var(--cta-fg, var(--foreground))' : 'var(--text-muted)',
         }}
       />
     </button>
@@ -171,9 +173,10 @@ export function LayoutPicker({
         title="Layouts"
         aria-label="Chart layout"
         data-tb-item="layout"
-        className="v8b-chrome-btn !h-9 !min-h-11 sm:!min-h-9 !w-9 !min-w-11 sm:!min-w-9 !px-0 justify-center rounded-[var(--radius-control,6px)]"
+        data-tb-icon-btn="1"
+        className="v8b-chrome-btn !h-9 !min-h-11 sm:!min-h-9 !w-9 !min-w-11 sm:!min-w-9 !px-0 justify-center rounded-[var(--radius-control)]"
       >
-        <LayoutGlyph layout={layout} size={16} />
+        <LayoutGlyph layout={layout} size={18} />
       </Popover.Trigger>
       <Popover.Content placement="bottom end" className="p-0 z-[100]">
         <Popover.Dialog

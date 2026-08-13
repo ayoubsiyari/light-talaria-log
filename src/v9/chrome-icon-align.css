@@ -1,0 +1,64 @@
+/* Unified chrome icon buttons — matching hit boxes + 18px glyphs */
+
+[data-v9-topbar] [data-tb-utils] .v8b-chrome-btn,
+[data-v9-topbar] [data-tb-icon-btn='1'],
+[data-v9-topbar] [data-tb-item='layout'] {
+  width: var(--icon-hit, 36px) !important;
+  height: var(--icon-hit, 36px) !important;
+  min-width: var(--icon-hit, 36px) !important;
+  min-height: var(--icon-hit, 36px) !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  vertical-align: middle;
+}
+
+/* Icon-only toolbar glyphs (Layout, Objects, News, Screenshot, Theme) */
+[data-v9-topbar] [data-tb-utils] [data-chrome-icon='1'],
+[data-v9-topbar] [data-tb-icon-btn='1'] [data-chrome-icon='1'],
+[data-v9-topbar] [data-tb-item='layout'] [data-chrome-icon='1'],
+[data-v9-topbar] [data-tb-utils] svg,
+[data-v9-topbar] [data-tb-icon-btn='1'] svg,
+[data-v9-topbar] [data-tb-item='layout'] svg {
+  width: var(--icon-glyph, 18px) !important;
+  height: var(--icon-glyph, 18px) !important;
+  flex-shrink: 0;
+}
+
+/* Primary chrome-btn leading glyph (Indicators, Chart type, etc.) */
+[data-v9-topbar] .v8b-chrome-btn > [data-chrome-icon='1']:first-of-type {
+  width: var(--icon-glyph, 18px) !important;
+  height: var(--icon-glyph, 18px) !important;
+  flex-shrink: 0;
+}
+
+/* Rail tool glyphs */
+[data-v9-app] .v8b-tool [data-chrome-icon='1'],
+[data-v9-app] .v8b-tool svg,
+[data-v9-rail] .v8b-tool [data-chrome-icon='1'],
+[data-v9-rail] .v8b-tool svg {
+  width: var(--icon-glyph, 18px) !important;
+  height: var(--icon-glyph, 18px) !important;
+  flex-shrink: 0;
+}
+
+/* Bottom / replay transport icon buttons */
+[data-v9-bottombar] .v8b-chrome-btn > [data-chrome-icon='1']:first-of-type,
+[data-v9-replaybar] .v8b-chrome-btn > [data-chrome-icon='1']:first-of-type,
+[data-v9-bottombar] [data-bb-icon-btn='1'] [data-chrome-icon='1'],
+[data-v9-replaybar] [data-bb-icon-btn='1'] [data-chrome-icon='1'] {
+  width: var(--icon-glyph, 18px) !important;
+  height: var(--icon-glyph, 18px) !important;
+  flex-shrink: 0;
+}
+
+@media (hover: none), (pointer: coarse) {
+  [data-v9-topbar] [data-tb-utils] .v8b-chrome-btn,
+  [data-v9-topbar] [data-tb-icon-btn='1'],
+  [data-v9-topbar] [data-tb-item='layout'] {
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+}

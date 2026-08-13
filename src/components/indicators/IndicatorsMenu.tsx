@@ -250,7 +250,7 @@ export function IndicatorsMenu({
         className="v8b-chrome-btn !h-7 min-h-7 [@media(hover:none)]:min-h-11 gap-1.5"
         onPress={() => setOpen(true)}
       >
-        <ChromeIcon n="indicator" s={15} />
+        <ChromeIcon n="indicator" s={18} />
         <span className="hidden sm:inline">Indicators</span>
         {enabled.length > 0 && (
           <span className="text-xs text-muted tabular-nums">

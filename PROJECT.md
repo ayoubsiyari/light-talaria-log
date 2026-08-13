@@ -977,6 +977,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-13 | Hero: raise bg chart opacity; drop framed product shot | Hard-refresh `/#/` — wash only, no inset chart |
 | 2026-08-13 | Hero starfield: visible drift + twinkle | Hard-refresh `/#/` — dots float and pulse |
 | 2026-08-13 | Revert neon close-line overlay on hero | Hard-refresh `/#/` — wash + dots only |
+| 2026-08-13 | Align top-right utils (Layout + peers): 36px hit / 18px glyphs via `chrome-icon-align.css`; denser Layout thumb | Hard-refresh chart — Layout matches Objects/News/Theme |
 
 ---
 

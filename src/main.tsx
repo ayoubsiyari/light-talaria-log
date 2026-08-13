@@ -10,6 +10,7 @@ import { installForbidNativeTooltips } from '@/v9/forbidNativeTooltips.js';
 import './index.css';
 /* V9 Obsidian chrome — scoped to [data-v9-app] (see chrome-tokens.css) */
 import '@/v9/chrome.css';
+import '@/v9/chrome-icon-align.css';
 
 initTheme();
 initAppearance();

@@ -367,16 +367,39 @@ export function TimeframePicker({
               })}
             </div>
 
-            <div data-tf-compose="">
-              <div data-tf-compose-row="">
+            <div
+              data-tf-compose=""
+              style={{
+                padding: '8px 10px 10px',
+                borderTop: '1px solid var(--line-strong, var(--line))',
+              }}
+            >
+              <div
+                data-tf-compose-row=""
+                className="flex items-center gap-1.5"
+              >
                 <input
                   type="text"
                   inputMode="numeric"
                   value={customVal}
                   placeholder="3"
                   aria-label="Custom interval"
-                  data-tf-val=""
                   className="tlr-nospinner"
+                  style={{
+                    width: 44,
+                    height: 32,
+                    boxSizing: 'border-box',
+                    padding: '0 6px',
+                    borderRadius: 'var(--radius-control)',
+                    border: '1px solid var(--line-strong)',
+                    background: 'var(--surface-sunken)',
+                    color: 'var(--text)',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    fontVariantNumeric: 'tabular-nums',
+                    textAlign: 'center',
+                    outline: 'none',
+                  }}
                   onChange={(e) => {
                     setCustomVal(e.target.value.replace(/[^0-9]/g, ''));
                     setCustomErr('');
@@ -388,7 +411,19 @@ export function TimeframePicker({
                     }
                   }}
                 />
-                <div data-tf-units="" role="group" aria-label="Unit">
+                <div
+                  role="group"
+                  aria-label="Unit"
+                  className="flex min-w-0 flex-1 items-center gap-0.5"
+                  style={{
+                    height: 32,
+                    padding: 2,
+                    borderRadius: 'var(--radius-control)',
+                    border: '1px solid var(--line-strong)',
+                    background: 'var(--surface-sunken)',
+                    boxSizing: 'border-box',
+                  }}
+                >
                   {UNIT_SHORT.map(({ u, lbl }) => {
                     const on = customUnit === u;
                     return (
@@ -397,15 +432,18 @@ export function TimeframePicker({
                         key={u}
                         data-on={on ? '1' : undefined}
                         aria-pressed={on}
-                        className="min-h-11 min-w-0 sm:min-h-8"
-                        style={
-                          on
-                            ? {
-                                background: 'var(--accent-quiet)',
-                                color: 'var(--accent)',
-                              }
-                            : undefined
-                        }
+                        className="min-h-11 min-w-0 flex-1 sm:min-h-0 sm:h-full"
+                        style={{
+                          border: 'none',
+                          borderRadius: 'var(--radius-control)',
+                          background: on
+                            ? 'var(--accent-quiet)'
+                            : 'transparent',
+                          color: on ? 'var(--accent)' : 'var(--text-muted)',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          padding: 0,
+                        }}
                         onClick={() => {
                           setCustomUnit(u);
                           setCustomErr('');
@@ -421,7 +459,12 @@ export function TimeframePicker({
                   data-brand-btn="primary"
                   data-tf-add=""
                   aria-label="Add and pin custom interval"
-                  className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-9 inline-flex items-center justify-center"
+                  className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 inline-flex items-center justify-center shrink-0"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 'var(--radius-control)',
+                  }}
                   onClick={addCustom}
                 >
                   <ChromeIcon n="plus" s={14} cl="var(--cta-fg)" />

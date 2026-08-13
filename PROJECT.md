@@ -963,6 +963,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-13 | TF bar: Interval left + solid-accent pin chips; drop stars + custom m/H/D/W/M · + | Open Interval — Minutes/Hours · star pins · composer |
 | 2026-08-13 | Interval drop: visible border + edge shadow on Popover shell (sdrop was killing plate) | Open Interval — clear outline vs chart |
 | 2026-08-13 | Interval drop polish: crisp line-strong border, pin icons, divider pin-bar chips | Match Live Interval plate + row hover |
+| 2026-08-13 | Interval custom TF input: visible line-strong boxes (value + unit group + +) | Open Interval — composer fields have clear borders |
 | 2026-08-13 | Rebuilt marketing home as dark editorial portfolio (GSAP/Framer/HLS, Talaria-Log name/logo, template copy) | Hard-refresh `/#/` — loader → hero video → work/journal/explorations |
 | 2026-08-13 | Remapped landing copy/CTAs to replay, backtest, journal, and the canvas chart (kept editorial chrome) | Hard-refresh `/#/` — Start free / Sign in / product sections |
 | 2026-08-13 | Landing Explorations: desktop-only pin/parallax; mobile stays static stack | Resize <768 — no pin; desktop scrub columns |

@@ -1,0 +1,157 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700&display=swap');
+
+/*
+ * Landing visual world — scoped so Hero UI / chart chrome keep their tokens.
+ * HSL channels have no hsl() wrapper; Tailwind utilities add it.
+ */
+:root {
+  --lp-bg: 0 0% 4%;
+  --lp-surface: 0 0% 8%;
+  --lp-text: 0 0% 96%;
+  --lp-muted: 0 0% 53%;
+  --lp-stroke: 0 0% 12%;
+  --lp-accent: 0 0% 96%;
+  --lp-grad-from: #89aacc;
+  --lp-grad-to: #4e85bf;
+}
+
+@theme {
+  --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Instrument Serif', ui-serif, Georgia, serif;
+  --color-bg: hsl(var(--lp-bg));
+  --color-text-primary: hsl(var(--lp-text));
+  --color-stroke: hsl(var(--lp-stroke));
+  --animate-scroll-down: scroll-down 1.5s ease-in-out infinite;
+  --animate-role-fade-in: role-fade-in 0.4s ease-out;
+  --animate-gradient-shift: gradient-shift 6s ease infinite;
+}
+
+@keyframes scroll-down {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(200%);
+  }
+}
+
+@keyframes role-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes landing-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+}
+
+.accent-gradient {
+  background-image: linear-gradient(
+    90deg,
+    var(--lp-grad-from) 0%,
+    var(--lp-grad-to) 100%
+  );
+}
+
+.accent-gradient-rev {
+  background-image: linear-gradient(
+    270deg,
+    var(--lp-grad-from) 0%,
+    var(--lp-grad-to) 100%
+  );
+}
+
+.landing-gradient-border {
+  background-image: linear-gradient(
+    90deg,
+    var(--lp-grad-from),
+    var(--lp-grad-to),
+    var(--lp-grad-from)
+  );
+  background-size: 300% 300%;
+  animation: gradient-shift 6s ease infinite;
+}
+
+.landing-page {
+  --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Instrument Serif', ui-serif, Georgia, serif;
+  --bg: var(--lp-bg);
+  --surface: hsl(var(--lp-surface));
+  --text: var(--lp-text);
+  --muted: hsl(var(--lp-muted));
+  --stroke: hsl(var(--lp-stroke));
+  --accent: hsl(var(--lp-accent));
+  --background: hsl(var(--lp-bg));
+  --foreground: hsl(var(--lp-text));
+  --border: hsl(var(--lp-stroke));
+  font-family: var(--font-body);
+  background: hsl(var(--lp-bg));
+  color: hsl(var(--lp-text));
+  color-scheme: dark;
+}
+
+.landing-page .font-display,
+.landing-overlay .font-display {
+  font-family: var(--font-display);
+}
+
+.landing-overlay {
+  --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Instrument Serif', ui-serif, Georgia, serif;
+  font-family: var(--font-body);
+  background-color: hsl(var(--lp-bg));
+  color: hsl(var(--lp-text));
+}
+
+html.landing-active,
+html.landing-active body,
+html.landing-active #root {
+  height: auto;
+  min-height: 100dvh;
+  overflow-x: clip;
+}
+
+html.landing-active body {
+  background: hsl(var(--lp-bg));
+  color: hsl(var(--lp-text));
+  color-scheme: dark;
+}
+
+html.landing-locked,
+html.landing-locked body {
+  overflow: hidden;
+  height: 100dvh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-scroll-down,
+  .animate-role-fade-in,
+  .landing-gradient-border {
+    animation: none !important;
+  }
+}

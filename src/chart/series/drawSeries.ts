@@ -75,8 +75,9 @@ function drawCandles(
 
     const top = Math.min(yOpen, yClose);
     const h = Math.max(1, Math.abs(yClose - yOpen));
-    // One pixel center for wick + body (avoids half-px shear on first paint).
-    const xMid = Math.round(x) + 0.5;
+    // Continuous X (same center for wick + body). Math.round(x)+0.5 made
+    // candles vibrate on slow pan/zoom whenever the round flipped a pixel.
+    const xMid = x;
     const left = xMid - bodyW / 2;
     const hollow = colors.hollowCandles && up;
 
@@ -97,7 +98,7 @@ function drawCandles(
     if (colors.showBorder || hollow) {
       ctx.strokeStyle = border;
       ctx.lineWidth = 1;
-      ctx.strokeRect(left + 0.5, top + 0.5, Math.max(0, bodyW - 1), Math.max(0, h - 1));
+      ctx.strokeRect(left, top, bodyW, h);
     }
   }
 }
@@ -127,11 +128,11 @@ function drawOhclBars(
     ctx.strokeStyle = up ? colors.upColor : colors.downColor;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(x + 0.5, yHigh);
-    ctx.lineTo(x + 0.5, yLow);
+    ctx.moveTo(x, yHigh);
+    ctx.lineTo(x, yLow);
     ctx.moveTo(x - tick, yOpen);
-    ctx.lineTo(x + 0.5, yOpen);
-    ctx.moveTo(x + 0.5, yClose);
+    ctx.lineTo(x, yOpen);
+    ctx.moveTo(x, yClose);
     ctx.lineTo(x + tick, yClose);
     ctx.stroke();
   }
@@ -193,7 +194,8 @@ export function drawVolume(
   for (let i = from; i <= to; i++) {
     const bar = bars[i];
     if (!bar || !(bar.volume && bar.volume > 0)) continue;
-    const xMid = Math.round(indexToX(i, range, volumePlot)) + 0.5;
+    // Match candle centers — no pixel snap (same slow-pan vibration).
+    const xMid = indexToX(i, range, volumePlot);
     const h = (bar.volume / maxVol) * volumePlot.height;
     const up = isUp(bar, bars[i - 1], colors);
     ctx.fillStyle = up ? colors.upColor : colors.downColor;

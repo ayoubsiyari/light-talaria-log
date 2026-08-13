@@ -4,6 +4,19 @@
     "ignoreFiles": [
       "src/chart/"
     ],
-    "ignoreValues": []
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-08-13T09:30:56.807Z",
+        "reason": "User pinned Inter as body face in the landing recreation brief"
+      },
+      {
+        "rule": "overused-font",
+        "value": "instrument serif",
+        "createdAt": "2026-08-13T09:30:56.935Z",
+        "reason": "User pinned Instrument Serif as display face in the landing recreation brief"
+      }
+    ]
   }
 }

@@ -953,6 +953,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-13 | Candles/volume use continuous X (drop Math.round snap) so slow pan/zoom no longer vibrates | Slow drag/zoom — candles glide without shaking |
 | 2026-08-13 | TF preserve: short HTF buffer keeps bar-count span (no fit-zoom fat candles on 1m→4h) | 1m→4h same candle width; vibrate paint untouched |
 | 2026-08-13 | Chart freeze rule: `.cursor/rules/chart-freeze.mdc` (alwaysApply) — no chart/drawings edits without `unlock chart` | Say `unlock chart` only when you want engine work |
+| 2026-08-13 | Fix cold-start Play stuck: left-pad mergePut (keep tip runway) + skip setViewport/React while tip-follow Play | New browser → open session → Play advances without TF/Pause spam |
 | 2026-08-12 | Color/style flyout: opaque `--surface-raised` plate (was near-black `--surface`, looked transparent on chart) | Open drawing style — panel reads solid vs chart |
 | 2026-08-12 | Style trigger: one icon-sized button (color + line chip) matching toolbar peers | Floating bar — style control same size as settings/lock |
 | 2026-08-12 | Style flyout chrome = drawing toolbar (`bg-surface` / border / accent segments) | Open style — same plate + blue active as settings bar |

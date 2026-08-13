@@ -19,6 +19,7 @@ import {
 import { loadViewportAroundTime } from '@/datasets/seriesViewport';
 import { ledgerAcquire, ledgerRelease } from '@/dev/resourceLedger';
 import { barsMatchTimeframe } from '@/session/barTfGuard';
+import { mergeBarsByTime } from '@/session/mergeBarsByTime';
 import type { ChartBar } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
 import { CHUNK_SIZE, MAX_BARS_IN_MEMORY } from '@/utils/constants';
@@ -466,6 +467,25 @@ export class WarmCache {
       loadedAt: Date.now(),
       touchedAt: Date.now(),
     });
+  }
+
+  /**
+   * Union `bars` into the existing entry without dropping a newer tip.
+   * Cold-start left-pad / pan history must not replace replay fill-ahead runway.
+   */
+  mergePut(
+    datasetId: string,
+    tf: Timeframe,
+    bars: readonly ChartBar[],
+    anchorTime: number,
+  ): void {
+    const prev = this.store.get(key(datasetId, tf))?.bars ?? [];
+    this.put(
+      datasetId,
+      tf,
+      mergeBarsByTime(prev, bars, MAX_BARS_IN_MEMORY),
+      anchorTime,
+    );
   }
 
   private writeEntry(k: CacheKey, entry: CacheEntry): void {

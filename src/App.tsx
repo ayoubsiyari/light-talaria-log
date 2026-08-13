@@ -1010,6 +1010,7 @@ export default function App() {
    * `skipLod`: history fill only (session-load / left-pad) — never coarsen TF.
    * Empty-pad wall-clock can span months via index extrapolation and used to
    * arm LOD → 1D while TopBar still showed selectedTf (e.g. 1m) after reload.
+   * While Play tip-follow is active: warm-cache merge only — never stomp engines.
    */
   const applyTimeWindowToPanes = useCallback(
     async (
@@ -1119,9 +1120,10 @@ export default function App() {
             }
           }
 
-          // Always cache the full IDB window — never put truncated reveal bars
-          // (that starved Play tip growth under every pane sharing the key).
-          warmCache.put(
+          // Merge full IDB window into warm cache — never replace with a shorter
+          // tip (left-pad used to wipe Play fill-ahead runway on cold devices).
+          // Never put truncated reveal bars (shared key starves every pane).
+          warmCache.mergePut(
             p.datasetId,
             loadTf,
             vp.bars,
@@ -1147,6 +1149,18 @@ export default function App() {
 
       if (gen !== prefetchGenRef.current) return; // stale prefetch / LOD
       if (!viewportReloadEnabledRef.current) return;
+
+      // Play tip-follow owns engines via syncReplayReveal. Session-load left-pad
+      // (slow on new browser/IDB) must not finish mid-Play and setViewportBars /
+      // replace React panes with a cursor-truncated snapshot — that froze replay
+      // until TF switch or Pause→Play rebuilt from cache.
+      const followPlay =
+        replayRef.current.get().playing &&
+        !cameraDetachedRef.current &&
+        detachedPanesRef.current.size === 0;
+      if (followPlay) {
+        return;
+      }
 
       // Merge against latest identity — a TF/symbol switch may have won mid-await.
       // Never stomp selectedTf / dataset / pair from a pre-switch snapshot.

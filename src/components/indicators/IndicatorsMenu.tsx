@@ -80,7 +80,7 @@ function blurbFor(id: IndicatorId): string {
     dema: 'Double EMA — less lag than a single EMA',
     tema: 'Triple EMA — further lag reduction vs DEMA',
     rma: 'Wilder’s smoothed moving average (RMA)',
-    bollinger: 'SMA ± standard-deviation bands around price',
+    bb: 'SMA ± standard-deviation bands around price',
     atr: 'Average True Range — volatility in price units',
     rsi: 'Relative Strength Index — momentum oscillator 0–100',
     macd: 'MACD line, signal, and histogram',

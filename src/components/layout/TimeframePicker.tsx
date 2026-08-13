@@ -48,9 +48,11 @@ export function toEngineTimeframe(id: IntervalId): Timeframe | null {
   return null;
 }
 
-/** Display label for pin bar / menu (Live format). */
+/** Display label for pin bar / menu (reference: 1m · 1h · 1d). */
 export function formatTfLabel(id: IntervalId): string {
-  if (id.endsWith('h') && !id.endsWith('H')) return id.replace(/h$/, 'H');
+  if (id.endsWith('H')) return `${id.slice(0, -1)}h`;
+  if (id.endsWith('D')) return `${id.slice(0, -1)}d`;
+  if (id.endsWith('W')) return `${id.slice(0, -1)}w`;
   return id;
 }
 
@@ -106,7 +108,7 @@ interface TimeframePickerProps {
 }
 
 /**
- * Obsidian Interval picker — data-tb-drop="tf" + pin bar (Live grammar).
+ * Obsidian Interval picker — Interval trigger · pin bar · drop (Live grammar).
  * Extra / custom intervals are UI-only until aggregator supports them.
  */
 export function TimeframePicker({
@@ -116,9 +118,15 @@ export function TimeframePicker({
 }: TimeframePickerProps) {
   const { pinned, isPinned, togglePin } = usePinnedTimeframes();
   const [open, setOpen] = useState(false);
-  const [catsOpen, setCatsOpen] = useState<string[]>(['minutes', 'hours']);
+  const [catsOpen, setCatsOpen] = useState<string[]>([
+    'minutes',
+    'hours',
+    'days',
+    'weeks',
+    'months',
+  ]);
   const [customItems, setCustomItems] = useState<IntervalId[]>(() => loadCustom());
-  const [customVal, setCustomVal] = useState('');
+  const [customVal, setCustomVal] = useState('3');
   const [customUnit, setCustomUnit] = useState('m');
   const [customErr, setCustomErr] = useState('');
 
@@ -153,7 +161,9 @@ export function TimeframePicker({
     const pinnedUi = pinned.map((p) =>
       p === '1h' ? '1H' : p === '4h' ? '4H' : p,
     );
-    const items = pinnedUi.includes(activeUi) ? [...pinnedUi] : [activeUi, ...pinnedUi];
+    const items = pinnedUi.includes(activeUi)
+      ? [...pinnedUi]
+      : [activeUi, ...pinnedUi];
     return sortBar([...new Set(items)]);
   }, [pinned, activeUi]);
 
@@ -199,60 +209,33 @@ export function TimeframePicker({
   }, [open]);
 
   return (
-    <div className="flex items-center gap-0 min-w-0" data-tf-bar="">
-      <div
-        data-brand-seg="1"
-        role="group"
-        aria-label="Timeframes"
-        className="flex items-center gap-0 min-w-0 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-        {barItems.map((id) => {
-          const active = formatTfLabel(id) === formatTfLabel(activeUi) || id === activeUi;
-          const engine = toEngineTimeframe(id);
-          const enabled = engine ? isEngineEnabled(engine) : false;
-          const ephemeral = active && !pinned.some((p) => formatTfLabel(p) === formatTfLabel(id));
-          return (
-            <button
-              key={id}
-              type="button"
-              data-tf={id}
-              data-brand-seg-item=""
-              data-active={active ? '1' : undefined}
-              data-ephemeral={ephemeral ? '1' : undefined}
-              disabled={!enabled}
-              aria-pressed={active}
-              title={
-                enabled
-                  ? formatTfLabel(id)
-                  : `${formatTfLabel(id)} needs a finer base (download 1m)`
-              }
-              onClick={() => {
-                if (enabled) pickInterval(id);
-              }}
-              className="shrink-0 min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 px-2.5 py-1 text-[12px] tabular-nums rounded-lg"
-            >
-              {formatTfLabel(id)}
-            </button>
-          );
-        })}
-      </div>
-
+    <div className="flex items-center gap-1.5 min-w-0" data-tf-bar="">
       <Popover isOpen={open} onOpenChange={setOpen}>
         <Popover.Trigger
-          title="All intervals"
-          aria-label="All intervals"
+          title="Interval"
+          aria-label="Interval"
+          aria-expanded={open}
           data-tb-item="tfMenu"
-          className="v8b-chrome-btn shrink-0 !px-1.5 [@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11"
+          data-active={open ? '1' : undefined}
+          className={[
+            'v8b-chrome-btn shrink-0 !h-8 !min-h-11 sm:!min-h-8 !px-2.5 gap-1',
+            '[@media(hover:none)]:min-h-11',
+            open
+              ? '!border !border-[color:var(--accent)] !text-[color:var(--accent)] !bg-[color:var(--accent-quiet)]'
+              : '',
+          ].join(' ')}
         >
-          <span className="text-[11px] font-semibold hidden sm:inline mr-0.5">Interval</span>
+          <span className="text-xs font-semibold hidden sm:inline">
+            Interval
+          </span>
           <ChromeIcon n="arrowDn" s={11} />
         </Popover.Trigger>
-        <Popover.Content placement="bottom end" className="p-0 z-[100]">
+        <Popover.Content placement="bottom start" className="p-0 z-[100]">
           <Popover.Dialog
             data-v9-chrome="1"
             data-sdrop="1"
             data-tb-drop="tf"
-            className="w-[min(14rem,calc(100vw-1.5rem))] max-h-[min(70dvh,420px)] overflow-hidden flex flex-col bg-[color:var(--surface)] border border-[color:var(--line)] rounded-[var(--radius-panel,8px)] shadow-none"
+            className="w-[min(15.5rem,calc(100vw-1.5rem))] max-h-[min(70dvh,420px)] overflow-hidden flex flex-col bg-[color:var(--surface)] border border-[color:var(--line)] rounded-[var(--radius-panel,8px)] shadow-none"
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
           >
             <div className="tlr-scroll flex-1 min-h-0 overflow-y-auto py-1.5">
@@ -260,7 +243,11 @@ export function TimeframePicker({
                 const cat = categories[catId];
                 const catOpen = catsOpen.includes(catId);
                 return (
-                  <div key={catId} data-tf-cat="" data-open={catOpen ? '1' : undefined}>
+                  <div
+                    key={catId}
+                    data-tf-cat=""
+                    data-open={catOpen ? '1' : undefined}
+                  >
                     <button
                       type="button"
                       data-tf-cat-head=""
@@ -280,12 +267,16 @@ export function TimeframePicker({
                     </button>
                     {catOpen
                       ? cat.items.map((t) => {
-                          const pinnedOn = isPinned(t) || isPinned(t.replace('H', 'h'));
+                          const pinnedOn =
+                            isPinned(t) || isPinned(t.replace('H', 'h'));
                           const isCustom = customItems.includes(t);
                           const isAct =
-                            formatTfLabel(t) === formatTfLabel(activeUi) || t === activeUi;
+                            formatTfLabel(t) === formatTfLabel(activeUi) ||
+                            t === activeUi;
                           const engine = toEngineTimeframe(t);
-                          const enabled = engine ? isEngineEnabled(engine) : false;
+                          const enabled = engine
+                            ? isEngineEnabled(engine)
+                            : false;
                           return (
                             <div
                               key={t}
@@ -303,6 +294,7 @@ export function TimeframePicker({
                                 }}
                               >
                                 <strong>{formatTfLabel(t)}</strong>
+                                {!enabled ? <em>soon</em> : null}
                               </button>
                               {isCustom ? (
                                 <button
@@ -312,7 +304,9 @@ export function TimeframePicker({
                                   className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    const next = customItems.filter((x) => x !== t);
+                                    const next = customItems.filter(
+                                      (x) => x !== t,
+                                    );
                                     setCustomItems(next);
                                     writeCustom(next);
                                     if (isPinned(t)) togglePin(t);
@@ -340,7 +334,7 @@ export function TimeframePicker({
                                 }}
                               >
                                 <ChromeIcon
-                                  n={pinnedOn ? 'pinFill' : 'pin'}
+                                  n={pinnedOn ? 'starFill' : 'star'}
                                   s={13}
                                   cl="currentColor"
                                 />
@@ -376,21 +370,32 @@ export function TimeframePicker({
                   }}
                 />
                 <div data-tf-units="" role="group" aria-label="Unit">
-                  {UNIT_SHORT.map(({ u, lbl }) => (
-                    <button
-                      type="button"
-                      key={u}
-                      data-on={customUnit === u ? '1' : undefined}
-                      aria-pressed={customUnit === u}
-                      className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8"
-                      onClick={() => {
-                        setCustomUnit(u);
-                        setCustomErr('');
-                      }}
-                    >
-                      {lbl}
-                    </button>
-                  ))}
+                  {UNIT_SHORT.map(({ u, lbl }) => {
+                    const on = customUnit === u;
+                    return (
+                      <button
+                        type="button"
+                        key={u}
+                        data-on={on ? '1' : undefined}
+                        aria-pressed={on}
+                        className="min-h-11 min-w-0 sm:min-h-8"
+                        style={
+                          on
+                            ? {
+                                background: 'var(--accent)',
+                                color: 'var(--cta-fg)',
+                              }
+                            : undefined
+                        }
+                        onClick={() => {
+                          setCustomUnit(u);
+                          setCustomErr('');
+                        }}
+                      >
+                        {lbl}
+                      </button>
+                    );
+                  })}
                 </div>
                 <button
                   type="button"
@@ -408,6 +413,54 @@ export function TimeframePicker({
           </Popover.Dialog>
         </Popover.Content>
       </Popover>
+
+      <div
+        data-brand-seg="1"
+        role="group"
+        aria-label="Timeframes"
+        className="flex items-center gap-0 min-w-0 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {barItems.map((id) => {
+          const active =
+            formatTfLabel(id) === formatTfLabel(activeUi) || id === activeUi;
+          const engine = toEngineTimeframe(id);
+          const enabled = engine ? isEngineEnabled(engine) : false;
+          const ephemeral =
+            active &&
+            !pinned.some((p) => formatTfLabel(p) === formatTfLabel(id));
+          return (
+            <button
+              key={id}
+              type="button"
+              data-tf={id}
+              data-brand-seg-item=""
+              data-active={active ? '1' : undefined}
+              data-ephemeral={ephemeral ? '1' : undefined}
+              disabled={!enabled}
+              aria-pressed={active}
+              title={
+                enabled
+                  ? formatTfLabel(id)
+                  : `${formatTfLabel(id)} needs a finer base (download 1m)`
+              }
+              onClick={() => {
+                if (enabled) pickInterval(id);
+              }}
+              className="shrink-0 min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 px-2.5 py-1 text-xs tabular-nums rounded-[var(--radius-control)]"
+              style={
+                active
+                  ? {
+                      background: 'var(--accent)',
+                      color: 'var(--cta-fg)',
+                    }
+                  : undefined
+              }
+            >
+              {formatTfLabel(id)}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

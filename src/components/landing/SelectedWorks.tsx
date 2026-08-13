@@ -31,29 +31,36 @@ export function SelectedWorks() {
           }
         />
 
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-12 md:gap-6">
+        <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-12 md:gap-6">
           {PROJECTS.map((project) => (
-            <motion.article
+            <motion.div
               key={project.title}
               {...reveal}
-              className={`group relative overflow-hidden rounded-3xl border border-stroke bg-surface ${project.span}`}
+              className={project.span}
             >
-              <div className={`relative ${project.aspect}`}>
+              <button
+                type="button"
+                className={`group relative block w-full overflow-hidden rounded-3xl border border-stroke bg-surface ${project.aspect}`}
+              >
                 <img
                   src={project.image}
-                  alt={project.title}
-                  className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                   loading="lazy"
                 />
                 <div
                   className="pointer-events-none absolute inset-0 opacity-20 mix-blend-multiply"
                   style={{
-                    backgroundImage:
-                      'radial-gradient(circle, #000 1px, transparent 1px)',
+                    backgroundImage: 'radial-gradient(circle, #000 1px, transparent 1px)',
                     backgroundSize: '4px 4px',
                   }}
                 />
-                <div className="absolute inset-0 flex items-center justify-center bg-bg/70 opacity-0 backdrop-blur-lg transition-opacity duration-500 group-hover:opacity-100 group-focus-within:opacity-100">
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-5 pt-16 pb-5 text-left md:opacity-100">
+                  <p className="font-display text-lg italic text-text-primary md:text-xl">
+                    {project.title}
+                  </p>
+                </div>
+                <div className="absolute inset-0 flex items-center justify-center bg-bg/70 opacity-0 backdrop-blur-lg transition-opacity duration-500 group-hover:opacity-100 group-focus-visible:opacity-100">
                   <span className="relative inline-flex rounded-full">
                     <span
                       className="landing-gradient-border pointer-events-none absolute rounded-full"
@@ -64,8 +71,8 @@ export function SelectedWorks() {
                     </span>
                   </span>
                 </div>
-              </div>
-            </motion.article>
+              </button>
+            </motion.div>
           ))}
         </div>
       </div>

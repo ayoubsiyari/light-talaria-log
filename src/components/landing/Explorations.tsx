@@ -23,8 +23,12 @@ export function Explorations() {
     const colRight = colRightRef.current;
     if (!section || !content || !colLeft || !colRight) return;
 
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const desktop = window.matchMedia('(min-width: 768px)');
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+
     const ctx = gsap.context(() => {
+      if (!desktop.matches) return;
+
       ScrollTrigger.create({
         trigger: section,
         start: 'top top',
@@ -33,36 +37,36 @@ export function Explorations() {
         pinSpacing: false,
       });
 
-      if (!reduced) {
-        gsap.fromTo(
-          colLeft,
-          { y: 160 },
-          {
-            y: -280,
-            ease: 'none',
-            scrollTrigger: {
-              trigger: section,
-              start: 'top bottom',
-              end: 'bottom top',
-              scrub: true,
-            },
+      if (reduced.matches) return;
+
+      gsap.fromTo(
+        colLeft,
+        { y: 24 },
+        {
+          y: -220,
+          ease: 'none',
+          scrollTrigger: {
+            trigger: section,
+            start: 'top top',
+            end: 'bottom bottom',
+            scrub: true,
           },
-        );
-        gsap.fromTo(
-          colRight,
-          { y: -80 },
-          {
-            y: 220,
-            ease: 'none',
-            scrollTrigger: {
-              trigger: section,
-              start: 'top bottom',
-              end: 'bottom top',
-              scrub: true,
-            },
+        },
+      );
+      gsap.fromTo(
+        colRight,
+        { y: -12 },
+        {
+          y: 180,
+          ease: 'none',
+          scrollTrigger: {
+            trigger: section,
+            start: 'top top',
+            end: 'bottom bottom',
+            scrub: true,
           },
-        );
-      }
+        },
+      );
     }, section);
 
     return () => ctx.revert();
@@ -86,42 +90,37 @@ export function Explorations() {
     <section
       ref={sectionRef}
       id="explorations"
-      className="relative min-h-[300vh] overflow-hidden bg-bg"
+      className="relative bg-bg md:min-h-[300vh]"
     >
       <div
         ref={contentRef}
-        className="relative z-10 flex h-screen flex-col items-center justify-center px-6 text-center"
+        className="relative z-10 hidden h-screen flex-col items-center justify-center px-6 text-center md:flex"
       >
-        <div className="mb-5 flex items-center gap-3">
-          <span className="h-px w-8 bg-stroke" aria-hidden="true" />
-          <p className="text-xs uppercase tracking-[0.3em] text-muted">Explorations</p>
-        </div>
-        <h2 className="text-3xl tracking-tight text-text-primary md:text-5xl">
-          Visual <span className="font-display italic">playground</span>
-        </h2>
-        <p className="mt-4 max-w-md text-sm text-muted md:text-base">
-          Loose studies, motion tests, and images that never needed a brief.
-        </p>
-        <GradientHoverRing
-          href="https://dribbble.com"
-          className="mt-8"
-          innerClassName="border border-stroke bg-bg px-5 py-2.5 text-sm text-text-primary"
-        >
-          Dribbble ↗
-        </GradientHoverRing>
+        <ExplorationsHeading />
       </div>
 
-      <div className="pointer-events-none absolute inset-0 z-20">
-        <div className="mx-auto grid h-full max-w-[1400px] grid-cols-2 items-center gap-12 px-4 md:gap-40 md:px-10">
-          <div ref={colLeftRef} className="flex flex-col items-start gap-16 md:gap-28">
-            {left.map((item) => (
-              <ExploreCard key={item.title} item={item} onOpen={setLightbox} />
-            ))}
-          </div>
-          <div ref={colRightRef} className="mt-24 flex flex-col items-end gap-16 md:mt-40 md:gap-28">
-            {right.map((item) => (
-              <ExploreCard key={item.title} item={item} onOpen={setLightbox} />
-            ))}
+      <div className="px-6 py-16 text-center md:hidden">
+        <ExplorationsHeading />
+        <div className="mx-auto mt-10 grid max-w-sm grid-cols-2 gap-4">
+          {EXPLORATIONS.map((item) => (
+            <ExploreCard key={item.title} item={item} onOpen={setLightbox} compact />
+          ))}
+        </div>
+      </div>
+
+      <div className="pointer-events-none absolute inset-0 z-20 hidden md:block">
+        <div className="sticky top-0 flex h-screen items-center">
+          <div className="mx-auto grid w-full max-w-[1400px] grid-cols-2 gap-24 px-10 lg:gap-40">
+            <div ref={colLeftRef} className="flex flex-col items-start gap-24">
+              {left.map((item) => (
+                <ExploreCard key={item.title} item={item} onOpen={setLightbox} />
+              ))}
+            </div>
+            <div ref={colRightRef} className="mt-16 flex flex-col items-end gap-24">
+              {right.map((item) => (
+                <ExploreCard key={item.title} item={item} onOpen={setLightbox} />
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -144,19 +143,48 @@ export function Explorations() {
   );
 }
 
+function ExplorationsHeading() {
+  return (
+    <>
+      <div className="mb-5 flex items-center justify-center gap-3">
+        <span className="h-px w-8 bg-stroke" aria-hidden="true" />
+        <p className="text-xs uppercase tracking-[0.3em] text-muted">Explorations</p>
+      </div>
+      <h2 className="text-3xl tracking-tight text-text-primary md:text-5xl">
+        Visual <span className="font-display italic">playground</span>
+      </h2>
+      <p className="mx-auto mt-4 max-w-md text-sm text-muted md:text-base">
+        Loose studies, motion tests, and images that never needed a brief.
+      </p>
+      <GradientHoverRing
+        href="https://dribbble.com"
+        className="mt-8"
+        innerClassName="border border-stroke bg-bg px-5 py-2.5 text-sm text-text-primary"
+      >
+        Dribbble ↗
+      </GradientHoverRing>
+    </>
+  );
+}
+
 function ExploreCard({
   item,
   onOpen,
+  compact = false,
 }: {
   item: (typeof EXPLORATIONS)[number];
   onOpen: (item: (typeof EXPLORATIONS)[number]) => void;
+  compact?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={() => onOpen(item)}
-      className="pointer-events-auto aspect-square w-full max-w-[320px] overflow-hidden rounded-2xl border border-stroke bg-surface shadow-lg shadow-black/30"
-      style={{ transform: `rotate(${item.rotate}deg)` }}
+      className={[
+        'pointer-events-auto aspect-square overflow-hidden rounded-2xl border border-stroke bg-surface shadow-lg shadow-black/30',
+        compact ? 'w-full max-w-none' : 'w-full max-w-[280px] lg:max-w-[320px]',
+      ].join(' ')}
+      style={{ transform: `rotate(${compact ? item.rotate * 0.4 : item.rotate}deg)` }}
       aria-label={`Open ${item.title}`}
     >
       <img src={item.image} alt={item.title} className="h-full w-full object-cover" loading="lazy" />

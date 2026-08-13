@@ -956,6 +956,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-12 | Style flyout chrome = drawing toolbar (`bg-surface` / border / accent segments) | Open style — same plate + blue active as settings bar |
 | 2026-08-13 | Opacity value bordered box + track size; fill color chip on floating bar for fill tools | Rect/shape select — stroke + fill buttons; opacity % has border |
 | 2026-08-13 | Rebuilt marketing home as dark editorial portfolio (GSAP/Framer/HLS, Talaria-Log name/logo, template copy) | Hard-refresh `/#/` — loader → hero video → work/journal/explorations |
+| 2026-08-13 | Landing Explorations: desktop-only pin/parallax; mobile stays static stack | Resize <768 — no pin; desktop scrub columns |
 
 ---
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Popover } from '@heroui/react';
 import { ChromeIcon } from '@/v9/chromeIcons.jsx';
 import { usePinnedTimeframes } from '@/hooks/usePinnedTimeframes';
@@ -233,13 +233,29 @@ export function TimeframePicker({
         <Popover.Content
           placement="bottom start"
           className="p-0 z-[100] overflow-hidden w-[min(15.5rem,calc(100vw-1.5rem))]"
-          style={{
-            background: 'var(--surface)',
-            border: '1px solid var(--line-strong, var(--line))',
-            borderRadius: 'var(--radius-panel)',
-            boxShadow:
-              '0 10px 28px color-mix(in oklab, var(--bg, black) 45%, transparent)',
-          }}
+          style={
+            {
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+              boxShadow:
+                '0 10px 28px color-mix(in oklab, var(--background) 55%, transparent)',
+              /* Portal is outside [data-v9-app] — bridge chrome tokens */
+              ['--line' as string]: 'var(--separator)',
+              ['--line-strong' as string]: 'var(--border)',
+              ['--surface-sunken' as string]: 'var(--default)',
+              ['--surface-raised' as string]: 'var(--default)',
+              ['--text' as string]: 'var(--foreground)',
+              ['--text-muted' as string]: 'var(--muted)',
+              ['--text-faint' as string]: 'var(--muted)',
+              ['--accent-quiet' as string]: 'var(--accent-soft)',
+              ['--radius-control' as string]: '6px',
+              ['--radius-panel' as string]: '8px',
+              ['--cta-bg' as string]: 'var(--foreground)',
+              ['--cta-fg' as string]: 'var(--background)',
+              color: 'var(--foreground)',
+            } as CSSProperties
+          }
         >
           <Popover.Dialog
             data-v9-chrome="1"
@@ -369,37 +385,16 @@ export function TimeframePicker({
 
             <div
               data-tf-compose=""
-              style={{
-                padding: '8px 10px 10px',
-                borderTop: '1px solid var(--line-strong, var(--line))',
-              }}
+              className="border-t border-border px-2.5 pb-2.5 pt-2"
             >
-              <div
-                data-tf-compose-row=""
-                className="flex items-center gap-1.5"
-              >
+              <div className="flex items-center gap-1.5">
                 <input
                   type="text"
                   inputMode="numeric"
                   value={customVal}
                   placeholder="3"
                   aria-label="Custom interval"
-                  className="tlr-nospinner"
-                  style={{
-                    width: 44,
-                    height: 32,
-                    boxSizing: 'border-box',
-                    padding: '0 6px',
-                    borderRadius: 'var(--radius-control)',
-                    border: '1px solid var(--line-strong)',
-                    background: 'var(--surface-sunken)',
-                    color: 'var(--text)',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    fontVariantNumeric: 'tabular-nums',
-                    textAlign: 'center',
-                    outline: 'none',
-                  }}
+                  className="tlr-nospinner h-8 w-11 shrink-0 rounded-md border border-border bg-default px-1.5 text-center text-xs font-bold tabular-nums text-foreground outline-none focus:border-accent"
                   onChange={(e) => {
                     setCustomVal(e.target.value.replace(/[^0-9]/g, ''));
                     setCustomErr('');
@@ -414,15 +409,7 @@ export function TimeframePicker({
                 <div
                   role="group"
                   aria-label="Unit"
-                  className="flex min-w-0 flex-1 items-center gap-0.5"
-                  style={{
-                    height: 32,
-                    padding: 2,
-                    borderRadius: 'var(--radius-control)',
-                    border: '1px solid var(--line-strong)',
-                    background: 'var(--surface-sunken)',
-                    boxSizing: 'border-box',
-                  }}
+                  className="flex h-8 min-w-0 flex-1 items-center gap-0.5 rounded-md border border-border bg-default p-0.5"
                 >
                   {UNIT_SHORT.map(({ u, lbl }) => {
                     const on = customUnit === u;
@@ -432,18 +419,12 @@ export function TimeframePicker({
                         key={u}
                         data-on={on ? '1' : undefined}
                         aria-pressed={on}
-                        className="min-h-11 min-w-0 flex-1 sm:min-h-0 sm:h-full"
-                        style={{
-                          border: 'none',
-                          borderRadius: 'var(--radius-control)',
-                          background: on
-                            ? 'var(--accent-quiet)'
-                            : 'transparent',
-                          color: on ? 'var(--accent)' : 'var(--text-muted)',
-                          fontSize: 12,
-                          fontWeight: 700,
-                          padding: 0,
-                        }}
+                        className={[
+                          'min-h-11 min-w-0 flex-1 rounded-md text-xs font-bold sm:min-h-0 sm:h-full',
+                          on
+                            ? 'bg-accent/20 text-accent'
+                            : 'bg-transparent text-muted hover:text-foreground',
+                        ].join(' ')}
                         onClick={() => {
                           setCustomUnit(u);
                           setCustomErr('');
@@ -456,21 +437,19 @@ export function TimeframePicker({
                 </div>
                 <button
                   type="button"
-                  data-brand-btn="primary"
                   data-tf-add=""
                   aria-label="Add and pin custom interval"
-                  className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 inline-flex items-center justify-center shrink-0"
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 'var(--radius-control)',
-                  }}
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-foreground text-background min-h-11 min-w-11 sm:min-h-8 sm:min-w-8"
                   onClick={addCustom}
                 >
-                  <ChromeIcon n="plus" s={14} cl="var(--cta-fg)" />
+                  <ChromeIcon n="plus" s={14} cl="currentColor" />
                 </button>
               </div>
-              {customErr ? <div data-tf-err="">{customErr}</div> : null}
+              {customErr ? (
+                <div className="mt-1.5 text-xs font-semibold text-danger">
+                  {customErr}
+                </div>
+              ) : null}
             </div>
           </Popover.Dialog>
         </Popover.Content>

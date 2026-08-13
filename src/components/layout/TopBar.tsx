@@ -9,7 +9,6 @@ import {
 import { getAppearance, subscribeAppearance } from '@/chart/appearanceStore';
 import { BacktestRunMenu } from '@/components/backtest/BacktestRunMenu';
 import { IndicatorsMenu } from '@/components/indicators/IndicatorsMenu';
-import { ChartTemplatesMenu } from '@/components/chart/ChartTemplatesMenu';
 import { LayoutPicker } from '@/components/layout/LayoutPicker';
 import { LogoMenu } from '@/components/layout/LogoMenu';
 import { SeriesTypePicker } from '@/components/layout/SeriesTypePicker';
@@ -96,7 +95,6 @@ export function TopBar({
     matchTemplateId(getAppearance()) ?? getActiveTemplateId(),
   );
   const [utilPanel, setUtilPanel] = useState<UtilityPanelId>(null);
-  const [layoutOpenPulse, setLayoutOpenPulse] = useState(0);
 
   useEffect(() => {
     setTemplateId(matchTemplateId(getAppearance()) ?? getActiveTemplateId());
@@ -108,7 +106,7 @@ export function TopBar({
   const showThemeToggle = chartTemplateSupportsLightMode(templateId);
 
   const utilBtn = (
-    id: 'layout' | 'layers' | 'news' | 'screenshot' | 'expand',
+    id: 'layers' | 'news' | 'screenshot',
     icon: string,
     label: string,
     onClick: () => void,
@@ -179,7 +177,7 @@ export function TopBar({
                   onSeriesTypeChange={onSeriesTypeChange}
                   compact
                 />
-                <p className="px-2 pb-1 text-[11px] text-muted">
+                <p className="px-2 pb-1 text-xs text-muted">
                   Crosshair: long-press the chart
                 </p>
               </div>
@@ -226,11 +224,12 @@ export function TopBar({
         <span className="v8b-sep" aria-hidden />
 
         <div className="hidden sm:flex items-center gap-0">
-          {utilBtn('layout', 'layout', 'Layouts', () => {
-            setUtilPanel(null);
-            setLayoutOpenPulse((n) => n + 1);
-            window.dispatchEvent(new CustomEvent('talaria:open-layouts'));
-          })}
+          <LayoutPicker
+            layout={chartLayout}
+            onLayoutChange={onChartLayoutChange}
+            sync={layoutSync}
+            onSyncChange={onLayoutSyncChange}
+          />
           {utilBtn('layers', 'layers', 'Objects', () =>
             setUtilPanel((p) => (p === 'objects' ? null : 'objects')),
           )}
@@ -240,19 +239,8 @@ export function TopBar({
           {utilBtn('screenshot', 'screenshot', 'Screenshot (stub)', () => {
             /* stub */
           })}
-          {utilBtn('expand', 'expand', 'Expand chart (stub)', () => {
-            /* stub */
-          })}
         </div>
 
-        <ChartTemplatesMenu />
-        <LayoutPicker
-          layout={chartLayout}
-          onLayoutChange={onChartLayoutChange}
-          sync={layoutSync}
-          onSyncChange={onLayoutSyncChange}
-          openSignal={layoutOpenPulse}
-        />
         {showThemeToggle && <ThemeToggle compact />}
         {backtestParams && onBacktestParamsChange ? (
           <BacktestRunMenu

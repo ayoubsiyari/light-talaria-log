@@ -14,7 +14,6 @@ import {
 import { ChartContainer } from '@/components/ChartContainer';
 import { LoadingDots } from '@/components/layout/LoadingDots';
 import { OverlayIndicators } from '@/components/layout/OverlayIndicators';
-import { VolumeIndicator } from '@/components/layout/VolumeIndicator';
 import type { Drawing, DrawingPoint } from '@/drawings/drawingStore';
 import type { HitResult } from '@/drawings/hitTest';
 import type { MagnetMode } from '@/drawings/magnet';
@@ -244,18 +243,19 @@ export function ChartPane({
         </div>
       )}
 
-      {appearance.statusShowVolumeLegend && (
-        <VolumeIndicator
-          visible={showVolume}
-          opacity={volumeOpacity}
-          onVisibleChange={onShowVolumeChange}
-          onOpacityChange={onVolumeOpacityChange}
-        />
-      )}
-
       <OverlayIndicators
         enabled={enabledIndicators}
-        belowVolume={showVolume}
+        volume={
+          appearance.statusShowVolumeLegend && showVolume
+            ? {
+                visible: true,
+                opacity: volumeOpacity,
+                onVisibleChange: onShowVolumeChange,
+                onOpacityChange: onVolumeOpacityChange,
+                onRemove: () => onShowVolumeChange(false),
+              }
+            : null
+        }
         onChange={onEnabledIndicatorsChange}
       />
 

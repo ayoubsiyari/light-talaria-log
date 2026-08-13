@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Button } from '@heroui/react';
 import { ChromeIcon } from '@/v9/chromeIcons.jsx';
-import { IndicatorSettingsModal } from '@/components/indicators/IndicatorSettingsModal';
 import { getChartColors } from '@/chart/chartTheme';
 import {
   INDICATOR_CATEGORIES,
@@ -18,11 +17,15 @@ interface IndicatorsMenuProps {
   enabled: readonly EnabledIndicator[];
   onChange: (next: EnabledIndicator[]) => void;
   /** Extra mobile-only chart controls rendered below the list. */
-  mobileExtras?: React.ReactNode;
+  mobileExtras?: ReactNode;
 }
 
-type NavId = 'favorites' | 'active' | 'volume' | (typeof INDICATOR_CATEGORIES)[number];
-type FilterTab = 'all' | 'overlays' | 'panes';
+type NavId =
+  | 'active'
+  | 'favorites'
+  | 'all'
+  | 'volumeHist'
+  | (typeof INDICATOR_CATEGORIES)[number];
 
 const FAV_KEY = 'talaria.indicatorFavorites.v1';
 
@@ -50,21 +53,54 @@ function writeFavorites(ids: Set<IndicatorId>): void {
   }
 }
 
-const NAV_ROWS: { id: NavId; label: string }[] = [
-  { id: 'active', label: 'Active' },
-  { id: 'favorites', label: 'Pinned' },
-  { id: 'Moving Averages', label: 'Moving averages' },
-  { id: 'Trend', label: 'Trend' },
-  { id: 'Oscillators', label: 'Oscillators' },
-  { id: 'Volatility', label: 'Volatility' },
-  { id: 'Volume', label: 'Volume' },
-  { id: 'ICT', label: 'ICT' },
-  { id: 'volume', label: 'Volume histogram' },
+const NAV_ROWS: {
+  id: NavId;
+  label: string;
+  icon: string;
+}[] = [
+  { id: 'active', label: 'Active', icon: 'eye' },
+  { id: 'favorites', label: 'Pinned', icon: 'pin' },
+  { id: 'all', label: 'All', icon: 'layout' },
+  { id: 'Moving Averages', label: 'Averages', icon: 'indMa' },
+  { id: 'Trend', label: 'Trend', icon: 'indBands' },
+  { id: 'Oscillators', label: 'Momentum', icon: 'indOsc' },
+  { id: 'Volatility', label: 'Volatility', icon: 'indMacd' },
+  { id: 'Volume', label: 'Volume', icon: 'indVolume' },
+  { id: 'ICT', label: 'Talaria', icon: 'indicator' },
 ];
 
+function blurbFor(id: IndicatorId): string {
+  const d = INDICATOR_DEFS[id];
+  const map: Partial<Record<IndicatorId, string>> = {
+    sma: 'Smoothed average of closing prices over N periods',
+    ema: 'Exponentially weighted moving average — recent bars weigh more',
+    wma: 'Linear-weighted moving average favoring recent closes',
+    hma: 'Hull MA — smoother and faster response than SMA/EMA',
+    vwma: 'Volume-weighted average price over N bars',
+    dema: 'Double EMA — less lag than a single EMA',
+    tema: 'Triple EMA — further lag reduction vs DEMA',
+    rma: 'Wilder’s smoothed moving average (RMA)',
+    bollinger: 'SMA ± standard-deviation bands around price',
+    atr: 'Average True Range — volatility in price units',
+    rsi: 'Relative Strength Index — momentum oscillator 0–100',
+    macd: 'MACD line, signal, and histogram',
+    stoch: 'Stochastic oscillator — close vs high/low range',
+    vwap: 'Volume-weighted average price from session open',
+  };
+  if (map[id]) return map[id]!;
+  if (d.placement === 'pane') {
+    return `${d.label} — pane study below price`;
+  }
+  return `${d.label} — overlay on price`;
+}
+
+function countInCategory(cat: (typeof INDICATOR_CATEGORIES)[number]): number {
+  return INDICATOR_ORDER.filter((id) => INDICATOR_DEFS[id].category === cat)
+    .length;
+}
+
 /**
- * Obsidian Indicators browser — matches Live screenshot:
- * header · left nav · search · All/Overlays/Panes · NAME/TYPE rows · Close/Done.
+ * Obsidian Indicators browser — sidebar · search · abbr/name/desc · pin/+ · Done.
  */
 export function IndicatorsMenu({
   showVolume,
@@ -75,12 +111,10 @@ export function IndicatorsMenu({
 }: IndicatorsMenuProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [nav, setNav] = useState<NavId>('Moving Averages');
-  const [filter, setFilter] = useState<FilterTab>('all');
+  const [nav, setNav] = useState<NavId>('all');
   const [favorites, setFavorites] = useState<Set<IndicatorId>>(() =>
     readFavorites(),
   );
-  const [settingsId, setSettingsId] = useState<IndicatorId | null>(null);
   const [tplOpen, setTplOpen] = useState(false);
 
   useEffect(() => {
@@ -112,6 +146,20 @@ export function IndicatorsMenu({
     (e) => INDICATOR_DEFS[e.id].placement === 'pane',
   ).length;
 
+  const navCounts = useMemo(() => {
+    const counts: Partial<Record<NavId, number>> = {
+      active: enabled.length + (showVolume ? 1 : 0),
+      favorites: favorites.size,
+      all: INDICATOR_ORDER.length + 1, // + Volume histogram
+    };
+    for (const cat of INDICATOR_CATEGORIES) {
+      counts[cat] = countInCategory(cat);
+    }
+    // Volume category includes histogram
+    counts.Volume = (counts.Volume ?? 0) + 1;
+    return counts;
+  }, [enabled.length, favorites.size, showVolume]);
+
   const listIds = useMemo(() => {
     const q = query.trim().toLowerCase();
     let ids: IndicatorId[];
@@ -119,18 +167,12 @@ export function IndicatorsMenu({
       ids = INDICATOR_ORDER.filter((id) => favorites.has(id));
     } else if (nav === 'active') {
       ids = enabled.map((e) => e.id);
-    } else if (nav === 'volume') {
-      ids = [];
-    } else if (q) {
+    } else if (nav === 'all' || q) {
       ids = [...INDICATOR_ORDER];
+    } else if (nav === 'volumeHist') {
+      ids = [];
     } else {
       ids = INDICATOR_ORDER.filter((id) => INDICATOR_DEFS[id].category === nav);
-    }
-
-    if (filter === 'overlays') {
-      ids = ids.filter((id) => INDICATOR_DEFS[id].placement === 'overlay');
-    } else if (filter === 'panes') {
-      ids = ids.filter((id) => INDICATOR_DEFS[id].placement === 'pane');
     }
 
     if (q) {
@@ -140,13 +182,29 @@ export function IndicatorsMenu({
           d.label.toLowerCase().includes(q) ||
           d.shortLabel.toLowerCase().includes(q) ||
           d.category.toLowerCase().includes(q) ||
+          blurbFor(id).toLowerCase().includes(q) ||
           d.id.includes(q)
         );
       });
     }
 
     return ids;
-  }, [query, nav, filter, favorites, enabled]);
+  }, [query, nav, favorites, enabled]);
+
+  const showVolumeRow = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (q) {
+      return (
+        'volume'.includes(q) ||
+        q.includes('vol') ||
+        q.includes('hist')
+      );
+    }
+    if (nav === 'active') return showVolume;
+    if (nav === 'favorites') return false;
+    if (nav === 'all' || nav === 'Volume' || nav === 'volumeHist') return true;
+    return false;
+  }, [query, nav, showVolume]);
 
   const toggleFavorite = (id: IndicatorId) => {
     setFavorites((prev) => {
@@ -179,42 +237,10 @@ export function IndicatorsMenu({
     ]);
   };
 
-  const openSettings = (id: IndicatorId) => {
-    const on = enabledMap.has(id);
-    const def = INDICATOR_DEFS[id];
-    const atCap =
-      !on &&
-      (enabled.length >= MAX_INDICATORS ||
-        (def.placement === 'pane' && paneCount >= MAX_PANE_INDICATORS));
-    if (!on) {
-      if (atCap) return;
-      onChange([
-        ...enabled,
-        {
-          id,
-          params: { ...def.defaultParams },
-          visible: true,
-          colors: colorsForIndicator(id, getChartColors()),
-          lineWidth: 1.5,
-        },
-      ]);
-    }
-    setSettingsId(id);
-  };
-
-  const settingsItem: EnabledIndicator | null = settingsId
-    ? (enabledMap.get(settingsId) ?? {
-        id: settingsId,
-        params: { ...INDICATOR_DEFS[settingsId].defaultParams },
-      })
-    : null;
-
-  const showVolumeRow =
-    nav === 'volume' ||
-    (nav === 'Volume' && filter !== 'overlays') ||
-    nav === 'favorites' ||
-    nav === 'active' ||
-    (query.trim().length > 0 && 'volume'.includes(query.trim().toLowerCase()));
+  const subtitle =
+    enabled.length === 0 && !showVolume
+      ? 'None on chart'
+      : `${enabled.length + (showVolume ? 1 : 0)} on chart`;
 
   return (
     <>
@@ -227,7 +253,7 @@ export function IndicatorsMenu({
         <ChromeIcon n="indicator" s={15} />
         <span className="hidden sm:inline">Indicators</span>
         {enabled.length > 0 && (
-          <span className="text-[10px] text-muted tabular-nums">
+          <span className="text-xs text-muted tabular-nums">
             {enabled.length}
           </span>
         )}
@@ -253,28 +279,28 @@ export function IndicatorsMenu({
             aria-modal="true"
             aria-label="Indicators"
           >
-            {/* Header */}
             <div data-win-header="">
               <div data-win-icon="">
                 <ChromeIcon n="indicator" s={16} cl="var(--accent)" />
               </div>
               <div data-ind-win-titles="">
                 <span data-win-title="">Indicators</span>
-                <em data-ind-current="">
-                  {enabled.length} active
-                </em>
+                <em data-ind-current="">{subtitle}</em>
               </div>
               <div style={{ flex: 1 }} />
               <div className="relative" data-nodrag="1">
                 <button
                   type="button"
                   data-tpl-trigger=""
-                  className="min-h-11 sm:min-h-8 px-2 text-[12px] font-semibold text-[color:var(--text-muted)] hover:text-[color:var(--text)]"
+                  data-brand-icon="1"
+                  className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 inline-flex items-center justify-center"
                   aria-expanded={tplOpen}
                   aria-haspopup="menu"
+                  aria-label="Templates"
+                  title="Templates"
                   onClick={() => setTplOpen((o) => !o)}
                 >
-                  Templates
+                  <ChromeIcon n="layout" s={15} />
                 </button>
                 {tplOpen ? (
                   <div
@@ -285,13 +311,18 @@ export function IndicatorsMenu({
                     role="menu"
                     className="absolute top-full right-0 mt-1 z-20 w-56 rounded-[var(--radius-panel,8px)] border border-[color:var(--line)] bg-[color:var(--surface)] py-1 overflow-hidden"
                   >
-                    <div data-tpl-head="" className="px-2.5 py-1.5 flex items-center gap-2">
-                      <strong className="text-[12px]">Templates</strong>
-                      <em className="text-[10px] text-[color:var(--text-faint)]">0</em>
+                    <div
+                      data-tpl-head=""
+                      className="px-2.5 py-1.5 flex items-center gap-2"
+                    >
+                      <strong className="text-xs">Templates</strong>
+                      <em className="text-xs text-[color:var(--text-faint)]">
+                        0
+                      </em>
                     </div>
                     <div data-tpl-empty="" className="px-2.5 py-3">
-                      <strong className="block text-[12px]">No templates yet</strong>
-                      <em className="block text-[11px] text-[color:var(--text-faint)] mt-0.5">
+                      <strong className="block text-xs">No templates yet</strong>
+                      <em className="block text-xs text-[color:var(--text-faint)] mt-0.5">
                         Save the indicators on your chart to reuse later.
                       </em>
                     </div>
@@ -310,20 +341,15 @@ export function IndicatorsMenu({
             </div>
 
             <div data-ind-v2-body="">
-              {/* Sidebar */}
               <nav
                 data-ind-v2-nav=""
                 aria-label="Categories"
                 className="hidden sm:flex"
+                style={{ width: 168 }}
               >
                 {NAV_ROWS.map((n) => {
                   const active = nav === n.id;
-                  const cnt =
-                    n.id === 'active'
-                      ? enabled.length
-                      : n.id === 'favorites'
-                        ? favorites.size
-                        : undefined;
+                  const cnt = navCounts[n.id];
                   return (
                     <button
                       key={n.id}
@@ -331,6 +357,13 @@ export function IndicatorsMenu({
                       data-active={active ? '1' : undefined}
                       onClick={() => setNav(n.id)}
                     >
+                      <ChromeIcon
+                        n={n.icon}
+                        s={14}
+                        cl={
+                          active ? 'var(--accent)' : 'var(--text-muted)'
+                        }
+                      />
                       <span data-ind-nav-lbl="">{n.label}</span>
                       {cnt != null ? <span data-cnt="">{cnt}</span> : null}
                     </button>
@@ -343,10 +376,10 @@ export function IndicatorsMenu({
                   <ChromeIcon n="search" s={14} cl="var(--text-faint)" />
                   <input
                     type="text"
-                    placeholder="Search"
+                    placeholder="Find an indicator..."
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    aria-label="Search indicators"
+                    aria-label="Find an indicator"
                     autoFocus
                   />
                   {query ? (
@@ -362,8 +395,7 @@ export function IndicatorsMenu({
                   ) : null}
                 </div>
 
-                {/* Mobile category chips */}
-                <div className="sm:hidden flex gap-1 overflow-x-auto px-3 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="sm:hidden flex gap-1 overflow-x-auto px-3 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {NAV_ROWS.map((n) => (
                     <button
                       key={n.id}
@@ -378,92 +410,49 @@ export function IndicatorsMenu({
                       ].join(' ')}
                     >
                       {n.label}
+                      {navCounts[n.id] != null
+                        ? ` ${navCounts[n.id]}`
+                        : ''}
                     </button>
                   ))}
-                </div>
-
-                {/* Filter pills — screenshot parity */}
-                <div
-                  data-ind-filters=""
-                  className="flex items-center gap-1.5 flex-wrap px-3.5 pb-2 shrink-0"
-                >
-                  {(
-                    [
-                      ['all', 'All'],
-                      ['overlays', 'Overlays'],
-                      ['panes', 'Panes'],
-                    ] as const
-                  ).map(([id, label]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      data-active={filter === id ? '1' : undefined}
-                      onClick={() => setFilter(id)}
-                      className={[
-                        'min-h-11 sm:min-h-8 px-3 rounded-full text-[12px] font-semibold border transition-colors',
-                        filter === id
-                          ? 'bg-[color:var(--text)] text-[color:var(--surface)] border-[color:var(--text)]'
-                          : 'bg-transparent text-[color:var(--text-muted)] border-[color:var(--line)] hover:text-[color:var(--text)]',
-                      ].join(' ')}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                  <span className="ml-auto text-[11px] font-semibold tabular-nums text-[color:var(--text-faint)] hidden sm:inline">
-                    {enabled.length}/{MAX_INDICATORS}
-                  </span>
-                </div>
-
-                {/* Column headers */}
-                <div
-                  data-ind-cols=""
-                  className="grid grid-cols-[1fr_auto_auto] gap-2 items-center px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--text-faint)] border-b border-[color:var(--line)] shrink-0"
-                >
-                  <span>Name</span>
-                  <span className="w-16 text-right hidden sm:block">Type</span>
-                  <span className="w-9" aria-hidden />
                 </div>
 
                 <div data-ind-list="" className="tlr-scroll">
-                  {showVolumeRow &&
-                    (nav === 'volume' ||
-                      nav === 'Volume' ||
-                      nav === 'active' ||
-                      nav === 'favorites' ||
-                      query.trim().length > 0) &&
-                    filter !== 'overlays' && (
-                      <div
-                        data-ind-row=""
+                  {showVolumeRow && (
+                    <div
+                      data-ind-row=""
+                      data-on={showVolume ? '1' : undefined}
+                      onDoubleClick={() => onShowVolumeChange(!showVolume)}
+                    >
+                      <div data-ind-meta="">
+                        <strong>
+                          <span data-ind-abbr="">VOL</span>
+                          Volume
+                        </strong>
+                        <em>Histogram of bar volume under price</em>
+                      </div>
+                      <span aria-hidden style={{ width: 28 }} />
+                      <button
+                        type="button"
+                        data-ind-toggle=""
                         data-on={showVolume ? '1' : undefined}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => onShowVolumeChange(!showVolume)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            onShowVolumeChange(!showVolume);
-                          }
-                        }}
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: '28px 1fr auto 36px',
-                          alignItems: 'center',
-                          gap: 8,
+                        aria-label={
+                          showVolume ? 'Remove Volume' : 'Add Volume'
+                        }
+                        title={showVolume ? 'Remove' : 'Add'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onShowVolumeChange(!showVolume);
                         }}
                       >
-                        <span aria-hidden />
-                        <div data-ind-meta="">
-                          <strong>Volume</strong>
-                        </div>
-                        <em
-                          className="hidden sm:block text-[11px] text-[color:var(--text-faint)] w-16 text-right"
-                          style={{ fontStyle: 'normal' }}
-                        >
-                          hist
-                        </em>
-                        <span aria-hidden />
-                      </div>
-                    )}
+                        <ChromeIcon
+                          n={showVolume ? 'minus' : 'plus'}
+                          s={14}
+                          cl="currentColor"
+                        />
+                      </button>
+                    </div>
+                  )}
 
                   {listIds.map((id) => {
                     const d = INDICATOR_DEFS[id];
@@ -474,37 +463,25 @@ export function IndicatorsMenu({
                       (enabled.length >= MAX_INDICATORS ||
                         (d.placement === 'pane' &&
                           paneCount >= MAX_PANE_INDICATORS));
-                    const typeLbl =
-                      d.placement === 'pane' ? 'pane' : 'overlay';
                     return (
                       <div
                         key={id}
                         data-ind-row=""
                         data-on={on ? '1' : undefined}
-                        role="button"
-                        tabIndex={atCap ? -1 : 0}
-                        aria-pressed={on}
-                        aria-disabled={atCap || undefined}
-                        onClick={() => {
+                        style={{ opacity: atCap ? 0.45 : 1 }}
+                        onDoubleClick={() => {
                           if (!atCap) toggle(id);
                         }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            if (!atCap) toggle(id);
-                          }
-                        }}
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: '28px 1fr auto 36px',
-                          alignItems: 'center',
-                          gap: 8,
-                          opacity: atCap ? 0.45 : 1,
-                        }}
                       >
+                        <div data-ind-meta="">
+                          <strong>
+                            <span data-ind-abbr="">{d.shortLabel}</span>
+                            {d.label}
+                          </strong>
+                          <em>{blurbFor(id)}</em>
+                        </div>
                         <button
                           type="button"
-                          data-indaction="1"
                           data-ind-pin=""
                           data-on={fav ? '1' : undefined}
                           aria-label={fav ? 'Unpin' : 'Pin'}
@@ -513,58 +490,48 @@ export function IndicatorsMenu({
                             e.stopPropagation();
                             toggleFavorite(id);
                           }}
-                          className="min-h-11 min-w-11 sm:min-h-7 sm:min-w-7 inline-flex items-center justify-center"
                         >
                           <ChromeIcon
-                            n={fav ? 'starFill' : 'star'}
+                            n={fav ? 'pinFill' : 'pin'}
                             s={14}
                             cl="currentColor"
                           />
                         </button>
-                        <div data-ind-meta="">
-                          <strong>{d.label}</strong>
-                          <em className="sm:hidden">
-                            {typeLbl}
-                            {on ? ' · on' : ''}
-                          </em>
-                        </div>
-                        <span
-                          className="hidden sm:block text-[11px] text-[color:var(--text-faint)] w-16 text-right tabular-nums"
-                          style={{ fontStyle: 'normal' }}
-                        >
-                          {typeLbl}
-                        </span>
                         <button
                           type="button"
-                          data-indaction="1"
-                          data-brand-icon="1"
-                          aria-label={`${d.label} settings`}
-                          title={`${d.label} settings`}
-                          className="min-h-11 min-w-11 sm:min-h-7 sm:min-w-7 inline-flex items-center justify-center text-[color:var(--text-muted)]"
+                          data-ind-toggle=""
+                          data-on={on ? '1' : undefined}
+                          disabled={atCap}
+                          aria-label={on ? `Remove ${d.label}` : `Add ${d.label}`}
+                          title={on ? 'Remove' : atCap ? 'Limit reached' : 'Add'}
                           onClick={(e) => {
                             e.stopPropagation();
-                            openSettings(id);
+                            if (!atCap) toggle(id);
                           }}
                         >
-                          <ChromeIcon n="settings" s={14} />
+                          <ChromeIcon
+                            n={on ? 'minus' : 'plus'}
+                            s={14}
+                            cl="currentColor"
+                          />
                         </button>
                       </div>
                     );
                   })}
 
-                  {listIds.length === 0 && nav !== 'volume' ? (
-                    <div data-ind-empty="" className="px-4 py-10 text-center">
-                      <strong className="block text-[13px]">
-                        {(nav as NavId) === 'favorites'
+                  {listIds.length === 0 && !showVolumeRow ? (
+                    <div data-ind-empty="">
+                      <strong>
+                        {nav === 'favorites'
                           ? 'No pins yet'
-                          : (nav as NavId) === 'active'
+                          : nav === 'active'
                             ? 'Nothing on the chart'
                             : 'No matches'}
                       </strong>
-                      <em className="block text-[11px] text-[color:var(--text-faint)] mt-1">
-                        {(nav as NavId) === 'favorites'
+                      <em>
+                        {nav === 'favorites'
                           ? 'Pin indicators to find them here.'
-                          : (nav as NavId) === 'active'
+                          : nav === 'active'
                             ? 'Add an indicator from a category.'
                             : 'Try another search.'}
                       </em>
@@ -581,19 +548,15 @@ export function IndicatorsMenu({
             </div>
 
             <div data-win-foot="" data-ind-foot="">
-              <button
-                type="button"
-                className="min-h-11 sm:min-h-8 px-3 rounded-md text-[13px] font-semibold text-[color:var(--text-muted)] hover:text-[color:var(--text)]"
-                onClick={() => setOpen(false)}
-              >
-                Close
-              </button>
-              <div data-ind-foot-actions="" style={{ marginLeft: 'auto' }}>
+              <span data-ind-foot-hint="">
+                Double-click to add · or use +
+              </span>
+              <div data-ind-foot-actions="">
                 <button
                   type="button"
                   data-brand-btn="primary"
-                  className="min-h-11 sm:min-h-8"
-                  style={{ height: 32, padding: '0 16px', fontSize: 13, fontWeight: 600 }}
+                  className="min-h-11 sm:min-h-8 px-4 text-sm font-semibold"
+                  style={{ height: 32 }}
                   onClick={() => setOpen(false)}
                 >
                   Done
@@ -604,20 +567,6 @@ export function IndicatorsMenu({
         </div>
       )}
 
-      {settingsItem && (
-        <IndicatorSettingsModal
-          indicator={settingsItem}
-          onClose={() => setSettingsId(null)}
-          onSave={(next) => {
-            const exists = enabled.some((e) => e.id === next.id);
-            if (exists) {
-              onChange(enabled.map((e) => (e.id === next.id ? next : e)));
-            } else {
-              onChange([...enabled, next]);
-            }
-          }}
-        />
-      )}
     </>
   );
 }

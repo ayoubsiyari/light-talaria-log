@@ -1,5 +1,5 @@
 ---
-description: Chart engine is frozen — do not edit unless user explicitly unlocks
+description: Chart engine is frozen — ask to unlock; never bypass with parallel files
 alwaysApply: true
 ---
 
@@ -25,15 +25,26 @@ Only edit frozen paths if the user clearly says one of:
 - `unfreeze chart`
 - `chart freeze off`
 
-Vague requests (“fix this”, “improve candles”, “TF feels off”) are **not** unlocks while this rule is active — ask them to say `unlock chart` first.
+Vague requests (“fix this”, “improve candles”, “TF feels off”) are **not** unlocks.
 
-## When frozen (default)
-1. **Refuse** edits/patches to frozen paths.
-2. You may **read / explain / diagnose** frozen code.
-3. You may edit **non-frozen** UI (landing, admin, marketing, docs) freely.
-4. Do **not** “while we’re here” touch camera, pan/zoom, TF switch, candles, drawings, or replay reveal.
-5. Do **not** weaken or delete this rule unless the user explicitly asks to remove the freeze.
+## When frozen (default) — required behavior
+1. **Stop.** Do not edit frozen paths.
+2. **Ask** the user to unlock, e.g.  
+   “Chart engine is frozen. Reply `unlock chart` if you want me to edit it.”
+3. You may **read / explain / diagnose** frozen code.
+4. You may edit **non-frozen** UI (landing, admin, marketing, docs) freely — but not as a chart workaround.
+5. Do **not** weaken, delete, or “temporarily ignore” this rule.
+
+## No bypass / no duplicates (critical)
+If the needed change belongs in frozen code, **do not**:
+- create a new file “above”, beside, or instead of the frozen module
+- add wrappers, forks, copies, shims, or alternate engines (`chart2`, `createChartNew`, etc.)
+- reimplement candles / pan / zoom / TF / drawings outside `src/chart` or `src/drawings`
+- patch around the freeze via App/UI hacks that change chart behavior
+
+**Correct flow:** ask for unlock → user says `unlock chart` → edit the **existing** frozen files.
 
 ## After unlock
-- Treat the session as unlocked for chart work until the user says `lock chart` / `freeze chart` again (or a new chat starts — freeze is on by default via this rule).
-- Still follow `chart-fix-blast-radius.mdc` and `chart-performance.mdc` on any chart edit.
+- Edit the real frozen paths (no parallel replacements).
+- Follow `chart-fix-blast-radius.mdc` and `chart-performance.mdc`.
+- Re-lock when the user says `lock chart` / `freeze chart` (new chats stay frozen by default).

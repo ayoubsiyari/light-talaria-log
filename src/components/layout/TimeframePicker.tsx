@@ -118,13 +118,7 @@ export function TimeframePicker({
 }: TimeframePickerProps) {
   const { pinned, isPinned, togglePin } = usePinnedTimeframes();
   const [open, setOpen] = useState(false);
-  const [catsOpen, setCatsOpen] = useState<string[]>([
-    'minutes',
-    'hours',
-    'days',
-    'weeks',
-    'months',
-  ]);
+  const [catsOpen, setCatsOpen] = useState<string[]>(['minutes']);
   const [customItems, setCustomItems] = useState<IntervalId[]>(() => loadCustom());
   const [customVal, setCustomVal] = useState('3');
   const [customUnit, setCustomUnit] = useState('m');
@@ -220,15 +214,21 @@ export function TimeframePicker({
           className={[
             'v8b-chrome-btn shrink-0 !h-8 !min-h-11 sm:!min-h-8 !px-2.5 gap-1',
             '[@media(hover:none)]:min-h-11',
-            open
-              ? '!border !border-[color:var(--accent)] !text-[color:var(--accent)] !bg-[color:var(--accent-quiet)]'
-              : '',
+            open ? '!border-transparent' : '',
           ].join(' ')}
+          style={
+            open
+              ? {
+                  background: 'var(--accent)',
+                  color: 'var(--accent-foreground)',
+                }
+              : undefined
+          }
         >
           <span className="text-xs font-semibold hidden sm:inline">
             Interval
           </span>
-          <ChromeIcon n="arrowDn" s={11} />
+          <ChromeIcon n="chevDown" s={11} />
         </Popover.Trigger>
         <Popover.Content
           placement="bottom start"
@@ -288,6 +288,7 @@ export function TimeframePicker({
                       }}
                     >
                       <span>{cat.label}</span>
+                      {/* CSS rotates closed → right; open → down */}
                       <ChromeIcon n="arrowDn" s={11} cl="currentColor" />
                     </button>
                     {catOpen
@@ -459,9 +460,9 @@ export function TimeframePicker({
         data-brand-seg="1"
         role="group"
         aria-label="Timeframes"
-        className="flex items-center gap-0 min-w-0 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex items-center gap-0.5 min-w-0 overflow-x-auto overscroll-x-contain rounded-md border border-border bg-default/40 p-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        {barItems.map((id, i) => {
+        {barItems.map((id) => {
           const active =
             formatTfLabel(id) === formatTfLabel(activeUi) || id === activeUi;
           const engine = toEngineTimeframe(id);
@@ -469,7 +470,6 @@ export function TimeframePicker({
           const ephemeral =
             active &&
             !pinned.some((p) => formatTfLabel(p) === formatTfLabel(id));
-          const last = i === barItems.length - 1;
           return (
             <button
               key={id}
@@ -489,13 +489,19 @@ export function TimeframePicker({
                 if (enabled) pickInterval(id);
               }}
               className={[
-                'shrink-0 min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 px-2.5 py-1 text-xs tabular-nums',
-                'rounded-none',
-                last ? '' : 'border-r border-[color:var(--line)]',
+                'shrink-0 min-h-11 min-w-11 sm:min-h-7 sm:min-w-0 px-2.5 py-1 text-xs font-semibold tabular-nums rounded-md',
                 active
-                  ? '!text-[color:var(--accent)] !font-bold'
-                  : '!text-[color:var(--text)]',
+                  ? 'bg-accent text-[color:var(--accent-foreground)]'
+                  : 'bg-transparent text-foreground hover:bg-background/60',
               ].join(' ')}
+              style={
+                active
+                  ? {
+                      background: 'var(--accent)',
+                      color: 'var(--accent-foreground)',
+                    }
+                  : undefined
+              }
             >
               {formatTfLabel(id)}
             </button>

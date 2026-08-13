@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import type { Timeframe } from '@/types/ui';
 
 const STORAGE_KEY = 'talaria.pinnedTimeframes.v1';
-const DEFAULT_PINNED: string[] = ['1m', '5m', '15m', '1H', '4H', '1D', '1W'];
+const DEFAULT_PINNED: string[] = ['1m', '5m', '15m', '1H', '4H', '1D'];
 
 function normalizePin(id: string): string {
   if (id === '1h') return '1H';

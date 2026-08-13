@@ -232,14 +232,14 @@ export function TimeframePicker({
         </Popover.Trigger>
         <Popover.Content
           placement="bottom start"
-          className={[
-            'p-0 z-[100] overflow-hidden',
-            'w-[min(15.5rem,calc(100vw-1.5rem))]',
-            'rounded-[var(--radius-panel)]',
-            'border border-[color:var(--line-strong,var(--border,var(--line)))]',
-            'bg-[color:var(--surface)]',
-            'shadow-[0_0_0_1px_color-mix(in_oklab,var(--foreground)_12%,transparent),0_12px_32px_color-mix(in_oklab,black_55%,transparent)]',
-          ].join(' ')}
+          className="p-0 z-[100] overflow-hidden w-[min(15.5rem,calc(100vw-1.5rem))]"
+          style={{
+            background: 'var(--surface)',
+            border: '1px solid var(--line-strong, var(--line))',
+            borderRadius: 'var(--radius-panel)',
+            boxShadow:
+              '0 10px 28px color-mix(in oklab, var(--bg, black) 45%, transparent)',
+          }}
         >
           <Popover.Dialog
             data-v9-chrome="1"
@@ -298,12 +298,22 @@ export function TimeframePicker({
                                 data-tf-pick=""
                                 disabled={!enabled}
                                 className="min-h-11 sm:min-h-0"
+                                title={
+                                  enabled
+                                    ? formatTfLabel(t)
+                                    : `${formatTfLabel(t)} — not available yet`
+                                }
                                 onClick={() => {
                                   if (enabled) pickInterval(t);
                                 }}
                               >
-                                <strong>{formatTfLabel(t)}</strong>
-                                {!enabled ? <em>soon</em> : null}
+                                <strong
+                                  style={{
+                                    opacity: enabled ? 1 : 0.45,
+                                  }}
+                                >
+                                  {formatTfLabel(t)}
+                                </strong>
                               </button>
                               {isCustom ? (
                                 <button
@@ -343,7 +353,7 @@ export function TimeframePicker({
                                 }}
                               >
                                 <ChromeIcon
-                                  n={pinnedOn ? 'starFill' : 'star'}
+                                  n={pinnedOn ? 'pinFill' : 'pin'}
                                   s={13}
                                   cl="currentColor"
                                 />
@@ -391,8 +401,8 @@ export function TimeframePicker({
                         style={
                           on
                             ? {
-                                background: 'var(--accent)',
-                                color: 'var(--cta-fg)',
+                                background: 'var(--accent-quiet)',
+                                color: 'var(--accent)',
                               }
                             : undefined
                         }
@@ -429,7 +439,7 @@ export function TimeframePicker({
         aria-label="Timeframes"
         className="flex items-center gap-0 min-w-0 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        {barItems.map((id) => {
+        {barItems.map((id, i) => {
           const active =
             formatTfLabel(id) === formatTfLabel(activeUi) || id === activeUi;
           const engine = toEngineTimeframe(id);
@@ -437,6 +447,7 @@ export function TimeframePicker({
           const ephemeral =
             active &&
             !pinned.some((p) => formatTfLabel(p) === formatTfLabel(id));
+          const last = i === barItems.length - 1;
           return (
             <button
               key={id}
@@ -455,15 +466,14 @@ export function TimeframePicker({
               onClick={() => {
                 if (enabled) pickInterval(id);
               }}
-              className="shrink-0 min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 px-2.5 py-1 text-xs tabular-nums rounded-[var(--radius-control)]"
-              style={
+              className={[
+                'shrink-0 min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 px-2.5 py-1 text-xs tabular-nums',
+                'rounded-none',
+                last ? '' : 'border-r border-[color:var(--line)]',
                 active
-                  ? {
-                      background: 'var(--accent)',
-                      color: 'var(--cta-fg)',
-                    }
-                  : undefined
-              }
+                  ? '!text-[color:var(--accent)] !font-bold'
+                  : '!text-[color:var(--text)]',
+              ].join(' ')}
             >
               {formatTfLabel(id)}
             </button>

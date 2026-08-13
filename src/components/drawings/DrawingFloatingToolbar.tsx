@@ -5,6 +5,8 @@ import type { DrawingStyle } from '@/drawings/drawingStyle';
 import { getTool } from '@/drawings/toolRegistry';
 import { getToolSettings } from '@/drawings/toolSettings';
 import { StyleTriggerButton } from '@/components/drawings/settings/StyleTriggerButton';
+import { FillTriggerButton } from '@/components/drawings/settings/FillTriggerButton';
+import { FillColorFlyout } from '@/components/drawings/settings/FillColorFlyout';
 import {
   LineStylePickerFlyout,
   styleToPickerValue,
@@ -52,8 +54,10 @@ export function DrawingFloatingToolbar({
   onAlert,
 }: DrawingFloatingToolbarProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [fillOpen, setFillOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const styleBtnRef = useRef<HTMLButtonElement>(null);
+  const fillBtnRef = useRef<HTMLButtonElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
   const tool = getTool(drawing.type);
   const toolSettings = getToolSettings(drawing.type);
@@ -123,19 +127,33 @@ export function DrawingFloatingToolbar({
 
       <div className="w-px h-5 bg-border mx-0.5 shrink-0" />
 
-      {/* ── Tool-specific style middle ── */}
+      {/* ── Tool-specific: stroke style · fill color (shapes) ── */}
       {!suppressStyleFlyout && (
         <>
           <StyleTriggerButton
             ref={styleBtnRef}
             style={style}
-            showFill={showFill && style.fill}
-            fillColor={style.fillColor || style.color}
-            fillOpacity={style.fillOpacity}
             disabled={disabled}
             active={pickerOpen}
-            onClick={() => setPickerOpen((v) => !v)}
+            onClick={() => {
+              setFillOpen(false);
+              setPickerOpen((v) => !v);
+            }}
           />
+          {showFill && (
+            <FillTriggerButton
+              ref={fillBtnRef}
+              color={style.fillColor || style.color}
+              opacity={style.fill ? style.fillOpacity : 0}
+              disabled={disabled}
+              active={fillOpen}
+              title="Fill"
+              onClick={() => {
+                setPickerOpen(false);
+                setFillOpen((v) => !v);
+              }}
+            />
+          )}
           <div className="w-px h-5 bg-border mx-0.5 shrink-0" />
         </>
       )}
@@ -284,6 +302,22 @@ export function DrawingFloatingToolbar({
           widthPresets={toolSettings.widthPresets}
           onChange={patchStyle}
           onClose={() => setPickerOpen(false)}
+        />
+      )}
+
+      {!suppressStyleFlyout && showFill && (
+        <FillColorFlyout
+          open={fillOpen}
+          anchorEl={fillBtnRef.current}
+          color={style.fillColor || style.color}
+          opacity={style.fillOpacity}
+          onChange={(partial) => {
+            const next = { ...style, fill: true };
+            if (partial.color) next.fillColor = partial.color;
+            if (partial.opacity != null) next.fillOpacity = partial.opacity;
+            onChange({ style: next });
+          }}
+          onClose={() => setFillOpen(false)}
         />
       )}
     </div>

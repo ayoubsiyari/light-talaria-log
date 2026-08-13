@@ -174,22 +174,24 @@ export function ObsidianColorPanel({
                     }
                   />
                 </div>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={opacityPct}
-                  aria-label="Opacity percent"
-                  data-tv-cp-opacity-num=""
-                  onChange={(e) => {
-                    const n = Math.max(
-                      0,
-                      Math.min(100, Number(e.target.value) || 0),
-                    );
-                    onChange({ opacity: n / 100 });
-                  }}
-                />
-                <span data-tv-cp-opacity-unit="">%</span>
+                <div data-tv-cp-opacity-val="">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={opacityPct}
+                    aria-label="Opacity percent"
+                    data-tv-cp-opacity-num=""
+                    onChange={(e) => {
+                      const n = Math.max(
+                        0,
+                        Math.min(100, Number(e.target.value) || 0),
+                      );
+                      onChange({ opacity: n / 100 });
+                    }}
+                  />
+                  <span data-tv-cp-opacity-unit="">%</span>
+                </div>
               </div>
             </div>
           )}

@@ -9,8 +9,8 @@ function dashFor(kind: LineStyleKind): string | undefined {
 }
 
 /**
- * Icon-sized TV-style trigger: one button with stroke (+ optional fill) preview.
- * Opens LineStylePickerFlyout when clicked.
+ * Icon-sized stroke style trigger (color + line preview).
+ * Fill has its own FillTriggerButton on the floating bar.
  */
 export const StyleTriggerButton = forwardRef<
   HTMLButtonElement,
@@ -20,10 +20,6 @@ export const StyleTriggerButton = forwardRef<
     active?: boolean;
     disabled?: boolean;
     title?: string;
-    /** Show fill chip (rectangles / channels / shapes). */
-    showFill?: boolean;
-    fillColor?: string;
-    fillOpacity?: number;
   }
 >(function StyleTriggerButton(
   {
@@ -32,9 +28,6 @@ export const StyleTriggerButton = forwardRef<
     active = false,
     disabled = false,
     title = 'Style',
-    showFill = false,
-    fillColor,
-    fillOpacity = 0.2,
   },
   ref,
 ) {
@@ -56,22 +49,10 @@ export const StyleTriggerButton = forwardRef<
       ].join(' ')}
     >
       <span className="relative block w-[18px] h-[18px]" aria-hidden>
-        {/* Fill underlay (shapes) */}
-        {showFill && (
-          <span
-            className="absolute inset-[3px] rounded-[2px]"
-            style={{
-              backgroundColor: fillColor || style.color,
-              opacity: Math.max(0.2, fillOpacity),
-            }}
-          />
-        )}
-        {/* Stroke swatch */}
         <span
           className="absolute left-0 top-0 w-[10px] h-[10px] rounded-[2px] border border-border/80"
           style={{ backgroundColor: style.color, opacity: style.opacity }}
         />
-        {/* Line style preview */}
         <svg
           className="absolute inset-x-0 bottom-[1px]"
           width="18"

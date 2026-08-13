@@ -2,9 +2,10 @@
    Flat fills, accent #3090FF, no glow gradients. Loaded after chrome-obsidian-surfaces.css.
    Does not style canvas paint paths. */
 
-/* ── Flatten decorative gradients inside chrome + portaled shell menus ── */
-[data-v9-chrome] [style*="linear-gradient"],
-[data-v9-app] [data-sdrop="1"] [style*="linear-gradient"],
+/* ── Flatten decorative gradients inside chrome + portaled shell menus ──
+   Exclude color-picker tracks (opacity / HSV) — those need real gradients. */
+[data-v9-chrome] [style*="linear-gradient"]:not([data-tv-cp-opacity-track]):not([data-tv-cp-sv]):not([data-tv-cp-sv-white]):not([data-tv-cp-sv-black]):not([data-tv-cp-hue]),
+[data-v9-app] [data-sdrop="1"] [style*="linear-gradient"]:not([data-tv-cp-opacity-track]),
 [data-indicators-panel] [style*="linear-gradient"],
 [data-alert-v2] [style*="linear-gradient"],
 [data-alert-win] [style*="linear-gradient"],

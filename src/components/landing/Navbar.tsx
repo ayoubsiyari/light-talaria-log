@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { BrandLogo } from '@/components/landing/BrandLogo';
 import { NAV_LINKS, scrollToId } from '@/components/landing/landingData';
 
 interface NavbarProps {
@@ -29,12 +30,11 @@ export function Navbar({ activeId, onSignIn }: NavbarProps) {
           type="button"
           aria-label="Talaria-Log home"
           onClick={() => scrollToId('hero')}
-          className="group relative h-11 w-11 shrink-0 rounded-full"
+          className="flex min-h-11 items-center gap-2 rounded-full px-1.5 pr-2"
         >
-          <span className="accent-gradient absolute inset-1 rounded-full group-hover:opacity-0" />
-          <span className="accent-gradient-rev absolute inset-1 rounded-full opacity-0 group-hover:opacity-100" />
-          <span className="absolute inset-[6px] flex items-center justify-center rounded-full bg-bg font-display text-sm tracking-wide italic text-text-primary transition-transform duration-300 group-hover:scale-110">
-            TL
+          <BrandLogo size={32} className="h-8 w-8 shrink-0" />
+          <span className="hidden font-display text-sm font-semibold tracking-tight sm:inline">
+            Talaria-Log
           </span>
         </button>
 

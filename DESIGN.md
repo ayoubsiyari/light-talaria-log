@@ -1,48 +1,47 @@
 ---
 name: Talaria-Log Landing
-description: Dark editorial door for Talaria-Log — replay, backtest, journal, viewport chart.
+description: Product-truth door for Talaria-Log — official wing mark, chart screenshot, start free.
 colors:
-  ink: "hsl(0 0% 4%)"
-  charcoal: "hsl(0 0% 8%)"
-  hairline: "hsl(0 0% 12%)"
-  fog: "hsl(0 0% 53%)"
+  ink: "hsl(0 0% 2%)"
+  charcoal: "hsl(0 0% 6%)"
+  hairline: "hsl(0 0% 14%)"
+  fog: "hsl(0 0% 58%)"
   bone: "hsl(0 0% 96%)"
-  steel-mist: "#89aacc"
-  steel-deep: "#4e85bf"
+  brand-blue: "#3090ff"
+  brand-blue-deep: "#232cf4"
 typography:
   display:
-    fontFamily: "Instrument Serif, ui-serif, Georgia, serif"
-    fontSize: "clamp(3rem, 10vw, 8rem)"
-    fontWeight: 400
-    lineHeight: 0.9
+    fontFamily: "Blauer Nue, Exo 2, Helvetica Neue, sans-serif"
+    fontSize: "clamp(2.25rem, 8vw, 4.5rem)"
+    fontWeight: 600
+    lineHeight: 0.95
     letterSpacing: "-0.025em"
   headline:
-    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Blauer Nue, Exo 2, Helvetica Neue, sans-serif"
     fontSize: "clamp(1.875rem, 4vw, 3rem)"
-    fontWeight: 400
+    fontWeight: 600
     lineHeight: 1.25
     letterSpacing: "-0.025em"
   title:
-    fontFamily: "Instrument Serif, ui-serif, Georgia, serif"
-    fontSize: "clamp(1.125rem, 2vw, 1.25rem)"
-    fontWeight: 400
+    fontFamily: "Blauer Nue, Exo 2, Helvetica Neue, sans-serif"
+    fontSize: "1.25rem"
+    fontWeight: 600
     lineHeight: 1.3
-    letterSpacing: "normal"
+    letterSpacing: "-0.025em"
   body:
-    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Helvetica Now, Helvetica Neue, Helvetica, Arial, sans-serif"
     fontSize: "1rem"
     fontWeight: 400
     lineHeight: 1.5
     letterSpacing: "normal"
   label:
-    fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Helvetica Now, Helvetica Neue, Helvetica, Arial, sans-serif"
     fontSize: "0.75rem"
     fontWeight: 400
     lineHeight: 1.4
-    letterSpacing: "0.2em"
+    letterSpacing: "0.16em"
 rounded:
   full: "9999px"
-  3xl: "24px"
   2xl: "16px"
 spacing:
   sm: "8px"
@@ -78,7 +77,7 @@ components:
     rounded: "{rounded.full}"
     padding: "10px 20px"
     height: "44px"
-  button-email:
+  button-cta:
     backgroundColor: "{colors.charcoal}"
     textColor: "{colors.bone}"
     typography: "{typography.body}"
@@ -101,19 +100,24 @@ components:
     rounded: "{rounded.full}"
     padding: "0 16px"
     height: "44px"
-  card-bento:
+  card-shot:
+    backgroundColor: "{colors.charcoal}"
+    textColor: "{colors.bone}"
+    rounded: "{rounded.2xl}"
+  card-work:
     backgroundColor: "{colors.charcoal}"
     textColor: "{colors.bone}"
     typography: "{typography.title}"
-    rounded: "{rounded.3xl}"
+    rounded: "{rounded.2xl}"
   card-journal:
     backgroundColor: "{colors.charcoal}"
     textColor: "{colors.bone}"
     typography: "{typography.body}"
     rounded: "{rounded.full}"
     padding: "16px"
-  card-explore:
+  card-surface:
     backgroundColor: "{colors.charcoal}"
+    textColor: "{colors.bone}"
     rounded: "{rounded.2xl}"
 ---
 
@@ -121,126 +125,136 @@ components:
 
 ## Overview
 
-**Creative North Star: "The Dark Editorial Door"**
+**Creative North Star: "The Chart Is the Door"**
 
-Talaria-Log’s marketing surface is a dark editorial portfolio, not a SaaS feature grid and not the Hero UI chart shell. The visitor arrives through a 000–100 load on near-black, meets the italic serif name over muted full-bleed video, and scrolls selected work, journal, and explorations before a reprise of that atmosphere in the footer. Chrome is floating, pill-shaped, and hairline-framed; the only chromatic voice is a steel-blue gradient used as a halo, never as a filled marketing slab.
+Talaria-Log’s marketing surface is a product-truth editorial shell, not a SaaS feature grid and not the Hero UI chart chrome. The visitor arrives through a near-black load of the official wing mark, then meets the 160px mark and Talaria-Log wordmark beside a framed EUR/USD 1-minute chart screenshot, with Start free and See how it works. Selected work, journal, and product surfaces are real screens — replay, journal, orders, news, indicators, strategy — then a muted chart reprise in the footer.
 
-This file is the landing visual world. Product chrome stays on Hero UI tokens and components recorded in `docs/DESIGN.md`. The two systems do not share a type pairing, a radius language, or a color format. The product name on this door is **Talaria-Log**. Inter (body, headlines, UI) and italic Instrument Serif (display) are user-pinned for this marketing surface and are not to be swapped for a “more original” pairing.
+This file is the landing visual world. Product chrome stays on Hero UI tokens and components recorded in `docs/DESIGN.md`. The two systems share a type pairing with V9 chrome (Helvetica Now / Neue UI + Blauer Nue / Exo 2) and the brand-blue stops, but they do not share radius language, layout, or token format. The product name on this door is **Talaria-Log**. The official mark is `/logo-07.png`. Helvetica Now / Helvetica Neue / Helvetica / Arial (UI and body) and Blauer Nue / Exo 2 (display, self-hosted) are user-pinned for this marketing surface.
 
 **Key Characteristics:**
 - Near-black HSL field (`--lp-*`) with bone type and fog secondary
-- Steel-blue accent gradient as hover rings, TL mark halo, and load bar only
-- Floating top-center pill nav with italic TL monogram
-- Hairline strokes and frosted charcoal glass
-- Rounded-full chrome; 24px bento cards; 16px exploration tiles
-- Instrument Serif italic for the name, accent words, project titles, stats, and marquee
+- Brand-blue gradient (`#3090ff` → `#232cf4`) as 2px hover rings only
+- Official three-bar wing mark plus Blauer Nue / Exo 2 wordmark
+- Framed product screenshots from `/landing/shot-*.png` (16px radius, hairline)
+- Floating top-center pill nav with Sign in
+- Pill chrome for controls; 16px rectangles for product frames
+- Semibold display for the name, section titles, accent verbs, and shot captions
 
 ## Colors
 
-Achromatic near-black HSL, with a two-stop steel gradient as the only hue.
+Achromatic near-black HSL, with a two-stop brand-blue gradient as the only hue.
 
 ### Primary
-- **Steel Mist** (`#89aacc`): Light stop of the accent gradient (`--lp-grad-from`). Halo around the TL mark, hover ring on pills, and the loading bar fill.
-- **Steel Deep** (`#4e85bf`): Dark stop (`--lp-grad-to`). Always paired with Steel Mist in a 90° (or reversed) linear gradient; never used as a flat fill.
+- **Brand Azure** (`brand-blue`): Light stop of the accent gradient (`--lp-grad-from`). Hover and `:focus-visible` ring around pills.
+- **Brand Indigo** (`brand-blue-deep`): Dark stop (`--lp-grad-to`). Always paired with Brand Azure in a 90° (or reversed) linear gradient; never used as a flat fill.
 
 ### Neutral
-- **Ink** (`hsl(0 0% 4%)`): Page field, video fade-out, inverted button hover fill (`--lp-bg`).
-- **Charcoal** (`hsl(0 0% 8%)`): Frosted nav, journal rows, card grounds (`--lp-surface`).
-- **Hairline** (`hsl(0 0% 12%)`): 1px borders, nav dividers, scroll track, active nav chip (`--lp-stroke`).
-- **Fog** (`hsl(0 0% 53%)`): Secondary copy, nav rest, captions (`--lp-muted`).
-- **Bone** (`hsl(0 0% 96%)`): Primary type and solid CTA fill (`--lp-text` / `--lp-accent`).
+- **Ink** (`ink`): Page field, overlay, inverted button hover fill (`--lp-bg`).
+- **Charcoal** (`charcoal`): Frosted nav, journal rows, framed-shot grounds, footer CTA fill (`--lp-surface`).
+- **Hairline** (`hairline`): 1px borders, nav dividers, active nav chip (`--lp-stroke`).
+- **Fog** (`fog`): Secondary copy, nav rest, captions, footnotes (`--lp-muted`).
+- **Bone** (`bone`): Primary type and solid CTA fill (`--lp-text` / `--lp-accent`).
 
 ### Named Rules
-**The Two Worlds Rule.** Landing color lives in `--lp-*` HSL channels scoped to `.landing-page`. App chrome keeps Hero UI OKLCH tokens in `docs/DESIGN.md`. Do not paint marketing with `--background` / `--accent`, and do not paint the chart shell with `--lp-*`.
+**The Two Worlds Rule.** Landing color lives in `--lp-*` HSL channels scoped to `.landing-page`. App chrome keeps Hero UI OKLCH tokens in `docs/DESIGN.md`. Do not paint marketing with product `--background` / `--accent`, and do not paint the chart shell with `--lp-*`.
 
-**The Steel Line Rule.** The steel gradient is chrome, not fill. It may outline a pill, halo the TL mark, or draw the 3px load bar. It may not fill a hero slab, a card, or a section background.
+**The Brand Line Rule.** The brand-blue gradient is chrome, not fill. It may outline a pill on hover and focus. It may not fill a hero slab, a card, or a section background.
 
 ## Typography
 
-**Display Font:** Instrument Serif (Georgia fallback) — user-pinned
-**Body Font:** Inter (ui-sans-serif, system-ui fallback) — user-pinned
-**Label/Mono Font:** Inter (tabular-nums on the load counter only)
+**Display Font:** Blauer Nue, with Exo 2 self-hosted (`@fontsource/exo-2` 400 / 600 / 700) and Helvetica Neue fallback
+**Body Font:** Helvetica Now, with Helvetica Neue / Helvetica / Arial fallback — same stack as V9 chrome
+**Label/Mono Font:** Helvetica Now (same as body; no distinct mono on this surface)
 
-**Character:** Inter carries the editorial roman — headlines, body, nav, buttons. Instrument Serif enters as italic display: the name, one accent word inside an Inter headline, project titles, stats, and the footer marquee. The load counter is the same serif, roman and tabular.
+**Character:** Helvetica Now carries UI, body, nav, and buttons. Blauer Nue / Exo 2 enters as semibold, tight-tracked display: the product name, section titles, the cycling hero verb, work-card titles, and the nav wordmark. Display is never italic and never a serif.
 
 ### Hierarchy
-- **Display** (400 italic, `clamp(3rem, 10vw, 8rem)`, line-height 0.9): Hero name “Talaria-Log”; load counter (roman, tabular-nums) at the same size ramp.
-- **Headline** (400 Inter, `clamp(1.875rem, 4vw, 3rem)`, tight tracking): Section titles. One word inside the title switches to Instrument Serif italic.
-- **Title** (400 italic serif, 1.125–1.25rem): Project names on bento cards; cycling role word in the hero line.
-- **Body** (400 Inter, 0.875–1.125rem, line-height 1.5): Hero supporting copy, section subtext (`max-w-md`), journal titles, buttons (`0.875rem`).
-- **Label** (400 Inter, 0.75rem): SCROLL, stats captions, journal meta. Nav links are the same family at 0.75–0.875rem, sentence case, no tracking.
+- **Display** (600, `clamp(2.25rem, 8vw, 4.5rem)`, line-height 0.95): Hero wordmark “Talaria-Log”.
+- **Headline** (600, `clamp(1.875rem, 4vw, 3rem)`, line-height 1.25): Section titles (“Chart, replay, backtest”, “Trades, written down”, “How it works”). Footer CTA heading sits a step smaller (`1.5rem`–`2.25rem`) in the same face.
+- **Title** (600, `1.125rem`–`1.25rem`): Product-shot titles on work cards; cycling hero verb (`replay` / `backtest` / `journal` / `chart`); nav wordmark at `0.875rem`.
+- **Body** (400 Helvetica Now, `0.875rem`–`1.125rem`, line-height 1.5): Hero supporting copy, section subtext (`max-w-md` / `max-w-xl`), journal notes, button labels (`0.875rem`).
+- **Label** (400 Helvetica Now, `0.75rem`): Footnotes, shot captions, journal meta (uppercase, `0.16em` tracking). Nav links are the same family at `0.75rem`–`0.875rem`, sentence case, no tracking.
 
 ### Named Rules
-**The Pinned Pair Rule.** Inter + Instrument Serif are user-pinned on this marketing surface. Do not replace them with a display face, a geometric sans, or the Hero UI product font.
+**The Pinned Pair Rule.** Helvetica Now / Helvetica Neue (UI, body) and Blauer Nue / Exo 2 (display) are user-pinned and match V9 chrome. Do not restore Inter, Instrument Serif, or a third marketing face.
 
-**The Italic Word Rule.** Instrument Serif is italic for names, accent words, project titles, stats, and the marquee. Body paragraphs stay Inter roman. The 000–100 counter is serif roman tabular-nums, not italic.
+**The Semibold Display Rule.** Display type is roman 600 with tight tracking. One accent word inside a Helvetica line may switch to Blauer Nue / Exo 2 semibold. Body paragraphs stay Helvetica roman. Do not italicize the name, titles, or verbs.
 
 ## Layout
 
-Single-column editorial scroll. Content columns cap at 1200px with padding 24 / 40 / 64px (`px-6`, `md:px-10`, `lg:px-16`). The hero is a full-viewport centered stack (`max-w-4xl`, extra top padding under the floating nav). Selected work is a 12-column bento (7/5 then 5/7) with 20–24px gaps. Journal is a vertical stack of pill rows (12px gaps). Explorations pin on `md+` as a two-column staggered gallery (`max-w-[1400px]`, 96–160px column gap) and collapse to a 2-column grid on small screens. Stats are three centered figures. Section vertical rhythm is 64–96px (`py-16` / `md:py-24`); work sits slightly tighter (`py-12` / `md:py-16`).
+Single-column editorial scroll. Content columns cap at 1200px with padding 24 / 40 / 64px (`px-6`, `md:px-10`, `lg:px-16`). The first viewport is a two-column split on `lg` (`0.85fr` copy / `1.15fr` chart shot, 40–48px gap), stacked and centered below that; extra top padding clears the floating nav (`pt-24` / `md:pt-28`). Selected work is a 12-column bento (7/5 then 5/7) with 20–24px gaps. Journal is a framed screenshot then a vertical stack of pill rows (12px gaps). Product surfaces pin on `md+` as a two-column staggered gallery (`max-w-[1400px]`, 96–160px column gap) and collapse to a 2-column grid on small screens. Section vertical rhythm is 64–96px (`py-16` / `md:py-24`); work sits slightly tighter (`py-12` / `md:py-16`).
 
-Breakpoints that actually change composition: `sm` (640px) for CTA row, journal pill, nav labels; `md` (768px) for bento, pinned explorations, section padding; `lg` (1024px) for type and 64px gutters. Interactive chrome keeps a 44px minimum hit target (`min-h-11`). Horizontal page overflow is clipped.
+Breakpoints that actually change composition: `sm` (640px) for CTA row, journal pill, nav wordmark; `md` (768px) for bento, pinned surfaces, section padding; `lg` (1024px) for the hero split and 64px gutters. Interactive chrome keeps a 44px minimum hit target (`min-h-11`). Horizontal page overflow is clipped.
 
 ## Elevation & Depth
 
-Depth is atmosphere first: full-bleed muted HLS, black scrims (hero `20%`, footer `60%`, lightbox `80%`), a 192px ink fade at the video’s bottom, and `backdrop-blur` on the nav and email pill. Surfaces are tonal (ink / charcoal / hairline), not stacked paper. Shadows are rare.
+Depth is product atmosphere: framed screenshots on charcoal, a 25% chart image under a 70% ink scrim in the footer, and `backdrop-blur` on the nav. Surfaces are tonal (ink / charcoal / hairline), not stacked paper. Shadows are rare and dark.
 
 ### Shadow Vocabulary
 - **Nav after scroll** (`box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)`): Applied when `scrollY > 100`. Resting nav has no drop shadow.
-- **Exploration tile** (`box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3)`): Ambient dark drop under rotated square images.
-- **Load-bar glow** (`box-shadow: 0 0 8px color-mix(in srgb, var(--lp-grad-from) 35%, transparent)`): Steel bloom on the progress fill only.
+- **Hero shot** (`box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4)`): Ambient dark drop under the first-viewport chart frame.
+- **Surface tile** (`box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3)`): Ambient dark drop under rotated product-surface frames.
 
 ### Named Rules
-**The Atmosphere Rule.** Default depth is video, scrim, and hairline — not offset card shadows. A drop shadow is a response (scrolled nav) or a gallery-tile exception, never a card rest state for work or journal.
+**The Atmosphere Rule.** Default depth is framed shots, scrim, and hairline — not offset card shadows. A drop shadow is a response (scrolled nav) or a shot-frame exception, never a rest state for journal rows.
 
 ## Shapes
 
-Chrome is a pill: nav, buttons, TL mark, journal rows at `sm+`, hover “View” chips. Imagery uses larger radii — bento work cards at 24px (`rounded-3xl`), exploration tiles and lightbox at 16px (`rounded-2xl`). Hairlines are 1px `hairline` (or `white/10` on the frosted nav). The ghost hero CTA uses a 2px hairline stroke, still in the same color. Nav dividers are 1×20px caps. Exploration tiles carry a slight rotation (−6° to 7°); nothing else is skewed.
+Chrome is a pill: nav, buttons, Sign in, journal rows at `sm+`. Product imagery uses 16px rectangles (`rounded-2xl`) — hero chart, work bento, journal screenshot, surface tiles, lightbox-adjacent frames. Hairlines are 1px `hairline` (or `white/10` on the frosted nav). The ghost hero CTA uses a 2px hairline stroke, still in the same color. Nav dividers are 1×20px caps. Surface tiles carry a slight rotation (−5° to 6°); nothing else is skewed. The wing mark is the official PNG, not a letterform disc.
 
 ### Named Rules
-**The Pill Chrome Rule.** Interactive chrome is `rounded-full`. Photographs sit in 16–24px rounded rectangles. Do not square off buttons, nav, or the TL mark.
+**The Pill Chrome Rule.** Interactive chrome is `rounded-full`. Product photographs sit in 16px rounded rectangles. Do not square off buttons or nav, and do not invent a monogram disc in place of `/logo-07.png`.
+
+**The Product Shot Rule.** Imagery is real Talaria-Log screens from `/landing/shot-*.png` (chart, journal, order, news, indicators, strategy). Do not restore HLS video, stock photography, or illustration as the hero or work tiles.
 
 ## Components
 
-Pills with a steel halo on hover. Minimum height 44px. Hover scale `1.05` over 300ms; the gradient ring sits 2px outside the inner fill.
+Pills with a brand-blue halo on hover. Minimum height 44px. Hover scale `1.05` over 300ms; the gradient ring sits 2px outside the inner fill.
 
 ### Buttons
-- **Shape:** Fully rounded pill (`9999px`), inner fill inset from a 2px steel ring that appears on hover and `:focus-visible`.
-- **Primary:** Bone fill, ink text, 14px / 28px padding (“See Works”). Hover inverts to ink fill and bone text; the steel ring lights up.
-- **Ghost:** Ink fill, 2px hairline border, bone text (“Reach out…”). Hover drops the border (transparent) as the steel ring takes over.
-- **Outline:** 1px hairline, ink fill, 10px / 20px padding (“View all work →”). Same ring behavior; used as a section action on `md+`.
-- **Email:** Charcoal fill, backdrop blur, bone text, 14px / 32px padding. Footer contact and nav “Say hi” share this frosted treatment.
+- **Shape:** Fully rounded pill (`9999px`), inner fill inset from a 2px brand-blue ring that appears on hover and `:focus-visible`.
+- **Primary:** Bone fill, ink text, 14px / 28px padding (“Start free”). Hover inverts to ink fill and bone text; the brand ring lights up.
+- **Ghost:** Ink fill, 2px hairline border, bone text (“See how it works”). Hover drops the border (transparent) as the brand ring takes over.
+- **Outline:** 1px hairline, ink fill, 10px / 20px padding (“Open a session”, “Open journal”). Same ring behavior; used as a section action.
+- **CTA:** Charcoal fill, bone text, 14px / 32px padding. Footer “Start free” uses this quieter fill over the chart scrim.
 
 ### Cards / Containers
-- **Bento work:** 24px radius, 1px hairline, charcoal ground, photograph full-bleed. 4px radial ink dot screen at 20% multiply. Title in italic serif over a bottom ink gradient. Hover/focus covers the card in ink at 70% with backdrop blur and a bone “View — *title*” pill.
-- **Journal row:** Charcoal at 30% opacity, 1px hairline, 16px padding; 40px radius when stacked, full pill from `sm` up. 64–80px circular thumbnail. Hover raises fill to solid charcoal. Meta is 12px uppercase fog with 0.16em tracking.
-- **Exploration tile:** 16px radius, 1px hairline, square aspect, dark ambient shadow, slight rotation. Opens a centered lightbox on ink/80%.
+- **Product shot:** 16px radius, 1px hairline, charcoal ground, screenshot full-bleed (`object-cover` / `object-top` or `object-left` on the hero chart). Hero shot carries the heavier dark drop.
+- **Work bento:** Same 16px frame. Title in semibold display over a bottom ink gradient (`from-black/85`). Body in 12–14px fog. Whole tile is the hit target.
+- **Journal row:** Charcoal at 30% opacity, 1px hairline, 16px padding; 40px radius when stacked, full pill from `sm` up. 64–80px circular instrument chip. Hover raises fill to solid charcoal. Meta is 12px uppercase fog with 0.16em tracking.
+- **Surface tile:** 16px radius, 1px hairline, 4:3 screenshot, caption in 12–14px bone, dark ambient shadow, slight rotation. Desktop max width 280–320px.
 
 ### Navigation
-- **Style:** Fixed top-center floating pill — charcoal, `backdrop-blur(12px)`, 1px `white/10` border, 8px padding. TL mark (44×44) on the left: steel disc, 6px ink core, 14px italic serif “TL”; gradient reverses on hover and the core scales to 1.1. 1px hairline dividers hide below `sm`.
-- **Links:** Sentence-case Inter, 12–14px, 44px tall pills. Rest is fog; active and hover use hairline at 50% with bone text. Horizontal scroll allowed inside the cluster.
+- **Style:** Fixed top-center floating pill — charcoal, `backdrop-blur(12px)`, 1px `white/10` border, 8px padding. Official wing mark (32×32) plus “Talaria-Log” in 14px semibold display (wordmark hidden below `sm`). 1px hairline dividers hide below `sm`.
+- **Links:** Sentence-case Helvetica Now, 12–14px, 44px tall pills. Rest is fog; active and hover use hairline at 50% with bone text. Horizontal scroll allowed inside the cluster.
+- **Sign in:** Frosted charcoal pill with the same brand-blue hover ring as CTAs.
 - **Mobile:** Same pill, tighter link padding (`12px`), full-width capped by `max-w-full`, still top-center — not a bottom tab bar.
 
 ### Signature: Loading overlay
-Full-viewport ink. Cycling italic serif word at center. Tabular serif counter, zero-padded to three digits, bottom-right. 3px hairline track at the bottom with a steel gradient fill that scales on X. Honors `prefers-reduced-motion` (snap to 100 and dismiss).
+Full-viewport ink. Centered official wing mark (112–160px). Fades out in 400ms (`cubic-bezier(0.25, 0.1, 0.25, 1)`). Honors `prefers-reduced-motion` (200ms dismiss, no entrance motion).
 
 ### Signature: Gradient hover ring
-Shared wrapper for landing CTAs. Outer `group` is `rounded-full`; an absolutely positioned steel gradient sits at `inset: -2px` and ramps from 0 to 100% opacity on hover/focus. Inner fill is passed per variant. Do not use Hero UI `Button` on this surface.
+Shared wrapper for landing CTAs. Outer `group` is `rounded-full`; an absolutely positioned brand-blue gradient sits at `inset: -2px` and ramps from 0 to 100% opacity on hover/focus. Inner fill is passed per variant. Do not use Hero UI `Button` on this surface.
+
+### Signature: Brand mark
+Official three-bar wing at `/logo-07.png`. Hero 160px (112 / 144 / 160px across breakpoints); nav 32px; footer 80–96px; load 112–160px. Raster is the default. Do not draw the mark onto the chart canvas.
 
 ## Do's and Don'ts
 
 ### Do:
 - **Do** scope landing styles to `.landing-page` / `.landing-overlay` and the `--lp-*` tokens.
-- **Do** set display type in Instrument Serif italic, and keep body, headlines, and UI in Inter.
-- **Do** use the steel gradient only as a 2px hover ring, TL halo, or load bar.
-- **Do** keep chrome `rounded-full` and hit targets at least 44px.
-- **Do** cap reading copy around `max-w-md` and the page column at 1200px.
-- **Do** respect `prefers-reduced-motion` on load, role cycle, gradient shift, and marquee.
+- **Do** set display type in Blauer Nue / Exo 2 semibold, and keep body, UI, and buttons in Helvetica Now / Helvetica Neue.
+- **Do** use the brand-blue gradient only as a 2px hover/focus ring.
+- **Do** lead with `/logo-07.png` and a framed `/landing/shot-*.png` product screenshot.
+- **Do** keep chrome `rounded-full`, product frames at 16px, and hit targets at least 44px.
+- **Do** cap reading copy around `max-w-md` / `max-w-xl` and the page column at 1200px.
+- **Do** respect `prefers-reduced-motion` on load, role cycle, hero reveal, and surface parallax.
 
 ### Don't:
 - **Don't** mix this world with Hero UI components or OKLCH product tokens on the marketing page.
-- **Don't** fill a section, card, or hero with the steel gradient.
-- **Don't** set body paragraphs in Instrument Serif, or swap the pinned pairing.
-- **Don't** square off nav, buttons, or the TL mark.
-- **Don't** load the full dataset, a chart engine, or app chrome into this door — it is a portfolio arrival, not the trading shell.
-- **Don't** add a second chromatic accent. Bone, fog, and steel are the voice.
+- **Don't** fill a section, card, or hero with the brand-blue gradient.
+- **Don't** restore Inter, Instrument Serif, a TL monogram, or HLS video.
+- **Don't** set body paragraphs in the display face, or italicize display type.
+- **Don't** square off nav or buttons, or replace the official PNG with a letterform disc.
+- **Don't** load the full dataset or live chart engine into this door — screenshots are the product truth here.
+- **Don't** add a second chromatic accent. Bone, fog, and brand-blue are the voice.

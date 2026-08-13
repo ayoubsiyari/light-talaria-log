@@ -1,12 +1,6 @@
 import { featuresCopy } from '@landing-content/features';
 import { heroCopy } from '@landing-content/hero';
-import { howItWorksCopy } from '@landing-content/howItWorks';
 import { journalCopy } from '@landing-content/journal';
-
-export const HLS_SRC =
-  'https://stream.mux.com/Aa02T7oM1wH5Mk5EEVDYhbZ1ChcdhRsS2m1NYyx4Ua1g.m3u8';
-
-export const LOADING_WORDS = ['Replay', 'Backtest', 'Journal'] as const;
 
 export const HERO_VERBS = ['replay', 'backtest', 'journal', 'chart'] as const;
 
@@ -14,40 +8,41 @@ export const NAV_LINKS = [
   { id: 'hero', label: 'Home' },
   { id: 'features', label: 'Chart' },
   { id: 'journal', label: 'Journal' },
+  { id: 'how', label: 'How' },
 ] as const;
 
 export const FEATURES = [
   {
-    id: featuresCopy.cards[0].id,
-    title: featuresCopy.cards[0].title,
-    body: featuresCopy.cards[0].body,
-    variant: 'replay' as const,
-    span: 'md:col-span-7',
-    aspect: 'aspect-[16/10] md:aspect-[16/11]',
-  },
-  {
-    id: featuresCopy.cards[1].id,
+    id: 'chart',
     title: featuresCopy.cards[1].title,
     body: featuresCopy.cards[1].body,
-    variant: 'candles' as const,
-    span: 'md:col-span-5',
-    aspect: 'aspect-[16/10] md:aspect-[4/5]',
+    image: '/landing/shot-chart.png',
+    span: 'md:col-span-7',
+    aspect: 'aspect-[16/10]',
   },
   {
-    id: featuresCopy.cards[2].id,
-    title: featuresCopy.cards[2].title,
-    body: featuresCopy.cards[2].body,
-    variant: 'equity' as const,
-    span: 'md:col-span-5',
-    aspect: 'aspect-[16/10] md:aspect-[4/5]',
-  },
-  {
-    id: featuresCopy.cards[4].id,
+    id: 'journal',
     title: featuresCopy.cards[4].title,
     body: featuresCopy.cards[4].body,
-    variant: 'journal' as const,
+    image: '/landing/shot-journal.png',
+    span: 'md:col-span-5',
+    aspect: 'aspect-[4/5]',
+  },
+  {
+    id: 'order',
+    title: 'Order ticket',
+    body: 'Market, limit, and stop with entries, stop, and targets on the same ticket.',
+    image: '/landing/shot-order.png',
+    span: 'md:col-span-5',
+    aspect: 'aspect-[4/5]',
+  },
+  {
+    id: 'strategy',
+    title: featuresCopy.cards[2].title,
+    body: featuresCopy.cards[2].body,
+    image: '/landing/shot-strategy.png',
     span: 'md:col-span-7',
-    aspect: 'aspect-[16/10] md:aspect-[16/11]',
+    aspect: 'aspect-[16/10]',
   },
 ] as const;
 
@@ -62,60 +57,54 @@ export const JOURNAL_ENTRIES = journalCopy.entries.map((entry) => ({
 
 export const SURFACES = [
   {
-    title: howItWorksCopy.steps[0].title,
-    body: howItWorksCopy.steps[0].body,
-    variant: 'candles' as const,
-    rotate: -6,
-  },
-  {
-    title: howItWorksCopy.steps[1].title,
-    body: howItWorksCopy.steps[1].body,
-    variant: 'panes' as const,
-    rotate: 4,
-  },
-  {
-    title: howItWorksCopy.steps[2].title,
-    body: howItWorksCopy.steps[2].body,
-    variant: 'equity' as const,
-    rotate: -3,
-  },
-  {
-    title: 'Bar-by-bar replay',
-    body: 'Step the right edge as the cursor. Viewport-only loads keep memory flat.',
-    variant: 'replay' as const,
-    rotate: 7,
-  },
-  {
-    title: 'Drawings on the tape',
-    body: 'Trend, fib, and levels live on the chart — not in a separate notebook.',
-    variant: 'drawings' as const,
+    title: 'Fast canvas chart',
+    body: featuresCopy.cards[1].body,
+    image: '/landing/shot-chart.png',
     rotate: -5,
   },
   {
     title: 'Session journal',
-    body: journalCopy.sub,
-    variant: 'journal' as const,
+    body: featuresCopy.cards[4].body,
+    image: '/landing/shot-journal.png',
+    rotate: 4,
+  },
+  {
+    title: 'Order ticket',
+    body: 'Place, manage, and journal from one ticket.',
+    image: '/landing/shot-order.png',
+    rotate: -3,
+  },
+  {
+    title: 'News & calendar',
+    body: 'Releases and headlines beside the tape.',
+    image: '/landing/shot-news.png',
+    rotate: 6,
+  },
+  {
+    title: 'Indicators',
+    body: 'SMA, EMA, and the rest — add from the catalog, not a third-party chart lib.',
+    image: '/landing/shot-indicators.png',
+    rotate: -4,
+  },
+  {
+    title: 'Strategy builder',
+    body: 'Node graph for entries, exits, and structure — then backtest it.',
+    image: '/landing/shot-strategy.png',
     rotate: 3,
   },
-] as const;
-
-/** Product facts (engine budgets), not customer claims. */
-export const STATS = [
-  { value: '≤2500', label: 'bars in viewport memory' },
-  { value: 'Worker', label: 'backtests & indicators' },
-  { value: '1m→1D', label: 'LOD without a freeze' },
 ] as const;
 
 export const FOOTER_LINKS = [
   { label: 'Chart', id: 'features' },
   { label: 'Journal', id: 'journal' },
+  { label: 'How', id: 'how' },
 ] as const;
 
 export const HERO = heroCopy;
 
 export const JOURNAL_COPY = journalCopy;
 
-export const MARQUEE = 'REPLAY THE MARKET • KEEP THE RECEIPTS • ';
+export const CHART_SHOT = '/landing/shot-chart.png';
 
 export function scrollToId(id: string): void {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });

@@ -1,0 +1,39 @@
+---
+description: Chart engine is frozen — do not edit unless user explicitly unlocks
+alwaysApply: true
+---
+
+# Chart Freeze (locked)
+
+The chart stack is **stable and frozen**. Do not change it unless the user explicitly unlocks it in this chat.
+
+## Frozen paths (do not edit)
+- `src/chart/**`
+- `src/drawings/**`
+- `src/hooks/useChart.ts`
+- `src/components/layout/ChartPane.tsx`
+- `src/components/layout/ChartGrid.tsx`
+- In `src/App.tsx`: anything that changes chart camera, TF switch, pan/zoom
+  prefetch, replay reveal → engine, or `cameraPreserve` / `cameraSpanForTf` /
+  `syncEnginesFromSession` / `applyTimeWindowToPanes` chart wiring.
+  (Other App chrome is OK.)
+
+## Unlock phrases (required)
+Only edit frozen paths if the user clearly says one of:
+- `unlock chart`
+- `edit chart`
+- `unfreeze chart`
+- `chart freeze off`
+
+Vague requests (“fix this”, “improve candles”, “TF feels off”) are **not** unlocks while this rule is active — ask them to say `unlock chart` first.
+
+## When frozen (default)
+1. **Refuse** edits/patches to frozen paths.
+2. You may **read / explain / diagnose** frozen code.
+3. You may edit **non-frozen** UI (landing, admin, marketing, docs) freely.
+4. Do **not** “while we’re here” touch camera, pan/zoom, TF switch, candles, drawings, or replay reveal.
+5. Do **not** weaken or delete this rule unless the user explicitly asks to remove the freeze.
+
+## After unlock
+- Treat the session as unlocked for chart work until the user says `lock chart` / `freeze chart` again (or a new chat starts — freeze is on by default via this rule).
+- Still follow `chart-fix-blast-radius.mdc` and `chart-performance.mdc` on any chart edit.

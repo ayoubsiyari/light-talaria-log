@@ -1,10 +1,6 @@
-import '@fontsource/inter/latin-300.css';
-import '@fontsource/inter/latin-400.css';
-import '@fontsource/inter/latin-500.css';
-import '@fontsource/inter/latin-600.css';
-import '@fontsource/inter/latin-700.css';
-import '@fontsource/instrument-serif/latin-400.css';
-import '@fontsource/instrument-serif/latin-400-italic.css';
+import '@fontsource/exo-2/latin-400.css';
+import '@fontsource/exo-2/latin-600.css';
+import '@fontsource/exo-2/latin-700.css';
 import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { ContactFooter } from '@/components/landing/ContactFooter';
@@ -14,7 +10,6 @@ import { JournalSection } from '@/components/landing/JournalSection';
 import { LoadingScreen } from '@/components/landing/LoadingScreen';
 import { Navbar } from '@/components/landing/Navbar';
 import { SelectedWorks } from '@/components/landing/SelectedWorks';
-import { StatsSection } from '@/components/landing/StatsSection';
 
 interface MarketingHomeProps {
   /** Sign up (or open app if already signed in). Kept for App.tsx wiring. */
@@ -24,11 +19,11 @@ interface MarketingHomeProps {
 }
 
 const CONTRACT = `<!--
-THESIS: A dark editorial door for Talaria-Log — full-bleed atmosphere and a floating pill nav, selling replay, backtest, journal, and a viewport chart.
-OWN-WORLD: Near-black HSL tokens, Inter + italic Instrument Serif, steel-blue accent gradient, hairline strokes, rounded-full chrome, bento tape stills.
-STORY: Visitor learns this is a trading chart/backtest/journal tool, sees the mechanism, and starts free.
-FIRST VIEWPORT: Full-bleed muted video, centered serif Talaria-Log, cycling replay/backtest/journal/chart, Start free + See how it works; floating pill nav with TL + Sign in.
-FORM: Brief-pinned editorial chrome, product-truth content. Seed key: brief-pinned.
+THESIS: The actual Talaria-Log chart is the door — official wing mark, product type, real screens for replay, journal, orders, news, indicators, and strategy.
+OWN-WORLD: Near-black surfaces, Helvetica Now / Neue UI + Blauer Nue / Exo 2 display (same as V9 chrome), brand-blue gradient, framed product shots.
+STORY: Visitor recognizes the trading tool, sees the chart and journal, and starts free.
+FIRST VIEWPORT: 160px wing logo + Talaria-Log wordmark beside the EUR/USD 1m chart screenshot; Start free / See how it works.
+FORM: Product-truth editorial shell. Seed key: brief-pinned.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 -->`;
 
@@ -54,12 +49,23 @@ export function MarketingHome({
 
   useEffect(() => {
     if (isLoading) return;
-    const ids = ['hero', 'features', 'journal'] as const;
+    const ids = ['hero', 'features', 'journal', 'how', 'contact'] as const;
     const onScroll = () => {
+      const marker = 140;
       let current: string = 'hero';
+      let bestTop = -Infinity;
       for (const id of ids) {
         const el = document.getElementById(id);
-        if (el && el.getBoundingClientRect().top <= 140) current = id;
+        if (!el) continue;
+        const top = el.getBoundingClientRect().top;
+        if (top <= marker && top >= bestTop) {
+          bestTop = top;
+          current = id;
+        }
+      }
+      const doc = document.documentElement;
+      if (window.innerHeight + window.scrollY >= doc.scrollHeight - 16) {
+        current = 'contact';
       }
       setActiveId(current);
     };
@@ -80,7 +86,6 @@ export function MarketingHome({
         <SelectedWorks onOpen={onStartFree} />
         <JournalSection onOpen={onStartFree} />
         <Explorations onStartFree={onStartFree} />
-        <StatsSection />
       </main>
       <ContactFooter onStartFree={onStartFree} onSignIn={onOpenApp} />
     </div>

@@ -11,24 +11,25 @@ export function JournalSection({ onOpen }: JournalSectionProps) {
     <section id="journal" className="bg-bg py-16 md:py-24">
       <div className="mx-auto max-w-[1200px] px-6 md:px-10 lg:px-16">
         <SectionHeader
-          eyebrow="Journal"
-          heading={
-            <>
-              Trades, written <span className="font-display italic">down</span>
-            </>
-          }
+          heading="Trades, written down"
           subtext={JOURNAL_COPY.sub}
           action={
-            <div className="hidden md:block">
-              <GradientHoverRing
-                onClick={onOpen}
-                innerClassName="border border-stroke bg-bg px-5 py-2.5 text-sm text-text-primary"
-              >
-                Open journal →
-              </GradientHoverRing>
-            </div>
+            <GradientHoverRing
+              onClick={onOpen}
+              innerClassName="border border-stroke bg-bg px-5 py-2.5 text-sm text-text-primary"
+            >
+              Open journal
+            </GradientHoverRing>
           }
         />
+
+        <div className="mb-8 overflow-hidden rounded-2xl border border-stroke bg-surface">
+          <img
+            src="/landing/shot-journal.png"
+            alt="Talaria-Log journal with open, pending, and closed trades"
+            className="block h-auto w-full object-cover object-top"
+          />
+        </div>
 
         <ul className="flex flex-col gap-3">
           {JOURNAL_ENTRIES.map((entry) => (
@@ -43,6 +44,9 @@ export function JournalSection({ onOpen }: JournalSectionProps) {
                   {entry.instrument}
                 </div>
                 <div className="min-w-0 flex-1">
+                  <p className="mb-1 text-xs uppercase tracking-[0.16em] text-muted">
+                    Demonstration
+                  </p>
                   <h3 className="text-base text-text-primary sm:text-lg">{entry.note}</h3>
                   <p className="mt-1 text-xs uppercase tracking-[0.16em] text-muted">
                     {entry.tags.join(' · ')}

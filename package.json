@@ -27,6 +27,7 @@
     "saas:stack": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build"
   },
   "dependencies": {
+    "@fontsource/exo-2": "^5.3.0",
     "@fontsource/instrument-serif": "^5.3.0",
     "@fontsource/inter": "^5.3.0",
     "@heroui/react": "^3.0.0",

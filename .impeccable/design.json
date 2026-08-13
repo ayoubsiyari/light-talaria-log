@@ -1,13 +1,13 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-13T10:49:00+01:00",
+  "generatedAt": "2026-08-13T11:35:00+01:00",
   "title": "Design System: Talaria-Log Landing",
   "extensions": {
     "colorMeta": {
       "ink": {
         "role": "neutral",
         "displayName": "Ink",
-        "canonical": "hsl(0 0% 4%)",
+        "canonical": "hsl(0 0% 2%)",
         "tonalRamp": [
           "oklch(15% 0 0)",
           "oklch(26% 0 0)",
@@ -22,7 +22,7 @@
       "charcoal": {
         "role": "neutral",
         "displayName": "Charcoal",
-        "canonical": "hsl(0 0% 8%)",
+        "canonical": "hsl(0 0% 6%)",
         "tonalRamp": [
           "oklch(15% 0 0)",
           "oklch(26% 0 0)",
@@ -37,7 +37,7 @@
       "hairline": {
         "role": "neutral",
         "displayName": "Hairline",
-        "canonical": "hsl(0 0% 12%)",
+        "canonical": "hsl(0 0% 14%)",
         "tonalRamp": [
           "oklch(15% 0 0)",
           "oklch(26% 0 0)",
@@ -52,7 +52,7 @@
       "fog": {
         "role": "neutral",
         "displayName": "Fog",
-        "canonical": "hsl(0 0% 53%)",
+        "canonical": "hsl(0 0% 58%)",
         "tonalRamp": [
           "oklch(15% 0 0)",
           "oklch(26% 0 0)",
@@ -79,57 +79,57 @@
           "oklch(95% 0 0)"
         ]
       },
-      "steel-mist": {
+      "brand-blue": {
         "role": "primary",
-        "displayName": "Steel Mist",
-        "canonical": "#89aacc",
+        "displayName": "Brand Azure",
+        "canonical": "#3090ff",
         "tonalRamp": [
-          "oklch(15% 0.06 250)",
-          "oklch(26% 0.07 250)",
-          "oklch(38% 0.08 250)",
-          "oklch(50% 0.09 250)",
-          "oklch(62% 0.08 250)",
-          "oklch(74% 0.06 250)",
-          "oklch(85% 0.04 250)",
-          "oklch(95% 0.02 250)"
+          "oklch(15% 0.10 250)",
+          "oklch(26% 0.13 250)",
+          "oklch(38% 0.16 250)",
+          "oklch(50% 0.18 250)",
+          "oklch(62% 0.18 250)",
+          "oklch(74% 0.14 250)",
+          "oklch(85% 0.08 250)",
+          "oklch(95% 0.03 250)"
         ]
       },
-      "steel-deep": {
+      "brand-blue-deep": {
         "role": "primary",
-        "displayName": "Steel Deep",
-        "canonical": "#4e85bf",
+        "displayName": "Brand Indigo",
+        "canonical": "#232cf4",
         "tonalRamp": [
-          "oklch(15% 0.08 247)",
-          "oklch(26% 0.09 247)",
-          "oklch(38% 0.10 247)",
-          "oklch(50% 0.11 247)",
-          "oklch(62% 0.09 247)",
-          "oklch(74% 0.07 247)",
-          "oklch(85% 0.04 247)",
-          "oklch(95% 0.02 247)"
+          "oklch(15% 0.16 264)",
+          "oklch(26% 0.20 264)",
+          "oklch(38% 0.24 264)",
+          "oklch(50% 0.27 264)",
+          "oklch(62% 0.24 264)",
+          "oklch(74% 0.16 264)",
+          "oklch(85% 0.08 264)",
+          "oklch(95% 0.03 264)"
         ]
       }
     },
     "typographyMeta": {
       "display": {
         "displayName": "Display",
-        "purpose": "Hero name, load counter, stats, and footer marquee. Italic except the tabular 000–100 counter."
+        "purpose": "Hero Talaria-Log wordmark in Blauer Nue / Exo 2 semibold."
       },
       "headline": {
         "displayName": "Headline",
-        "purpose": "Section titles in Inter; one accent word switches to italic Instrument Serif."
+        "purpose": "Section titles and the footer CTA heading in the same display face."
       },
       "title": {
         "displayName": "Title",
-        "purpose": "Italic serif project names and the cycling hero role word."
+        "purpose": "Work-card titles, cycling hero verb, and nav wordmark."
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Supporting copy, journal titles, and CTA labels in Inter roman."
+        "purpose": "Supporting copy, journal notes, and CTA labels in Helvetica Now roman."
       },
       "label": {
         "displayName": "Label",
-        "purpose": "SCROLL, stats captions, and journal meta in 12px Inter."
+        "purpose": "Footnotes, shot captions, and journal meta in 12px Helvetica Now."
       }
     },
     "shadows": [
@@ -139,14 +139,14 @@
         "purpose": "Floating pill nav after scrollY > 100."
       },
       {
-        "name": "explore-tile",
-        "value": "0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3)",
-        "purpose": "Ambient drop under rotated exploration images."
+        "name": "hero-shot",
+        "value": "0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4)",
+        "purpose": "Ambient drop under the first-viewport chart frame."
       },
       {
-        "name": "load-bar-glow",
-        "value": "0 0 8px color-mix(in srgb, var(--lp-grad-from) 35%, transparent)",
-        "purpose": "Steel bloom on the loading progress fill."
+        "name": "surface-tile",
+        "value": "0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3)",
+        "purpose": "Ambient drop under rotated product-surface frames."
       }
     ],
     "motion": [
@@ -158,22 +158,12 @@
       {
         "name": "ease-hover",
         "value": "300ms",
-        "purpose": "Pill scale and steel-ring opacity."
-      },
-      {
-        "name": "gradient-shift",
-        "value": "gradient-shift 6s ease infinite",
-        "purpose": "Animated steel border on the work-card View pill."
-      },
-      {
-        "name": "scroll-down",
-        "value": "scroll-down 1.5s ease-in-out infinite",
-        "purpose": "Hero SCROLL tick moving inside the 1px track."
+        "purpose": "Pill scale and brand-ring opacity."
       },
       {
         "name": "role-fade-in",
         "value": "role-fade-in 0.4s ease-out",
-        "purpose": "Cycling hero role word."
+        "purpose": "Cycling hero verb (replay / backtest / journal / chart)."
       }
     ],
     "breakpoints": [
@@ -187,133 +177,141 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Bone-filled pill CTA with a steel hover ring; inverts on hover.",
-      "html": "<a class=\"ds-btn-primary\" href=\"#work\">See Works</a>",
-      "css": ".ds-btn-primary { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 14px 28px; border-radius: 9999px; background: hsl(var(--lp-text)); color: hsl(var(--lp-bg)); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 0.875rem; font-weight: 400; text-decoration: none; outline: none; transition: transform 300ms, background-color 300ms, color 300ms; } .ds-btn-primary::before { content: \"\"; position: absolute; inset: -2px; border-radius: 9999px; background-image: linear-gradient(90deg, var(--lp-grad-from), var(--lp-grad-to)); opacity: 0; z-index: -1; transition: opacity 300ms; } .ds-btn-primary:hover, .ds-btn-primary:focus-visible { transform: scale(1.05); background: hsl(var(--lp-bg)); color: hsl(var(--lp-text)); } .ds-btn-primary:hover::before, .ds-btn-primary:focus-visible::before { opacity: 1; }"
+      "description": "Bone-filled pill CTA with a brand-blue hover ring; inverts on hover.",
+      "html": "<a class=\"ds-btn-primary\" href=\"#features\">Start free</a>",
+      "css": ".ds-btn-primary { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 14px 28px; border-radius: 9999px; background: hsl(var(--lp-text)); color: hsl(var(--lp-bg)); font-family: \"Helvetica Now\", \"Helvetica Neue\", Helvetica, Arial, sans-serif; font-size: 0.875rem; font-weight: 400; text-decoration: none; outline: none; transition: transform 300ms, background-color 300ms, color 300ms; } .ds-btn-primary::before { content: \"\"; position: absolute; inset: -2px; border-radius: 9999px; background-image: linear-gradient(90deg, var(--lp-grad-from), var(--lp-grad-to)); opacity: 0; z-index: -1; transition: opacity 300ms; } .ds-btn-primary:hover, .ds-btn-primary:focus-visible { transform: scale(1.05); background: hsl(var(--lp-bg)); color: hsl(var(--lp-text)); } .ds-btn-primary:hover::before, .ds-btn-primary:focus-visible::before { opacity: 1; }"
     },
     {
       "name": "Ghost Button",
       "kind": "button",
       "refersTo": "button-ghost",
-      "description": "Ink pill with a 2px hairline; steel ring replaces the border on hover.",
-      "html": "<a class=\"ds-btn-ghost\" href=\"mailto:hello@talaria-log.com\">Reach out...</a>",
-      "css": ".ds-btn-ghost { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 14px 28px; border-radius: 9999px; border: 2px solid hsl(var(--lp-stroke)); background: hsl(var(--lp-bg)); color: hsl(var(--lp-text)); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 0.875rem; font-weight: 400; text-decoration: none; outline: none; transition: transform 300ms, border-color 300ms; } .ds-btn-ghost::before { content: \"\"; position: absolute; inset: -2px; border-radius: 9999px; background-image: linear-gradient(90deg, var(--lp-grad-from), var(--lp-grad-to)); opacity: 0; z-index: -1; transition: opacity 300ms; } .ds-btn-ghost:hover, .ds-btn-ghost:focus-visible { transform: scale(1.05); border-color: transparent; } .ds-btn-ghost:hover::before, .ds-btn-ghost:focus-visible::before { opacity: 1; }"
+      "description": "Ink pill with a 2px hairline; brand-blue ring replaces the border on hover.",
+      "html": "<button class=\"ds-btn-ghost\" type=\"button\">See how it works</button>",
+      "css": ".ds-btn-ghost { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 14px 28px; border-radius: 9999px; border: 2px solid hsl(var(--lp-stroke)); background: hsl(var(--lp-bg)); color: hsl(var(--lp-text)); font-family: \"Helvetica Now\", \"Helvetica Neue\", Helvetica, Arial, sans-serif; font-size: 0.875rem; font-weight: 400; cursor: pointer; outline: none; transition: transform 300ms, border-color 300ms; } .ds-btn-ghost::before { content: \"\"; position: absolute; inset: -2px; border-radius: 9999px; background-image: linear-gradient(90deg, var(--lp-grad-from), var(--lp-grad-to)); opacity: 0; z-index: -1; transition: opacity 300ms; } .ds-btn-ghost:hover, .ds-btn-ghost:focus-visible { transform: scale(1.05); border-color: transparent; } .ds-btn-ghost:hover::before, .ds-btn-ghost:focus-visible::before { opacity: 1; }"
     },
     {
       "name": "Outline Button",
       "kind": "button",
       "refersTo": "button-outline",
-      "description": "Compact hairline pill for section actions such as View all work.",
-      "html": "<button class=\"ds-btn-outline\" type=\"button\">View all work →</button>",
-      "css": ".ds-btn-outline { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 20px; border: 1px solid hsl(var(--lp-stroke)); border-radius: 9999px; background: hsl(var(--lp-bg)); color: hsl(var(--lp-text)); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 0.875rem; font-weight: 400; cursor: pointer; outline: none; transition: transform 300ms; } .ds-btn-outline::before { content: \"\"; position: absolute; inset: -2px; border-radius: 9999px; background-image: linear-gradient(90deg, var(--lp-grad-from), var(--lp-grad-to)); opacity: 0; z-index: -1; transition: opacity 300ms; } .ds-btn-outline:hover, .ds-btn-outline:focus-visible { transform: scale(1.05); } .ds-btn-outline:hover::before, .ds-btn-outline:focus-visible::before { opacity: 1; }"
+      "description": "Compact hairline pill for section actions such as Open a session.",
+      "html": "<button class=\"ds-btn-outline\" type=\"button\">Open a session</button>",
+      "css": ".ds-btn-outline { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 20px; border: 1px solid hsl(var(--lp-stroke)); border-radius: 9999px; background: hsl(var(--lp-bg)); color: hsl(var(--lp-text)); font-family: \"Helvetica Now\", \"Helvetica Neue\", Helvetica, Arial, sans-serif; font-size: 0.875rem; font-weight: 400; cursor: pointer; outline: none; transition: transform 300ms; } .ds-btn-outline::before { content: \"\"; position: absolute; inset: -2px; border-radius: 9999px; background-image: linear-gradient(90deg, var(--lp-grad-from), var(--lp-grad-to)); opacity: 0; z-index: -1; transition: opacity 300ms; } .ds-btn-outline:hover, .ds-btn-outline:focus-visible { transform: scale(1.05); } .ds-btn-outline:hover::before, .ds-btn-outline:focus-visible::before { opacity: 1; }"
     },
     {
-      "name": "Email Pill",
+      "name": "Footer CTA",
       "kind": "button",
-      "refersTo": "button-email",
-      "description": "Frosted charcoal contact pill used in the footer.",
-      "html": "<a class=\"ds-btn-email\" href=\"mailto:hello@talaria-log.com\">hello@talaria-log.com</a>",
-      "css": ".ds-btn-email { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 14px 32px; border-radius: 9999px; background: hsl(var(--lp-surface)); color: hsl(var(--lp-text)); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 1rem; font-weight: 400; text-decoration: none; backdrop-filter: blur(12px); outline: none; transition: transform 300ms; } .ds-btn-email::before { content: \"\"; position: absolute; inset: -2px; border-radius: 9999px; background-image: linear-gradient(90deg, var(--lp-grad-from), var(--lp-grad-to)); opacity: 0; z-index: -1; transition: opacity 300ms; } .ds-btn-email:hover, .ds-btn-email:focus-visible { transform: scale(1.05); } .ds-btn-email:hover::before, .ds-btn-email:focus-visible::before { opacity: 1; }"
+      "refersTo": "button-cta",
+      "description": "Charcoal pill used as the quieter Start free over the footer chart scrim.",
+      "html": "<button class=\"ds-btn-cta\" type=\"button\">Start free</button>",
+      "css": ".ds-btn-cta { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 14px 32px; border-radius: 9999px; background: hsl(var(--lp-surface)); color: hsl(var(--lp-text)); font-family: \"Helvetica Now\", \"Helvetica Neue\", Helvetica, Arial, sans-serif; font-size: 1rem; font-weight: 400; cursor: pointer; outline: none; transition: transform 300ms; } .ds-btn-cta::before { content: \"\"; position: absolute; inset: -2px; border-radius: 9999px; background-image: linear-gradient(90deg, var(--lp-grad-from), var(--lp-grad-to)); opacity: 0; z-index: -1; transition: opacity 300ms; } .ds-btn-cta:hover, .ds-btn-cta:focus-visible { transform: scale(1.05); } .ds-btn-cta:hover::before, .ds-btn-cta:focus-visible::before { opacity: 1; }"
     },
     {
       "name": "Floating Pill Nav",
       "kind": "nav",
       "refersTo": "nav-pill",
-      "description": "Top-center frosted pill with TL mark, sentence-case links, and Say hi.",
-      "html": "<nav class=\"ds-nav\" aria-label=\"Primary\"><button class=\"ds-nav-mark\" type=\"button\" aria-label=\"Talaria-Log home\"><span class=\"ds-nav-mark-core\">TL</span></button><span class=\"ds-nav-rule\"></span><button class=\"ds-nav-link ds-nav-link-active\" type=\"button\">Home</button><button class=\"ds-nav-link\" type=\"button\">Work</button><button class=\"ds-nav-link\" type=\"button\">Resume</button><span class=\"ds-nav-rule\"></span><a class=\"ds-nav-hi\" href=\"mailto:hello@talaria-log.com\">Say hi ↗</a></nav>",
-      "css": ".ds-nav { display: inline-flex; align-items: center; max-width: 100%; padding: 8px; border-radius: 9999px; border: 1px solid rgb(255 255 255 / 0.1); background: hsl(var(--lp-surface)); backdrop-filter: blur(12px); } .ds-nav-mark { position: relative; width: 44px; height: 44px; border: 0; border-radius: 9999px; background: linear-gradient(90deg, var(--lp-grad-from), var(--lp-grad-to)); cursor: pointer; } .ds-nav-mark-core { position: absolute; inset: 6px; display: flex; align-items: center; justify-content: center; border-radius: 9999px; background: hsl(var(--lp-bg)); color: hsl(var(--lp-text)); font-family: Instrument Serif, ui-serif, Georgia, serif; font-size: 14px; font-style: italic; transition: transform 300ms; } .ds-nav-mark:hover .ds-nav-mark-core, .ds-nav-mark:focus-visible .ds-nav-mark-core { transform: scale(1.1); } .ds-nav-rule { width: 1px; height: 20px; margin: 0 4px; background: hsl(var(--lp-stroke)); } .ds-nav-link { min-height: 44px; padding: 0 16px; border: 0; border-radius: 9999px; background: transparent; color: hsl(var(--lp-muted)); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 0.875rem; cursor: pointer; } .ds-nav-link:hover, .ds-nav-link:focus-visible { background: hsl(var(--lp-stroke) / 0.5); color: hsl(var(--lp-text)); } .ds-nav-link-active { background: hsl(var(--lp-stroke) / 0.5); color: hsl(var(--lp-text)); } .ds-nav-hi { display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 9999px; color: hsl(var(--lp-muted)); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 0.875rem; text-decoration: none; } .ds-nav-hi:hover, .ds-nav-hi:focus-visible { color: hsl(var(--lp-text)); }"
+      "description": "Top-center frosted pill with wing mark, Talaria-Log wordmark, sentence-case links, and Sign in.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Primary\"><button class=\"ds-nav-brand\" type=\"button\" aria-label=\"Talaria-Log home\"><svg class=\"ds-nav-mark\" viewBox=\"0 0 64 64\" aria-hidden=\"true\"><defs><linearGradient id=\"dsNavMark\" x1=\"8%\" y1=\"20%\" x2=\"92%\" y2=\"80%\"><stop offset=\"0%\" stop-color=\"#3090ff\"/><stop offset=\"100%\" stop-color=\"#232cf4\"/></linearGradient></defs><g fill=\"url(#dsNavMark)\"><path d=\"M6 22 L42 4 L50 12 L38 18 L50 18 L50 28 L14 28 Z\"/><path d=\"M6 36 L38 20 L46 28 L46 44 L14 44 Z\"/><path d=\"M6 50 L38 34 L46 42 L46 58 L14 58 Z\"/></g></svg><span class=\"ds-nav-wordmark\">Talaria-Log</span></button><span class=\"ds-nav-rule\"></span><button class=\"ds-nav-link ds-nav-link-active\" type=\"button\">Home</button><button class=\"ds-nav-link\" type=\"button\">Chart</button><button class=\"ds-nav-link\" type=\"button\">Journal</button><span class=\"ds-nav-rule\"></span><button class=\"ds-nav-signin\" type=\"button\">Sign in</button></nav>",
+      "css": ".ds-nav { display: inline-flex; align-items: center; max-width: 100%; padding: 8px; border-radius: 9999px; border: 1px solid rgb(255 255 255 / 0.1); background: hsl(var(--lp-surface)); backdrop-filter: blur(12px); } .ds-nav-brand { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 8px 0 6px; border: 0; border-radius: 9999px; background: transparent; color: hsl(var(--lp-text)); cursor: pointer; } .ds-nav-mark { width: 32px; height: 32px; flex-shrink: 0; } .ds-nav-wordmark { font-family: \"Blauer Nue\", \"Exo 2\", \"Helvetica Neue\", sans-serif; font-size: 0.875rem; font-weight: 600; letter-spacing: -0.025em; } .ds-nav-rule { width: 1px; height: 20px; margin: 0 4px; background: hsl(var(--lp-stroke)); } .ds-nav-link { min-height: 44px; padding: 0 16px; border: 0; border-radius: 9999px; background: transparent; color: hsl(var(--lp-muted)); font-family: \"Helvetica Now\", \"Helvetica Neue\", Helvetica, Arial, sans-serif; font-size: 0.875rem; cursor: pointer; } .ds-nav-link:hover, .ds-nav-link:focus-visible { background: hsl(var(--lp-stroke) / 0.5); color: hsl(var(--lp-text)); } .ds-nav-link-active { background: hsl(var(--lp-stroke) / 0.5); color: hsl(var(--lp-text)); } .ds-nav-signin { position: relative; min-height: 44px; padding: 0 16px; border: 0; border-radius: 9999px; background: hsl(var(--lp-surface)); color: hsl(var(--lp-muted)); font-family: \"Helvetica Now\", \"Helvetica Neue\", Helvetica, Arial, sans-serif; font-size: 0.875rem; cursor: pointer; } .ds-nav-signin:hover, .ds-nav-signin:focus-visible { color: hsl(var(--lp-text)); }"
     },
     {
-      "name": "Bento Project Card",
+      "name": "Work Shot Card",
       "kind": "card",
-      "refersTo": "card-bento",
-      "description": "24px photograph tile with italic serif title and a View pill overlay.",
-      "html": "<button class=\"ds-bento\" type=\"button\"><span class=\"ds-bento-photo\"></span><span class=\"ds-bento-title\">Automotive Motion</span><span class=\"ds-bento-view\">View — <em>Automotive Motion</em></span></button>",
-      "css": ".ds-bento { position: relative; display: block; width: 100%; aspect-ratio: 16 / 10; overflow: hidden; padding: 0; border: 1px solid hsl(var(--lp-stroke)); border-radius: 24px; background: hsl(var(--lp-surface)); cursor: pointer; text-align: left; } .ds-bento-photo { position: absolute; inset: 0; background: linear-gradient(160deg, #2a3340, #12151a); } .ds-bento-title { position: absolute; left: 20px; right: 20px; bottom: 20px; margin: 0; color: hsl(var(--lp-text)); font-family: Instrument Serif, ui-serif, Georgia, serif; font-size: 1.25rem; font-style: italic; } .ds-bento-view { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: hsl(var(--lp-bg) / 0.7); backdrop-filter: blur(16px); color: hsl(var(--lp-bg)); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 0.875rem; opacity: 0; transition: opacity 500ms; } .ds-bento-view em { font-family: Instrument Serif, ui-serif, Georgia, serif; font-style: italic; } .ds-bento-view::after { content: \"\"; position: absolute; width: min(70%, 220px); height: 44px; border-radius: 9999px; background: #fff; z-index: -1; } .ds-bento:hover .ds-bento-view, .ds-bento:focus-visible .ds-bento-view { opacity: 1; }"
+      "refersTo": "card-work",
+      "description": "16px product-screenshot tile with semibold display title over an ink fade.",
+      "html": "<button class=\"ds-work\" type=\"button\"><span class=\"ds-work-photo\"></span><span class=\"ds-work-fade\"><span class=\"ds-work-title\">Canvas chart</span><span class=\"ds-work-body\">Viewport bars, never the full series.</span></span></button>",
+      "css": ".ds-work { position: relative; display: block; width: 100%; aspect-ratio: 16 / 10; overflow: hidden; padding: 0; border: 1px solid hsl(var(--lp-stroke)); border-radius: 16px; background: hsl(var(--lp-surface)); cursor: pointer; text-align: left; } .ds-work-photo { position: absolute; inset: 0; background: linear-gradient(160deg, #1a2838, #0a0c10); } .ds-work-fade { position: absolute; inset: auto 0 0 0; padding: 64px 20px 20px; background: linear-gradient(to top, rgb(0 0 0 / 0.85), transparent); } .ds-work-title { display: block; color: hsl(var(--lp-text)); font-family: \"Blauer Nue\", \"Exo 2\", \"Helvetica Neue\", sans-serif; font-size: 1.25rem; font-weight: 600; letter-spacing: -0.025em; } .ds-work-body { display: block; margin-top: 4px; max-width: 24rem; color: hsl(var(--lp-muted)); font-family: \"Helvetica Now\", \"Helvetica Neue\", Helvetica, Arial, sans-serif; font-size: 0.875rem; } .ds-work:hover, .ds-work:focus-visible { outline: 2px solid var(--lp-grad-from); outline-offset: 2px; }"
     },
     {
       "name": "Journal Row",
       "kind": "card",
       "refersTo": "card-journal",
-      "description": "Pill row with circular thumbnail, title, and tracked meta.",
-      "html": "<article class=\"ds-journal\"><span class=\"ds-journal-thumb\"></span><h3 class=\"ds-journal-title\">The quiet power of negative space</h3><div class=\"ds-journal-meta\"><span>4 min</span><span>Mar 12, 2026</span></div></article>",
-      "css": ".ds-journal { display: flex; flex-wrap: wrap; align-items: center; gap: 24px; padding: 16px; border: 1px solid hsl(var(--lp-stroke)); border-radius: 9999px; background: hsl(var(--lp-surface) / 0.3); transition: background-color 300ms; } .ds-journal:hover { background: hsl(var(--lp-surface)); } .ds-journal-thumb { width: 80px; height: 80px; border-radius: 9999px; background: linear-gradient(160deg, #3a4450, #1a1d22); flex-shrink: 0; } .ds-journal-title { flex: 1; margin: 0; min-width: 12rem; color: hsl(var(--lp-text)); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 1.125rem; font-weight: 400; } .ds-journal-meta { display: flex; gap: 24px; padding: 0 16px; color: hsl(var(--lp-muted)); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 0.75rem; letter-spacing: 0.16em; text-transform: uppercase; }"
+      "description": "Pill row with circular instrument chip, note, PnL, and tracked meta.",
+      "html": "<article class=\"ds-journal\"><span class=\"ds-journal-chip\">EURUSD</span><h3 class=\"ds-journal-title\">Break of London high, trail on 1m close</h3><div class=\"ds-journal-meta\"><span>+42.6</span><span>12 Mar 2026</span></div></article>",
+      "css": ".ds-journal { display: flex; flex-wrap: wrap; align-items: center; gap: 24px; padding: 16px; border: 1px solid hsl(var(--lp-stroke)); border-radius: 9999px; background: hsl(var(--lp-surface) / 0.3); transition: background-color 300ms; } .ds-journal:hover { background: hsl(var(--lp-surface)); } .ds-journal-chip { display: flex; align-items: center; justify-content: center; width: 80px; height: 80px; border: 1px solid hsl(var(--lp-stroke)); border-radius: 9999px; color: hsl(var(--lp-text)); font-family: \"Helvetica Now\", \"Helvetica Neue\", Helvetica, Arial, sans-serif; font-size: 0.875rem; font-weight: 500; flex-shrink: 0; } .ds-journal-title { flex: 1; margin: 0; min-width: 12rem; color: hsl(var(--lp-text)); font-family: \"Helvetica Now\", \"Helvetica Neue\", Helvetica, Arial, sans-serif; font-size: 1.125rem; font-weight: 400; } .ds-journal-meta { display: flex; gap: 24px; padding: 0 16px; color: hsl(var(--lp-muted)); font-family: \"Helvetica Now\", \"Helvetica Neue\", Helvetica, Arial, sans-serif; font-size: 0.75rem; letter-spacing: 0.16em; text-transform: uppercase; }"
     },
     {
-      "name": "Exploration Tile",
+      "name": "Surface Tile",
       "kind": "card",
-      "refersTo": "card-explore",
-      "description": "Rotated 16px square study with a dark ambient drop shadow.",
-      "html": "<button class=\"ds-explore\" type=\"button\" aria-label=\"Open Chromatic Dust\"></button>",
-      "css": ".ds-explore { width: 200px; aspect-ratio: 1; padding: 0; overflow: hidden; border: 1px solid hsl(var(--lp-stroke)); border-radius: 16px; background: linear-gradient(145deg, #4a5564, #1c2026); box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3); transform: rotate(-6deg); cursor: pointer; } .ds-explore:hover, .ds-explore:focus-visible { outline: 2px solid var(--lp-grad-from); outline-offset: 4px; }"
+      "refersTo": "card-surface",
+      "description": "Rotated 16px product-surface frame with caption and a dark ambient drop.",
+      "html": "<figure class=\"ds-surface\"><span class=\"ds-surface-photo\"></span><figcaption class=\"ds-surface-caption\">Session journal</figcaption></figure>",
+      "css": ".ds-surface { width: 200px; overflow: hidden; margin: 0; border: 1px solid hsl(var(--lp-stroke)); border-radius: 16px; background: hsl(var(--lp-surface)); box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3); transform: rotate(-5deg); } .ds-surface-photo { display: block; aspect-ratio: 4 / 3; background: linear-gradient(145deg, #1a2838, #0a0c10); } .ds-surface-caption { padding: 8px 12px; color: hsl(var(--lp-text)); font-family: \"Helvetica Now\", \"Helvetica Neue\", Helvetica, Arial, sans-serif; font-size: 0.875rem; } .ds-surface:hover, .ds-surface:focus-visible { outline: 2px solid var(--lp-grad-from); outline-offset: 4px; }"
     },
     {
-      "name": "TL Mark",
+      "name": "Wing Mark",
       "kind": "custom",
       "refersTo": "nav-pill",
-      "description": "Italic serif TL on an ink disc inside a steel gradient halo.",
-      "html": "<button class=\"ds-tl\" type=\"button\" aria-label=\"Talaria-Log home\"><span class=\"ds-tl-core\">TL</span></button>",
-      "css": ".ds-tl { position: relative; width: 44px; height: 44px; border: 0; border-radius: 9999px; background-image: linear-gradient(90deg, var(--lp-grad-from) 0%, var(--lp-grad-to) 100%); cursor: pointer; } .ds-tl-core { position: absolute; inset: 6px; display: flex; align-items: center; justify-content: center; border-radius: 9999px; background: hsl(var(--lp-bg)); color: hsl(var(--lp-text)); font-family: Instrument Serif, ui-serif, Georgia, serif; font-size: 14px; font-style: italic; letter-spacing: 0.025em; transition: transform 300ms; } .ds-tl:hover, .ds-tl:focus-visible { background-image: linear-gradient(270deg, var(--lp-grad-from) 0%, var(--lp-grad-to) 100%); } .ds-tl:hover .ds-tl-core, .ds-tl:focus-visible .ds-tl-core { transform: scale(1.1); }"
+      "description": "Official three-bar wing. Raster /logo-07.png in product; SVG stand-in for the panel.",
+      "html": "<button class=\"ds-wing\" type=\"button\" aria-label=\"Talaria-Log home\"><svg viewBox=\"0 0 64 64\" aria-hidden=\"true\"><defs><linearGradient id=\"dsWing\" x1=\"8%\" y1=\"20%\" x2=\"92%\" y2=\"80%\"><stop offset=\"0%\" stop-color=\"#3090ff\"/><stop offset=\"100%\" stop-color=\"#232cf4\"/></linearGradient></defs><g fill=\"url(#dsWing)\"><path d=\"M6 22 L42 4 L50 12 L38 18 L50 18 L50 28 L14 28 Z\"/><path d=\"M6 36 L38 20 L46 28 L46 44 L14 44 Z\"/><path d=\"M6 50 L38 34 L46 42 L46 58 L14 58 Z\"/></g></svg></button>",
+      "css": ".ds-wing { width: 64px; height: 64px; padding: 0; border: 0; background: transparent; cursor: pointer; } .ds-wing svg { display: block; width: 100%; height: 100%; } .ds-wing:hover, .ds-wing:focus-visible { transform: scale(1.05); outline: none; }"
     }
   ],
   "narrative": {
-    "northStar": "The Dark Editorial Door",
-    "overview": "Talaria-Log’s marketing surface is a dark editorial portfolio, not a SaaS feature grid and not the Hero UI chart shell. The visitor arrives through a 000–100 load on near-black, meets the italic serif name over muted full-bleed video, and scrolls selected work, journal, and explorations before a reprise of that atmosphere in the footer. Chrome is floating, pill-shaped, and hairline-framed; the only chromatic voice is a steel-blue gradient used as a halo, never as a filled marketing slab.\n\nThis file is the landing visual world. Product chrome stays on Hero UI tokens and components recorded in docs/DESIGN.md. The two systems do not share a type pairing, a radius language, or a color format. The product name on this door is Talaria-Log. Inter (body, headlines, UI) and italic Instrument Serif (display) are user-pinned for this marketing surface and are not to be swapped for a “more original” pairing.",
+    "northStar": "The Chart Is the Door",
+    "overview": "Talaria-Log’s marketing surface is a product-truth editorial shell, not a SaaS feature grid and not the Hero UI chart chrome. The visitor arrives through a near-black load of the official wing mark, then meets the 160px mark and Talaria-Log wordmark beside a framed EUR/USD 1-minute chart screenshot, with Start free and See how it works. Selected work, journal, and product surfaces are real screens — replay, journal, orders, news, indicators, strategy — then a muted chart reprise in the footer.\n\nThis file is the landing visual world. Product chrome stays on Hero UI tokens and components recorded in docs/DESIGN.md. The two systems share a type pairing with V9 chrome (Helvetica Now / Neue UI + Blauer Nue / Exo 2) and the brand-blue stops, but they do not share radius language, layout, or token format. The product name on this door is Talaria-Log. The official mark is /logo-07.png. Helvetica Now / Helvetica Neue / Helvetica / Arial (UI and body) and Blauer Nue / Exo 2 (display, self-hosted) are user-pinned for this marketing surface.",
     "keyCharacteristics": [
       "Near-black HSL field (`--lp-*`) with bone type and fog secondary",
-      "Steel-blue accent gradient as hover rings, TL mark halo, and load bar only",
-      "Floating top-center pill nav with italic TL monogram",
-      "Hairline strokes and frosted charcoal glass",
-      "Rounded-full chrome; 24px bento cards; 16px exploration tiles",
-      "Instrument Serif italic for the name, accent words, project titles, stats, and marquee"
+      "Brand-blue gradient (`#3090ff` → `#232cf4`) as 2px hover rings only",
+      "Official three-bar wing mark plus Blauer Nue / Exo 2 wordmark",
+      "Framed product screenshots from `/landing/shot-*.png` (16px radius, hairline)",
+      "Floating top-center pill nav with Sign in",
+      "Pill chrome for controls; 16px rectangles for product frames",
+      "Semibold display for the name, section titles, accent verbs, and shot captions"
     ],
     "rules": [
       {
         "name": "The Two Worlds Rule",
-        "body": "Landing color lives in `--lp-*` HSL channels scoped to `.landing-page`. App chrome keeps Hero UI OKLCH tokens in `docs/DESIGN.md`. Do not paint marketing with `--background` / `--accent`, and do not paint the chart shell with `--lp-*`.",
+        "body": "Landing color lives in `--lp-*` HSL channels scoped to `.landing-page`. App chrome keeps Hero UI OKLCH tokens in `docs/DESIGN.md`. Do not paint marketing with product `--background` / `--accent`, and do not paint the chart shell with `--lp-*`.",
         "section": "colors"
       },
       {
-        "name": "The Steel Line Rule",
-        "body": "The steel gradient is chrome, not fill. It may outline a pill, halo the TL mark, or draw the 3px load bar. It may not fill a hero slab, a card, or a section background.",
+        "name": "The Brand Line Rule",
+        "body": "The brand-blue gradient is chrome, not fill. It may outline a pill on hover and focus. It may not fill a hero slab, a card, or a section background.",
         "section": "colors"
       },
       {
         "name": "The Pinned Pair Rule",
-        "body": "Inter + Instrument Serif are user-pinned on this marketing surface. Do not replace them with a display face, a geometric sans, or the Hero UI product font.",
+        "body": "Helvetica Now / Helvetica Neue (UI, body) and Blauer Nue / Exo 2 (display) are user-pinned and match V9 chrome. Do not restore Inter, Instrument Serif, or a third marketing face.",
         "section": "typography"
       },
       {
-        "name": "The Italic Word Rule",
-        "body": "Instrument Serif is italic for names, accent words, project titles, stats, and the marquee. Body paragraphs stay Inter roman. The 000–100 counter is serif roman tabular-nums, not italic.",
+        "name": "The Semibold Display Rule",
+        "body": "Display type is roman 600 with tight tracking. One accent word inside a Helvetica line may switch to Blauer Nue / Exo 2 semibold. Body paragraphs stay Helvetica roman. Do not italicize the name, titles, or verbs.",
         "section": "typography"
       },
       {
         "name": "The Atmosphere Rule",
-        "body": "Default depth is video, scrim, and hairline — not offset card shadows. A drop shadow is a response (scrolled nav) or a gallery-tile exception, never a card rest state for work or journal.",
+        "body": "Default depth is framed shots, scrim, and hairline — not offset card shadows. A drop shadow is a response (scrolled nav) or a shot-frame exception, never a rest state for journal rows.",
         "section": "elevation"
       },
       {
         "name": "The Pill Chrome Rule",
-        "body": "Interactive chrome is `rounded-full`. Photographs sit in 16–24px rounded rectangles. Do not square off buttons, nav, or the TL mark.",
-        "section": "elevation"
+        "body": "Interactive chrome is `rounded-full`. Product photographs sit in 16px rounded rectangles. Do not square off buttons or nav, and do not invent a monogram disc in place of `/logo-07.png`.",
+        "section": "shapes"
+      },
+      {
+        "name": "The Product Shot Rule",
+        "body": "Imagery is real Talaria-Log screens from `/landing/shot-*.png` (chart, journal, order, news, indicators, strategy). Do not restore HLS video, stock photography, or illustration as the hero or work tiles.",
+        "section": "shapes"
       }
     ],
     "dos": [
       "Do scope landing styles to `.landing-page` / `.landing-overlay` and the `--lp-*` tokens.",
-      "Do set display type in Instrument Serif italic, and keep body, headlines, and UI in Inter.",
-      "Do use the steel gradient only as a 2px hover ring, TL halo, or load bar.",
-      "Do keep chrome `rounded-full` and hit targets at least 44px.",
-      "Do cap reading copy around `max-w-md` and the page column at 1200px.",
-      "Do respect `prefers-reduced-motion` on load, role cycle, gradient shift, and marquee."
+      "Do set display type in Blauer Nue / Exo 2 semibold, and keep body, UI, and buttons in Helvetica Now / Helvetica Neue.",
+      "Do use the brand-blue gradient only as a 2px hover/focus ring.",
+      "Do lead with `/logo-07.png` and a framed `/landing/shot-*.png` product screenshot.",
+      "Do keep chrome `rounded-full`, product frames at 16px, and hit targets at least 44px.",
+      "Do cap reading copy around `max-w-md` / `max-w-xl` and the page column at 1200px.",
+      "Do respect `prefers-reduced-motion` on load, role cycle, hero reveal, and surface parallax."
     ],
     "donts": [
       "Don't mix this world with Hero UI components or OKLCH product tokens on the marketing page.",
-      "Don't fill a section, card, or hero with the steel gradient.",
-      "Don't set body paragraphs in Instrument Serif, or swap the pinned pairing.",
-      "Don't square off nav, buttons, or the TL mark.",
-      "Don't load the full dataset, a chart engine, or app chrome into this door — it is a portfolio arrival, not the trading shell.",
-      "Don't add a second chromatic accent. Bone, fog, and steel are the voice."
+      "Don't fill a section, card, or hero with the brand-blue gradient.",
+      "Don't restore Inter, Instrument Serif, a TL monogram, or HLS video.",
+      "Don't set body paragraphs in the display face, or italicize display type.",
+      "Don't square off nav or buttons, or replace the official PNG with a letterform disc.",
+      "Don't load the full dataset or live chart engine into this door — screenshots are the product truth here.",
+      "Don't add a second chromatic accent. Bone, fog, and brand-blue are the voice."
     ]
   }
 }

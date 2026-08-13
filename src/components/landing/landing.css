@@ -1,25 +1,27 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700&display=swap');
-
 /*
- * Landing visual world — scoped so Hero UI / chart chrome keep their tokens.
- * HSL channels have no hsl() wrapper; Tailwind utilities add it.
+ * Landing — same faces as V9 chrome (Helvetica Now / Blauer Nue + Exo 2).
+ * Scoped so Hero UI / chart tokens stay intact.
  */
 :root {
-  --lp-bg: 0 0% 4%;
-  --lp-surface: 0 0% 8%;
+  --lp-bg: 0 0% 2%;
+  --lp-surface: 0 0% 6%;
   --lp-text: 0 0% 96%;
-  --lp-muted: 0 0% 53%;
-  --lp-stroke: 0 0% 12%;
+  --lp-muted: 0 0% 58%;
+  --lp-stroke: 0 0% 14%;
   --lp-accent: 0 0% 96%;
-  --lp-grad-from: #89aacc;
-  --lp-grad-to: #4e85bf;
+  --lp-grad-from: #3090ff;
+  --lp-grad-to: #232cf4;
+  --lp-font-ui: "Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --lp-font-display: "Blauer Nue", "Exo 2", "Helvetica Neue", sans-serif;
 }
 
 @theme {
-  --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Instrument Serif', ui-serif, Georgia, serif;
+  --font-body: "Helvetica Now", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display: "Blauer Nue", "Exo 2", "Helvetica Neue", sans-serif;
   --color-bg: hsl(var(--lp-bg));
+  --color-surface: hsl(var(--lp-surface));
   --color-text-primary: hsl(var(--lp-text));
+  --color-muted: hsl(var(--lp-muted));
   --color-stroke: hsl(var(--lp-stroke));
   --animate-scroll-down: scroll-down 1.5s ease-in-out infinite;
   --animate-role-fade-in: role-fade-in 0.4s ease-out;
@@ -58,18 +60,6 @@
   }
 }
 
-@keyframes landing-pulse {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.45;
-    transform: scale(0.85);
-  }
-}
-
 .accent-gradient {
   background-image: linear-gradient(
     90deg,
@@ -98,8 +88,8 @@
 }
 
 .landing-page {
-  --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Instrument Serif', ui-serif, Georgia, serif;
+  --font-body: var(--lp-font-ui);
+  --font-display: var(--lp-font-display);
   --bg: var(--lp-bg);
   --surface: hsl(var(--lp-surface));
   --text: var(--lp-text);
@@ -121,8 +111,8 @@
 }
 
 .landing-overlay {
-  --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Instrument Serif', ui-serif, Georgia, serif;
+  --font-body: var(--lp-font-ui);
+  --font-display: var(--lp-font-display);
   font-family: var(--font-body);
   background-color: hsl(var(--lp-bg));
   color: hsl(var(--lp-text));

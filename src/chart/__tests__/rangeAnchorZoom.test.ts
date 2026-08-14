@@ -1,4 +1,9 @@
-import { describe, expect, it } from 'vitest';
+/**
+ * Tip-right zoom helpers. Run:
+ * npm run test:chart
+ */
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
 import {
   isViewportRightAnchoredOnTip,
   rangeRightAnchored,
@@ -9,19 +14,19 @@ describe('tip-right zoom helpers', () => {
   it('detects rangeRightAnchored tip as end-locked', () => {
     const tip = 500;
     const range = rangeRightAnchored(tip, 120);
-    expect(isViewportRightAnchoredOnTip(range, tip + 1)).toBe(true);
+    assert.equal(isViewportRightAnchoredOnTip(range, tip + 1), true);
   });
 
   it('rejects a history pan (tip off the right edge)', () => {
     const tip = 500;
     const range = { fromIndex: 100, toIndex: 220 };
-    expect(isViewportRightAnchoredOnTip(range, tip + 1)).toBe(false);
+    assert.equal(isViewportRightAnchoredOnTip(range, tip + 1), false);
   });
 
   it('rangeZoomKeepRight pins toIndex', () => {
     const range = { fromIndex: 100, toIndex: 220 };
     const next = rangeZoomKeepRight(range, 60);
-    expect(next.toIndex).toBe(220);
-    expect(next.fromIndex).toBe(160);
+    assert.equal(next.toIndex, 220);
+    assert.equal(next.fromIndex, 160);
   });
 });

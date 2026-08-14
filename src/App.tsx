@@ -43,6 +43,10 @@ import {
   cameraSpanForTf,
   preservedVisibleRange,
 } from '@/chart/preserveCamera';
+import {
+  isViewportRightAnchoredOnTip,
+  rangeRightAnchored,
+} from '@/chart/rangeAnchor';
 /**
  * Per-switch camera preserve.
  * Wall-clock from/to pin the place; tipRatio/span are fallbacks only.
@@ -1182,12 +1186,11 @@ export default function App() {
       const tfChanged = merged.some(
         (p, i) => p.timeframe !== current[i]!.timeframe,
       );
-      panesRef.current = merged;
-      setPanes(merged);
 
       // Push engines immediately (don't wait on React) so left-pan history shows.
-      // Remap the *live* camera onto the new buffer — never stomp with the
-      // request-time range (user may have kept dragging during the await).
+      // Preserve live *candle count* (bar span) — wall-clock-only remap on gappy
+      // 1m (weekends) inflated the span after TV-style LOD pin and looked like
+      // zoom/scale broke.
       for (let i = 0; i < merged.length; i++) {
         if (!needsFetch[i]) continue;
         const p = merged[i]!;
@@ -1195,28 +1198,61 @@ export default function App() {
         if (!chart || p.bars.length === 0) continue;
         const prevBars = chart.getBars();
         const prevRange = chart.getVisibleRange();
+        const prevSpan =
+          prevBars.length > 0
+            ? Math.max(
+                10,
+                Math.min(
+                  VISIBLE_BARS_TARGET,
+                  prevRange.toIndex - prevRange.fromIndex,
+                ),
+              )
+            : 0;
         const keep =
           prevBars.length > 0
             ? timeRangeFromVisible(prevBars, prevRange)
             : null;
         chart.setViewportBars(p.bars);
-        if (keep) {
-          const mapped = visibleRangeFromTimeWindow(
-            p.bars,
-            keep.fromTime,
-            keep.toTime,
-          );
-          if (mapped.toIndex > mapped.fromIndex) {
-            chart.setVisibleRange(mapped.fromIndex, mapped.toIndex, {
-              silent: true,
-            });
-            continue;
+
+        let nextRange = p.range;
+        if (prevSpan > 0) {
+          if (isViewportRightAnchoredOnTip(prevRange, prevBars.length)) {
+            nextRange = rangeRightAnchored(
+              Math.max(0, p.bars.length - 1),
+              prevSpan,
+            );
+          } else if (keep) {
+            const mapped = visibleRangeFromTimeWindow(
+              p.bars,
+              keep.fromTime,
+              keep.toTime,
+            );
+            if (mapped.toIndex > mapped.fromIndex) {
+              const mappedSpan = mapped.toIndex - mapped.fromIndex;
+              if (
+                mappedSpan > prevSpan * 1.25 ||
+                mappedSpan > VISIBLE_BARS_TARGET
+              ) {
+                const mid = (mapped.fromIndex + mapped.toIndex) / 2;
+                nextRange = {
+                  fromIndex: mid - prevSpan / 2,
+                  toIndex: mid + prevSpan / 2,
+                };
+              } else {
+                nextRange = mapped;
+              }
+            }
           }
         }
-        chart.setVisibleRange(p.range.fromIndex, p.range.toIndex, {
+
+        chart.setVisibleRange(nextRange.fromIndex, nextRange.toIndex, {
           silent: true,
         });
+        merged[i] = { ...p, range: nextRange };
       }
+
+      panesRef.current = merged;
+      setPanes(merged);
 
       // Keep session pane TFs in sync when zoom LOD mutates effective timeframe.
       // No rederive — React already holds the LOD-loaded bars.

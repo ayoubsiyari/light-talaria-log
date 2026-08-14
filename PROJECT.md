@@ -957,6 +957,7 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-14 | Wheel/pinch/+− zoom: tip-on-right pins right edge (TV); history pan still zooms under pointer | At tip zoom — last candle stays; pan left — zoom under cursor |
 | 2026-08-14 | Wheel zoom ~3× snappier (gain 0.0022, dy cap ±28) — closer to TV, still smooth on trackpad | Wheel in/out at tip — faster without jumping |
 | 2026-08-14 | TV-style zoom: disable auto LOD coarsen — TopBar TF stays (1m stays 1m on zoom-out) | Select 1m → zoom out far — candles stay 1m |
+| 2026-08-14 | Fix zoom scale after TV LOD pin: prefetch keeps live candle count (not gappy wall-clock span) | 1m zoom — bar count/scale stable; TF still stays 1m |
 | 2026-08-12 | Color/style flyout: opaque `--surface-raised` plate (was near-black `--surface`, looked transparent on chart) | Open drawing style — panel reads solid vs chart |
 | 2026-08-12 | Style trigger: one icon-sized button (color + line chip) matching toolbar peers | Floating bar — style control same size as settings/lock |
 | 2026-08-12 | Style flyout chrome = drawing toolbar (`bg-surface` / border / accent segments) | Open style — same plate + blue active as settings bar |

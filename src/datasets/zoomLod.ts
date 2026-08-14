@@ -1,20 +1,16 @@
+/**
+ * Zoom LOD helpers — wall-clock density math kept for tests / future use.
+ *
+ * Live path (TV-style): TopBar `selectedTf` is the only TF. Zoom never
+ * auto-coarsens to 5m/15m/…; the IDB viewport window stays ≤ MAX_BARS_IN_MEMORY.
+ */
 import { timeframeSeconds } from '@/data/timeframeAgg';
 import type { Timeframe } from '@/types/ui';
 import { VISIBLE_BARS_TARGET } from '@/utils/constants';
 
-/**
- * Zoom LOD (Step 10) — pick a pre-aggregated TF so the wall-clock window
- * stays near VISIBLE_BARS_TARGET and never denser than LOD_COARSEN_BARS.
- *
- * UX: `selectedTf` is the user's last explicit TopBar pick (floor).
- * Auto-LOD may coarsen above it on zoom-out and refine back toward it on
- * zoom-in. Never goes finer than `selectedTf` without another explicit pick.
- * Toolbar ★ favorites are unrelated to this floor.
- */
-
-/** Coarsen when current TF would pack more bars than this into the window. */
+/** @deprecated Live path no longer auto-coarsens; kept for density helpers/tests. */
 export const LOD_COARSEN_BARS = 1800;
-/** Refine toward selected TF only when current TF is this sparse (hysteresis). */
+/** @deprecated Live path no longer auto-refines via zoom; kept for tests. */
 export const LOD_REFINE_BARS = 700;
 
 const TF_ORDER: readonly Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D'];
@@ -29,6 +25,7 @@ export function projectedVisibleBars(windowSec: number, tf: Timeframe): number {
 /**
  * Finest available TF (≥ selected floor) whose projected bars fit the target.
  * Falls back to coarsest candidate when even that is too dense.
+ * Not used by live zoom anymore (TV pins selectedTf); kept for density checks.
  */
 export function idealLodTimeframe(
   windowSec: number,
@@ -43,7 +40,6 @@ export function idealLodTimeframe(
     return available.includes(selectedTf) ? selectedTf : (available[0] ?? selectedTf);
   }
 
-  // Prefer finest that stays ≤ target; else coarsest available.
   let ideal = candidates[candidates.length - 1]!;
   for (const tf of candidates) {
     if (projectedVisibleBars(windowSec, tf) <= VISIBLE_BARS_TARGET) {
@@ -55,8 +51,9 @@ export function idealLodTimeframe(
 }
 
 /**
- * Choose effective pane TF for the current wall-clock window.
- * Hysteresis avoids TF thrash while the user is still zooming.
+ * Effective pane TF for the current wall-clock window.
+ * TV-style: always the user's TopBar pick (`selectedTf`). Zoom in/out must not
+ * swap candles to another interval.
  */
 export function pickLodTimeframe(opts: {
   windowSec: number;
@@ -64,28 +61,16 @@ export function pickLodTimeframe(opts: {
   available: readonly Timeframe[];
   currentTf: Timeframe;
 }): Timeframe {
-  const { windowSec, selectedTf, available, currentTf } = opts;
-  const ideal = idealLodTimeframe(windowSec, selectedTf, available);
-  if (ideal === currentTf) return currentTf;
+  void opts.windowSec;
+  void opts.currentTf;
+  const { selectedTf, available } = opts;
+  if (available.length === 0) return selectedTf;
+  if (available.includes(selectedTf)) return selectedTf;
 
+  // Catalog missing the pick — nearest available at or coarser than selected.
   const selectedSec = timeframeSeconds(selectedTf);
-  const candidates = TF_ORDER.filter(
+  const coarserOrEqual = TF_ORDER.filter(
     (tf) => available.includes(tf) && timeframeSeconds(tf) >= selectedSec,
   );
-  const currentOk = candidates.includes(currentTf);
-  if (!currentOk) return ideal;
-
-  const currentSec = timeframeSeconds(currentTf);
-  const idealSec = timeframeSeconds(ideal);
-  const curProj = projectedVisibleBars(windowSec, currentTf);
-
-  if (idealSec > currentSec) {
-    // Zoomed out — coarsen only past density threshold.
-    return curProj > LOD_COARSEN_BARS ? ideal : currentTf;
-  }
-  if (idealSec < currentSec) {
-    // Zoomed in — refine toward selected only when current is sparse.
-    return curProj < LOD_REFINE_BARS ? ideal : currentTf;
-  }
-  return ideal;
+  return coarserOrEqual[0] ?? available[0] ?? selectedTf;
 }

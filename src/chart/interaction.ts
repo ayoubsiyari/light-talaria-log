@@ -1,6 +1,10 @@
 import type { VisibleRange } from '@/types/bar';
 import { VISIBLE_BARS_TARGET } from '@/utils/constants';
 import { clientToMedia } from './coords';
+import {
+  isViewportRightAnchoredOnTip,
+  rangeZoomKeepRight,
+} from './rangeAnchor';
 import { hitTestZone, type HitZone, type RenderLayout } from './renderer';
 import { xToIndex, type PriceScale } from './scales';
 
@@ -273,10 +277,19 @@ export function attachInteraction(
     let nextSpan = span * zoomFactor;
     nextSpan = Math.max(MIN_VISIBLE, Math.min(MAX_VISIBLE, nextSpan));
 
-    const anchorIndex = xToIndex(m.midX, range, plot);
-    const leftRatio = span > 0 ? (anchorIndex - range.fromIndex) / span : 0.5;
-    let fromIndex = anchorIndex - leftRatio * nextSpan;
-    let toIndex = fromIndex + nextSpan;
+    // Tip on the right → pin right edge (TV). History pan → pinch midpoint.
+    let fromIndex: number;
+    let toIndex: number;
+    if (isViewportRightAnchoredOnTip(range, barCount)) {
+      const kept = rangeZoomKeepRight(range, nextSpan);
+      fromIndex = kept.fromIndex;
+      toIndex = kept.toIndex;
+    } else {
+      const anchorIndex = xToIndex(m.midX, range, plot);
+      const leftRatio = span > 0 ? (anchorIndex - range.fromIndex) / span : 0.5;
+      fromIndex = anchorIndex - leftRatio * nextSpan;
+      toIndex = fromIndex + nextSpan;
+    }
 
     // Two-finger pan from midpoint drift
     const dMidX = m.midX - pinchPrevMidX;
@@ -733,18 +746,28 @@ export function attachInteraction(
       return;
     }
 
-    const anchorIndex = xToIndex(x, range, plot);
     const span = range.toIndex - range.fromIndex;
-    // Pixel-ish delta (LINE/PAGE modes → CSS px), then gentle exponential zoom.
-    // Tiny per-event factors so V-grid density can crossfade (no octave teleport).
+    // Pixel-ish delta (LINE/PAGE modes → CSS px), then exponential zoom.
+    // Gain tuned near TV wheel feel; still small enough for trackpad crossfade
+    // (was 0.0007 / ±16 → ~1% per event, felt sluggish vs TradingView).
     let dy = e.deltaY;
     if (e.deltaMode === 1) dy *= 16;
     else if (e.deltaMode === 2) dy *= layout.height || 400;
-    dy = Math.max(-16, Math.min(16, dy));
-    const zoomFactor = Math.exp(dy * 0.0007);
+    dy = Math.max(-28, Math.min(28, dy));
+    const zoomFactor = Math.exp(dy * 0.0022);
     let nextSpan = span * zoomFactor;
     nextSpan = Math.max(MIN_VISIBLE, Math.min(MAX_VISIBLE, nextSpan));
 
+    // Tip on the right → pin right edge (TV last-candle zoom). Panned into
+    // history → keep the candle under the pointer fixed.
+    if (isViewportRightAnchoredOnTip(range, barCount)) {
+      callbacks.setRange(
+        clampRange(rangeZoomKeepRight(range, nextSpan), barCount),
+      );
+      return;
+    }
+
+    const anchorIndex = xToIndex(x, range, plot);
     const leftRatio = span > 0 ? (anchorIndex - range.fromIndex) / span : 0.5;
     const fromIndex = anchorIndex - leftRatio * nextSpan;
     const toIndex = fromIndex + nextSpan;

@@ -79,7 +79,7 @@ import {
   DEFAULT_VISIBLE_BARS,
   type InteractionHandle,
 } from './interaction';
-import { rangeCenteredOnIndex, rangeRightAnchored } from './rangeAnchor';
+import { rangeCenteredOnIndex, rangeRightAnchored, isViewportRightAnchoredOnTip, rangeZoomKeepRight } from './rangeAnchor';
 import type { TimeLabelSticky, TimeLatticeSticky } from './ticks';
 import {
   contentBottom,
@@ -992,6 +992,14 @@ export function createChartInstance(container: HTMLElement): ChartInstance {
     if (replayFollow && replayCursorTime != null) {
       const tip = indexAtOrBeforeBars(bars, replayCursorTime);
       setVisibleRangeInternal(rangeRightAnchored(tip, nextSpan), true);
+      return;
+    }
+    // Same as wheel: tip on the right → pin right edge; else center (nav +/-).
+    if (isViewportRightAnchoredOnTip(range, bars.length)) {
+      setVisibleRangeInternal(
+        clampNavRange(rangeZoomKeepRight(range, nextSpan), bars.length),
+        true,
+      );
       return;
     }
     const anchor = (range.fromIndex + range.toIndex) / 2;

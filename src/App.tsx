@@ -494,10 +494,20 @@ export default function App() {
    * snapping daily charts back to the tip mid-pan).
    */
   const cameraDetachedRef = useRef(false);
-  /** Pane ids showing legend … while TF / ticker fills. */
+  /** Pane ids with soft veil + … (TF / pair / Play arm / layout warm). */
   const [loadingPaneIds, setLoadingPaneIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const markPanesLoading = useCallback((ids: readonly string[], on: boolean) => {
+    setLoadingPaneIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (on) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }, []);
   /** Per-pane follow detach — panning one chart must not freeze the others. */
   const detachedPanesRef = useRef(new Set<string>());
   /** Per-pane bar-count zoom for Play tip-follow (interval sync off). */
@@ -1812,6 +1822,9 @@ export default function App() {
     const s = sessionRef.current.get();
     const list = panesRef.current;
     if (!s || list.length === 0) return;
+    const armIds = list.map((p) => p.id);
+    // Soft veil + … until every pane has runway (mixed pair/TF).
+    markPanesLoading(armIds, true);
 
     const cfgs: Record<
       string,
@@ -1869,11 +1882,26 @@ export default function App() {
     }
 
     // Session may have been torn down / switched during await.
-    if (!viewportReloadEnabledRef.current) return;
-    if (sessionIdRef.current !== armSessionId) return;
-    if (loadSessionGenRef.current !== armLoadGen) return;
-    if (suppressSessionCommitRef.current) return;
-    if (!sessionRef.current.get()) return;
+    if (!viewportReloadEnabledRef.current) {
+      markPanesLoading(armIds, false);
+      return;
+    }
+    if (sessionIdRef.current !== armSessionId) {
+      markPanesLoading(armIds, false);
+      return;
+    }
+    if (loadSessionGenRef.current !== armLoadGen) {
+      markPanesLoading(armIds, false);
+      return;
+    }
+    if (suppressSessionCommitRef.current) {
+      markPanesLoading(armIds, false);
+      return;
+    }
+    if (!sessionRef.current.get()) {
+      markPanesLoading(armIds, false);
+      return;
+    }
 
     // Wait until every pane has a mounted engine + revealed bars (8-layout
     // expand can finish replacePanes before ChartPane registers). Does not
@@ -1883,9 +1911,18 @@ export default function App() {
         (typeof performance !== 'undefined' ? performance.now() : Date.now()) +
         2500;
       for (;;) {
-        if (!viewportReloadEnabledRef.current) return;
-        if (sessionIdRef.current !== armSessionId) return;
-        if (loadSessionGenRef.current !== armLoadGen) return;
+        if (!viewportReloadEnabledRef.current) {
+          markPanesLoading(armIds, false);
+          return;
+        }
+        if (sessionIdRef.current !== armSessionId) {
+          markPanesLoading(armIds, false);
+          return;
+        }
+        if (loadSessionGenRef.current !== armLoadGen) {
+          markPanesLoading(armIds, false);
+          return;
+        }
         const latest = panesRef.current;
         const viewsNow = sessionRef.current.getViews();
         const ready =
@@ -1919,8 +1956,14 @@ export default function App() {
     // Warm + pin every open/working symbol before the clock starts.
     const cursor = replayRef.current.get().cursorTime || s.cursorTime;
     await ensureExposureRunway(cursor);
-    if (!viewportReloadEnabledRef.current) return;
-    if (sessionIdRef.current !== armSessionId) return;
+    if (!viewportReloadEnabledRef.current) {
+      markPanesLoading(armIds, false);
+      return;
+    }
+    if (sessionIdRef.current !== armSessionId) {
+      markPanesLoading(armIds, false);
+      return;
+    }
 
     // Push current book before the first play tick so levels don't flash empty
     // while replayFollow blocks React → setOrders.
@@ -1931,10 +1974,12 @@ export default function App() {
         selectedOrderIdRef.current,
       );
     }
+    markPanesLoading(armIds, false);
     replayRef.current.play();
   }, [
     commitSessionViews,
     ensureExposureRunway,
+    markPanesLoading,
     pushOrdersToPanes,
     syncEnginesFromSession,
     syncReplayClockTf,
@@ -2786,6 +2831,8 @@ export default function App() {
     lodReloadCancelRef.current?.();
     prefetchGenRef.current += 1;
     const count = paneCountForLayout(nextLayout);
+    const layoutLoadIds = Array.from({ length: count }, (_, i) => `pane-${i}`);
+    markPanesLoading(layoutLoadIds, true);
     const sessNow = sessionRef.current.get();
     // Multi-pane must load around the replay cursor — catalog.timeEnd seeds the
     // wrong window and leaves secondary pairs empty until a late async fill.
@@ -2798,6 +2845,7 @@ export default function App() {
     const syncInterval = layoutSyncRef.current.interval;
     const activeTf = activePane?.selectedTf ?? activePane?.timeframe ?? catalog.baseTf;
     void (async () => {
+      try {
       const next: ChartPaneState[] = [];
       for (let i = 0; i < count; i++) {
         const id = `pane-${i}`;
@@ -2882,6 +2930,9 @@ export default function App() {
         const idx = Number(cur.replace('pane-', ''));
         return Number.isFinite(idx) && idx < count ? cur : 'pane-0';
       });
+      } finally {
+        markPanesLoading(layoutLoadIds, false);
+      }
     })();
   };
 
@@ -2891,17 +2942,6 @@ export default function App() {
       handleLayoutChange('6');
     }
   }, [chartLayout]);
-
-  const markPanesLoading = useCallback((ids: readonly string[], on: boolean) => {
-    setLoadingPaneIds((prev) => {
-      const next = new Set(prev);
-      for (const id of ids) {
-        if (on) next.add(id);
-        else next.delete(id);
-      }
-      return next;
-    });
-  }, []);
 
   /**
    * TF switch = capture camera, await target TF fill, then push engines.

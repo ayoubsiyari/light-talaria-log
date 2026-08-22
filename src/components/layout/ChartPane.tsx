@@ -307,11 +307,22 @@ export function ChartPane({
         onReattachFollow={onReattachFollow}
       />
 
-      {bars.length === 0 && (
-        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center px-4">
-          <p className="text-sm text-muted text-center max-w-xs">
-            No bars in this viewport. Pan toward data or reload the session.
-          </p>
+      {/* Soft dim + centered … while warming or still empty (TV-style). */}
+      {(dataLoading || bars.length === 0) && (
+        <div
+          className="pointer-events-none absolute inset-0 z-[25] flex items-center justify-center"
+          style={{
+            background:
+              'color-mix(in oklab, var(--chart-bg, var(--background)) 42%, transparent)',
+            backdropFilter: 'brightness(0.72)',
+            WebkitBackdropFilter: 'brightness(0.72)',
+          }}
+          aria-busy="true"
+        >
+          <LoadingDots
+            size="overlay"
+            label={dataLoading ? 'Loading chart' : 'Waiting for chart data'}
+          />
         </div>
       )}
     </div>

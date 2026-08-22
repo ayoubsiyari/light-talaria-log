@@ -57,13 +57,20 @@ function key(datasetId: string, tf: Timeframe): CacheKey {
 const TF_FALLBACK_ORDER: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D'];
 
 /**
- * Entry cap — enough for 4 panes × (pane TF + base TF) + spare.
- * Do not raise without a memory check; prefer smaller windows over more entries.
+ * Entry cap — sized for 8 panes × (pane TF + base TF) + retained/order spare.
+ * Pinned live keys are never evicted first; prefer compact fill windows over
+ * unbounded growth (MAX_CACHE_BYTES still hard-caps resident bars).
  */
-const MAX_ENTRIES = 16;
+export const WARM_CACHE_MAX_ENTRIES = 28;
 
-/** ~3.6 MB at ~120 B/bar — same order as the original 12×2500 budget. */
-const MAX_CACHE_BYTES = 3_600_000;
+/**
+ * ~5.4 MB at ~120 B/bar — headroom vs the old 16× budget without loading full
+ * series. Eviction still prefers unpinned LRU.
+ */
+const MAX_CACHE_BYTES = 5_400_000;
+
+/** @deprecated use WARM_CACHE_MAX_ENTRIES */
+const MAX_ENTRIES = WARM_CACHE_MAX_ENTRIES;
 
 /** Rough resident bytes assuming ~120 B per ChartBar object. */
 function estimateBytes(bars: readonly ChartBar[]): number {

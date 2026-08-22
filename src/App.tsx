@@ -500,6 +500,8 @@ export default function App() {
   );
   /** Per-pane follow detach — panning one chart must not freeze the others. */
   const detachedPanesRef = useRef(new Set<string>());
+  /** Per-pane bar-count zoom for Play tip-follow (interval sync off). */
+  const paneSpanByIdRef = useRef<Record<string, number>>({});
   /**
    * Last TF/pair switch camera: keep tip candle at the same horizontal fraction
    * and the same bar-count zoom after derive (incl. async warm-cache fills).
@@ -1321,13 +1323,25 @@ export default function App() {
       if (!catalog || !viewportReloadEnabledRef.current) return;
       if (!sessionRef.current.get()) return;
       const playing = replayRef.current.get().playing;
-      // Any pane the user panned → stop tip-chasing session camera / fill-ahead.
-      const anyDetached = detachedPanesRef.current.size > 0;
-      const follow =
-        playing && !cameraDetachedRef.current && !anyDetached;
 
       if (playing) {
-        sessionRef.current.setCursorTime(cursorTime, { follow, react: false });
+        // Snapshot live bar-count zooms so 1m vs 1h panes keep independent spans.
+        for (const pane of panesRef.current) {
+          const live = getChart(pane.id)?.getVisibleRange();
+          if (!live) continue;
+          const span = live.toIndex - live.fromIndex;
+          if (span >= 10) {
+            paneSpanByIdRef.current[pane.id] = span;
+          }
+        }
+
+        // Default follow while playing; detachedPaneIds keeps siblings tip-chasing.
+        sessionRef.current.setCursorTime(cursorTime, {
+          follow: true,
+          react: false,
+          detachedPaneIds: detachedPanesRef.current,
+          paneSpans: paneSpanByIdRef.current,
+        });
 
         // Skip weekend / holiday dead air once the next session is cached.
         // Independent of camera follow — a detached pan must not leave the
@@ -1344,6 +1358,7 @@ export default function App() {
         if (opts?.playEdge) {
           detachedPanesRef.current.clear();
           cameraDetachedRef.current = false;
+          setCameraDetached(false);
         }
 
         for (const pane of panesRef.current) {
@@ -1354,7 +1369,7 @@ export default function App() {
 
           // Keep follow alive on every tick for panes the user hasn't panned.
           // Never re-attach a detached pane here (that snaps 1D back to the tip).
-          if (!paneDetached && follow) {
+          if (!paneDetached) {
             chart.setReplayFollow(true);
           }
 
@@ -1370,7 +1385,12 @@ export default function App() {
 
           if (opts?.playEdge && v && v.bars.length > 0 && !paneDetached) {
             // Ensure zoom is not a collapsed 1-bar window after a cold start.
-            const span = Math.max(10, sessionRef.current.get()?.span ?? 120);
+            const span = Math.max(
+              10,
+              paneSpanByIdRef.current[pane.id] ??
+                sessionRef.current.get()?.span ??
+                120,
+            );
             const live = chart.getVisibleRange();
             const liveSpan = live.toIndex - live.fromIndex;
             if (liveSpan < 10) {
@@ -1408,7 +1428,18 @@ export default function App() {
           Math.max(10, live.toIndex - live.fromIndex),
         );
       }
-      sessionRef.current.setCursorTime(cursorTime, { follow, react: true });
+      for (const pane of panesRef.current) {
+        const r = getChart(pane.id)?.getVisibleRange();
+        if (!r) continue;
+        const sp = r.toIndex - r.fromIndex;
+        if (sp >= 10) paneSpanByIdRef.current[pane.id] = sp;
+      }
+      sessionRef.current.setCursorTime(cursorTime, {
+        follow: detachedPanesRef.current.size === 0,
+        react: true,
+        detachedPaneIds: detachedPanesRef.current,
+        paneSpans: paneSpanByIdRef.current,
+      });
       stepOrderEngineRef.current(cursorTime);
       commitSessionViews();
       // Remap engines by wall-clock (step/seek) — React index ranges go stale when
@@ -1803,6 +1834,13 @@ export default function App() {
         Math.max(10, liveZoom.toIndex - liveZoom.fromIndex),
       );
     }
+    // Capture each pane's bar-count zoom (multi-TF layouts stay independent).
+    for (const p of list) {
+      const live = getChart(p.id)?.getVisibleRange();
+      if (!live) continue;
+      const span = live.toIndex - live.fromIndex;
+      if (span >= 10) paneSpanByIdRef.current[p.id] = span;
+    }
 
     try {
       if (!configsMatch || !allHaveBars || list.length !== Object.keys(s.panes).length) {
@@ -1827,6 +1865,35 @@ export default function App() {
     if (loadSessionGenRef.current !== armLoadGen) return;
     if (suppressSessionCommitRef.current) return;
     if (!sessionRef.current.get()) return;
+
+    // Wait until every pane has a mounted engine + revealed bars (8-layout
+    // expand can finish replacePanes before ChartPane registers). Does not
+    // change cameras — only gates when the clock may start.
+    {
+      const deadline =
+        (typeof performance !== 'undefined' ? performance.now() : Date.now()) +
+        2500;
+      for (;;) {
+        if (!viewportReloadEnabledRef.current) return;
+        if (sessionIdRef.current !== armSessionId) return;
+        if (loadSessionGenRef.current !== armLoadGen) return;
+        const latest = panesRef.current;
+        const viewsNow = sessionRef.current.getViews();
+        const ready =
+          latest.length > 0 &&
+          latest.every(
+            (p) =>
+              getChart(p.id) != null && (viewsNow[p.id]?.bars.length ?? 0) > 0,
+          );
+        if (ready) break;
+        const now =
+          typeof performance !== 'undefined' ? performance.now() : Date.now();
+        if (now >= deadline) break;
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        });
+      }
+    }
 
     for (const pane of panesRef.current) {
       const chart = getChart(pane.id);
@@ -4872,13 +4939,16 @@ export default function App() {
                 getChart(paneId)?.setReplayFollow(false);
                 cameraDetachedRef.current = true;
                 setCameraDetached(true);
-                // Only prefetch when the left pad is truly empty (index < 0).
-                // Firing at fromIndex < 24 mid-drag reloaded buffers after TF
-                // switch and made the chart jump under the pointer.
+                // Remember this pane's bar zoom so re-attach / siblings stay correct.
                 const chart = getChart(paneId);
                 if (!chart) return;
                 const liveBars = chart.getBars();
                 const liveRange = chart.getVisibleRange();
+                const span = liveRange.toIndex - liveRange.fromIndex;
+                if (span >= 10) paneSpanByIdRef.current[paneId] = span;
+                // Only prefetch when the left pad is truly empty (index < 0).
+                // Firing at fromIndex < 24 mid-drag reloaded buffers after TF
+                // switch and made the chart jump under the pointer.
                 if (liveBars.length > 0 && liveRange.fromIndex < 0) {
                   const tr = timeRangeFromVisible(liveBars, liveRange);
                   if (tr) {

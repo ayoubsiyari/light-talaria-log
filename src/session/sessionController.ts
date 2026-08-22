@@ -11,6 +11,8 @@ import {
   derivePaneSync,
   truncateAtCursor,
 } from '@/session/derivePane';
+import { collectLiveCacheTargetsFromState } from '@/session/liveCacheTargets';
+import { paneFollowsTip, paneSpanOrDefault } from '@/session/paneFollow';
 import type {
   PaneConfig,
   PaneView,
@@ -243,21 +245,8 @@ export function createSessionController() {
         retainedDatasets,
       };
 
-      // Prefetch only base + open pane TFs (other TFs load lazily on switch).
-      const datasets = new Set([
-        ...Object.values(args.panes).map((p) => p.datasetId),
-        ...retainedDatasets,
-      ]);
-      const tfs = new Set<Timeframe>([args.baseTf]);
-      for (const p of Object.values(args.panes)) {
-        tfs.add(p.tf);
-        if (p.selectedTf) tfs.add(p.selectedTf);
-      }
-      await Promise.all(
-        [...datasets].map((ds) =>
-          warmCache.prefetchAll(ds, [...tfs], args.cursorTime, span),
-        ),
-      );
+      // Prefetch only live pane keys + retained base (never datasets × all TFs).
+      await fillAndPinLiveCaches(state);
 
       rederiveSync();
       await rederiveAsync();
@@ -298,7 +287,14 @@ export function createSessionController() {
      */
     setCursorTime(
       cursorTime: number,
-      opts?: { follow?: boolean; react?: boolean },
+      opts?: {
+        follow?: boolean;
+        react?: boolean;
+        /** Panes the user panned away from tip — siblings keep follow. */
+        detachedPaneIds?: ReadonlySet<string>;
+        /** Per-pane bar-count zoom (interval sync off). */
+        paneSpans?: Readonly<Record<string, number>>;
+      },
     ): void {
       if (!state) return;
       const period = timeframeSeconds(state.baseTf);
@@ -306,16 +302,26 @@ export function createSessionController() {
       const clamped = Math.min(state.bounds.end, Math.max(state.bounds.start, snapped));
       const follow = opts?.follow ?? state.playing;
       const react = opts?.react !== false;
+      const detached = opts?.detachedPaneIds ?? null;
+      const anyFollowing = detached
+        ? Object.keys(state.panes).some((id) =>
+            paneFollowsTip(id, follow, detached),
+          )
+        : follow;
       state = {
         ...state,
         cursorTime: clamped,
-        anchorTime: follow ? clamped : state.anchorTime,
+        // Keep session tip anchor moving while at least one pane still follows.
+        anchorTime: anyFollowing ? clamped : state.anchorTime,
       };
       if (!react) {
         // Grow revealed bars as the cursor advances (1m append + higher-TF forming).
         // Only patching the tip left base-TF charts frozen after load-time truncate.
-        // Pass follow so a detached pan does not tip-chase / right-anchor the camera.
-        extendRevealInPlace(state, views, { follow });
+        extendRevealInPlace(state, views, {
+          follow,
+          detachedPaneIds: detached,
+          paneSpans: opts?.paneSpans,
+        });
         return;
       }
       rederiveSync();
@@ -548,14 +554,9 @@ export function createSessionController() {
       if (!state) return;
       state = { ...state, panes: { ...panes }, activePaneId };
       const s = state;
-      const datasets = new Set(Object.values(s.panes).map((p) => p.datasetId));
-      const tfs = new Set<Timeframe>([s.baseTf]);
-      for (const p of Object.values(s.panes)) tfs.add(p.tf);
-      await Promise.all(
-        [...datasets].flatMap((ds) =>
-          [...tfs].map((tf) => warmCache.fill(ds, tf, s.cursorTime, s.span)),
-        ),
-      );
+      // Per-pane (ds, tf) + base — not Cartesian datasets × union of TFs
+      // (that stormed 8-pane layouts and starved warmCache slots).
+      await fillAndPinLiveCaches(s);
       if (!state) return;
       rederiveSync();
       await rederiveAsync();
@@ -573,31 +574,7 @@ export function createSessionController() {
 
     async topUpCaches(): Promise<void> {
       if (!state) return;
-      const s = state;
-      const datasets = new Set([
-        ...Object.values(s.panes).map((p) => p.datasetId),
-        ...s.retainedDatasets,
-      ]);
-      const tfs = new Set<Timeframe>([s.baseTf]);
-      let coarsestSec = timeframeSeconds(s.baseTf);
-      for (const p of Object.values(s.panes)) {
-        tfs.add(p.tf);
-        coarsestSec = Math.max(coarsestSec, timeframeSeconds(p.tf));
-      }
-      const clockOpts = formingClockFillOpts(s.baseTf, coarsestSec, s.span);
-      await Promise.all(
-        [...datasets].flatMap((ds) =>
-          [...tfs].map((tf) =>
-            warmCache.fill(
-              ds,
-              tf,
-              s.cursorTime,
-              s.span,
-              tf === s.baseTf ? clockOpts : undefined,
-            ),
-          ),
-        ),
-      );
+      await fillAndPinLiveCaches(state);
     },
 
     /** Fill caches + rederive (layout recovery / stuck multi-pane). */
@@ -765,6 +742,31 @@ function formingClockFillOpts(
   return { aheadRatio, windowBars };
 }
 
+/**
+ * Fill + pin only the keys live panes need (and retained base for orders).
+ * Never Cartesian-product every dataset with every pane TF.
+ */
+async function fillAndPinLiveCaches(s: SessionState): Promise<void> {
+  const targets = collectLiveCacheTargetsFromState(s);
+  let coarsestSec = timeframeSeconds(s.baseTf);
+  for (const p of Object.values(s.panes)) {
+    coarsestSec = Math.max(coarsestSec, timeframeSeconds(p.tf));
+  }
+  const clockOpts = formingClockFillOpts(s.baseTf, coarsestSec, s.span);
+  await Promise.all(
+    targets.map(({ datasetId, tf }) =>
+      warmCache.fill(
+        datasetId,
+        tf,
+        s.cursorTime,
+        s.span,
+        tf === s.baseTf ? clockOpts : undefined,
+      ),
+    ),
+  );
+  warmCache.setPinned(targets);
+}
+
 function clockOverlapsBucket(
   clockBars: readonly ChartBar[],
   openBucket: number,
@@ -831,17 +833,25 @@ function scheduleFillAhead(
  * Rebuilds from the correct TF cache each tick so a finer-TF placeholder can
  * never leave 1m residue on a 1D pane (play sawtooth / pause looks fine).
  *
- * `follow: false` (user panned away from tip): still grow/patch candles, but
- * do not tip-chase warm-cache runway or overwrite the camera with a
- * right-anchored range — that snapped 1D pans back to the live edge.
+ * Per-pane follow: a detached pan keeps its camera; siblings still tip-chase
+ * fill-ahead / right-anchor. Optional `paneSpans` keep independent bar zooms.
  */
 function extendRevealInPlace(
   s: SessionState,
   views: Record<string, PaneView>,
-  opts?: { follow?: boolean },
+  opts?: {
+    follow?: boolean;
+    detachedPaneIds?: ReadonlySet<string> | null;
+    paneSpans?: Readonly<Record<string, number>> | null;
+  },
 ): void {
   if (s.revealMode !== 'replay') return;
-  const follow = opts?.follow ?? s.playing;
+  const defaultFollow = opts?.follow ?? s.playing;
+  const detached = opts?.detachedPaneIds ?? null;
+  const paneSpans = opts?.paneSpans ?? null;
+  const anyFollowing = Object.keys(views).some((id) =>
+    paneFollowsTip(id, defaultFollow, detached),
+  );
 
   // Pin active series so LRU cannot evict a live pane mid-play.
   const pinKeys: { datasetId: string; tf: Timeframe }[] = [];
@@ -874,6 +884,9 @@ function extendRevealInPlace(
     // Mid TF/symbol switch — freeze this pane's reveal until the swap commits.
     if (switchingPanes.has(id)) continue;
 
+    const follow = paneFollowsTip(id, defaultFollow, detached);
+    const span = paneSpanOrDefault(id, s.span, paneSpans);
+
     const tfPeriod = timeframeSeconds(cfg.tf);
     const rawPeek = warmCache.peek(cfg.datasetId, cfg.tf);
     const raw =
@@ -895,21 +908,21 @@ function extendRevealInPlace(
       rawStart != null && tfPeriod > 0
         ? Math.floor((openBucket - rawStart) / tfPeriod)
         : -1;
-    const needBehind = Math.max(s.span, REPLAY_VISIBLE_BARS);
-    const needAhead = Math.max(120, s.span);
+    const needBehind = Math.max(span, REPLAY_VISIBLE_BARS);
+    const needAhead = Math.max(120, span);
     // Hysteresis on history: only refill when we drop below ~55% of target so
     // we don't slide the warm-cache every few ticks (Play hitch).
     const behindCritical = Math.floor(needBehind * 0.55);
     const missing = !raw || raw.length === 0;
     if (follow) {
       if (missing || aheadBars < needAhead || behindBars < behindCritical) {
-        scheduleFillAhead(cfg.datasetId, cfg.tf, s.cursorTime, s.span);
+        scheduleFillAhead(cfg.datasetId, cfg.tf, s.cursorTime, span);
       }
     } else if (missing || behindBars < behindCritical) {
       // Detached pan: history soft-heal only — no tip runway that slides the
       // buffer under the user's camera (especially painful on 1D).
-      const hist = paneRunwayFillOpts(s.span);
-      scheduleFillAhead(cfg.datasetId, cfg.tf, s.cursorTime, s.span, {
+      const hist = paneRunwayFillOpts(span);
+      scheduleFillAhead(cfg.datasetId, cfg.tf, s.cursorTime, span, {
         ...hist,
         aheadRatio: Math.min(hist.aheadRatio ?? 0.15, 0.05),
       });
@@ -917,7 +930,7 @@ function extendRevealInPlace(
 
     // Higher-TF tip is built from base clock bars. Keep that window covering
     // the coarsest open bucket and the cursor tip (not just this pane's TF).
-    // Skip tip-chasing clock fills while the user is freely panning history.
+    // Skip tip-chasing clock fills while this pane is freely panning history.
     if (follow && cfg.tf !== s.baseTf && !clockScheduled.has(cfg.datasetId)) {
       const coarsest = coarsestSecByDs.get(cfg.datasetId) ?? tfPeriod;
       const coarseOpen = bucketStart(s.cursorTime, coarsest);
@@ -935,8 +948,8 @@ function extendRevealInPlace(
           cfg.datasetId,
           s.baseTf,
           s.cursorTime,
-          s.span,
-          formingClockFillOpts(s.baseTf, coarsest, s.span),
+          span,
+          formingClockFillOpts(s.baseTf, coarsest, span),
         );
         clockScheduled.add(cfg.datasetId);
       }
@@ -1009,7 +1022,7 @@ function extendRevealInPlace(
     }
 
     if (follow) {
-      view.range = rangeRightAnchored(bars.length - 1, Math.max(1, s.span));
+      view.range = rangeRightAnchored(bars.length - 1, Math.max(1, span));
     } else if (keepTime) {
       const mapped = visibleRangeFromTimeWindow(
         bars,
@@ -1023,7 +1036,11 @@ function extendRevealInPlace(
   }
 
   // Off-screen session legs (order engine) — keep base TF runway ahead of cursor.
-  if (!follow) return;
+  if (!anyFollowing) return;
+  const runwaySpan = Math.max(
+    s.span,
+    ...Object.keys(s.panes).map((id) => paneSpanOrDefault(id, s.span, paneSpans)),
+  );
   for (const ds of s.retainedDatasets) {
     if (Object.values(s.panes).some((p) => p.datasetId === ds)) continue;
     const peek = warmCache.peek(ds, s.baseTf);
@@ -1033,8 +1050,8 @@ function extendRevealInPlace(
       tip != null && period > 0
         ? Math.floor((tip - s.cursorTime) / period)
         : -1;
-    if (!peek || peek.length === 0 || ahead < Math.max(120, s.span)) {
-      scheduleFillAhead(ds, s.baseTf, s.cursorTime, s.span);
+    if (!peek || peek.length === 0 || ahead < Math.max(120, runwaySpan)) {
+      scheduleFillAhead(ds, s.baseTf, s.cursorTime, runwaySpan);
     }
   }
 }

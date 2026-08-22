@@ -128,11 +128,11 @@ export function findTicker(symbol: string): CatalogTicker | null {
   const hit = BY_ID.get(key);
   if (hit) return hit;
   const spec = defaultSpecForSymbol(symbol);
+  // Fallback only knows forex vs futures (InstrumentAssetClass); crypto lives in LOGBOOK_TICKERS.
   const group: CatalogGroup = spec.assetClass === 'futures' ? 'Futures' : 'Forex';
   return {
     id: spec.symbol,
-    display:
-      group === 'Futures' ? spec.symbol : group === 'Crypto' ? cryptoDisplay(symbol) : fxDisplay(symbol),
+    display: group === 'Futures' ? spec.symbol : fxDisplay(symbol),
     group,
     spec,
   };

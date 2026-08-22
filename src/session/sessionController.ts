@@ -556,7 +556,11 @@ export function createSessionController() {
       const s = state;
       // Per-pane (ds, tf) + base — not Cartesian datasets × union of TFs
       // (that stormed 8-pane layouts and starved warmCache slots).
-      await fillAndPinLiveCaches(s);
+      // Multi-pane: await remote tip runway so mixed pair/TF tiles are not
+      // stuck on a stale tip while Play advances the primary.
+      await fillAndPinLiveCaches(s, {
+        awaitRemote: Object.keys(panes).length > 1,
+      });
       if (!state) return;
       rederiveSync();
       await rederiveAsync();
@@ -572,9 +576,9 @@ export function createSessionController() {
       state = { ...state, panes: { ...panes } };
     },
 
-    async topUpCaches(): Promise<void> {
+    async topUpCaches(opts?: { awaitRemote?: boolean }): Promise<void> {
       if (!state) return;
-      await fillAndPinLiveCaches(state);
+      await fillAndPinLiveCaches(state, opts);
     },
 
     /** Fill caches + rederive (layout recovery / stuck multi-pane). */
@@ -745,24 +749,29 @@ function formingClockFillOpts(
 /**
  * Fill + pin only the keys live panes need (and retained base for orders).
  * Never Cartesian-product every dataset with every pane TF.
+ * `awaitRemote`: arm / multi-pane Play — wait for tip runway so secondary
+ * pairs/TFs do not freeze while the primary keeps advancing.
  */
-async function fillAndPinLiveCaches(s: SessionState): Promise<void> {
+async function fillAndPinLiveCaches(
+  s: SessionState,
+  opts?: { awaitRemote?: boolean },
+): Promise<void> {
   const targets = collectLiveCacheTargetsFromState(s);
   let coarsestSec = timeframeSeconds(s.baseTf);
   for (const p of Object.values(s.panes)) {
     coarsestSec = Math.max(coarsestSec, timeframeSeconds(p.tf));
   }
   const clockOpts = formingClockFillOpts(s.baseTf, coarsestSec, s.span);
+  const paneOpts = paneRunwayFillOpts(s.span);
+  const awaitRemote = opts?.awaitRemote === true;
   await Promise.all(
-    targets.map(({ datasetId, tf }) =>
-      warmCache.fill(
-        datasetId,
-        tf,
-        s.cursorTime,
-        s.span,
-        tf === s.baseTf ? clockOpts : undefined,
-      ),
-    ),
+    targets.map(({ datasetId, tf }) => {
+      const base = tf === s.baseTf ? clockOpts : paneOpts;
+      return warmCache.fill(datasetId, tf, s.cursorTime, s.span, {
+        ...base,
+        ...(awaitRemote ? { awaitRemote: true } : {}),
+      });
+    }),
   );
   warmCache.setPinned(targets);
 }
@@ -854,22 +863,14 @@ function extendRevealInPlace(
   );
 
   // Pin active series so LRU cannot evict a live pane mid-play.
-  const pinKeys: { datasetId: string; tf: Timeframe }[] = [];
+  const pinKeys = collectLiveCacheTargetsFromState(s);
   const coarsestSecByDs = new Map<string, number>();
   for (const cfg of Object.values(s.panes)) {
-    pinKeys.push({ datasetId: cfg.datasetId, tf: cfg.tf });
-    if (cfg.tf !== s.baseTf) {
-      pinKeys.push({ datasetId: cfg.datasetId, tf: s.baseTf });
-    }
     const sec = timeframeSeconds(cfg.tf);
     coarsestSecByDs.set(
       cfg.datasetId,
       Math.max(coarsestSecByDs.get(cfg.datasetId) ?? 0, sec),
     );
-  }
-  // Keep off-screen session legs warm for the order engine.
-  for (const ds of s.retainedDatasets) {
-    pinKeys.push({ datasetId: ds, tf: s.baseTf });
   }
   warmCache.setPinned(pinKeys);
 
@@ -914,9 +915,28 @@ function extendRevealInPlace(
     // we don't slide the warm-cache every few ticks (Play hitch).
     const behindCritical = Math.floor(needBehind * 0.55);
     const missing = !raw || raw.length === 0;
+    // Tip starved / behind cursor → secondary pair/TF panes look "frozen"
+    // while the primary keeps moving. Pull a longer runway aggressively.
+    const tipStarved = missing || aheadBars < Math.max(40, Math.floor(span * 0.3));
     if (follow) {
       if (missing || aheadBars < needAhead || behindBars < behindCritical) {
-        scheduleFillAhead(cfg.datasetId, cfg.tf, s.cursorTime, span);
+        const fillOpts = tipStarved
+          ? {
+              ...paneRunwayFillOpts(span),
+              aheadRatio: 0.45,
+              windowBars: Math.min(
+                MAX_BARS_IN_MEMORY,
+                Math.max(span * 4 + BUFFER_BARS, needAhead * 3, 1200),
+              ),
+            }
+          : undefined;
+        scheduleFillAhead(
+          cfg.datasetId,
+          cfg.tf,
+          s.cursorTime,
+          span,
+          fillOpts,
+        );
       }
     } else if (missing || behindBars < behindCritical) {
       // Detached pan: history soft-heal only — no tip runway that slides the

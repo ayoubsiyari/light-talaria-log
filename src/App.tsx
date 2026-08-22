@@ -1857,12 +1857,13 @@ export default function App() {
         commitSessionViews({ adoptRangePaneIds: ids });
         // Bars only — do not re-apply a stale preserve / huge span camera.
         syncEnginesFromSession({ paneIds: ids, applyCamera: false });
-      } else {
-        // Never block the clock on cache top-up (was freezing Play after 1m→15m).
-        void sessionRef.current.topUpCaches().catch((err) => {
-          console.warn('[replay] background top-up failed', err);
-        });
       }
+      // Always await a tip runway for every live pair×TF before the clock
+      // starts. Fire-and-forget top-up left secondary panes frozen while the
+      // primary kept advancing (mixed pair + TF layouts).
+      await sessionRef.current.topUpCaches({
+        awaitRemote: list.length > 1,
+      });
     } catch (err) {
       console.warn('[replay] arm multi-pane caches failed', err);
     }

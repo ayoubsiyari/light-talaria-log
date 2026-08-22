@@ -95,7 +95,7 @@ export function PairPicker({
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    const width = Math.min(300, Math.max(r.width, 268), window.innerWidth - 16);
+    const width = Math.min(360, Math.max(r.width, 320), window.innerWidth - 16);
     let left = r.left;
     if (left + width > window.innerWidth - 8) {
       left = Math.max(8, window.innerWidth - 8 - width);
@@ -170,7 +170,7 @@ export function PairPicker({
       ? createPortal(
           <div
             ref={panelRef}
-            className="desk-overlay"
+            className="desk-overlay jd-pairs"
             data-pair-picker=""
             role="dialog"
             aria-label="Select pair"
@@ -200,48 +200,21 @@ export function PairPicker({
               }
             }}
           >
-            <div data-tb-drop-search="">
-              <div data-menu-head="" style={{ padding: '10px 12px 4px' }}>
-                Symbols
-              </div>
-              <div
-                data-win-search=""
-                style={{ margin: '0 10px 8px', minHeight: 44, height: 44 }}
-                onClick={() => searchRef.current?.focus()}
-              >
-                <ChromeIcon n="search" s={12} cl="var(--text-faint)" />
+            <div className="jd-pairs-head">
+              <label className="jd-pairs-search">
+                <ChromeIcon n="search" s={14} cl="currentColor" />
                 <input
                   ref={searchRef}
+                  className="jd-pairs-q"
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search symbol…"
+                  placeholder="Search pair…"
                   aria-label="Search pairs"
                   aria-controls={listId}
-                  style={{
-                    flex: 1,
-                    background: 'transparent',
-                    border: 'none',
-                    outline: 'none',
-                    color: 'var(--text)',
-                    fontSize: 12,
-                    padding: 0,
-                    minWidth: 0,
-                  }}
                 />
-                {query ? (
-                  <button
-                    type="button"
-                    data-brand-icon="1"
-                    aria-label="Clear search"
-                    className="inline-flex items-center justify-center min-h-11 min-w-11"
-                    onClick={() => setQuery('')}
-                  >
-                    <ChromeIcon n="x" s={11} cl="var(--text-faint)" />
-                  </button>
-                ) : null}
-              </div>
-              <div data-pp-tabs="" role="tablist" aria-label="Market">
+              </label>
+              <div className="jd-period jd-pairs-tabs" role="tablist" aria-label="Market">
                 {tabs.map((t) =>
                   t.n === 0 && t.id !== 'all' ? null : (
                     <button
@@ -249,12 +222,10 @@ export function PairPicker({
                       type="button"
                       role="tab"
                       aria-selected={tab === t.id}
-                      data-pp-tab=""
-                      data-on={tab === t.id ? '1' : undefined}
+                      data-on={tab === t.id ? '1' : '0'}
                       onClick={() => setTab(t.id)}
                     >
                       {t.label}
-                      <em>{t.n}</em>
                     </button>
                   ),
                 )}
@@ -277,18 +248,20 @@ export function PairPicker({
               {groups.map((group) => (
                 <div key={group.id} data-sym-group={group.id.toLowerCase()}>
                   {tab === 'all' ? (
-                    <div
-                      data-sym-group-head=""
-                      data-role={group.id.toLowerCase()}
-                    >
-                      <span data-sym-group-label="">{group.label}</span>
-                      <em>{group.hint}</em>
-                      <span data-sym-group-count="">{group.items.length}</span>
+                    <div className="jd-pairs-group" data-role={group.id.toLowerCase()}>
+                      <div className="jd-pairs-group-top">
+                        <span className="jd-pairs-group-name">{group.label}</span>
+                        <span className="jd-pairs-group-n">{group.items.length}</span>
+                      </div>
+                      <p className="jd-pairs-group-hint">{group.hint}</p>
                     </div>
                   ) : null}
                   {group.items.map(({ pair }) => {
                     const display = formatPairDisplay(pair);
                     const asset = classifySymbolAsset(pair);
+                    const sub = symbolSubtitle(pair);
+                    const showSub =
+                      sub.replace(/[\s/·]/g, '') !== display.replace(/[\s/·]/g, '');
                     const flatIndex = flatRows.indexOf(pair);
                     const focused = flatIndex === focusIdx;
                     return (
@@ -297,6 +270,7 @@ export function PairPicker({
                         id={`${listId}-${pair}`}
                         role="option"
                         aria-selected={focused}
+                        className="jd-pairs-row"
                         data-menu-row=""
                         data-sym-row="1"
                         data-focus={focused ? '1' : undefined}
@@ -305,19 +279,20 @@ export function PairPicker({
                         onMouseEnter={() => setFocusIdx(flatIndex)}
                         onClick={() => pick(pair)}
                       >
-                        <div data-sym-badge="">
+                        <div className="jd-pairs-badge" data-sym-badge="">
                           <ChartSymbolBadge
                             sym={normalizeSymForBadge(pair)}
                             asset={asset}
-                            w={18}
-                            h={12}
+                            w={22}
+                            h={14}
                           />
                         </div>
-                        <div data-sym-meta="">
+                        <div className="jd-pairs-meta">
                           <strong>{display}</strong>
+                          {showSub ? <span>{sub}</span> : null}
                         </div>
-                        <span data-pp-type="" data-kind={asset.toLowerCase()}>
-                          {asset === 'Futures' ? 'FUT' : 'FX'}
+                        <span className="jd-pairs-kind" data-kind={asset.toLowerCase()}>
+                          {asset === 'Futures' ? 'Futures' : 'Forex'}
                         </span>
                       </div>
                     );

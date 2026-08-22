@@ -1031,6 +1031,7 @@ Standalone discretionary journal. **Not** Trade View / chart-saved fills / backt
 | 2026-08-21 | Ledger and Calendar share the same Account dropdown; one desk pick scopes all three pages | Ledger / Calendar / Metrics — Account beside Week / Month / All |
 | 2026-08-21 | Home Hit rate column adds best-desk net and target/factor with the same segmented bars | Home — Hit rate, then strongest desk P&L and target (or factor) |
 | 2026-08-21 | Home meters stay one card; untagged tickets count on the Home pin so FTMO is not 0.00 | Home — Hit rate + desk net + target in the same cell |
+| 2026-08-22 | Session pair menu uses cream list layout so Forex / hint / count no longer smash | New session — Add pair opens search, All/Forex/Futures, then a real row |
 
 ---
 

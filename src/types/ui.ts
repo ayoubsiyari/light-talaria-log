@@ -5,6 +5,7 @@ export type Timeframe = '1m' | '5m' | '15m' | '1h' | '4h' | '1D';
 /**
  * Multi-chart layouts (TradingView-style).
  * Letter suffix: h = columns, v = rows, r = main+right stack, b = main+bottom stack.
+ * `'7'` / `'8'` are legacy only — picker + runtime clamp to `'6'`.
  */
 export type ChartLayout =
   | '1'

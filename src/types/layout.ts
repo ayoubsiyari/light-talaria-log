@@ -156,7 +156,7 @@ export const LAYOUT_LY_LINES: LayoutLine[][][] = [
       { x1: 0, y1: 0.8, x2: 1, y2: 0.8 },
     ],
   ],
-  // 6 panels (4 variants → engine '6')
+  // 6 panels (4 variants → engine '6') — max supported layout
   [
     [
       { x1: 0.333, y1: 0, x2: 0.333, y2: 1 },
@@ -183,76 +183,34 @@ export const LAYOUT_LY_LINES: LayoutLine[][][] = [
       { x1: 0, y1: 0.833, x2: 1, y2: 0.833 },
     ],
   ],
-  // 7 panels (2 variants → engine '7')
-  [
-    [
-      { x1: 0, y1: 0.5, x2: 1, y2: 0.5 },
-      { x1: 0.333, y1: 0, x2: 0.333, y2: 0.5 },
-      { x1: 0.667, y1: 0, x2: 0.667, y2: 0.5 },
-      { x1: 0.25, y1: 0.5, x2: 0.25, y2: 1 },
-      { x1: 0.5, y1: 0.5, x2: 0.5, y2: 1 },
-      { x1: 0.75, y1: 0.5, x2: 0.75, y2: 1 },
-    ],
-    [
-      { x1: 0.143, y1: 0, x2: 0.143, y2: 1 },
-      { x1: 0.286, y1: 0, x2: 0.286, y2: 1 },
-      { x1: 0.429, y1: 0, x2: 0.429, y2: 1 },
-      { x1: 0.571, y1: 0, x2: 0.571, y2: 1 },
-      { x1: 0.714, y1: 0, x2: 0.714, y2: 1 },
-      { x1: 0.857, y1: 0, x2: 0.857, y2: 1 },
-    ],
-  ],
-  // 8 panels (4 variants → engine '8')
-  [
-    [
-      { x1: 0.25, y1: 0, x2: 0.25, y2: 1 },
-      { x1: 0.5, y1: 0, x2: 0.5, y2: 1 },
-      { x1: 0.75, y1: 0, x2: 0.75, y2: 1 },
-      { x1: 0, y1: 0.5, x2: 1, y2: 0.5 },
-    ],
-    [
-      { x1: 0.5, y1: 0, x2: 0.5, y2: 1 },
-      { x1: 0, y1: 0.25, x2: 1, y2: 0.25 },
-      { x1: 0, y1: 0.5, x2: 1, y2: 0.5 },
-      { x1: 0, y1: 0.75, x2: 1, y2: 0.75 },
-    ],
-    [
-      { x1: 0.125, y1: 0, x2: 0.125, y2: 1 },
-      { x1: 0.25, y1: 0, x2: 0.25, y2: 1 },
-      { x1: 0.375, y1: 0, x2: 0.375, y2: 1 },
-      { x1: 0.5, y1: 0, x2: 0.5, y2: 1 },
-      { x1: 0.625, y1: 0, x2: 0.625, y2: 1 },
-      { x1: 0.75, y1: 0, x2: 0.75, y2: 1 },
-      { x1: 0.875, y1: 0, x2: 0.875, y2: 1 },
-    ],
-    [
-      { x1: 0, y1: 0.125, x2: 1, y2: 0.125 },
-      { x1: 0, y1: 0.25, x2: 1, y2: 0.25 },
-      { x1: 0, y1: 0.375, x2: 1, y2: 0.375 },
-      { x1: 0, y1: 0.5, x2: 1, y2: 0.5 },
-      { x1: 0, y1: 0.625, x2: 1, y2: 0.625 },
-      { x1: 0, y1: 0.75, x2: 1, y2: 0.75 },
-      { x1: 0, y1: 0.875, x2: 1, y2: 0.875 },
-    ],
-  ],
 ];
+
+/** Hard cap — 7/8 were too heavy for multi-pane Play. */
+export const MAX_LAYOUT_PANELS = 6;
+
+/** Collapse legacy 7/8 (and any future oversize) onto 6. */
+export function clampChartLayout(layout: ChartLayout | string): ChartLayout {
+  if (layout === '7' || layout === '8') return '6';
+  const n = Number(layout);
+  if (Number.isFinite(n) && n > MAX_LAYOUT_PANELS) return '6';
+  return layout as ChartLayout;
+}
 
 /** Map Live (panelCount, variantIndex) → our ChartLayout engine id. */
 export function layoutIdForVariant(n: number, li: number): ChartLayout {
-  if (n <= 1) return '1';
-  if (n === 2) return li === 1 ? '2v' : '2h';
-  if (n === 3) {
+  const panels = Math.min(MAX_LAYOUT_PANELS, Math.max(1, Math.floor(n)));
+  if (panels <= 1) return '1';
+  if (panels === 2) return li === 1 ? '2v' : '2h';
+  if (panels === 3) {
     const map: ChartLayout[] = ['3h', '3v', '3r', '3r', '3b', '3b'];
     return map[li] ?? '3r';
   }
-  if (n === 4) {
+  if (panels === 4) {
     const map: ChartLayout[] = ['4', '4v', '4h', '4', '4', '4', '4', '4'];
     return map[li] ?? '4';
   }
-  if (n === 5) return '5';
-  if (n === 6) return '6';
-  if (n === 7) return '7';
-  return '8';
+  if (panels === 5) return '5';
+  return '6';
 }
 
 /** Best-effort reverse: which variant thumb is active for a ChartLayout. */
@@ -260,7 +218,7 @@ export function variantIndexForLayout(layout: ChartLayout): {
   n: number;
   li: number;
 } {
-  switch (layout) {
+  switch (clampChartLayout(layout)) {
     case '1':
       return { n: 1, li: 0 };
     case '2h':
@@ -285,10 +243,6 @@ export function variantIndexForLayout(layout: ChartLayout): {
       return { n: 5, li: 0 };
     case '6':
       return { n: 6, li: 0 };
-    case '7':
-      return { n: 7, li: 0 };
-    case '8':
-      return { n: 8, li: 0 };
     default:
       return { n: 1, li: 0 };
   }
@@ -410,10 +364,10 @@ export function cellsForLayout(id: ChartLayout): LayoutCell[] {
     const hit = row.options.find((o) => o.id === id);
     if (hit) return hit.cells;
   }
-  // Equal grid fallback for 5–8
+  // Equal grid fallback for 5–6
   const n = Number(id);
-  if (n >= 5 && n <= 8) {
-    const cols = n <= 6 ? 3 : 4;
+  if (n >= 5 && n <= 6) {
+    const cols = 3;
     const rows = Math.ceil(n / cols);
     const cells: LayoutCell[] = [];
     for (let i = 0; i < n; i++) {

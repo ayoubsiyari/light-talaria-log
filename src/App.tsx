@@ -159,7 +159,7 @@ import type { ChartBar } from '@/types/bar';
 import type { SeriesCatalog } from '@/types/series';
 import type { BacktestSession, PairSymbol } from '@/types/session';
 import type { ChartPaneState } from '@/types/pane';
-import { DEFAULT_LAYOUT_SYNC, type LayoutSyncOptions } from '@/types/layout';
+import { DEFAULT_LAYOUT_SYNC, clampChartLayout, type LayoutSyncOptions } from '@/types/layout';
 import { paneCountForLayout } from '@/types/pane';
 import type { BottomTabId, ChartLayout, ChartToolId, Timeframe } from '@/types/ui';
 import { debounce } from '@/utils/debounce';
@@ -1228,12 +1228,12 @@ export default function App() {
 
         let nextRange = p.range;
         if (prevSpan > 0) {
-          if (isViewportRightAnchoredOnTip(prevRange, prevBars.length)) {
-            nextRange = rangeRightAnchored(
-              Math.max(0, p.bars.length - 1),
-              prevSpan,
-            );
-          } else if (keep) {
+          // Prefer wall-clock preserve. Tip-right re-anchor used to win whenever
+          // the camera was still near the last bar (slack ~3) — so a small pan
+          // at the right edge, then release → debounced prefetch snapped back.
+          // History pans (left) already took the keep path and felt fine.
+          const paneDetached = detachedPanesRef.current.has(p.id);
+          if (keep) {
             const mapped = visibleRangeFromTimeWindow(
               p.bars,
               keep.fromTime,
@@ -1254,6 +1254,14 @@ export default function App() {
                 nextRange = mapped;
               }
             }
+          } else if (
+            !paneDetached &&
+            isViewportRightAnchoredOnTip(prevRange, prevBars.length)
+          ) {
+            nextRange = rangeRightAnchored(
+              Math.max(0, p.bars.length - 1),
+              prevSpan,
+            );
           }
         }
 
@@ -2770,11 +2778,13 @@ export default function App() {
   ]);
 
   const handleLayoutChange = (layout: ChartLayout) => {
-    setChartLayout(layout);
+    // Cap at 6 panes — 7/8 retired (too heavy for multi-pane Play).
+    const nextLayout = clampChartLayout(layout);
+    setChartLayout(nextLayout);
     if (!catalog || seriesRef.current.length === 0) return;
     lodReloadCancelRef.current?.();
     prefetchGenRef.current += 1;
-    const count = paneCountForLayout(layout);
+    const count = paneCountForLayout(nextLayout);
     const sessNow = sessionRef.current.get();
     // Multi-pane must load around the replay cursor — catalog.timeEnd seeds the
     // wrong window and leaves secondary pairs empty until a late async fill.
@@ -2873,6 +2883,13 @@ export default function App() {
       });
     })();
   };
+
+  // Legacy 7/8 layouts → shrink to 6 once (picker no longer offers them).
+  useEffect(() => {
+    if (chartLayout === '7' || chartLayout === '8') {
+      handleLayoutChange('6');
+    }
+  }, [chartLayout]);
 
   const markPanesLoading = useCallback((ids: readonly string[], on: boolean) => {
     setLoadingPaneIds((prev) => {
@@ -4769,7 +4786,7 @@ export default function App() {
         availableTimeframes={availableTimeframes}
         seriesType={seriesType}
         onSeriesTypeChange={handleSeriesTypeChange}
-        chartLayout={chartLayout}
+        chartLayout={clampChartLayout(chartLayout)}
         onChartLayoutChange={handleLayoutChange}
         layoutSync={layoutSync}
         onLayoutSyncChange={setLayoutSync}
@@ -4873,7 +4890,7 @@ export default function App() {
             <>
             <ChartGrid
               key={`${session.id}:${catalog.datasetId}:${session.legs.length}`}
-              layout={chartLayout}
+              layout={clampChartLayout(chartLayout)}
               syncStore={syncStore}
               panes={panes}
               activePaneId={activePaneId}

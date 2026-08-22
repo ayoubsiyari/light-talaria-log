@@ -208,7 +208,7 @@ export function LayoutPicker({
           <div data-layout-body="" className="tlr-scroll flex-1 min-h-0 overflow-y-auto">
             <div data-layout-h="">Panels</div>
             <div data-layout-counts="" role="group" aria-label="Panel count">
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+              {[1, 2, 3, 4, 5, 6].map((n) => (
                 <button
                   type="button"
                   key={n}

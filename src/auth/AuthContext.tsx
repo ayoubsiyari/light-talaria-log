@@ -50,8 +50,8 @@ export function rememberAuthNext(hashRoute: string): void {
   }
 }
 
-/** Consume saved post-login route (defaults to app dashboard). */
-export function consumeAuthNext(fallback = '#/app/dashboard'): string {
+/** Consume saved post-login route (defaults to Journal). */
+export function consumeAuthNext(fallback = '#/app/journal'): string {
   try {
     const v = sessionStorage.getItem(NEXT_KEY);
     sessionStorage.removeItem(NEXT_KEY);

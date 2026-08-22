@@ -8,7 +8,8 @@ import {
   formatPairDisplay,
 } from '@/symbols/symbolCategory';
 import { PairPicker } from '@/components/session/PairPicker';
-import { Button, Card, Label } from '@heroui/react';
+import { DeskFrame } from '@/components/desk/DeskFrame';
+import { Label } from '@heroui/react';
 import { useAuth } from '@/auth/AuthContext';
 import {
   registerRemoteDataset,
@@ -46,8 +47,10 @@ const DEFAULT_STARTING_BALANCE = 10_000;
 
 interface CreateSessionPageProps {
   onStart: (session: BacktestSession) => void;
-  /** Open Trades; pass session id to prefer that entry, or omit for latest. */
+  /** Open Chart trades; pass session id to prefer that entry, or omit for latest. */
   onGoJournal?: (sessionId?: string) => void;
+  /** Open the handwritten Journal. */
+  onGoLogbook?: () => void;
   onGoDashboard?: (sessionId?: string) => void;
   /** Increment to open the New Session modal (sidebar Create). */
   openCreateNonce?: number;
@@ -57,8 +60,7 @@ type SessFilter = 'all' | 'active' | 'completed';
 type ViewMode = 'list' | 'grid';
 type StatsMode = 'manual' | 'automatic';
 
-const fieldClass =
-  'w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent';
+const fieldClass = 'jd-field';
 
 function uniquePairs(datasets: { pair: PairSymbol }[]): PairSymbol[] {
   return [...new Set(datasets.map((d) => d.pair))];
@@ -87,6 +89,7 @@ function remotesToDatasets(remotes: RemoteDatasetMeta[]): DownloadedDataset[] {
 export function CreateSessionPage({
   onStart,
   onGoJournal,
+  onGoLogbook,
   onGoDashboard,
   openCreateNonce = 0,
 }: CreateSessionPageProps) {
@@ -193,6 +196,7 @@ export function CreateSessionPage({
   const [modalOpen, setModalOpen] = useState(false);
   const [sessFilter, setSessFilter] = useState<SessFilter>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [narrow, setNarrow] = useState(false);
   const [statsMode, setStatsMode] = useState<StatsMode>('manual');
   const [statsOpen, setStatsOpen] = useState(true);
   const [searchQ, setSearchQ] = useState('');
@@ -201,6 +205,30 @@ export function CreateSessionPage({
   useEffect(() => {
     if (modalOpen) setStrategies(listStrategies());
   }, [modalOpen]);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 720px)');
+    const apply = () => setNarrow(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+
+  const listAs: ViewMode = narrow ? 'grid' : viewMode;
+
+  const removeSession = (s: BacktestSession) => {
+    if (
+      !window.confirm(
+        `Delete “${s.name}”? The session and its chart fills go with it.`,
+      )
+    ) {
+      return;
+    }
+    deleteSession(s.id);
+    deleteJournalEntry(s.id);
+    clearOrderJournal(s.id);
+    refreshSessions();
+  };
 
   useEffect(() => {
     if (openCreateNonce > 0) setModalOpen(true);
@@ -407,39 +435,38 @@ export function CreateSessionPage({
   ];
 
   return (
-    <div className="min-h-full text-foreground">
-      <div
-        className={[
-          'mx-auto w-full max-w-[1400px] px-4 sm:px-6 py-5 sm:py-6 space-y-4',
-          'pl-[max(1rem,env(safe-area-inset-left))]',
-          'pr-[max(1rem,env(safe-area-inset-right))]',
-          'pb-[max(2rem,env(safe-area-inset-bottom))]',
-        ].join(' ')}
-      >
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Backtesting</h1>
-        </header>
-
+    <DeskFrame
+      brand="Sessions"
+      actions={
+        <button type="button" className="jd-btn jd-btn-ink" onClick={() => setModalOpen(true)}>
+          Create session
+        </button>
+      }
+    >
+      <div className="jd-stack">
         {continueSession && (
           <button
             type="button"
             onClick={() => onStart(continueSession.session)}
             className={[
-              'w-full flex items-center gap-3 rounded-lg border border-[color:var(--tv-panel-line)]',
-              'bg-surface px-4 py-3 text-left hover:bg-background/60 transition-colors',
+              'w-full flex items-center gap-3 rounded-[28px]',
+              'bg-[var(--jd-card)] px-4 py-3 text-left',
             ].join(' ')}
           >
-            <span className="shell-play flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
+            <span className="jd-play">
               <PlayIcon />
             </span>
             <div className="min-w-0 flex-1 space-y-1.5">
               <p className="text-sm font-medium truncate">
                 Continue &lsquo;{continueSession.session.name}&rsquo;
               </p>
-              <div className="h-1 rounded-full bg-background overflow-hidden">
+              <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--jd-line)' }}>
                 <div
-                  className="h-full bg-foreground/35 transition-[width]"
-                  style={{ width: `${Math.round(continueSession.progress)}%` }}
+                  className="h-full transition-[width]"
+                  style={{
+                    width: `${Math.round(continueSession.progress)}%`,
+                    background: 'var(--jd-ink)',
+                  }}
                 />
               </div>
             </div>
@@ -449,28 +476,20 @@ export function CreateSessionPage({
           </button>
         )}
 
-        <div className="rounded-lg border border-[color:var(--tv-panel-line)] bg-surface/80 backdrop-blur-sm">
+        <div className="jd-card">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3">
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
                 Stats
               </span>
-              <div
-                className="inline-flex rounded-md border border-border p-0.5 bg-background/60"
-                role="group"
-                aria-label="Stats mode"
-              >
+              <div className="jd-period" role="group" aria-label="Stats mode">
                 {(['manual', 'automatic'] as const).map((mode) => (
                   <button
                     key={mode}
                     type="button"
+                    data-on={statsMode === mode ? '1' : '0'}
                     onClick={() => setStatsMode(mode)}
-                    className={[
-                      'min-h-8 px-2.5 rounded text-xs font-semibold capitalize',
-                      statsMode === mode
-                        ? 'bg-foreground/12 text-foreground'
-                        : 'text-muted hover:text-foreground',
-                    ].join(' ')}
+                    className="capitalize"
                   >
                     {mode}
                   </button>
@@ -479,7 +498,7 @@ export function CreateSessionPage({
             </div>
             {statsOpen && (
               <>
-                <StatChip label="Time invested" value={aggregateStats.timeLabel} />
+                <StatChip label="Time invested (est.)" value={aggregateStats.timeLabel} />
                 <StatChip label="Session win %" value={aggregateStats.sessionWinPct} />
                 <StatChip label="Trade win %" value={aggregateStats.tradeWinPct} />
               </>
@@ -496,45 +515,34 @@ export function CreateSessionPage({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex gap-1 border-b border-transparent" role="tablist" aria-label="Filter">
+          <div className="jd-period" role="tablist" aria-label="Filter">
             {filters.map((f) => (
               <button
                 key={f.id}
                 type="button"
                 role="tab"
                 aria-selected={sessFilter === f.id}
+                data-on={sessFilter === f.id ? '1' : '0'}
                 onClick={() => setSessFilter(f.id)}
-                className={[
-                  'min-h-10 px-3 text-sm font-semibold border-b-2 -mb-px',
-                  sessFilter === f.id
-                    ? 'border-foreground/70 text-foreground'
-                    : 'border-transparent text-muted hover:text-foreground',
-                ].join(' ')}
               >
                 {f.label}
               </button>
             ))}
           </div>
           <input
-            className={`${fieldClass} max-w-[14rem] min-h-9 py-1.5 ml-auto`}
+            className={`${fieldClass} max-w-[14rem] ml-auto`}
             placeholder="Search…"
             value={searchQ}
             onChange={(e) => setSearchQ(e.target.value)}
           />
-          <div
-            className="inline-flex rounded-md border border-border p-0.5"
-            role="group"
-            aria-label="View mode"
-          >
+          <div className="jd-period" role="group" aria-label="View mode">
             <button
               type="button"
               title="List view"
               aria-pressed={viewMode === 'list'}
+              data-on={viewMode === 'list' ? '1' : '0'}
               onClick={() => setViewMode('list')}
-              className={[
-                'min-h-9 min-w-9 flex items-center justify-center rounded',
-                viewMode === 'list' ? 'bg-foreground/10 text-foreground' : 'text-muted',
-              ].join(' ')}
+              className="!px-3"
             >
               <ListIcon />
             </button>
@@ -542,11 +550,9 @@ export function CreateSessionPage({
               type="button"
               title="Grid view"
               aria-pressed={viewMode === 'grid'}
+              data-on={viewMode === 'grid' ? '1' : '0'}
               onClick={() => setViewMode('grid')}
-              className={[
-                'min-h-9 min-w-9 flex items-center justify-center rounded',
-                viewMode === 'grid' ? 'bg-foreground/10 text-foreground' : 'text-muted',
-              ].join(' ')}
+              className="!px-3"
             >
               <GridIcon />
             </button>
@@ -554,36 +560,28 @@ export function CreateSessionPage({
         </div>
 
         {remoteStatus === 'error' && (
-          <Card className="bg-surface border border-border">
-            <Card.Content className="px-5 py-4 space-y-3">
-              <p className="text-sm text-danger">{remoteError ?? 'Server unreachable.'}</p>
-              <Button variant="secondary" className="shell-cta min-h-11" onPress={loadServer}>
-                Retry
-              </Button>
-            </Card.Content>
-          </Card>
+          <div className="jd-card jd-stack" style={{ textAlign: 'center' }}>
+            <p className="text-sm text-danger">{remoteError ?? 'Server unreachable.'}</p>
+            <button type="button" className="jd-btn jd-btn-ghost" onClick={loadServer}>
+              Retry
+            </button>
+          </div>
         )}
 
         {filteredSessions.length === 0 ? (
-          <Card className="bg-surface border border-border">
-            <Card.Content className="px-6 py-12 text-center space-y-4">
-              <p className="text-sm text-muted">
-                {sessions.length === 0
-                  ? 'No sessions yet. Create a backtest session to start.'
-                  : 'No sessions match this filter.'}
-              </p>
-              <Button
-                variant="secondary"
-                className="shell-cta min-h-11"
-                onPress={() => setModalOpen(true)}
-              >
-                + Create session
-              </Button>
-            </Card.Content>
-          </Card>
-        ) : viewMode === 'list' ? (
-          <div className="rounded-lg border border-[color:var(--tv-panel-line)] bg-surface/80 backdrop-blur-sm overflow-x-auto">
-            <table className="w-full min-w-[860px] text-sm text-left">
+          <div className="jd-card jd-stack" style={{ textAlign: 'center', padding: '48px 24px' }}>
+            <p className="jd-muted">
+              {sessions.length === 0
+                ? 'No sessions yet. Create a backtest session to start.'
+                : 'No sessions match this filter.'}
+            </p>
+            <button type="button" className="jd-btn jd-btn-ink" onClick={() => setModalOpen(true)}>
+              + Create session
+            </button>
+          </div>
+        ) : listAs === 'list' ? (
+          <div className="jd-table-wrap">
+            <table className="jd-table">
               <thead>
                 <tr className="border-b border-[color:var(--tv-panel-line)] text-xs text-muted">
                   <th className="w-12 px-3 py-2.5 font-medium" />
@@ -593,7 +591,7 @@ export function CreateSessionPage({
                   <th className="px-3 py-2.5 font-medium text-right">Start balance</th>
                   <th className="px-3 py-2.5 font-medium text-right">Current balance</th>
                   <th className="px-3 py-2.5 font-medium text-right">Real. P&L</th>
-                  <th className="px-3 py-2.5 font-medium text-right">Time spent</th>
+                  <th className="px-3 py-2.5 font-medium text-right">Time (est.)</th>
                   <th className="w-12 px-2 py-2.5" />
                 </tr>
               </thead>
@@ -608,76 +606,80 @@ export function CreateSessionPage({
                   return (
                     <tr
                       key={s.id}
-                      className="border-b border-[color:var(--tv-panel-line)] last:border-0 hover:bg-background/40"
+                      className="last:border-0"
                     >
-                      <td className="px-3 py-3">
+                      <td>
                         <button
                           type="button"
                           aria-label={row.progress === 0 ? 'Start' : 'Resume'}
                           onClick={() => onStart(s)}
-                          className="shell-play flex h-9 w-9 items-center justify-center rounded-full"
+                          className="jd-play"
                         >
                           <PlayIcon />
                         </button>
                       </td>
-                      <td className="px-3 py-3 min-w-[10rem]">
-                        <p className="font-semibold text-foreground truncate max-w-[14rem]">
+                      <td className="min-w-[10rem]">
+                        <p className="jd-name truncate max-w-[16rem]" title={s.name}>
                           {s.name}
                         </p>
-                        <p className="text-xs text-muted mt-0.5">
+                        <p className="jd-meta">
                           {trades} {trades === 1 ? 'trade' : 'trades'}
-                          <span className="mx-1.5 text-muted">·</span>
-                          <span className="text-muted">{modeLabel}</span>
+                          <span className="mx-1.5">·</span>
+                          {modeLabel}
                         </p>
                       </td>
-                      <td className="px-3 py-3">
+                      <td>
                         <div className="flex flex-wrap gap-1">
                           {s.legs.map((l) => (
                             <span
                               key={l.pair}
-                              className="inline-flex items-center rounded-md border border-border bg-background px-2 py-0.5 text-[11px] font-medium tabular-nums"
+                              className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium tabular-nums"
+                              style={{
+                                background: 'var(--jd-card-2)',
+                                border: '1px solid var(--jd-line)',
+                              }}
                             >
                               {pairChip(l.pair)}
                             </span>
                           ))}
                         </div>
                       </td>
-                      <td className="px-3 py-3 text-muted truncate max-w-[10rem]">
+                      <td className="truncate max-w-[10rem]" style={{ color: 'var(--jd-muted)' }}>
                         {strategyNameFromSession(s)}
                       </td>
-                      <td className="px-3 py-3 text-right tabular-nums">
+                      <td className="text-right tabular-nums">
                         {formatMoney(startBal)}
                       </td>
-                      <td className="px-3 py-3 text-right tabular-nums">
+                      <td className="text-right tabular-nums font-medium">
                         {formatMoney(curBal)}
                       </td>
                       <td
                         className={[
-                          'px-3 py-3 text-right tabular-nums font-semibold',
+                          'text-right tabular-nums font-semibold',
                           pnl > 0
                             ? 'text-success'
                             : pnl < 0
                               ? 'text-danger'
-                              : 'text-muted',
+                              : '',
                         ].join(' ')}
+                        style={pnl === 0 ? { color: 'var(--jd-muted)' } : undefined}
                       >
                         {formatMoney(pnl, true)}
                       </td>
-                      <td className="px-3 py-3 text-right tabular-nums text-muted">
+                      <td className="text-right tabular-nums" style={{ color: 'var(--jd-muted)' }}>
                         {formatDuration(sessionTimeSpentMs(s, row.view))}
                       </td>
-                      <td className="px-2 py-3 relative">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="min-h-9 min-w-9 px-0"
+                      <td className="relative">
+                        <button
+                          type="button"
+                          className="jd-icon-btn"
                           aria-label="More"
-                          onPress={() => setMenuId(menuId === s.id ? null : s.id)}
+                          onClick={() => setMenuId(menuId === s.id ? null : s.id)}
                         >
                           ⋯
-                        </Button>
+                        </button>
                         {menuId === s.id && (
-                          <div className="absolute right-2 top-full z-20 mt-1 w-40 rounded-md border border-border bg-surface shadow-lg py-1">
+                          <div className="jd-menu absolute right-2 top-full z-20 mt-1">
                             <MenuBtn
                               label={row.progress === 0 ? 'Start' : 'Resume'}
                               onClick={() => {
@@ -686,12 +688,21 @@ export function CreateSessionPage({
                               }}
                             />
                             <MenuBtn
-                              label="Trades"
+                              label="Chart trades"
                               onClick={() => {
                                 setMenuId(null);
                                 onGoJournal?.(s.id);
                               }}
                             />
+                            {onGoLogbook && (
+                              <MenuBtn
+                                label="Journal"
+                                onClick={() => {
+                                  setMenuId(null);
+                                  onGoLogbook();
+                                }}
+                              />
+                            )}
                             <MenuBtn
                               label="Dashboard"
                               onClick={() => {
@@ -704,10 +715,7 @@ export function CreateSessionPage({
                               danger
                               onClick={() => {
                                 setMenuId(null);
-                                deleteSession(s.id);
-                                deleteJournalEntry(s.id);
-                                clearOrderJournal(s.id);
-                                refreshSessions();
+                                removeSession(s);
                               }}
                             />
                           </div>
@@ -726,23 +734,22 @@ export function CreateSessionPage({
               const trades = row.stats?.tradeCount ?? 0;
               const pnl = row.stats?.netPnl ?? 0;
               return (
-                <Card
+                <article
                   key={s.id}
-                  className="bg-surface border border-border overflow-hidden"
+                  className="jd-card jd-stack overflow-hidden"
                 >
-                  <Card.Content className="p-4 space-y-3">
                     <div className="flex items-start gap-2">
                       <button
                         type="button"
                         aria-label="Open"
                         onClick={() => onStart(s)}
-                        className="shell-play flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+                        className="jd-play"
                       >
                         <PlayIcon />
                       </button>
                       <div className="min-w-0 flex-1">
-                        <p className="font-semibold truncate">{s.name}</p>
-                        <p className="text-xs text-muted">
+                        <p className="jd-name truncate">{s.name}</p>
+                        <p className="jd-meta">
                           {trades} trades · {s.strategyId ? 'Auto' : 'Manual'}
                         </p>
                       </div>
@@ -751,7 +758,11 @@ export function CreateSessionPage({
                       {s.legs.map((l) => (
                         <span
                           key={l.pair}
-                          className="rounded-md border border-border bg-background px-2 py-0.5 text-[11px]"
+                          className="rounded-full px-2.5 py-1 text-[11px]"
+                          style={{
+                            background: 'var(--jd-card-2)',
+                            border: '1px solid var(--jd-line)',
+                          }}
                         >
                           {pairChip(l.pair)}
                         </span>
@@ -771,28 +782,54 @@ export function CreateSessionPage({
                         {formatMoney(pnl, true)}
                       </span>
                     </div>
-                    <div className="h-1 rounded-full bg-background overflow-hidden">
+                    <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--jd-line)' }}>
                       <div
-                        className="h-full bg-foreground/35"
-                        style={{ width: `${Math.round(row.progress)}%` }}
+                        className="h-full"
+                        style={{
+                          width: `${Math.round(row.progress)}%`,
+                          background: 'var(--jd-ink)',
+                        }}
                       />
                     </div>
-                  </Card.Content>
-                </Card>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="jd-btn jd-btn-ghost"
+                        onClick={() => onGoJournal?.(s.id)}
+                      >
+                        Chart trades
+                      </button>
+                      {onGoLogbook && (
+                        <button
+                          type="button"
+                          className="jd-btn jd-btn-ghost"
+                          onClick={() => onGoLogbook()}
+                        >
+                          Journal
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="jd-btn jd-btn-ghost"
+                        onClick={() => removeSession(s)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                </article>
               );
             })}
           </div>
         )}
       </div>
-
       {modalOpen && (
-        <div className="fixed inset-0 z-[100010] flex items-center justify-center bg-background/80 p-3">
-          <div className="w-full max-w-2xl max-h-[min(90vh,840px)] overflow-auto rounded-lg border border-border bg-surface shadow-xl">
-            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 px-5 py-3 border-b border-[color:var(--tv-panel-line)] bg-surface">
+        <div className="desk-overlay desk-dim fixed inset-0 z-[100010] flex items-center justify-center p-3">
+          <div className="jd-dialog w-full max-w-2xl max-h-[min(90vh,840px)] overflow-auto">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 px-5 py-3" style={{ background: 'var(--jd-card)', borderBottom: '1px solid var(--jd-line)' }}>
               <h2 className="text-lg font-semibold">New backtest session</h2>
-              <Button variant="ghost" className="min-h-11" onPress={() => setModalOpen(false)}>
+              <button type="button" className="jd-btn jd-btn-ghost" onClick={() => setModalOpen(false)}>
                 Close
-              </Button>
+              </button>
             </div>
             <div className="px-5 py-5 space-y-6">
               <Section title="Session info">
@@ -945,31 +982,31 @@ export function CreateSessionPage({
                 </p>
               )}
             </div>
-            <div className="sticky bottom-0 flex flex-wrap justify-end gap-2 px-5 py-3 border-t border-[color:var(--tv-panel-line)] bg-surface">
-              <Button variant="ghost" className="min-h-11" onPress={() => setModalOpen(false)}>
+            <div className="sticky bottom-0 flex flex-wrap justify-end gap-2 px-5 py-3" style={{ background: 'var(--jd-card)', borderTop: '1px solid var(--jd-line)' }}>
+              <button type="button" className="jd-btn jd-btn-ghost" onClick={() => setModalOpen(false)}>
                 Cancel
-              </Button>
-              <Button
-                variant="secondary"
-                className="min-h-11"
-                isDisabled={!canCreate}
-                onPress={handleSaveOnly}
+              </button>
+              <button
+                type="button"
+                className="jd-btn jd-btn-ghost"
+                disabled={!canCreate}
+                onClick={handleSaveOnly}
               >
                 Save
-              </Button>
-              <Button
-                variant="secondary"
-                className="shell-cta min-h-11 font-semibold"
-                isDisabled={!canCreate}
-                onPress={handleStart}
+              </button>
+              <button
+                type="button"
+                className="jd-btn jd-btn-ink"
+                disabled={!canCreate}
+                onClick={handleStart}
               >
                 Start session
-              </Button>
+              </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </DeskFrame>
   );
 }
 
@@ -1125,7 +1162,7 @@ function MenuBtn({
       onClick={onClick}
       className={[
         'w-full text-left min-h-11 px-3 text-sm',
-        danger ? 'text-danger' : 'text-foreground hover:bg-background/70',
+        danger ? 'text-danger' : '',
       ].join(' ')}
     >
       {label}

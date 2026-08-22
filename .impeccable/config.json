@@ -16,6 +16,111 @@
         "value": "instrument serif",
         "createdAt": "2026-08-13T09:30:56.935Z",
         "reason": "User pinned Instrument Serif as display face in the landing recreation brief"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "*",
+        "files": [
+          "src/components/logbook/JournalBoard.tsx",
+          "src/components/logbook/LogbookPage.tsx",
+          "src/components/logbook/journalDash.css"
+        ],
+        "createdAt": "2026-08-20T17:47:41.730Z",
+        "reason": "User asked to clone the cream/yellow reference dashboard on Journal home"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "*",
+        "files": [
+          "src/components/logbook/JournalBoard.tsx",
+          "src/components/logbook/LogbookPage.tsx",
+          "src/components/logbook/journalDash.css"
+        ],
+        "createdAt": "2026-08-20T17:47:41.841Z",
+        "reason": "User asked to clone the reference dashboard type on Journal home"
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "*",
+        "files": [
+          "src/components/logbook/JournalBoard.tsx",
+          "src/components/logbook/LogbookPage.tsx",
+          "src/components/logbook/journalDash.css"
+        ],
+        "createdAt": "2026-08-20T17:47:41.982Z",
+        "reason": "User asked to clone the reference card radii on Journal home"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "*",
+        "files": [
+          "src/components/admin/AdminPage.tsx",
+          "src/components/dashboard/DashboardPage.tsx",
+          "src/components/desk/DeskFrame.tsx",
+          "src/components/journal/JournalPage.tsx",
+          "src/components/logbook/CalendarPanel.tsx",
+          "src/components/logbook/LogbookPage.tsx",
+          "src/components/logbook/MetricsPanel.tsx",
+          "src/components/logbook/PlaybookPanel.tsx",
+          "src/components/logbook/TradeDetail.tsx",
+          "src/components/logbook/TradeList.tsx",
+          "src/components/logbook/journalDash.css",
+          "src/components/resources/ResourcesPage.tsx",
+          "src/components/session/CreateSessionPage.tsx",
+          "src/components/shell/AppPageFrame.tsx",
+          "src/components/shell/ProfilePage.tsx",
+          "src/components/strategy/StrategyPage.tsx"
+        ],
+        "createdAt": "2026-08-20T17:54:18.244Z",
+        "reason": "User asked to clone the cream desk across all app pages"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "*",
+        "files": [
+          "src/components/admin/AdminPage.tsx",
+          "src/components/dashboard/DashboardPage.tsx",
+          "src/components/desk/DeskFrame.tsx",
+          "src/components/journal/JournalPage.tsx",
+          "src/components/logbook/CalendarPanel.tsx",
+          "src/components/logbook/LogbookPage.tsx",
+          "src/components/logbook/MetricsPanel.tsx",
+          "src/components/logbook/PlaybookPanel.tsx",
+          "src/components/logbook/TradeDetail.tsx",
+          "src/components/logbook/TradeList.tsx",
+          "src/components/logbook/journalDash.css",
+          "src/components/resources/ResourcesPage.tsx",
+          "src/components/session/CreateSessionPage.tsx",
+          "src/components/shell/AppPageFrame.tsx",
+          "src/components/shell/ProfilePage.tsx",
+          "src/components/strategy/StrategyPage.tsx"
+        ],
+        "createdAt": "2026-08-20T17:54:26.004Z",
+        "reason": "User asked to clone the cream desk type across app pages"
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "*",
+        "files": [
+          "src/components/admin/AdminPage.tsx",
+          "src/components/dashboard/DashboardPage.tsx",
+          "src/components/desk/DeskFrame.tsx",
+          "src/components/journal/JournalPage.tsx",
+          "src/components/logbook/CalendarPanel.tsx",
+          "src/components/logbook/LogbookPage.tsx",
+          "src/components/logbook/MetricsPanel.tsx",
+          "src/components/logbook/PlaybookPanel.tsx",
+          "src/components/logbook/TradeDetail.tsx",
+          "src/components/logbook/TradeList.tsx",
+          "src/components/logbook/journalDash.css",
+          "src/components/resources/ResourcesPage.tsx",
+          "src/components/session/CreateSessionPage.tsx",
+          "src/components/shell/AppPageFrame.tsx",
+          "src/components/shell/ProfilePage.tsx",
+          "src/components/strategy/StrategyPage.tsx"
+        ],
+        "createdAt": "2026-08-20T17:54:26.099Z",
+        "reason": "User asked to clone the cream desk radii across app pages"
       }
     ]
   }

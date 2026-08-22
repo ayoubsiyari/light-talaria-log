@@ -1,14 +1,17 @@
-import { Card } from '@heroui/react';
 import { AppPageFrame } from '@/components/shell/AppPageFrame';
 
 const TOPICS = [
   {
-    title: 'Backtest & chart',
-    body: 'Create a backtest from published server datasets, Start to open the chart engine, place orders, and replay bars. Exit returns to Backtest. Admins manage datasets under Admin.',
+    title: 'Journal',
+    body: 'The handwritten book. Tickets you type yourself — symbol, size, notes, grade. Lives under Journal. It is not the chart fill list.',
   },
   {
-    title: 'Trades',
-    body: 'Closed fills and strategy runs live under Trades. Jump to any entry time on the chart.',
+    title: 'Chart trades',
+    body: 'Fills and strategy runs from Sessions. Jump to any entry time on the chart. Legacy #/journal still opens this list.',
+  },
+  {
+    title: 'Sessions',
+    body: 'Create a backtest from published server datasets, Start to open the chart, place orders, and replay bars. Exit returns here. Admins manage datasets under Admin.',
   },
   {
     title: 'Strategy builder',
@@ -16,11 +19,11 @@ const TOPICS = [
   },
   {
     title: 'Dashboard analytics',
-    body: 'Overview counts plus analytics from your real order journal — not demo fixtures.',
+    body: 'Overview counts plus analytics from chart fills — not the handwritten journal, and not demo fixtures unless you reset the example.',
   },
   {
     title: 'Datasets',
-    body: 'Publish Dukascopy / server history from Datasets so Backtest can fetch by date range.',
+    body: 'Publish Dukascopy / server history from Datasets so Sessions can fetch by date range.',
   },
 ] as const;
 
@@ -28,19 +31,15 @@ const TOPICS = [
 export function ResourcesPage() {
   return (
     <AppPageFrame
-      narrow
-      eyebrow="Help"
       title="Resources"
       description="How Talaria-Log fits together. Full docs expand here later."
     >
-      <div className="space-y-3">
+      <div className="jd-stack">
         {TOPICS.map((t) => (
-          <Card key={t.title} className="bg-surface border border-border">
-            <Card.Content className="px-5 py-4 space-y-1">
-              <p className="font-semibold">{t.title}</p>
-              <p className="text-sm text-muted">{t.body}</p>
-            </Card.Content>
-          </Card>
+          <article key={t.title} className="jd-card">
+            <h2>{t.title}</h2>
+            <p className="jd-muted" style={{ marginTop: 8 }}>{t.body}</p>
+          </article>
         ))}
       </div>
     </AppPageFrame>

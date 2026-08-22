@@ -6,20 +6,24 @@
  *   #/                              landing
  *   #/auth/signin                   sign in
  *   #/auth/signup                   sign up
- *   #/app/dashboard|trades|backtest|strategy|resources|profile|admin
- *   #/app/trades/:sessionId         trades focused on a session
+ *   #/app/dashboard|journal|trades|backtest|strategy|resources|profile|admin
+   *   #/app/journal/:tradeId          manual journal trade (or ledger|accounts|metrics|calendar|playbook)
+ *   #/app/journal/new               opens log-trade window
+ *   #/app/journal/calculator        opens position calculator window
+ *   #/app/trades/:sessionId         Chart trades focused on a session
  *   #/chart/:sessionId              chart workspace
  *   #/404                           not found
  *
  * Compat (read only — never written by formatAppRoute):
  *   #/sessions → backtest
- *   #/journal → trades
+ *   #/journal → trades (legacy chart-saved Chart trades)
  *   #/journal/:id → trades + session id
  *   #/datasets | #/app/datasets → admin (admin-only UI)
  */
 
 export type AppTab =
   | 'dashboard'
+  | 'journal'
   | 'trades'
   | 'backtest'
   | 'strategy'
@@ -41,12 +45,18 @@ export interface AppRoute {
   appTab: AppTab | null;
   authMode: AuthMode | null;
   sessionId: string | null;
+  /** Manual journal trade id or panel slug (`new`, `ledger`, …). */
+  journalTradeId?: string | null;
   focusTime?: number | null;
   focusTradeId?: string | null;
 }
 
+/** Default signed-in app page. */
+export const DEFAULT_APP_TAB: AppTab = 'journal';
+
 const APP_TABS: readonly AppTab[] = [
   'dashboard',
+  'journal',
   'trades',
   'backtest',
   'strategy',
@@ -60,6 +70,7 @@ const DEFAULT_ROUTE: AppRoute = {
   appTab: null,
   authMode: null,
   sessionId: null,
+  journalTradeId: null,
   focusTime: null,
   focusTradeId: null,
 };
@@ -106,12 +117,11 @@ function isAppTab(v: string | undefined): v is AppTab {
 
 /** Legacy tab ids → current */
 function normalizeTab(raw: string | undefined): AppTab {
-  if (raw === 'journal') return 'trades';
   if (raw === 'sessions') return 'backtest';
   if (raw === 'stratbank') return 'strategy';
   if (raw === 'datasets') return 'admin';
   if (isAppTab(raw)) return raw;
-  return 'dashboard';
+  return DEFAULT_APP_TAB;
 }
 
 export function parseAppRoute(hash: string = window.location.hash): AppRoute {
@@ -158,11 +168,13 @@ export function parseAppRoute(hash: string = window.location.hash): AppRoute {
     const tab = normalizeTab(parts[1]);
     const sessionId =
       (tab === 'trades' || tab === 'backtest') && parts[2] ? parts[2]! : null;
+    const journalTradeId = tab === 'journal' && parts[2] ? parts[2]! : null;
     return {
       view: 'app',
       appTab: tab,
       authMode: null,
       sessionId,
+      journalTradeId,
       focusTime: null,
       focusTradeId: null,
     };
@@ -245,9 +257,12 @@ export function formatAppRoute(route: AppRoute): string {
     case 'auth':
       return route.authMode === 'signup' ? '#/auth/signup' : '#/auth/signin';
     case 'app': {
-      const tab = route.appTab ?? 'dashboard';
+      const tab = route.appTab ?? DEFAULT_APP_TAB;
       if (tab === 'trades' && route.sessionId) {
         return `#/app/trades/${encodeURIComponent(route.sessionId)}`;
+      }
+      if (tab === 'journal' && route.journalTradeId) {
+        return `#/app/journal/${encodeURIComponent(route.journalTradeId)}`;
       }
       return `#/app/${tab}`;
     }
@@ -269,6 +284,7 @@ export function routesEqual(a: AppRoute, b: AppRoute): boolean {
     (a.appTab ?? null) === (b.appTab ?? null) &&
     (a.authMode ?? null) === (b.authMode ?? null) &&
     a.sessionId === b.sessionId &&
+    (a.journalTradeId ?? null) === (b.journalTradeId ?? null) &&
     (a.focusTime ?? null) === (b.focusTime ?? null) &&
     (a.focusTradeId ?? null) === (b.focusTradeId ?? null)
   );

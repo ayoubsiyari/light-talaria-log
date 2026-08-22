@@ -170,9 +170,7 @@ export function PairPicker({
       ? createPortal(
           <div
             ref={panelRef}
-            data-v9-chrome="1"
-            data-sdrop="1"
-            data-tb-drop="symbol"
+            className="desk-overlay"
             data-pair-picker=""
             role="dialog"
             aria-label="Select pair"
@@ -208,7 +206,7 @@ export function PairPicker({
               </div>
               <div
                 data-win-search=""
-                style={{ margin: '0 10px 8px', height: 32 }}
+                style={{ margin: '0 10px 8px', minHeight: 44, height: 44 }}
                 onClick={() => searchRef.current?.focus()}
               >
                 <ChromeIcon n="search" s={12} cl="var(--text-faint)" />
@@ -236,7 +234,7 @@ export function PairPicker({
                     type="button"
                     data-brand-icon="1"
                     aria-label="Clear search"
-                    className="inline-flex items-center justify-center min-h-8 min-w-8"
+                    className="inline-flex items-center justify-center min-h-11 min-w-11"
                     onClick={() => setQuery('')}
                   >
                     <ChromeIcon n="x" s={11} cl="var(--text-faint)" />

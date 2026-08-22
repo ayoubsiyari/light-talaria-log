@@ -645,6 +645,21 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 
 ---
 
+## Manual Journal (Logbook) — Mentor
+
+Standalone discretionary journal. **Not** Trade View / chart-saved fills / backtest runs.
+
+- [x] Phase 1 — Ledger: types, IDB store, `#/app/journal`, add/edit/list
+- [x] Phase 2 — Journal fields: plan/review, tags, setup/playbook, grade, emotion, rules, detail, filters
+- [x] Phase 3 — Metrics + period switcher + equity sparkline
+- [x] Phase 4 — Mentor insights (quiet until 8 closed trades)
+- [x] Phase 5 — Calendar heatmap, weekly recap, empty/error states
+- [x] Ticker catalog + pip/tick P&L + position calculator (`#/app/journal/calculator`)
+
+**Out of scope:** broker sync, CSV import, cloud sync, chart markers.
+
+---
+
 ## Session Log
 
 | Date | Work done | Next up |
@@ -983,6 +998,33 @@ Includes: session auth, Postgres schema, S3/MinIO + disk storage, Redis jobs, qu
 | 2026-08-13 | Hero starfield: visible drift + twinkle | Hard-refresh `/#/` — dots float and pulse |
 | 2026-08-13 | Revert neon close-line overlay on hero | Hard-refresh `/#/` — wash + dots only |
 | 2026-08-13 | Align top-right utils (Layout + peers): 36px hit / 18px glyphs via `chrome-icon-align.css`; denser Layout thumb | Hard-refresh chart — Layout matches Objects/News/Theme |
+| 2026-08-20 | Standalone manual Journal (logbook): IDB ledger, mentor insights, metrics, calendar — separate from Trade View | Open `#/app/journal` — log a trade; `#/journal` still Trade View |
+| 2026-08-20 | Journal add-trade wizard: required vs optional marked; user-controlled P&L/R; no auto playbook | Log trade — Ticket → Risk → Result → Notes → Save |
+| 2026-08-20 | Journal ticker dropdown (FX + futures specs) + pip/tick P&L + live position calculator | `#/app/journal` — pick EUR/USD or ES; Calculator from risk % + stop |
+| 2026-08-20 | Journal ticket window: hug content, landing type/hairline/bone CTA (no stretched void) | Log trade — window fits the ticket; Continue is bone, not navy |
+| 2026-08-20 | Cream desk across app pages (Sessions, Dashboard, Journal tabs, Trade View, Strategies, Resources, Profile, Admin) | Walk `#/app/*` — cream field + pill chrome; chart workspace unchanged |
+| 2026-08-20 | Unify desk controls: cream fields, pills, menus, session modal, pair picker, logbook sheets | Hard-refresh Sessions — search/empty/modal/dropdowns match Journal pills |
+| 2026-08-20 | Desk ink remap so session names/labels aren’t white on cream; session row type tightened | Sessions list — name readable; P&L forest/brick |
+| 2026-08-20 | Restored Journal Home (timer, desk photo, week grid); local sample ledger; Journal is signed-in app root | Hard-refresh while signed in — Home has photo/timer/calendar; sample tickets in this week |
+| 2026-08-20 | Metrics P&L column: Best / High / Last sit under the net as the number’s witnesses | Metrics hero — +net, then best ticket, high-water, last close |
+| 2026-08-20 | Single desk clock is analog wall face; two or more stay numeric | Home clocks — one city = hands; + a second city = digits |
+| 2026-08-20 | Home photo is a 3-card sweep (image → note → Finnhub today/tomorrow news + filter) | Home — swipe the desk tile; set FINNHUB_API_KEY in `.env` |
+| 2026-08-21 | Home Desks uses Prop/Live/Demo pills, platform mark, and rule chips instead of a rules paragraph | Home — FTMO shows Daily / Max DD chips; Demo is a dashed pill |
+| 2026-08-21 | Accounts as cards (+ to add); tickets pick a desk and size against its balance / risk cap | Journal → Accounts; Log trade → pick desk; Calculator uses that size |
+| 2026-08-21 | Account plates + Home pin; Home Desks shows only pinned desks | Accounts — tap Home on a plate; Home Desks lists that desk |
+| 2026-08-21 | Home right rail: Rules check under Open (desk limits, weekend, daily loss) | Home — Open tape, then Rules; tap a line to Accounts |
+| 2026-08-21 | Rules sits above Open; Open hug-fits the tape instead of a tall empty well | Home rail — Rules, then Open sized to the tickets |
+| 2026-08-21 | Home row 2 aligns: compact week grid, Playbook and Open stretch to the calendar | Desktop Home — Desks/Playbook, calendar, Rules/Open share one bottom |
+| 2026-08-21 | Home week grid slots and chrome tightened so the row sits shorter and flush | Desktop Home — calendar peek is denser; sides still share its height |
+| 2026-08-21 | Desks and Rules headers share one row: 44px circle arrow, titles vertically centered | Home — Desks and Rules titles sit on the same line |
+| 2026-08-21 | Account plate opens its rules on tap; click the cream or Escape to close | Accounts — tap FTMO for limits; tap empty page to fold it |
+| 2026-08-21 | Prop desks show profit-target progress from closed P&L vs size × target % | Accounts / Home — FTMO Target % and bar; needs size + profit target |
+| 2026-08-21 | Metrics can filter by desk; Week / Month / All still applies on the scoped book | Metrics — All desks or a named account; Home stats stay all-desk |
+| 2026-08-21 | Desk filter sits in the Metrics header next to Week / Month / All, not in the grid | Metrics — top-left pills: period, then All desks / named desks |
+| 2026-08-21 | Metrics desk filter is one Account button + dropdown beside Week / Month / All | Metrics — Account opens All desks / named desks |
+| 2026-08-21 | Ledger and Calendar share the same Account dropdown; one desk pick scopes all three pages | Ledger / Calendar / Metrics — Account beside Week / Month / All |
+| 2026-08-21 | Home Hit rate column adds best-desk net and target/factor with the same segmented bars | Home — Hit rate, then strongest desk P&L and target (or factor) |
+| 2026-08-21 | Home meters stay one card; untagged tickets count on the Home pin so FTMO is not 0.00 | Home — Hit rate + desk net + target in the same cell |
 
 ---
 

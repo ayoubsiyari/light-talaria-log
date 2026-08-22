@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Card } from '@heroui/react';
 import { AppPageFrame } from '@/components/shell/AppPageFrame';
 import {
   BACKTEST_STRATEGY_LABELS,
@@ -133,8 +132,8 @@ function StatCell({
         ? 'text-danger'
         : 'text-foreground';
   return (
-    <div className="rounded-md border border-border bg-background px-3 py-3 min-h-11">
-      <p className="text-[11px] uppercase tracking-wide text-muted">{label}</p>
+    <div className="jd-tile">
+      <p className="text-xs uppercase tracking-wide text-muted">{label}</p>
       <p className={`text-sm font-medium tabular-nums mt-0.5 ${color}`}>{value}</p>
     </div>
   );
@@ -156,7 +155,7 @@ function OrderTradeRow({
   const win = trade.pnlAccount > 0;
   const flat = trade.pnlAccount === 0;
   return (
-    <li className="rounded-lg border border-border bg-surface px-3 py-3 sm:px-4">
+    <li className="jd-row px-3 py-3 sm:px-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium">
@@ -184,20 +183,19 @@ function OrderTradeRow({
           >
             {formatMoney(trade.pnlAccount, currency)}
           </p>
-          <p className="text-[11px] text-muted tabular-nums">
+          <p className="text-xs text-muted tabular-nums">
             {trade.exitReason}
             {trade.rMultiple != null ? ` · ${trade.rMultiple.toFixed(2)}R` : ''}
           </p>
           {canOpenChart && onViewOnChart && (
-            <Button
-              variant="secondary"
-              size="sm"
-              className="min-h-11 sm:min-h-8 w-full sm:w-auto"
-              onPress={() => onViewOnChart(trade)}
+            <button
+              type="button"
+              className="jd-btn jd-btn-ghost w-full sm:w-auto"
+              onClick={() => onViewOnChart(trade)}
               aria-label={`View ${trade.symbol} trade on chart at entry`}
             >
               View on chart
-            </Button>
+            </button>
           )}
         </div>
       </div>
@@ -219,7 +217,7 @@ function BacktestTradeRow({
   const win = trade.pnl > 0;
   const flat = trade.pnl === 0;
   return (
-    <li className="rounded-lg border border-border bg-surface px-3 py-3 sm:px-4">
+    <li className="jd-row px-3 py-3 sm:px-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium">
@@ -234,7 +232,7 @@ function BacktestTradeRow({
             {trade.entryPrice.toFixed(digits)} → {trade.exitPrice.toFixed(digits)}
           </p>
           {(trade.entryReason || trade.exitReason) && (
-            <p className="text-[11px] text-muted mt-1 leading-snug">
+            <p className="text-xs text-muted mt-1 leading-snug">
               {trade.entryReason ?? 'Entry'}
               {trade.exitReason ? ` · ${trade.exitReason}` : ''}
             </p>
@@ -251,15 +249,14 @@ function BacktestTradeRow({
             <span className="text-xs text-muted">({formatPct(trade.pnlPct * 100)})</span>
           </p>
           {canOpenChart && onViewOnChart && (
-            <Button
-              variant="secondary"
-              size="sm"
-              className="min-h-11 sm:min-h-8 w-full sm:w-auto"
-              onPress={() => onViewOnChart(trade)}
+            <button
+              type="button"
+              className="jd-btn jd-btn-ghost w-full sm:w-auto"
+              onClick={() => onViewOnChart(trade)}
               aria-label="View backtest trade on chart at entry"
             >
               View on chart
-            </Button>
+            </button>
           )}
         </div>
       </div>
@@ -440,50 +437,39 @@ export function JournalPage({
 
   return (
     <AppPageFrame
-      narrow
-      eyebrow="App"
-      title="Trades"
-      description="Order fills and strategy runs — jump to any trade on the chart."
-      actions={undefined}
-    >
-        <div
-          className="flex rounded-lg border border-border bg-surface p-1 gap-1"
-          role="tablist"
-          aria-label="Trades source"
-        >
-          <Button
-            variant={tab === 'orders' ? 'primary' : 'ghost'}
-            size="sm"
-            className="flex-1 min-h-11"
-            onPress={() => setTab('orders')}
-            aria-selected={tab === 'orders'}
+      title="Chart trades"
+      description="Fills and strategy runs from Sessions — jump to any trade on the chart."
+      nav={
+        <div className="jd-nav">
+          <button
+            type="button"
+            data-active={tab === 'orders' ? '1' : '0'}
+            onClick={() => setTab('orders')}
           >
             Orders{emptyOrders ? '' : ` (${orderViews.reduce((n, v) => n + v.trades.length, 0)})`}
-          </Button>
-          <Button
-            variant={tab === 'backtests' ? 'primary' : 'ghost'}
-            size="sm"
-            className="flex-1 min-h-11"
-            onPress={() => setTab('backtests')}
-            aria-selected={tab === 'backtests'}
+          </button>
+          <button
+            type="button"
+            data-active={tab === 'backtests' ? '1' : '0'}
+            onClick={() => setTab('backtests')}
           >
             Strategy runs{emptyRuns ? '' : ` (${backtestRuns.length})`}
-          </Button>
+          </button>
         </div>
-
+      }
+    >
+      <div className="jd-stack">
         {tab === 'orders' &&
           (emptyOrders ? (
-            <Card className="bg-surface border border-border">
-              <Card.Content className="px-6 py-10 space-y-4 text-center">
-                <p className="text-sm text-muted">
+            <div className="jd-card jd-stack" style={{ textAlign: 'center', padding: '40px 24px' }}>
+                <p className="jd-muted">
                   No closed trades yet. Open a session, place orders, let them fill / hit SL·TP,
                   then return here.
                 </p>
-                <Button variant="primary" className="min-h-11" onPress={goBacktest}>
+                <button type="button" className="jd-btn jd-btn-ink" onClick={goBacktest}>
                   New backtest
-                </Button>
-              </Card.Content>
-            </Card>
+                </button>
+            </div>
           ) : (
             <>
               <div className="space-y-1.5">
@@ -492,7 +478,7 @@ export function JournalPage({
                 </label>
                 <select
                   id="journal-session"
-                  className="w-full min-h-11 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent"
+                  className="jd-field"
                   value={selectedOrderSessionId ?? ''}
                   onChange={(e) => setSelectedOrderSessionId(e.target.value || null)}
                 >
@@ -508,47 +494,31 @@ export function JournalPage({
                 <>
                   <div className="flex flex-wrap gap-2 items-center">
                     {canOpenOrderChart ? (
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        className="min-h-11 sm:min-h-8"
-                        onPress={openOrderChart}
-                      >
+                      <button type="button" className="jd-btn jd-btn-ink" onClick={openOrderChart}>
                         {canReturnToChart ? 'Back to chart' : 'Open chart'}
-                      </Button>
+                      </button>
                     ) : (
                       <p className="text-xs text-muted min-h-11 flex items-center">
                         Session deleted — journal kept. Clear to remove.
                       </p>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="min-h-11 sm:min-h-8"
-                      onPress={handleClearOrders}
-                    >
+                    <button type="button" className="jd-btn jd-btn-ghost" onClick={handleClearOrders}>
                       Clear journal
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="min-h-11 sm:min-h-8"
-                      onPress={refresh}
-                    >
+                    </button>
+                    <button type="button" className="jd-btn jd-btn-ghost" onClick={refresh}>
                       Refresh
-                    </Button>
+                    </button>
                   </div>
 
-                  <Card className="bg-surface border border-border">
-                    <Card.Header className="px-4 sm:px-6 pt-5 pb-2">
-                      <Card.Title className="text-lg">Stats</Card.Title>
-                      <Card.Description className="text-muted text-sm">
+                  <section className="jd-card jd-stack">
+                    <div>
+                      <h2 className="text-lg">Stats</h2>
+                      <p className="jd-muted text-sm">
                         {selectedOrder.symbol} · replay orders · start{' '}
                         {selectedOrder.startBalance.toFixed(2)} {orderCcy}
-                      </Card.Description>
-                    </Card.Header>
-                    <Card.Content className="px-4 sm:px-6 pb-5 space-y-4">
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         <StatCell label="Trades" value={String(orderStats.tradeCount)} />
                         <StatCell
                           label="Win rate"
@@ -597,7 +567,7 @@ export function JournalPage({
                         />
                       </div>
                       <div>
-                        <p className="text-[11px] uppercase tracking-wide text-muted mb-1">
+                        <p className="text-xs uppercase tracking-wide text-muted mb-1">
                           Equity summary
                         </p>
                         <p className="text-xs text-muted tabular-nums mb-2">
@@ -607,8 +577,7 @@ export function JournalPage({
                         </p>
                         <EquitySparkline equity={selectedOrder.equity} />
                       </div>
-                    </Card.Content>
-                  </Card>
+                  </section>
 
                   <section className="space-y-3">
                     <h2 className="text-sm font-medium text-muted uppercase tracking-wide">
@@ -641,17 +610,15 @@ export function JournalPage({
 
         {tab === 'backtests' &&
           (emptyRuns ? (
-            <Card className="bg-surface border border-border">
-              <Card.Content className="px-6 py-10 space-y-4 text-center">
-                <p className="text-sm text-muted">
+            <div className="jd-card jd-stack" style={{ textAlign: 'center', padding: '40px 24px' }}>
+                <p className="jd-muted">
                   No strategy runs yet. Open a session, tap Strategy, choose a strategy, and Run.
                   Each run is kept here.
                 </p>
-                <Button variant="primary" className="min-h-11" onPress={goBacktest}>
+                <button type="button" className="jd-btn jd-btn-ink" onClick={goBacktest}>
                   New backtest
-                </Button>
-              </Card.Content>
-            </Card>
+                </button>
+            </div>
           ) : (
             <>
               <div className="space-y-1.5">
@@ -660,7 +627,7 @@ export function JournalPage({
                 </label>
                 <select
                   id="journal-run"
-                  className="w-full min-h-11 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent"
+                  className="jd-field"
                   value={selectedRunId ?? ''}
                   onChange={(e) => setSelectedRunId(e.target.value || null)}
                 >
@@ -676,51 +643,35 @@ export function JournalPage({
                 <>
                   <div className="flex flex-wrap gap-2 items-center">
                     {canOpenRunChart ? (
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        className="min-h-11 sm:min-h-8"
-                        onPress={openBacktestChart}
-                      >
+                      <button type="button" className="jd-btn jd-btn-ink" onClick={openBacktestChart}>
                         {canReturnToChart &&
                         selectedRun.sessionId === (initialSessionId ?? selectedRun.sessionId)
                           ? 'Back to chart'
                           : 'Open chart'}
-                      </Button>
+                      </button>
                     ) : (
                       <p className="text-xs text-muted min-h-11 flex items-center">
                         Session deleted — run kept. Delete to remove.
                       </p>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="min-h-11 sm:min-h-8"
-                      onPress={handleDeleteRun}
-                    >
+                    <button type="button" className="jd-btn jd-btn-ghost" onClick={handleDeleteRun}>
                       Delete run
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="min-h-11 sm:min-h-8"
-                      onPress={refresh}
-                    >
+                    </button>
+                    <button type="button" className="jd-btn jd-btn-ghost" onClick={refresh}>
                       Refresh
-                    </Button>
+                    </button>
                   </div>
 
-                  <Card className="bg-surface border border-border">
-                    <Card.Header className="px-4 sm:px-6 pt-5 pb-2">
-                      <Card.Title className="text-lg">Stats</Card.Title>
-                      <Card.Description className="text-muted text-sm">
+                  <section className="jd-card jd-stack">
+                    <div>
+                      <h2 className="text-lg">Stats</h2>
+                      <p className="jd-muted text-sm">
                         {strategyLabel(selectedRun)} · {selectedRun.result.timeframe} ·{' '}
                         {selectedRun.result.barCount.toLocaleString()} bars
                         {selectedRun.result.truncated ? ' (capped)' : ''}
-                      </Card.Description>
-                    </Card.Header>
-                    <Card.Content className="px-4 sm:px-6 pb-5 space-y-4">
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         <StatCell label="Trades" value={String(backtestStats.tradeCount)} />
                         <StatCell
                           label="Win rate"
@@ -773,13 +724,12 @@ export function JournalPage({
                         />
                       </div>
                       <div>
-                        <p className="text-[11px] uppercase tracking-wide text-muted mb-1">
+                        <p className="text-xs uppercase tracking-wide text-muted mb-1">
                           Equity curve
                         </p>
                         <EquitySparkline equity={selectedRun.result.equity} />
                       </div>
-                    </Card.Content>
-                  </Card>
+                  </section>
 
                   <section className="space-y-3">
                     <h2 className="text-sm font-medium text-muted uppercase tracking-wide">
@@ -808,6 +758,7 @@ export function JournalPage({
               )}
             </>
           ))}
+      </div>
     </AppPageFrame>
   );
 }

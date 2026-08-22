@@ -1,0 +1,3932 @@
+/* Journal desk — cream board cloned from the reference. Scoped to .desk */
+
+.desk,
+.desk-overlay {
+  --jd-page: #f3e4c4;
+  --jd-card: #f7f0dc;
+  --jd-card-2: #fff8e6;
+  --jd-ink: #1c1916;
+  --jd-muted: #5c564c;
+  --jd-line: #e4d6b4;
+  --jd-accent: #f0c21a;
+  --jd-dark: #2a2a2a;
+  --jd-on-dark: #f4ead2;
+  --jd-up: #1f7a4d;
+  --jd-down: #b42318;
+  --jd-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Hero utilities (text-foreground, bg-background) stay cream-readable. */
+  --foreground: var(--jd-ink);
+  --muted: var(--jd-muted);
+  --background: var(--jd-card-2);
+  --surface: var(--jd-card);
+  --surface-foreground: var(--jd-ink);
+  --overlay-foreground: var(--jd-ink);
+  --default-foreground: var(--jd-ink);
+  --field-background: var(--jd-card-2);
+  --field-foreground: var(--jd-ink);
+  --field-placeholder: var(--jd-muted);
+  --field-border: var(--jd-line);
+  --border: var(--jd-line);
+  --separator: var(--jd-line);
+  --tv-panel-line: var(--jd-line);
+  --color-foreground: var(--jd-ink);
+  --color-muted: var(--jd-muted);
+  --color-background: var(--jd-card-2);
+  --text: var(--jd-ink);
+  --text-muted: var(--jd-muted);
+  --text-faint: var(--jd-muted);
+  color: var(--jd-ink);
+  color-scheme: light;
+}
+
+.desk {
+  background: var(--jd-page);
+  min-height: 100%;
+}
+
+:is(.desk, .desk-overlay) .jd-shell {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-bottom: max(40px, env(safe-area-inset-bottom));
+}
+
+@media (min-width: 640px) {
+  :is(.desk, .desk-overlay) .jd-shell {
+    padding-left: max(24px, env(safe-area-inset-left));
+    padding-right: max(24px, env(safe-area-inset-right));
+  }
+}
+
+@media (min-width: 1024px) {
+  :is(.desk, .desk-overlay) .jd-shell {
+    padding-left: max(40px, env(safe-area-inset-left));
+    padding-right: max(40px, env(safe-area-inset-right));
+  }
+}
+
+:is(.desk, .desk-overlay) .jd-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  margin-bottom: 28px;
+}
+
+:is(.desk, .desk-overlay) .jd-brand {
+  font-family: var(--font-display, inherit);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  flex-shrink: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-top-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-top .jd-period {
+  flex-shrink: 0;
+  background: var(--jd-card-2);
+  border: 1px solid color-mix(in oklab, var(--jd-ink) 18%, transparent);
+}
+
+:is(.desk, .desk-overlay) .jd-top .jd-period button {
+  white-space: nowrap;
+}
+
+:is(.desk, .desk-overlay) .jd-desk-dd {
+  position: relative;
+  flex-shrink: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-desk-dd-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in oklab, var(--jd-ink) 18%, transparent);
+  background: var(--jd-card-2);
+  color: var(--jd-ink);
+  font-size: 0.875rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+:is(.desk, .desk-overlay) .jd-desk-dd-btn[data-on='1'] {
+  background: var(--jd-ink);
+  color: var(--jd-on-dark);
+  border-color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-desk-dd-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  min-width: 12rem;
+}
+
+:is(.desk, .desk-overlay) .jd-desk-dd-menu button[data-on='1'] {
+  background: var(--jd-ink);
+  color: var(--jd-on-dark);
+}
+
+:is(.desk, .desk-overlay) .jd-nav-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  justify-content: flex-start;
+  overflow-x: auto;
+}
+
+@media (min-width: 1024px) {
+  :is(.desk, .desk-overlay) .jd-nav-wrap {
+    justify-content: center;
+  }
+}
+
+:is(.desk, .desk-overlay) .jd-nav {
+  display: flex;
+  width: max-content;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 9999px;
+  background: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-nav button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: color-mix(in oklab, var(--jd-on-dark) 72%, transparent);
+  font-size: 0.875rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+:is(.desk, .desk-overlay) .jd-nav button[data-active='1'] {
+  background: #fff;
+  color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+:is(.desk, .desk-overlay) .jd-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+:is(.desk, .desk-overlay) .jd-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+:is(.desk, .desk-overlay) .jd-btn:focus-visible,
+:is(.desk, .desk-overlay) .jd-desk-dd-btn:focus-visible,
+:is(.desk, .desk-overlay) .jd-desk-dd-menu button:focus-visible,
+:is(.desk, .desk-overlay) .jd-acct-pin:focus-visible,
+:is(.desk, .desk-overlay) .jd-desk-notes li button:focus-visible,
+:is(.desk, .desk-overlay) .jd-acct-face:focus-visible,
+:is(.desk, .desk-overlay) .jd-field:focus-visible,
+:is(.desk, .desk-overlay) .jd-period button:focus-visible,
+:is(.desk, .desk-overlay) .jd-chip:focus-visible,
+:is(.desk, .desk-overlay) .jd-plan-months button:focus-visible,
+:is(.desk, .desk-overlay) .jd-mday-num:focus-visible,
+:is(.desk, .desk-overlay) .jd-mday-more:focus-visible,
+:is(.desk, .desk-overlay) button.jd-plan-dow:focus-visible,
+:is(.desk, .desk-overlay) .jd-plan-stack-day:focus-visible,
+:is(.desk, .desk-overlay) .jd-deck-arrow:focus-visible,
+:is(.desk, .desk-overlay) .jd-deck-gear:focus-visible,
+:is(.desk, .desk-overlay) .jd-tickers-star:focus-visible,
+:is(.desk, .desk-overlay) .jd-tickers-pick:focus-visible,
+:is(.desk, .desk-overlay) .jd-tickers-tabs button:focus-visible,
+:is(.desk, .desk-overlay) .jd-ledger-view:focus-visible {
+  outline: 2px solid var(--jd-ink);
+  outline-offset: 2px;
+}
+
+:is(.desk, .desk-overlay) .jd-btn-ghost {
+  border: 1px solid color-mix(in oklab, var(--jd-ink) 18%, transparent);
+  background: var(--jd-card-2);
+  color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-btn-ink {
+  border: 0;
+  background: var(--jd-ink);
+  color: var(--jd-on-dark);
+}
+
+:is(.desk, .desk-overlay) .jd-hero {
+  display: grid;
+  gap: 24px;
+  margin-bottom: 20px;
+  align-items: end;
+}
+
+@media (min-width: 1024px) {
+  :is(.desk, .desk-overlay) .jd-hero {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.2fr) auto;
+    gap: 32px;
+  }
+}
+
+:is(.desk, .desk-overlay) .jd-hello {
+  font-family: var(--font-display, inherit);
+  font-size: clamp(1.875rem, 4vw, 3rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  margin: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-clock {
+  margin-top: 8px;
+  font-size: 0.75rem;
+  color: var(--jd-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.desk, .desk-overlay) .jd-hero-meters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 24px;
+  width: 100%;
+  min-width: 0;
+}
+
+@media (min-width: 640px) {
+  :is(.desk, .desk-overlay) .jd-hero-meters {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+:is(.desk, .desk-overlay) .jd-hero-meters .jd-meter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto 28px;
+  align-items: end;
+  column-gap: 8px;
+  row-gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-hero-meters .jd-meter-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-hero-meters .jd-meter-pct {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--jd-muted);
+  text-align: right;
+  line-height: 1.2;
+}
+
+:is(.desk, .desk-overlay) .jd-hero-meters .jd-meter-track {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+:is(.desk, .desk-overlay) .jd-meter-track {
+  width: 100%;
+  height: 28px;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--jd-ink) 8%, var(--jd-card));
+  overflow: hidden;
+}
+
+:is(.desk, .desk-overlay) .jd-meter-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--jd-accent);
+  transform-origin: left center;
+  animation: jd-fill 700ms var(--jd-ease) both;
+}
+
+:is(.desk, .desk-overlay) .jd-meter-fill.is-hash {
+  background: repeating-linear-gradient(
+    -55deg,
+    color-mix(in oklab, var(--jd-ink) 55%, transparent) 0 2px,
+    transparent 2px 6px
+  );
+}
+
+:is(.desk, .desk-overlay) .jd-kpis {
+  display: flex;
+  gap: 28px;
+}
+
+:is(.desk, .desk-overlay) .jd-kpi-n {
+  font-family: var(--font-display, inherit);
+  font-size: clamp(2.25rem, 4vw, 3.25rem);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.desk, .desk-overlay) .jd-kpi-l {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-bento {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr;
+}
+
+:is(.desk, .desk-overlay) .jd-notes-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+@media (min-width: 1024px) {
+  :is(.desk, .desk-overlay) .jd-bento {
+    grid-template-columns: 1.05fr 1fr 1fr 1.05fr;
+    grid-template-rows: auto auto;
+    gap: 18px;
+  }
+  :is(.desk, .desk-overlay) .jd-feat {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 0;
+    align-self: stretch;
+  }
+  :is(.desk, .desk-overlay) .jd-activity {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  :is(.desk, .desk-overlay) .jd-clocks {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: stretch;
+  }
+  :is(.desk, .desk-overlay) .jd-hit {
+    grid-column: 4;
+    grid-row: 1;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 18px;
+  }
+  :is(.desk, .desk-overlay) .jd-notes-col {
+    grid-column: 4;
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-height: 0;
+    align-self: stretch;
+  }
+  :is(.desk, .desk-overlay) .jd-notes-col .jd-dark {
+    flex: 1 1 auto;
+  }
+  :is(.desk, .desk-overlay) .jd-fold-col {
+    grid-column: 1;
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+    align-self: stretch;
+  }
+  :is(.desk, .desk-overlay) .jd-fold-col > .jd-fold {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+  }
+  :is(.desk, .desk-overlay) .jd-fold-col > .jd-fold .jd-fold-go {
+    margin-top: auto;
+    width: 100%;
+  }
+  :is(.desk, .desk-overlay) .jd-plan {
+    grid-column: 2 / 4;
+    grid-row: 2;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 14px 16px 12px;
+  }
+  :is(.desk, .desk-overlay) .jd-fold-col,
+  :is(.desk, .desk-overlay) .jd-notes-col {
+    height: 100%;
+  }
+  :is(.desk, .desk-overlay) .jd-bento > .jd-plan .jd-plan-months {
+    margin-bottom: 6px;
+  }
+  :is(.desk, .desk-overlay) .jd-bento > .jd-plan .jd-plan-months button {
+    min-height: 36px;
+  }
+  :is(.desk, .desk-overlay) .jd-bento > .jd-plan .jd-plan-grid {
+    gap: 4px;
+    flex: 1 1 auto;
+  }
+  :is(.desk, .desk-overlay) .jd-bento > .jd-plan .jd-plan-dow,
+  :is(.desk, .desk-overlay) .jd-bento > .jd-plan button.jd-plan-dow {
+    min-height: 32px;
+  }
+  :is(.desk, .desk-overlay) .jd-bento > .jd-plan .jd-slot {
+    min-height: 28px;
+    padding: 2px;
+    border-radius: 10px;
+  }
+  :is(.desk, .desk-overlay) .jd-bento > .jd-plan .jd-chip {
+    min-height: 26px;
+    padding: 3px 6px;
+    border-radius: 8px;
+  }
+  :is(.desk, .desk-overlay) .jd-bento > .jd-plan .jd-hour {
+    padding-top: 4px;
+  }
+  :is(.desk, .desk-overlay) .jd-bento > .jd-plan .jd-plan-full {
+    margin-top: 8px;
+    min-height: 40px;
+  }
+  :is(.desk, .desk-overlay) .jd-notes-col .jd-desk-notes,
+  :is(.desk, .desk-overlay) .jd-notes-col .jd-dark {
+    padding: 16px 18px 12px;
+  }
+  :is(.desk, .desk-overlay) .jd-fold-col > .jd-card {
+    padding: 16px 18px 14px;
+  }
+  :is(.desk, .desk-overlay) .jd-notes-col .jd-tape button {
+    min-height: 48px;
+  }
+}
+
+:is(.desk, .desk-overlay) .jd-card {
+  background: var(--jd-card);
+  border-radius: 28px;
+  padding: 20px;
+  min-width: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+}
+
+:is(.desk, .desk-overlay) .jd-card-head h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+:is(.desk, .desk-overlay) .jd-icon-btn {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--jd-ink);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+:is(.desk, .desk-overlay) .jd-feat {
+  position: relative;
+  overflow: hidden;
+  min-height: 280px;
+  padding: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-feat img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+:is(.desk, .desk-overlay) .jd-feat-scrim {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 20px;
+  background: linear-gradient(transparent, rgb(0 0 0 / 0.72));
+  color: var(--jd-on-dark);
+}
+
+:is(.desk, .desk-overlay) .jd-feat-scrim h2 {
+  margin: 0;
+  font-family: var(--font-display, inherit);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+:is(.desk, .desk-overlay) .jd-feat-scrim p {
+  margin: 4px 0 0;
+  font-size: 0.8125rem;
+  color: color-mix(in oklab, var(--jd-on-dark) 78%, transparent);
+}
+
+:is(.desk, .desk-overlay) .jd-feat-cash {
+  position: absolute;
+  right: 16px;
+  bottom: 20px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 9999px;
+  background: rgb(0 0 0 / 0.55);
+  color: var(--jd-on-dark);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  display: grid;
+  place-items: center;
+}
+
+:is(.desk, .desk-overlay) .jd-feat.is-empty {
+  min-height: 220px;
+  padding: 24px;
+}
+
+:is(.desk, .desk-overlay) .jd-feat.is-empty .jd-feat-scrim {
+  position: static;
+  background: none;
+  color: var(--jd-ink);
+  padding: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-feat.is-empty .jd-feat-scrim p {
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-feat-cta {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-deck {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 280px;
+  padding: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-deck-viewport {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 280px;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+:is(.desk, .desk-overlay) .jd-deck-track {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+  will-change: transform;
+}
+
+:is(.desk, .desk-overlay) .jd-deck-slide {
+  position: relative;
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+:is(.desk, .desk-overlay) .jd-deck-slide.is-photo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+:is(.desk, .desk-overlay) .jd-deck-slide.is-photo .jd-feat-cta {
+  position: static;
+  margin-top: 12px;
+  left: auto;
+  right: auto;
+  bottom: auto;
+}
+
+:is(.desk, .desk-overlay) .jd-deck-slide.is-note,
+:is(.desk, .desk-overlay) .jd-deck-slide.is-news {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 16px 48px;
+  background: var(--jd-card-2);
+  color: var(--jd-ink);
+  min-height: 0;
+  overflow: hidden;
+}
+
+:is(.desk, .desk-overlay) .jd-deck-copy h2 {
+  margin: 0;
+  font-family: var(--font-display, inherit);
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+:is(.desk, .desk-overlay) .jd-deck-copy p {
+  margin: 4px 0 0;
+}
+
+:is(.desk, .desk-overlay) .jd-note-field {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+:is(.desk, .desk-overlay) .jd-note-field textarea {
+  flex: 1;
+  min-height: 120px;
+  width: 100%;
+  resize: none;
+  border: 1px solid var(--jd-line);
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: var(--jd-card);
+  color: var(--jd-ink);
+  font: inherit;
+  line-height: 1.4;
+}
+
+:is(.desk, .desk-overlay) .jd-note-count {
+  text-align: right;
+}
+
+:is(.desk, .desk-overlay) .jd-news-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-news-gear {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  margin: -10px -10px -10px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--jd-muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+:is(.desk, .desk-overlay) .jd-news-gear:hover,
+:is(.desk, .desk-overlay) .jd-news-gear.is-on {
+  color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-news-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+:is(.desk, .desk-overlay) .jd-news-filter .jd-period {
+  width: 100%;
+  padding: 2px;
+  background: var(--jd-card);
+  border: 1px solid var(--jd-line);
+}
+
+:is(.desk, .desk-overlay) .jd-news-filter .jd-period button {
+  flex: 1;
+  min-height: 22px;
+  padding: 0 6px;
+  font-size: 0.625rem;
+}
+
+@media (pointer: coarse) {
+  :is(.desk, .desk-overlay) .jd-news-filter .jd-period button {
+    min-height: 44px;
+  }
+}
+
+:is(.desk, .desk-overlay) .jd-news-empty {
+  margin: 8px 0 0;
+}
+
+:is(.desk, .desk-overlay) .jd-news-tape {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  flex: 1;
+  overscroll-behavior: contain;
+}
+
+:is(.desk, .desk-overlay) .jd-news-group > ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-news-day {
+  margin: 0 0 6px 2px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-news-group.is-next .jd-news-day {
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-news-group.is-next .jd-news-row {
+  background: color-mix(in oklab, var(--jd-card) 55%, transparent);
+  box-shadow: inset 0 0 0 1px var(--jd-line);
+}
+
+:is(.desk, .desk-overlay) .jd-news-group.is-next .jd-news-ccy,
+:is(.desk, .desk-overlay) .jd-news-group.is-next .jd-news-flag {
+  background: var(--jd-card-2);
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-news-group.is-next strong {
+  font-weight: 500;
+  color: color-mix(in oklab, var(--jd-ink) 72%, var(--jd-muted));
+}
+
+:is(.desk, .desk-overlay) .jd-news-group.is-next .jd-news-vals {
+  border-top-style: dashed;
+}
+
+:is(.desk, .desk-overlay) .jd-news-group.is-next .jd-news-vals b {
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-deck-slide.is-photo .jd-feat-cash {
+  bottom: 48px;
+}
+
+:is(.desk, .desk-overlay) .jd-deck-slide.is-photo .jd-feat-scrim {
+  padding-bottom: 48px;
+}
+
+:is(.desk, .desk-overlay) .jd-news-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: var(--jd-card);
+  color: inherit;
+  text-decoration: none;
+}
+
+:is(.desk, .desk-overlay) .jd-news-tape a.jd-news-row:hover {
+  background: color-mix(in oklab, var(--jd-ink) 4%, var(--jd-card));
+}
+
+:is(.desk, .desk-overlay) .jd-news-flag,
+:is(.desk, .desk-overlay) .jd-news-ccy {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: var(--jd-card-2);
+  display: grid;
+  place-items: center;
+  line-height: 1;
+}
+
+:is(.desk, .desk-overlay) .jd-news-ccy {
+  font-family: var(--font-display, inherit);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-news-flag {
+  font-size: 1.25rem;
+}
+
+:is(.desk, .desk-overlay) .jd-news-flag.is-source {
+  font-family: var(--font-display, inherit);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-news-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+:is(.desk, .desk-overlay) .jd-news-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.6875rem;
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-news-row strong {
+  font-family: var(--font-display, inherit);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+:is(.desk, .desk-overlay) .jd-news-vals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--jd-line);
+}
+
+:is(.desk, .desk-overlay) .jd-news-vals span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-news-vals i {
+  font-style: normal;
+  color: var(--jd-muted);
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+:is(.desk, .desk-overlay) .jd-news-vals b {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  letter-spacing: -0.03em;
+  color: var(--jd-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:is(.desk, .desk-overlay) .jd-news-pip {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: var(--jd-line);
+  flex-shrink: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-news-pip.is-high {
+  background: var(--jd-down);
+}
+
+:is(.desk, .desk-overlay) .jd-news-pip.is-medium {
+  background: var(--jd-accent);
+}
+
+:is(.desk, .desk-overlay) .jd-news-pip.is-low {
+  background: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-deck-chrome {
+  position: absolute;
+  inset: auto 10px 4px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  pointer-events: none;
+}
+
+:is(.desk, .desk-overlay) .jd-deck-chrome > * {
+  pointer-events: auto;
+}
+
+:is(.desk, .desk-overlay) .jd-deck-arrow,
+:is(.desk, .desk-overlay) .jd-deck-gear {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--jd-ink);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+:is(.desk, .desk-overlay) .jd-deck-dots {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+:is(.desk, .desk-overlay) .jd-deck-dot {
+  width: 28px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+}
+
+:is(.desk, .desk-overlay) .jd-deck-dot::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  transform: translate(-50%, -50%);
+  background: var(--jd-line);
+}
+
+:is(.desk, .desk-overlay) .jd-deck-dot.is-on::after {
+  width: 14px;
+  background: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-deck.is-photo-slide .jd-deck-arrow,
+:is(.desk, .desk-overlay) .jd-deck.is-photo-slide .jd-deck-gear {
+  color: var(--jd-on-dark);
+}
+
+:is(.desk, .desk-overlay) .jd-deck.is-photo-slide .jd-deck-dot::after {
+  background: color-mix(in oklab, var(--jd-on-dark) 45%, transparent);
+}
+
+:is(.desk, .desk-overlay) .jd-deck.is-photo-slide .jd-deck-dot.is-on::after {
+  background: var(--jd-on-dark);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.desk, .desk-overlay) .jd-deck-track {
+    transition: none !important;
+  }
+}
+
+:is(.desk, .desk-overlay) .jd-stat-xl {
+  font-family: var(--font-display, inherit);
+  font-size: 2.5rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  margin: 12px 0 4px;
+}
+
+:is(.desk, .desk-overlay) .jd-muted {
+  color: var(--jd-muted);
+  font-size: 0.8125rem;
+}
+
+:is(.desk, .desk-overlay) .jd-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  height: 140px;
+  margin-top: 16px;
+}
+
+:is(.desk, .desk-overlay) .jd-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 100%;
+}
+
+:is(.desk, .desk-overlay) .jd-bar-track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+:is(.desk, .desk-overlay) .jd-bar {
+  width: 100%;
+  border-radius: 8px 8px 4px 4px;
+  background: var(--jd-ink);
+  transform-origin: bottom;
+  animation: jd-grow 800ms var(--jd-ease) both;
+  min-height: 6px;
+}
+
+:is(.desk, .desk-overlay) .jd-bar.is-hot {
+  background: var(--jd-accent);
+}
+
+:is(.desk, .desk-overlay) .jd-bar-col span {
+  font-size: 0.75rem;
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-clocks {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-pick {
+  display: block;
+  margin: 8px 0 4px;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-face {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 12px 0 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-city {
+  font-family: var(--font-display, inherit);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-hms {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  margin-top: 8px;
+  font-family: var(--font-display, inherit);
+  font-size: clamp(2.25rem, 4.2vw, 3.25rem);
+  font-weight: 600;
+  letter-spacing: -0.045em;
+  line-height: 0.95;
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-colon {
+  animation: jd-colon 1s steps(1, end) infinite;
+}
+
+@keyframes jd-colon {
+  50% {
+    opacity: 0.22;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.desk, .desk-overlay) .jd-clocks-colon {
+    animation: none;
+  }
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-wall-wrap {
+  width: min(100%, 220px);
+  margin: 4px auto 0;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-wall {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-wall-dial {
+  fill: var(--jd-card-2);
+  stroke: var(--jd-line);
+  stroke-width: 2;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-wall-tick {
+  stroke: color-mix(in oklab, var(--jd-ink) 28%, transparent);
+  stroke-width: 1.25;
+  stroke-linecap: round;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-wall-tick.is-hour {
+  stroke: var(--jd-ink);
+  stroke-width: 2;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-wall-n {
+  fill: var(--jd-ink);
+  font-family: var(--font-display, inherit);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-wall-hour {
+  stroke: var(--jd-ink);
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-wall-min {
+  stroke: var(--jd-ink);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-wall-sec {
+  stroke: var(--jd-accent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-wall-cap {
+  fill: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-meta {
+  margin-top: 8px;
+  font-size: 0.75rem;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks.is-solo .jd-clocks-meta {
+  margin-top: 10px;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-drop {
+  margin-top: 10px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--jd-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-drop:hover {
+  color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--jd-line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-list li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-row {
+  flex: 1;
+  min-height: 44px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-row:hover {
+  background: color-mix(in oklab, var(--jd-ink) 5%, var(--jd-card));
+}
+
+:is(.desk, .desk-overlay) .jd-clocks-row-time {
+  font-family: var(--font-display, inherit);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.desk, .desk-overlay) .jd-dark,
+:is(.desk, .desk-overlay) .jd-analytics {
+  --foreground: var(--jd-on-dark);
+  --muted: color-mix(in oklab, var(--jd-on-dark) 68%, var(--jd-dark));
+  --background: #1f1e1c;
+  --surface: var(--jd-dark);
+  --surface-foreground: var(--jd-on-dark);
+  --border: color-mix(in oklab, var(--jd-on-dark) 14%, transparent);
+  --separator: color-mix(in oklab, var(--jd-on-dark) 14%, transparent);
+  --tv-panel-line: color-mix(in oklab, var(--jd-on-dark) 14%, transparent);
+  --color-foreground: var(--jd-on-dark);
+  --color-muted: color-mix(in oklab, var(--jd-on-dark) 68%, var(--jd-dark));
+  --text: var(--jd-on-dark);
+  --text-muted: color-mix(in oklab, var(--jd-on-dark) 68%, var(--jd-dark));
+}
+
+:is(.desk, .desk-overlay) .jd-dark {
+  background: var(--jd-dark);
+  color: var(--jd-on-dark);
+  border-radius: 28px;
+  padding: 16px 20px 12px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+:is(.desk, .desk-overlay) .jd-dark h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+:is(.desk, .desk-overlay) .jd-dark .jd-muted {
+  color: color-mix(in oklab, var(--jd-on-dark) 62%, transparent);
+}
+
+:is(.desk, .desk-overlay) .jd-tape {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+:is(.desk, .desk-overlay) .jd-tape button {
+  width: 100%;
+  min-height: 56px;
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 12px;
+}
+
+:is(.desk, .desk-overlay) .jd-tape button:hover {
+  background: rgb(255 255 255 / 0.04);
+}
+
+:is(.desk, .desk-overlay) .jd-desk-notes {
+  padding: 16px 18px 12px;
+}
+
+:is(.desk, .desk-overlay) .jd-desk-notes .jd-icon-btn {
+  width: 44px;
+  flex: 0 0 44px;
+}
+
+:is(.desk, .desk-overlay) .jd-desk-notes ul {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-desk-notes li button {
+  width: 100%;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: start;
+  gap: 10px;
+  padding: 10px 4px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--jd-ink);
+  text-align: left;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+:is(.desk, .desk-overlay) .jd-desk-notes li button:hover {
+  background: color-mix(in oklab, var(--jd-ink) 4%, transparent);
+}
+
+:is(.desk, .desk-overlay) .jd-desk-notes li button[data-tone='warn'] {
+  color: var(--jd-down);
+}
+
+:is(.desk, .desk-overlay) .jd-desk-notes li button svg {
+  margin-top: 2px;
+}
+
+:is(.desk, .desk-overlay) .jd-hit {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+:is(.desk, .desk-overlay) .jd-seg-row .jd-card-head {
+  min-height: 0;
+  align-items: baseline;
+}
+
+:is(.desk, .desk-overlay) .jd-seg-row .jd-card-head h2 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:is(.desk, .desk-overlay) .jd-seg-val {
+  margin: 0;
+  font-family: var(--font-display, inherit);
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.desk, .desk-overlay) .jd-seg-foot {
+  margin: 8px 0 0;
+  color: var(--jd-muted);
+  font-size: 0.8125rem;
+}
+
+:is(.desk, .desk-overlay) .jd-seg {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+:is(.desk, .desk-overlay) .jd-seg i {
+  display: block;
+  min-width: 0;
+  height: 22px;
+  border-radius: 8px;
+  background: var(--jd-accent);
+}
+
+:is(.desk, .desk-overlay) .jd-seg i:nth-child(2) {
+  background: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-seg i:nth-child(3) {
+  background: color-mix(in oklab, var(--jd-ink) 35%, var(--jd-card));
+}
+
+:is(.desk, .desk-overlay) .jd-seg i.is-a {
+  background: var(--jd-accent);
+}
+
+:is(.desk, .desk-overlay) .jd-seg i.is-b {
+  background: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-seg i.is-c {
+  background: color-mix(in oklab, var(--jd-ink) 35%, var(--jd-card));
+}
+
+:is(.desk, .desk-overlay) .jd-desks-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-desks-row {
+  padding: 12px 0;
+  border-top: 1px solid var(--jd-line);
+}
+
+:is(.desk, .desk-overlay) .jd-desks-list li:first-child .jd-desks-row,
+:is(.desk, .desk-overlay) .jd-acct-row .jd-desks-row {
+  border-top: 0;
+  padding-top: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-desks-list li:first-child .jd-desks-row {
+  padding-top: 4px;
+}
+
+:is(.desk, .desk-overlay) .jd-desks-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+:is(.desk, .desk-overlay) .jd-desks-n {
+  font-family: var(--font-display, inherit);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-desks-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-desks-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 0 9px 0 7px;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+:is(.desk, .desk-overlay) .jd-desks-pill.is-prop {
+  background: var(--jd-ink);
+  color: var(--jd-on-dark);
+}
+
+:is(.desk, .desk-overlay) .jd-desks-pill.is-live {
+  background: var(--jd-up);
+  color: var(--jd-on-dark);
+}
+
+:is(.desk, .desk-overlay) .jd-desks-pill.is-demo {
+  background: var(--jd-card-2);
+  color: var(--jd-ink);
+  box-shadow: inset 0 0 0 1px var(--jd-line);
+}
+
+:is(.desk, .desk-overlay) .jd-desks-pill.is-plat {
+  background: var(--jd-card-2);
+  color: var(--jd-ink);
+  box-shadow: inset 0 0 0 1px var(--jd-line);
+}
+
+:is(.desk, .desk-overlay) .jd-desks-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+:is(.desk, .desk-overlay) .jd-desks-chip {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 52px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: var(--jd-card-2);
+  box-shadow: inset 0 0 0 1px var(--jd-line);
+}
+
+:is(.desk, .desk-overlay) .jd-desks-chip b {
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--jd-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.desk, .desk-overlay) .jd-desks-chip i {
+  font-style: normal;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-fold-go {
+  margin-top: 12px;
+  width: 100%;
+}
+
+:is(.desk, .desk-overlay) .jd-fold details {
+  border-bottom: 1px solid var(--jd-line);
+}
+
+:is(.desk, .desk-overlay) .jd-fold summary {
+  list-style: none;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.9375rem;
+}
+
+:is(.desk, .desk-overlay) .jd-fold summary::-webkit-details-marker {
+  display: none;
+}
+
+:is(.desk, .desk-overlay) .jd-fold details p {
+  margin: 0 0 12px;
+  font-size: 0.8125rem;
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-plan-months {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  color: var(--jd-muted);
+  margin-bottom: 16px;
+}
+
+:is(.desk, .desk-overlay) .jd-plan-months button {
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+:is(.desk, .desk-overlay) .jd-plan-months button:hover {
+  color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-plan-months strong {
+  color: var(--jd-ink);
+  font-weight: 600;
+}
+
+:is(.desk, .desk-overlay) .jd-plan-grid {
+  display: grid;
+  grid-template-columns: 56px repeat(6, minmax(0, 1fr));
+  gap: 8px 6px;
+}
+
+:is(.desk, .desk-overlay) .jd-plan-dow {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) button.jd-plan-dow {
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+:is(.desk, .desk-overlay) .jd-plan-grid.is-one {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+:is(.desk, .desk-overlay) .jd-slot {
+  min-height: 44px;
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--jd-ink) 4%, transparent);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+:is(.desk, .desk-overlay) .jd-plan-dow b {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-plan-dow.is-today b {
+  width: 28px;
+  height: 28px;
+  margin: 2px auto 0;
+  border-radius: 9999px;
+  background: var(--jd-ink);
+  color: var(--jd-on-dark);
+  display: grid;
+  place-items: center;
+}
+
+:is(.desk, .desk-overlay) .jd-hour {
+  font-size: 0.75rem;
+  color: var(--jd-muted);
+  padding-top: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+:is(.desk, .desk-overlay) .jd-chip {
+  width: 100%;
+  min-height: 36px;
+  border: 0;
+  border-radius: 12px;
+  padding: 6px 8px;
+  background: var(--jd-ink);
+  color: var(--jd-on-dark);
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+:is(.desk, .desk-overlay) .jd-chip.is-long {
+  background: var(--jd-card-2);
+  color: var(--jd-ink);
+  box-shadow: 0 1px 0 var(--jd-line);
+}
+
+:is(.desk, .desk-overlay) .jd-chip b {
+  display: block;
+  font-size: 0.75rem;
+}
+
+:is(.desk, .desk-overlay) .jd-plan-full {
+  margin-top: 16px;
+}
+
+:is(.desk, .desk-overlay) .jd-period {
+  display: flex;
+  width: fit-content;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 9999px;
+  background: var(--jd-card);
+}
+
+:is(.desk, .desk-overlay) .jd-period button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--jd-muted);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+:is(.desk, .desk-overlay) .jd-period button[data-on='1'] {
+  background: var(--jd-ink);
+  color: var(--jd-on-dark);
+}
+
+@keyframes jd-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes jd-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.desk, .desk-overlay) .jd-bar,
+  :is(.desk, .desk-overlay) .jd-meter-fill,
+  :is(.desk, .desk-overlay) .jd-equity-line,
+  :is(.desk, .desk-overlay) .jd-equity-area,
+  :is(.desk, .desk-overlay) .jd-close-bar,
+  :is(.desk, .desk-overlay) .jd-metrics-page .jd-break li {
+    animation: none;
+    transition: none;
+  }
+
+  :is(.desk, .desk-overlay) .jd-equity-line {
+    stroke-dashoffset: 0;
+  }
+
+  :is(.desk, .desk-overlay) .jd-equity-area,
+  :is(.desk, .desk-overlay) .jd-metrics-page .jd-break li {
+    opacity: 1;
+    clip-path: none;
+  }
+}
+
+:is(.desk, .desk-overlay) .jd-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+:is(.desk, .desk-overlay) .jd-field {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 16px;
+  border: 1px solid var(--jd-line);
+  background: var(--jd-card-2);
+  color: var(--jd-ink);
+  padding: 0 16px;
+  font-size: 1rem;
+  outline: none;
+}
+
+:is(.desk, .desk-overlay) button.jd-field {
+  display: flex;
+  align-items: center;
+}
+
+:is(.desk, .desk-overlay) .jd-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 28px;
+  background: var(--jd-card);
+  padding: 4px 8px 8px;
+}
+
+.desk table.jd-table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+}
+
+.desk table.jd-table th {
+  text-align: left;
+  font-size: 0.75rem;
+  color: var(--jd-muted);
+  font-weight: 500;
+  padding: 12px 16px 10px;
+  white-space: nowrap;
+}
+
+.desk table.jd-table td {
+  padding: 12px 16px;
+  border-top: 1px solid var(--jd-line);
+  vertical-align: middle;
+  color: var(--jd-ink);
+}
+
+.desk table.jd-table tbody tr {
+  transition: background 160ms var(--jd-ease);
+}
+
+.desk table.jd-table tbody tr:hover {
+  background: color-mix(in oklab, var(--jd-ink) 4%, transparent);
+}
+
+.desk table.jd-table .jd-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.desk, .desk-overlay) .jd-ledger .jd-card-head {
+  align-items: center;
+}
+
+:is(.desk, .desk-overlay) .jd-ledger-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-ledger-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 12px;
+}
+
+:is(.desk, .desk-overlay) .jd-ledger-search {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-ledger-setup {
+  flex: 0 1 160px;
+  width: auto;
+  min-width: 140px;
+}
+
+:is(.desk, .desk-overlay) .jd-ledger-chips {
+  margin: 0 0 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-ledger .jd-chip-btn {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 0.75rem;
+}
+
+:is(.desk, .desk-overlay) .jd-ledger-clear {
+  margin: 0 0 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-ledger-empty {
+  margin: 12px 0 0;
+  font-size: 0.875rem;
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-ledger-table {
+  margin: 8px -8px -8px;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+.desk table.jd-table th.jd-ledger-detail,
+.desk table.jd-table td.jd-ledger-detail {
+  position: sticky;
+  right: 0;
+  text-align: right;
+  background: var(--jd-card);
+}
+
+.desk table.jd-table tbody tr:hover td.jd-ledger-detail {
+  background: color-mix(in oklab, var(--jd-ink) 4%, var(--jd-card));
+}
+
+:is(.desk, .desk-overlay) .jd-ledger-view {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--jd-line);
+  border-radius: 9999px;
+  background: var(--jd-card-2);
+  color: var(--jd-ink);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+:is(.desk, .desk-overlay) .jd-ledger-view:hover {
+  background: color-mix(in oklab, var(--jd-ink) 6%, var(--jd-card-2));
+}
+
+:is(.desk, .desk-overlay) .jd-acct-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-head h2 {
+  margin: 0;
+  font-family: var(--font-display, inherit);
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-head .jd-muted {
+  margin: 8px 0 0;
+  max-width: 42rem;
+}
+
+:is(.desk, .desk-overlay) .jd-icon-btn-ink {
+  background: var(--jd-ink);
+  color: var(--jd-on-dark);
+  border-color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-icon-btn-ink:hover {
+  background: color-mix(in oklab, var(--jd-ink) 88%, white);
+}
+
+:is(.desk, .desk-overlay) .jd-acct-board {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--jd-card);
+  border: 1px solid var(--jd-line);
+  border-radius: 24px;
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    background 180ms var(--jd-ease),
+    box-shadow 180ms var(--jd-ease),
+    border-color 180ms var(--jd-ease);
+}
+
+:is(.desk, .desk-overlay) .jd-acct-tile[data-home='1'] {
+  border-color: color-mix(in oklab, var(--jd-ink) 28%, var(--jd-line));
+}
+
+:is(.desk, .desk-overlay) .jd-acct-tile[data-open='1'] {
+  background: var(--jd-card-2);
+  box-shadow: 0 12px 28px color-mix(in oklab, var(--jd-ink) 12%, transparent);
+}
+
+:is(.desk, .desk-overlay) .jd-acct-bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 16px 16px 0;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-face-name {
+  margin: 0;
+  padding-top: 6px;
+  font-family: var(--font-display, inherit);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--jd-ink);
+  min-width: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-pin {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 9999px;
+  border: 1px solid var(--jd-line);
+  background: var(--jd-card-2);
+  color: var(--jd-ink);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-pin[data-on='1'] {
+  background: var(--jd-ink);
+  color: var(--jd-on-dark);
+  border-color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-acct-pin:hover {
+  background: color-mix(in oklab, var(--jd-ink) 6%, var(--jd-card-2));
+}
+
+:is(.desk, .desk-overlay) .jd-acct-pin[data-on='1']:hover {
+  background: color-mix(in oklab, var(--jd-ink) 88%, white);
+}
+
+:is(.desk, .desk-overlay) .jd-acct-face {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex: 1;
+  width: 100%;
+  min-height: 44px;
+  padding: 14px 16px 16px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-face:hover {
+  background: color-mix(in oklab, var(--jd-ink) 3%, transparent);
+}
+
+:is(.desk, .desk-overlay) .jd-acct-face-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-face-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 16px;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-face-stats span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-face-stats b {
+  font-family: var(--font-display, inherit);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-style: normal;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-face-stats i {
+  font-style: normal;
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-acct-face-stats b.is-down,
+:is(.desk, .desk-overlay) .jd-desks-n.is-down {
+  color: var(--jd-down);
+}
+
+:is(.desk, .desk-overlay) .jd-acct-prog {
+  margin-top: 12px;
+  height: 8px;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--jd-ink) 8%, var(--jd-card));
+  overflow: hidden;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-prog i {
+  display: block;
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--jd-up);
+}
+
+:is(.desk, .desk-overlay) .jd-acct-prog[data-down='1'] i {
+  background: var(--jd-down);
+}
+
+:is(.desk, .desk-overlay) .jd-acct-more {
+  padding: 0 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-full {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 0.875rem;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-notes {
+  margin: 0;
+  line-height: 1.45;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-more-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-empty {
+  width: 100%;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px dashed var(--jd-line);
+  border-radius: 24px;
+  background: var(--jd-card);
+  color: var(--jd-ink);
+  cursor: pointer;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-empty:hover {
+  background: var(--jd-card-2);
+}
+
+:is(.desk, .desk-overlay) .jd-acct-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 0.875rem;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-acct-choice {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 148px), 1fr));
+  gap: 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-choice-btn {
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--jd-line);
+  background: var(--jd-card-2);
+  color: var(--jd-ink);
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-choice-btn[data-on='1'] {
+  background: var(--jd-ink);
+  color: var(--jd-on-dark);
+  border-color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-acct-choice-name {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-choice-meta {
+  font-size: 0.75rem;
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-acct-choice-btn[data-on='1'] .jd-acct-choice-meta {
+  color: color-mix(in oklab, var(--jd-on-dark) 72%, transparent);
+}
+
+:is(.desk, .desk-overlay) .jd-desk-risk {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-desk-risk b {
+  color: var(--jd-ink);
+  font-weight: 600;
+}
+
+:is(.desk, .desk-overlay) .jd-desk-risk p {
+  margin: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-desk-risk p + p {
+  margin-top: 4px;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-form,
+:is(.desk, .desk-overlay) .jd-acct-mini,
+:is(.desk, .desk-overlay) .jd-acct-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-form .jd-period,
+:is(.desk, .desk-overlay) .jd-acct-mini .jd-period,
+:is(.desk, .desk-overlay) .jd-acct-toggles .jd-period {
+  width: 100%;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-form .jd-period button,
+:is(.desk, .desk-overlay) .jd-acct-mini .jd-period button,
+:is(.desk, .desk-overlay) .jd-acct-toggles .jd-period button {
+  flex: 1;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid var(--jd-line);
+}
+
+:is(.desk, .desk-overlay) .jd-acct-rules {
+  margin: 6px 0 0;
+  font-size: 0.8125rem;
+  color: var(--jd-muted);
+  line-height: 1.4;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-rules-form,
+:is(.desk, .desk-overlay) .jd-acct-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+:is(.desk, .desk-overlay) .jd-acct-toggles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 720px) {
+  :is(.desk, .desk-overlay) .jd-acct-head {
+    flex-wrap: wrap;
+  }
+
+  :is(.desk, .desk-overlay) .jd-acct-grid,
+  :is(.desk, .desk-overlay) .jd-acct-toggles {
+    grid-template-columns: 1fr;
+  }
+
+  :is(.desk, .desk-overlay) .jd-acct-form .jd-period button,
+  :is(.desk, .desk-overlay) .jd-acct-mini .jd-period button,
+  :is(.desk, .desk-overlay) .jd-acct-toggles .jd-period button {
+    min-height: 44px;
+  }
+
+  :is(.desk, .desk-overlay) .jd-acct-board {
+    grid-template-columns: 1fr;
+  }
+
+  :is(.desk, .desk-overlay) .jd-acct-choice {
+    grid-template-columns: 1fr;
+  }
+
+  :is(.desk, .desk-overlay) .jd-acct-choice-btn,
+  :is(.desk, .desk-overlay) .jd-acct-empty,
+  :is(.desk, .desk-overlay) .jd-acct-more-actions .jd-btn {
+    min-height: 44px;
+  }
+}
+
+:is(.desk, .desk-overlay) .jd-ledger-cards {
+  display: none;
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-ledger-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-height: 44px;
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--jd-line);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+:is(.desk, .desk-overlay) .jd-ledger-cards li:first-child .jd-ledger-card {
+  border-top: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-ledger-card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+:is(.desk, .desk-overlay) .jd-ledger-card-meta {
+  font-size: 0.75rem;
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-ledger-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+@media (max-width: 720px) {
+  :is(.desk, .desk-overlay) .jd-ledger-bar .jd-period {
+    width: 100%;
+  }
+
+  :is(.desk, .desk-overlay) .jd-ledger-bar .jd-period button {
+    flex: 1;
+  }
+
+  :is(.desk, .desk-overlay) .jd-ledger-setup {
+    flex: 1 1 100%;
+  }
+
+  :is(.desk, .desk-overlay) .jd-ledger .jd-chip-btn,
+  :is(.desk, .desk-overlay) .jd-ledger-view {
+    min-height: 44px;
+  }
+
+  :is(.desk, .desk-overlay) .jd-ledger-table {
+    display: none;
+  }
+
+  :is(.desk, .desk-overlay) .jd-ledger-cards {
+    display: block;
+  }
+}
+
+:is(.desk, .desk-overlay) .jd-name {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-meta {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  padding: 0;
+  border-radius: 9999px;
+  border: 1px solid var(--jd-line);
+  background: var(--jd-card-2);
+  color: var(--jd-ink);
+  cursor: pointer;
+}
+
+:is(.desk, .desk-overlay) .jd-icon-btn:hover {
+  background: color-mix(in oklab, var(--jd-ink) 6%, var(--jd-card-2));
+}
+
+:is(.desk, .desk-overlay) .text-success {
+  color: var(--jd-up) !important;
+}
+
+:is(.desk, .desk-overlay) .text-danger {
+  color: var(--jd-down) !important;
+}
+
+:is(.desk, .desk-overlay) .jd-dark .text-success,
+:is(.desk, .desk-overlay) .jd-analytics .text-success {
+  color: #86efac !important;
+}
+
+:is(.desk, .desk-overlay) .jd-dark .text-danger,
+:is(.desk, .desk-overlay) .jd-analytics .text-danger {
+  color: #fca5a5 !important;
+}
+
+:is(.desk, .desk-overlay) .jd-dl-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--jd-line);
+  font-size: 0.875rem;
+}
+
+:is(.desk, .desk-overlay) .jd-dl-row dt {
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-dl-row dd {
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.desk, .desk-overlay) .jd-actions > button {
+  min-height: 44px;
+  border-radius: 9999px;
+}
+
+:is(.desk, .desk-overlay) .jd-undo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--jd-line);
+  background: var(--jd-card);
+}
+
+:is(.desk, .desk-overlay) .jd-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-chip-btn {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 9999px;
+  border: 1px solid var(--jd-line);
+  background: var(--jd-card-2);
+  color: var(--jd-ink);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+:is(.desk, .desk-overlay) .jd-chip-btn[data-on='1'] {
+  background: var(--jd-ink);
+  color: var(--jd-on-dark);
+  border-color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-finding {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--jd-line);
+}
+
+:is(.desk, .desk-overlay) .jd-log-dock {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  :is(.desk, .desk-overlay) .jd-log-desk {
+    display: none;
+  }
+
+  :is(.desk, .desk-overlay) .jd-log-dock {
+    display: flex;
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    margin: 16px -8px 0;
+    padding: 12px 12px max(12px, env(safe-area-inset-bottom));
+    background: var(--jd-card);
+    border-top: 1px solid var(--jd-line);
+  }
+
+  :is(.desk, .desk-overlay) .jd-log-dock .jd-btn {
+    width: 100%;
+  }
+
+  :is(.desk, .desk-overlay) .jd-nav {
+    gap: 0;
+  }
+
+  :is(.desk, .desk-overlay) .jd-nav button {
+    padding: 0 12px;
+  }
+
+  :is(.desk, .desk-overlay) .jd-period button {
+    padding: 0 12px;
+  }
+}
+
+.desk.desk-fill {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.desk.desk-fill .jd-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+
+.desk.desk-fill .jd-top {
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-analytics {
+  flex: 1;
+  min-height: 420px;
+  padding: 0;
+  overflow: hidden;
+  background: var(--jd-dark);
+  color: var(--jd-on-dark);
+}
+
+:is(.desk, .desk-overlay) .jd-sub {
+  margin: 8px 0 24px;
+  font-size: 0.875rem;
+  color: var(--jd-muted);
+  max-width: 42rem;
+}
+
+:is(.desk, .desk-overlay) .jd-shell > .jd-stack,
+:is(.desk, .desk-overlay) .jd-shell > .jd-kpis,
+:is(.desk, .desk-overlay) .jd-shell > .jd-card,
+:is(.desk, .desk-overlay) .jd-shell > .jd-bento,
+:is(.desk, .desk-overlay) .jd-shell > .jd-hero {
+  margin-top: 8px;
+}
+
+:is(.desk, .desk-overlay) input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not(.jd-tickers-search),
+:is(.desk, .desk-overlay) select,
+:is(.desk, .desk-overlay) textarea {
+  background-color: var(--jd-card-2) !important;
+  color: var(--jd-ink) !important;
+  border: 1px solid var(--jd-line) !important;
+  border-radius: 16px !important;
+  min-height: 44px;
+  padding: 0 16px;
+  font-size: 1rem;
+  outline: none;
+  color-scheme: light;
+  box-shadow: none !important;
+}
+
+:is(.desk, .desk-overlay) textarea {
+  min-height: 5.5rem;
+  padding: 12px 16px;
+}
+
+:is(.desk, .desk-overlay) option {
+  background: var(--jd-card-2);
+  color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-menu {
+  background: var(--jd-card-2);
+  color: var(--jd-ink);
+  border: 1px solid var(--jd-line);
+  border-radius: 16px;
+  padding: 6px;
+  min-width: 10rem;
+  box-shadow: 0 10px 24px rgb(0 0 0 / 0.12);
+}
+
+:is(.desk, .desk-overlay) .jd-menu button {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--jd-ink);
+  text-align: left;
+  padding: 0 12px;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+:is(.desk, .desk-overlay) .jd-menu button:hover {
+  background: color-mix(in oklab, var(--jd-ink) 6%, transparent);
+}
+
+:is(.desk, .desk-overlay) .jd-desk-dd-menu button[data-on='1']:hover {
+  background: color-mix(in oklab, var(--jd-ink) 88%, white);
+}
+
+:is(.desk, .desk-overlay) .jd-dialog {
+  background: var(--jd-card);
+  color: var(--jd-ink);
+  border: 1px solid var(--jd-line);
+  border-radius: 28px;
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.18);
+}
+
+:is(.desk, .desk-overlay) .jd-dialog-title {
+  margin: 0;
+  color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-field-label {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-wiz-steps {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  margin: 0 -8px;
+  padding: 0 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-wiz-steps button {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--jd-muted);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+:is(.desk, .desk-overlay) .jd-wiz-steps button[data-done='1'] {
+  color: color-mix(in oklab, var(--jd-ink) 72%, var(--jd-muted));
+}
+
+:is(.desk, .desk-overlay) .jd-wiz-steps button[data-on='1'] {
+  color: var(--jd-ink);
+  font-weight: 600;
+}
+
+:is(.desk, .desk-overlay) .jd-dialog .jd-period {
+  width: 100%;
+  background: var(--jd-card-2);
+  border: 1px solid var(--jd-line);
+}
+
+:is(.desk, .desk-overlay) .jd-dialog .jd-period button {
+  flex: 1;
+}
+
+:is(.desk, .desk-overlay) .jd-period.jd-side button {
+  flex: 1;
+}
+
+:is(.desk, .desk-overlay) .jd-period.jd-side button[data-on='1'][data-side='long'] {
+  background: var(--jd-up);
+  color: var(--jd-on-dark);
+}
+
+:is(.desk, .desk-overlay) .jd-period.jd-side button[data-on='1'][data-side='short'] {
+  background: var(--jd-down);
+  color: var(--jd-on-dark);
+}
+
+:is(.desk, .desk-overlay) .jd-text-btn {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--jd-muted);
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+:is(.desk, .desk-overlay) .jd-text-btn:hover {
+  color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-review-row {
+  border-bottom: 1px solid var(--jd-line);
+}
+
+:is(.desk, .desk-overlay) input[type='datetime-local'] {
+  min-width: 0;
+  padding-right: 12px;
+}
+
+:is(.desk, .desk-overlay) input[type='datetime-local']::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.45;
+}
+
+:is(.desk, .desk-overlay) .text-muted,
+:is(.desk, .desk-overlay) .text-text-primary\/70 {
+  color: var(--jd-muted) !important;
+}
+
+:is(.desk, .desk-overlay) .text-text-primary,
+:is(.desk, .desk-overlay) .text-foreground {
+  color: var(--jd-ink) !important;
+}
+
+.desk-overlay.jd-tickers {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--jd-card-2);
+  color: var(--jd-ink);
+  border: 1px solid var(--jd-line);
+  border-radius: 16px;
+  box-shadow: 0 12px 28px rgb(0 0 0 / 0.16);
+}
+
+.desk-overlay.jd-tickers .jd-period {
+  width: 100%;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 0;
+  background: var(--jd-card);
+  border-bottom: 1px solid var(--jd-line);
+}
+
+.desk-overlay.jd-tickers .jd-period button {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 4px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.desk-overlay.jd-tickers .jd-tickers-search {
+  flex-shrink: 0;
+  width: 100%;
+  min-height: 36px;
+  margin: 0;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--jd-line);
+  border-radius: 0;
+  background: var(--jd-card-2);
+  color: var(--jd-ink);
+  font-size: 0.8125rem;
+  outline: none;
+}
+
+.desk-overlay.jd-tickers .jd-tickers-scroller {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.desk-overlay.jd-tickers .jd-tickers-empty {
+  margin: 0;
+  padding: 12px;
+  font-size: 0.8125rem;
+  color: var(--jd-muted);
+}
+
+.desk-overlay.jd-tickers .jd-tickers-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+}
+
+.desk-overlay.jd-tickers .jd-tickers-row {
+  display: flex;
+  align-items: center;
+  border-radius: 10px;
+}
+
+.desk-overlay.jd-tickers .jd-tickers-row:hover,
+.desk-overlay.jd-tickers .jd-tickers-row.is-on {
+  background: color-mix(in oklab, var(--jd-ink) 6%, var(--jd-card-2));
+}
+
+.desk-overlay.jd-tickers .jd-tickers-pick {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--jd-ink);
+  font-family: var(--font-display, inherit);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.desk-overlay.jd-tickers .jd-tickers-star {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--jd-muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.desk-overlay.jd-tickers .jd-tickers-star.is-on {
+  color: var(--jd-ink);
+}
+
+.desk-overlay.jd-tickers .jd-tickers-caret {
+  color: var(--jd-muted);
+  display: grid;
+  place-items: center;
+}
+
+@media (pointer: coarse) {
+  .desk-overlay.jd-tickers .jd-period button,
+  .desk-overlay.jd-tickers .jd-tickers-search,
+  .desk-overlay.jd-tickers .jd-tickers-pick {
+    min-height: 44px;
+  }
+
+  .desk-overlay.jd-tickers .jd-tickers-star {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+:is(.desk, .desk-overlay) [data-slot='button'] {
+  border-radius: 9999px !important;
+  min-height: 44px !important;
+}
+
+:is(.desk, .desk-overlay) [data-slot='card'] {
+  background: var(--jd-card) !important;
+  color: var(--jd-ink) !important;
+  border-color: var(--jd-line) !important;
+  border-radius: 28px !important;
+  box-shadow: none !important;
+}
+
+:is(.desk, .desk-overlay) input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='hidden']):not(.jd-tickers-search):focus,
+:is(.desk, .desk-overlay) select:focus,
+:is(.desk, .desk-overlay) textarea:focus,
+:is(.desk, .desk-overlay) .jd-field:focus {
+  border-color: color-mix(in oklab, var(--jd-ink) 42%, var(--jd-line)) !important;
+}
+
+:is(.desk, .desk-overlay) input::placeholder,
+:is(.desk, .desk-overlay) textarea::placeholder {
+  color: var(--jd-muted);
+  opacity: 1;
+}
+
+:is(.desk, .desk-overlay) input:disabled,
+:is(.desk, .desk-overlay) select:disabled,
+:is(.desk, .desk-overlay) textarea:disabled {
+  opacity: 0.5;
+}
+
+.desk-overlay.desk-dim {
+  background: color-mix(in oklab, var(--jd-ink) 42%, transparent);
+}
+
+:is(.desk, .desk-overlay) .jd-play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--jd-ink);
+  color: var(--jd-on-dark);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-tile {
+  background: var(--jd-card-2);
+  border: 1px solid var(--jd-line);
+  border-radius: 16px;
+  padding: 12px 16px;
+  min-height: 44px;
+}
+
+:is(.desk, .desk-overlay) .jd-row {
+  background: var(--jd-card);
+  border: 1px solid var(--jd-line);
+  border-radius: 16px;
+}
+
+:is(.desk, .desk-overlay) [data-pair-picker-trigger] {
+  width: 100%;
+  min-height: 44px !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  border-radius: 16px !important;
+  border: 1px solid var(--jd-line) !important;
+  background: var(--jd-card-2) !important;
+  color: var(--jd-muted) !important;
+  font-size: 1rem !important;
+  font-weight: 400 !important;
+  text-align: left;
+}
+
+:is(.desk, .desk-overlay) [data-pair-picker-trigger][data-open='1'],
+:is(.desk, .desk-overlay) [data-pair-picker-trigger]:hover:not(:disabled) {
+  color: var(--jd-ink) !important;
+  background: var(--jd-card-2) !important;
+  border-color: color-mix(in oklab, var(--jd-ink) 28%, var(--jd-line)) !important;
+}
+
+.desk-overlay[data-pair-picker] {
+  background: var(--jd-card-2) !important;
+  border: 1px solid var(--jd-line) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 10px 24px rgb(0 0 0 / 0.12) !important;
+  color: var(--jd-ink);
+  overflow: hidden;
+}
+
+.desk-overlay[data-pair-picker] [data-menu-head] {
+  color: var(--jd-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.desk-overlay[data-pair-picker] [data-win-search] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px !important;
+  margin: 0 10px 8px !important;
+  padding: 0 12px;
+  border-radius: 16px;
+  border: 1px solid var(--jd-line);
+  background: var(--jd-card);
+}
+
+.desk-overlay[data-pair-picker] [data-win-search] input {
+  background: transparent !important;
+  border: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  color: var(--jd-ink) !important;
+}
+
+.desk-overlay[data-pair-picker] [data-pp-tab] {
+  min-height: 44px;
+  border-radius: 9999px;
+  color: var(--jd-muted);
+}
+
+.desk-overlay[data-pair-picker] [data-pp-tab][data-on='1'] {
+  background: var(--jd-ink) !important;
+  color: var(--jd-on-dark) !important;
+}
+
+.desk-overlay[data-pair-picker] [data-pp-tab][data-on='1'] em {
+  color: var(--jd-on-dark) !important;
+}
+
+.desk-overlay[data-pair-picker] [data-sym-row][data-focus='1'] {
+  background: color-mix(in oklab, var(--jd-ink) 6%, transparent) !important;
+}
+
+.desk-overlay[data-pair-picker] [data-sym-meta] strong,
+.desk-overlay[data-pair-picker] [data-pp-type],
+.desk-overlay[data-pair-picker] [data-sym-empty] {
+  color: var(--jd-ink) !important;
+}
+
+:is(.desk, .desk-overlay) [data-pp-chip] {
+  min-height: 44px !important;
+  border-radius: 9999px !important;
+  border: 1px solid var(--jd-line) !important;
+  background: var(--jd-card-2) !important;
+  color: var(--jd-ink) !important;
+}
+
+:is(.desk, .desk-overlay) [data-pp-chip]:hover {
+  border-color: color-mix(in oklab, var(--jd-ink) 35%, var(--jd-line)) !important;
+  color: var(--jd-ink) !important;
+}
+
+:is(.desk, .desk-overlay) .jd-shell > .jd-metrics-page,
+:is(.desk, .desk-overlay) .jd-shell > .jd-cal-page {
+  margin-top: 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-page {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-page .jd-hero {
+  margin-bottom: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-hero {
+  --jd-metrics-gap: 32px;
+  align-items: center;
+  gap: var(--jd-metrics-gap);
+}
+
+@media (min-width: 1024px) {
+  :is(.desk, .desk-overlay) .jd-metrics-hero {
+    grid-template-columns: max-content minmax(24rem, 1fr) max-content;
+    align-items: center;
+    gap: var(--jd-metrics-gap);
+  }
+
+  :is(.desk, .desk-overlay) .jd-metrics-net,
+  :is(.desk, .desk-overlay) .jd-metrics-count {
+    justify-self: stretch;
+  }
+
+  :is(.desk, .desk-overlay) .jd-metrics-meters {
+    justify-self: stretch;
+    width: 100%;
+  }
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-net {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-net-n {
+  font-family: var(--font-display, inherit);
+  font-size: clamp(1.625rem, 3.4vw, 2.25rem);
+  font-weight: 600;
+  letter-spacing: -0.045em;
+  line-height: 0.95;
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-net-l {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-net-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: currentColor;
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-hero-note {
+  margin: 10px 0 0;
+  max-width: 22rem;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-aside {
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
+  justify-content: start;
+  align-items: start;
+  gap: var(--jd-metrics-gap);
+  width: max-content;
+  max-width: 100%;
+  margin-top: 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-aside-n {
+  font-family: var(--font-display, inherit);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-aside .jd-kpi-l {
+  margin-top: 2px;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-meters {
+  padding: 16px 24px 14px;
+  width: 100%;
+  max-width: 100%;
+  justify-self: center;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-meters .jd-meters {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--jd-metrics-gap);
+  align-items: end;
+}
+
+@media (min-width: 640px) {
+  :is(.desk, .desk-overlay) .jd-metrics-meters .jd-meters {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-count .jd-kpis {
+  gap: var(--jd-metrics-gap);
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-hero .jd-kpi-n {
+  font-size: clamp(2rem, 3.5vw, 2.75rem);
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-meters .jd-meter-n {
+  font-family: var(--font-display, inherit);
+  font-size: clamp(1.375rem, 2.2vw, 1.875rem);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-meters .jd-kpi-l {
+  margin-top: 6px;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-meters .jd-meter-rail {
+  position: relative;
+  margin-top: 12px;
+  padding: 3px 0;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-meters .jd-meter-track {
+  height: 10px;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--jd-ink) 10%, var(--jd-card-2));
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-meters .jd-meter-fill {
+  height: 10px;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-meters .jd-meter-knob {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--jd-ink);
+  border: 2px solid var(--jd-card);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 2px 6px -2px color-mix(in oklab, var(--jd-ink) 35%, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-meters .jd-meter-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--jd-ink);
+  opacity: 0.28;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+:is(.desk, .desk-overlay) .jd-seg-tight {
+  margin-top: 10px;
+}
+
+:is(.desk, .desk-overlay) .jd-seg-tight i {
+  height: 10px;
+  border-radius: 9999px;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-more {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 20px;
+  align-items: end;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-stat {
+  min-width: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-n {
+  font-family: var(--font-display, inherit);
+  font-size: clamp(1.125rem, 1.8vw, 1.5rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-stat .jd-kpi-l {
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-equity,
+:is(.desk, .desk-overlay) .jd-metrics-closes,
+:is(.desk, .desk-overlay) .jd-metrics-days,
+:is(.desk, .desk-overlay) .jd-metrics-session,
+:is(.desk, .desk-overlay) .jd-metrics-side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-page .jd-equity-svg,
+:is(.desk, .desk-overlay) .jd-close-svg {
+  flex: 1;
+  width: 100%;
+  height: 140px;
+  min-height: 96px;
+  margin-top: 8px;
+  display: block;
+}
+
+:is(.desk, .desk-overlay) .jd-graph {
+  position: relative;
+  cursor: crosshair;
+}
+
+:is(.desk, .desk-overlay) .jd-graph svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+:is(.desk, .desk-overlay) .jd-graph-rule {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--jd-ink);
+  opacity: 0.35;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+:is(.desk, .desk-overlay) .jd-graph-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: var(--jd-ink);
+  border: 2px solid var(--jd-card);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+:is(.desk, .desk-overlay) .jd-tip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 7rem;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--jd-card-2);
+  color: var(--jd-ink);
+  border: 1px solid var(--jd-line);
+  box-shadow: 0 12px 28px -12px color-mix(in oklab, var(--jd-ink) 38%, transparent);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 6;
+}
+
+:is(.desk, .desk-overlay) .jd-tip-k,
+:is(.desk, .desk-overlay) .jd-tip-m {
+  font-size: 0.75rem;
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-tip-v {
+  font-family: var(--font-display, inherit);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+:is(.desk, .desk-overlay) .jd-tip-follow {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 12px));
+}
+
+:is(.desk, .desk-overlay) .jd-tip-hit {
+  position: relative;
+  cursor: pointer;
+}
+
+:is(.desk, .desk-overlay) .jd-tip-hit .jd-tip {
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  transform: translate(-50%, 0);
+}
+
+:is(.desk, .desk-overlay) .jd-close-bar {
+  transform-box: fill-box;
+  animation: jd-grow 700ms var(--jd-ease) both;
+}
+
+:is(.desk, .desk-overlay) .jd-close-bar.is-up {
+  transform-origin: center bottom;
+}
+
+:is(.desk, .desk-overlay) .jd-close-bar.is-down {
+  transform-origin: center top;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-side-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  margin-top: 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-break-slim {
+  margin-top: 4px;
+}
+
+:is(.desk, .desk-overlay) .jd-break-slim li {
+  padding: 8px 0;
+}
+
+:is(.desk, .desk-overlay) .jd-break-slim .jd-break-meta {
+  margin: 2px 0 6px;
+}
+
+:is(.desk, .desk-overlay) .jd-break-slim .jd-meter-track {
+  height: 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-bars-short {
+  height: 118px;
+  margin-top: 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-page .jd-bar-col {
+  gap: 4px;
+}
+
+:is(.desk, .desk-overlay) .jd-bar-val {
+  font-family: var(--font-display, inherit);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+:is(.desk, .desk-overlay) .jd-tilt {
+  position: relative;
+  overflow: visible;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :is(.desk, .desk-overlay) .jd-tilt {
+    transition: box-shadow 220ms var(--jd-ease);
+    box-shadow: 0 1px 0 color-mix(in oklab, var(--jd-ink) 7%, transparent);
+  }
+
+  :is(.desk, .desk-overlay) .jd-tilt:hover {
+    box-shadow:
+      0 22px 40px -16px color-mix(in oklab, var(--jd-ink) 30%, transparent),
+      0 8px 16px -8px color-mix(in oklab, var(--jd-ink) 14%, transparent);
+  }
+}
+
+:is(.desk, .desk-overlay) .jd-equity-line {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: jd-draw 900ms var(--jd-ease) both;
+}
+
+:is(.desk, .desk-overlay) .jd-equity-area {
+  opacity: 0;
+  animation: jd-area-in 640ms 180ms var(--jd-ease) both;
+}
+
+@keyframes jd-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes jd-area-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+:is(.desk, .desk-overlay) .jd-metrics-page .jd-break li {
+  animation: jd-row-in 480ms var(--jd-ease) both;
+}
+
+@keyframes jd-row-in {
+  from {
+    opacity: 0;
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+:is(.desk, .desk-overlay) .jd-bars-short {
+  height: 110px;
+  margin-top: 8px;
+}
+
+@media (min-width: 720px) {
+  :is(.desk, .desk-overlay) .jd-metrics-page {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  :is(.desk, .desk-overlay) .jd-metrics-hero,
+  :is(.desk, .desk-overlay) .jd-metrics-more,
+  :is(.desk, .desk-overlay) .jd-metrics-emotion {
+    grid-column: 1 / -1;
+  }
+
+  :is(.desk, .desk-overlay) .jd-metrics-more {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  :is(.desk, .desk-overlay) .jd-metrics-page {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-template-rows: min-content min-content minmax(150px, 1.15fr) minmax(150px, 1fr);
+    align-items: stretch;
+    height: calc(100dvh - 152px);
+    min-height: 640px;
+  }
+
+  :is(.desk, .desk-overlay) .jd-metrics-hero {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  :is(.desk, .desk-overlay) .jd-metrics-more {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    padding: 16px 20px;
+  }
+
+  :is(.desk, .desk-overlay) .jd-metrics-equity {
+    grid-column: 1 / 5;
+    grid-row: 3;
+    padding: 16px 18px;
+  }
+
+  :is(.desk, .desk-overlay) .jd-metrics-closes {
+    grid-column: 5 / 9;
+    grid-row: 3;
+    padding: 16px 18px;
+  }
+
+  :is(.desk, .desk-overlay) .jd-metrics-days {
+    grid-column: 9 / -1;
+    grid-row: 3;
+    padding: 16px 18px;
+  }
+
+  :is(.desk, .desk-overlay) .jd-metrics-session {
+    grid-column: 1 / 4;
+    grid-row: 4;
+    padding: 16px 18px;
+  }
+
+  :is(.desk, .desk-overlay) .jd-metrics-setup {
+    grid-column: 4 / 7;
+    grid-row: 4;
+    padding: 16px 18px;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  :is(.desk, .desk-overlay) .jd-metrics-side {
+    grid-column: 7 / 10;
+    grid-row: 4;
+    padding: 16px 18px;
+  }
+
+  :is(.desk, .desk-overlay) .jd-metrics-emotion {
+    grid-column: 10 / -1;
+    grid-row: 4;
+    padding: 16px 18px;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  :is(.desk, .desk-overlay) .jd-metrics-days .jd-bars-short,
+  :is(.desk, .desk-overlay) .jd-metrics-session .jd-bars-short {
+    flex: 1;
+    height: auto;
+    min-height: 72px;
+  }
+
+  :is(.desk, .desk-overlay) .jd-metrics-page .jd-equity-svg,
+  :is(.desk, .desk-overlay) .jd-close-svg {
+    height: auto;
+  }
+}
+
+:is(.desk, .desk-overlay) .jd-equity-svg {
+  display: block;
+  width: 100%;
+  height: 180px;
+  margin-top: 12px;
+}
+
+:is(.desk, .desk-overlay) .jd-stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 20px;
+  margin-top: 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-stat-val {
+  margin: 4px 0 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.desk, .desk-overlay) .jd-break {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-break li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--jd-line);
+}
+
+:is(.desk, .desk-overlay) .jd-break li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-break-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.desk, .desk-overlay) .jd-break-meta {
+  margin: 4px 0 8px;
+  font-size: 0.75rem;
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-meter-fill.is-down {
+  background: var(--jd-down);
+}
+
+:is(.desk, .desk-overlay) .jd-cal-page {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+:is(.desk, .desk-overlay) .jd-cal-page .jd-plan {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 16px 18px 14px;
+}
+
+:is(.desk, .desk-overlay) .jd-cal-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 10px;
+}
+
+:is(.desk, .desk-overlay) .jd-cal-bar .jd-plan-months {
+  flex: 1;
+  min-width: 12rem;
+  margin-bottom: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-cal-page .jd-period {
+  background: var(--jd-card-2);
+  border: 1px solid color-mix(in oklab, var(--jd-ink) 18%, transparent);
+  width: fit-content;
+  flex-shrink: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-cal-page .jd-plan-months strong {
+  flex: 1;
+  text-align: center;
+  min-width: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-cal-page .jd-plan-grid.is-one,
+:is(.desk, .desk-overlay) .jd-cal-page .jd-plan-grid.is-wide,
+:is(.desk, .desk-overlay) .jd-cal-page .jd-plan-stack {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+:is(.desk, .desk-overlay) .jd-plan-month-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+:is(.desk, .desk-overlay) .jd-plan-dows {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 6px;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--jd-muted);
+}
+
+:is(.desk, .desk-overlay) .jd-plan-month {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 6px;
+}
+
+:is(.desk, .desk-overlay) .jd-mday {
+  min-height: 0;
+  min-width: 0;
+  padding: 4px 5px 5px;
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--jd-ink) 4%, transparent);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  overflow: hidden;
+}
+
+:is(.desk, .desk-overlay) .jd-mday.is-pad {
+  background: transparent;
+}
+
+:is(.desk, .desk-overlay) .jd-mday-num {
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--jd-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-mday-num b {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--jd-ink);
+  line-height: 1;
+}
+
+:is(.desk, .desk-overlay) .jd-mday.is-today .jd-mday-num b {
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  background: var(--jd-ink);
+  color: var(--jd-on-dark);
+  display: grid;
+  place-items: center;
+}
+
+:is(.desk, .desk-overlay) .jd-mday-count {
+  display: none;
+  text-align: center;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--jd-ink);
+}
+
+:is(.desk, .desk-overlay) .jd-mday-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  flex: 1;
+}
+
+:is(.desk, .desk-overlay) .jd-plan-month .jd-chip {
+  min-height: 28px;
+  padding: 3px 8px;
+  font-size: 0.6875rem;
+}
+
+:is(.desk, .desk-overlay) .jd-plan-month .jd-chip b {
+  font-size: 0.6875rem;
+}
+
+:is(.desk, .desk-overlay) .jd-mday-more {
+  min-height: 22px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--jd-muted);
+  cursor: pointer;
+  font-size: 0.6875rem;
+  text-align: left;
+  padding: 0 6px;
+  flex-shrink: 0;
+}
+
+:is(.desk, .desk-overlay) .jd-plan-stack {
+  display: none;
+}
+
+:is(.desk, .desk-overlay) .jd-plan-stack section + section {
+  margin-top: 16px;
+}
+
+:is(.desk, .desk-overlay) .jd-plan-stack h3,
+:is(.desk, .desk-overlay) .jd-plan-stack-day {
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--jd-ink);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  text-align: left;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+:is(.desk, .desk-overlay) .jd-plan-stack ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+:is(.desk, .desk-overlay) .jd-plan-stack li {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+:is(.desk, .desk-overlay) .jd-plan-stack .jd-hour {
+  padding-top: 0;
+}
+
+@media (max-width: 720px) {
+  :is(.desk, .desk-overlay) .jd-cal-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  :is(.desk, .desk-overlay) .jd-cal-page .jd-period {
+    width: 100%;
+  }
+
+  :is(.desk, .desk-overlay) .jd-cal-page .jd-period button {
+    flex: 1;
+  }
+
+  :is(.desk, .desk-overlay) .jd-plan-months {
+    gap: 4px;
+    font-size: 0.8125rem;
+  }
+
+  :is(.desk, .desk-overlay) .jd-cal-page .jd-plan-grid.is-wide {
+    display: none;
+  }
+
+  :is(.desk, .desk-overlay) .jd-cal-page .jd-plan-stack {
+    display: block;
+  }
+
+  :is(.desk, .desk-overlay) .jd-plan-dows,
+  :is(.desk, .desk-overlay) .jd-plan-month {
+    gap: 4px;
+  }
+
+  :is(.desk, .desk-overlay) .jd-mday {
+    padding: 2px;
+    align-items: center;
+    border-radius: 12px;
+  }
+
+  :is(.desk, .desk-overlay) .jd-mday-num {
+    min-height: 44px;
+  }
+
+  :is(.desk, .desk-overlay) .jd-mday-chips,
+  :is(.desk, .desk-overlay) .jd-mday-more {
+    display: none;
+  }
+
+  :is(.desk, .desk-overlay) .jd-mday-count {
+    display: block;
+  }
+}

@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
-import { Button, Card, toast } from '@heroui/react';
+import { toast } from '@heroui/react';
+import { DeskMore } from '@/components/desk/DeskFrame';
 import { AppPageFrame } from '@/components/shell/AppPageFrame';
 import { PieceLibraryModal } from '@/components/strategy/PieceLibraryModal';
 import { StrategyBuilderModal } from '@/components/strategy/StrategyBuilderModal';
@@ -73,38 +74,33 @@ export function StrategyPage({
 
   return (
     <AppPageFrame
-      eyebrow="App"
       title="Strategies"
       description="Build puzzle strategies from condition and logic pieces. Browse the piece library for how each detection looks on the chart."
       actions={
         <>
-          {onGoBacktest && (
-            <Button variant="ghost" className="min-h-11" onPress={onGoBacktest}>
-              Backtest
-            </Button>
-          )}
-          <Button
-            variant="secondary"
-            className="min-h-11"
-            onPress={() => setLibraryOpen(true)}
-          >
+          <button type="button" className="jd-btn jd-btn-ghost" onClick={() => setLibraryOpen(true)}>
             Piece library
-          </Button>
-          <Button
-            variant="secondary"
-            className="min-h-11"
-            onPress={() => downloadExport()}
-            isDisabled={strategies.length === 0}
-          >
-            Export all
-          </Button>
-          <Button
-            variant="secondary"
-            className="min-h-11"
-            onPress={() => fileRef.current?.click()}
-          >
-            Import
-          </Button>
+          </button>
+          <button type="button" className="jd-btn jd-btn-ink" onClick={openNew}>
+            Build strategy
+          </button>
+          <DeskMore>
+            {onGoBacktest && (
+              <button type="button" onClick={onGoBacktest}>
+                Sessions
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={strategies.length === 0}
+              onClick={() => downloadExport()}
+            >
+              Export all
+            </button>
+            <button type="button" onClick={() => fileRef.current?.click()}>
+              Import
+            </button>
+          </DeskMore>
           <input
             ref={fileRef}
             type="file"
@@ -115,83 +111,55 @@ export function StrategyPage({
               e.target.value = '';
             }}
           />
-          <Button variant="primary" className="min-h-11" onPress={openNew}>
-            Build strategy
-          </Button>
         </>
       }
     >
       {strategies.length === 0 ? (
-        <Card className="bg-surface border border-border">
-          <Card.Content className="px-6 py-12 text-center space-y-4">
-            <p className="text-sm text-muted">
-              No strategies yet. Open the builder and snap pieces together.
-            </p>
-            <Button variant="primary" className="min-h-11" onPress={openNew}>
-              Build strategy
-            </Button>
-          </Card.Content>
-        </Card>
+        <section className="jd-card" style={{ textAlign: 'center' }}>
+          <p className="jd-muted">No strategies yet. Open the builder and snap pieces together.</p>
+          <button type="button" className="jd-btn jd-btn-ink" style={{ marginTop: 16 }} onClick={openNew}>
+            Build strategy
+          </button>
+        </section>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {strategies.map((s) => (
-            <Card key={s.id} className="bg-surface border border-border">
-              <Card.Content className="px-4 py-4 space-y-3">
-                <div className="space-y-1 min-w-0">
-                  <p className="font-semibold truncate">{s.name}</p>
-                  <p className="text-xs text-muted line-clamp-2">
-                    {s.desc || 'No description'}
-                  </p>
-                </div>
-                <p className="text-[11px] text-muted">
-                  {(s.markets || []).join(' · ') || '—'} ·{' '}
-                  {(s.timeframes || []).join(', ') || '—'}
-                </p>
-                <p className="text-[11px] text-muted tabular-nums">
-                  {s.nodes?.filter((n) => n.type === 'piece').length ?? 0} pieces ·{' '}
-                  {s.edges?.length ?? 0} wires
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {onRunStrategy && (
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      className="min-h-11"
-                      onPress={() => onRunStrategy(s.id)}
-                    >
-                      Run on chart
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="min-h-11"
-                    onPress={() => openEdit(s)}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="min-h-11"
-                    onPress={() => downloadExport([s.id])}
-                  >
-                    Export
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="min-h-11 text-danger"
-                    onPress={() => {
-                      deleteStrategy(s.id);
-                      setTick((n) => n + 1);
-                    }}
-                  >
-                    Delete
-                  </Button>
-                </div>
-              </Card.Content>
-            </Card>
+            <article key={s.id} className="jd-card jd-stack">
+              <div>
+                <h2 className="truncate">{s.name}</h2>
+                <p className="jd-muted" style={{ marginTop: 4 }}>{s.desc || 'No description'}</p>
+              </div>
+              <p className="jd-muted">
+                {(s.markets || []).join(' · ') || '—'} · {(s.timeframes || []).join(', ') || '—'}
+              </p>
+              <p className="jd-muted tabular-nums">
+                {s.nodes?.filter((n) => n.type === 'piece').length ?? 0} pieces · {s.edges?.length ?? 0} wires
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {onRunStrategy && (
+                  <button type="button" className="jd-btn jd-btn-ink" onClick={() => onRunStrategy(s.id)}>
+                    Run on chart
+                  </button>
+                )}
+                <button type="button" className="jd-btn jd-btn-ghost" onClick={() => openEdit(s)}>
+                  Edit
+                </button>
+                <button type="button" className="jd-btn jd-btn-ghost" onClick={() => downloadExport([s.id])}>
+                  Export
+                </button>
+                <button
+                  type="button"
+                  className="jd-btn jd-btn-ghost"
+                  onClick={() => {
+                    if (!window.confirm(`Delete “${s.name}”? This cannot be undone.`)) return;
+                    deleteStrategy(s.id);
+                    setTick((n) => n + 1);
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </article>
           ))}
         </div>
       )}

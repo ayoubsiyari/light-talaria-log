@@ -177,6 +177,7 @@ import {
   parseAppRoute,
   routeRequiresAdmin,
   routeRequiresAuth,
+  DEFAULT_APP_TAB,
   type AppTab,
   type AppView,
   type AuthMode,
@@ -188,6 +189,7 @@ import { useChromeTheme } from '@/v9/useChromeTheme';
 import { StrategyPage } from '@/components/strategy/StrategyPage';
 import { CreateSessionPage } from '@/components/session/CreateSessionPage';
 import { JournalPage } from '@/components/journal/JournalPage';
+import { LogbookPage } from '@/components/logbook/LogbookPage';
 import { ResourcesPage } from '@/components/resources/ResourcesPage';
 import { AuthFormPage } from '@/components/auth/AuthFormPage';
 import { AuthGate } from '@/components/auth/AuthGate';
@@ -206,6 +208,7 @@ function bootRoute(): {
   appTab: AppTab;
   authMode: AuthMode;
   journalSessionId: string | null;
+  logbookRouteKey: string | null;
 } {
   const route = parseAppRoute();
   if (route.view === 'chart') {
@@ -215,29 +218,33 @@ function bootRoute(): {
       appTab: 'backtest',
       authMode: 'signin',
       journalSessionId: null,
+      logbookRouteKey: null,
     };
   }
   if (route.view === 'app') {
     return {
       view: 'app',
-      appTab: route.appTab ?? 'dashboard',
+      appTab: route.appTab ?? DEFAULT_APP_TAB,
       authMode: 'signin',
       journalSessionId: route.appTab === 'trades' ? route.sessionId : null,
+      logbookRouteKey: route.appTab === 'journal' ? route.journalTradeId ?? null : null,
     };
   }
   if (route.view === 'auth') {
     return {
       view: 'auth',
-      appTab: 'dashboard',
+      appTab: DEFAULT_APP_TAB,
       authMode: route.authMode ?? 'signin',
       journalSessionId: null,
+      logbookRouteKey: null,
     };
   }
   return {
     view: route.view,
-    appTab: 'dashboard',
+    appTab: DEFAULT_APP_TAB,
     authMode: 'signin',
     journalSessionId: null,
+    logbookRouteKey: null,
   };
 }
 
@@ -313,6 +320,9 @@ export default function App() {
   const [authMode, setAuthMode] = useState<AuthMode>(boot.authMode);
   const [journalSessionId, setJournalSessionId] = useState<string | null>(
     boot.journalSessionId,
+  );
+  const [logbookRouteKey, setLogbookRouteKey] = useState<string | null>(
+    boot.logbookRouteKey,
   );
   /** Ignore hashchange triggered by our own URL sync. */
   const suppressHashRef = useRef(false);
@@ -3446,6 +3456,7 @@ export default function App() {
           appTab: tab,
           authMode: null,
           sessionId: tab === 'trades' ? journalId : null,
+          journalTradeId: tab === 'journal' ? journalId : null,
         }),
       );
       setAuthMode('signin');
@@ -3453,13 +3464,15 @@ export default function App() {
       return;
     }
     if (tab === 'admin' && auth.user?.role !== 'admin') {
-      setAppTab('dashboard');
+      setAppTab(DEFAULT_APP_TAB);
       setJournalSessionId(null);
+      setLogbookRouteKey(null);
       setView('app');
       return;
     }
     setAppTab(tab);
     setJournalSessionId(tab === 'trades' ? journalId : null);
+    setLogbookRouteKey(tab === 'journal' ? journalId : null);
     setView('app');
   };
 
@@ -3469,7 +3482,7 @@ export default function App() {
   };
 
   const finishAuthRedirect = () => {
-    const next = consumeAuthNext('#/app/dashboard');
+    const next = consumeAuthNext('#/app/journal');
     const route = parseAppRoute(next);
     if (route.view === 'chart' && route.sessionId) {
       const s = getSession(route.sessionId);
@@ -3490,14 +3503,17 @@ export default function App() {
       return;
     }
     if (route.view === 'app') {
-      setAppTab(route.appTab ?? 'dashboard');
+      setAppTab(route.appTab ?? DEFAULT_APP_TAB);
       setJournalSessionId(
         route.appTab === 'trades' ? route.sessionId : null,
+      );
+      setLogbookRouteKey(
+        route.appTab === 'journal' ? route.journalTradeId ?? null : null,
       );
       setView('app');
       return;
     }
-    setAppTab('dashboard');
+    setAppTab(DEFAULT_APP_TAB);
     setView('app');
   };
 
@@ -4207,6 +4223,7 @@ export default function App() {
         appTab,
         authMode: null,
         sessionId: appTab === 'trades' ? journalSessionId : null,
+        journalTradeId: appTab === 'journal' ? logbookRouteKey : null,
       });
       if (window.location.hash === next) return;
       suppressHashRef.current = true;
@@ -4255,7 +4272,7 @@ export default function App() {
     queueMicrotask(() => {
       suppressHashRef.current = false;
     });
-  }, [view, appTab, authMode, session?.id, journalSessionId]);
+  }, [view, appTab, authMode, session?.id, journalSessionId, logbookRouteKey]);
 
   // Guard: app + chart require a signed-in account; admin tab requires admin role.
   useEffect(() => {
@@ -4263,12 +4280,15 @@ export default function App() {
     if (auth.status === 'authenticated') {
       // After sign-in/up, leave #/auth/* for the saved destination once.
       if (view === 'auth') finishAuthRedirect();
-      else if (
+      else if (view === 'landing') {
+        setAppTab(DEFAULT_APP_TAB);
+        setView('app');
+      } else if (
         view === 'app' &&
         appTab === 'admin' &&
         auth.user?.role !== 'admin'
       ) {
-        setAppTab('dashboard');
+        setAppTab(DEFAULT_APP_TAB);
       }
       return;
     }
@@ -4285,6 +4305,7 @@ export default function App() {
             : appTab === 'trades'
               ? journalSessionId
               : null,
+        journalTradeId: view === 'app' && appTab === 'journal' ? logbookRouteKey : null,
       }),
     );
     if (view === 'chart') {
@@ -4292,7 +4313,7 @@ export default function App() {
     }
     setAuthMode('signin');
     setView('auth');
-  }, [auth.status, auth.user?.role, view, appTab, journalSessionId, session?.id]);
+  }, [auth.status, auth.user?.role, view, appTab, journalSessionId, logbookRouteKey, session?.id]);
 
   // Cold start: reopen #/chart/:sessionId after refresh (auth must be ready).
   useEffect(() => {
@@ -4323,7 +4344,7 @@ export default function App() {
         routeRequiresAdmin(route) &&
         auth.user?.role !== 'admin'
       ) {
-        setAppTab('dashboard');
+        setAppTab(DEFAULT_APP_TAB);
         setView('app');
         return;
       }
@@ -4366,9 +4387,12 @@ export default function App() {
       if (route.view === 'app') {
         // Soft navigate: pause replay but keep session in memory (same as journal soft-exit).
         replayRef.current.pause();
-        setAppTab(route.appTab ?? 'dashboard');
+        setAppTab(route.appTab ?? DEFAULT_APP_TAB);
         setJournalSessionId(
           route.appTab === 'trades' ? route.sessionId : null,
+        );
+        setLogbookRouteKey(
+          route.appTab === 'journal' ? route.journalTradeId ?? null : null,
         );
         setView('app');
         return;
@@ -4397,7 +4421,7 @@ export default function App() {
             else goAuth('signup');
           }}
           onOpenApp={() => {
-            if (auth.status === 'authenticated') goAppTab('dashboard');
+            if (auth.status === 'authenticated') goAppTab('journal');
             else goAuth('signin');
           }}
         />
@@ -4534,7 +4558,18 @@ export default function App() {
             liveJournal={orderBridgeRef.current?.getJournal() ?? null}
             onGoBacktest={() => goAppTab('backtest')}
             onGoTrades={() => goAppTab('trades')}
+            onGoJournal={() => goAppTab('journal')}
             onGoStrategy={() => goAppTab('strategy')}
+          />
+        );
+        break;
+      case 'journal':
+        shellBody = (
+          <LogbookPage
+            routeKey={logbookRouteKey}
+            onRouteKeyChange={setLogbookRouteKey}
+            onOpenChart={openChartFromJournal}
+            onGoSessions={() => goAppTab('backtest')}
           />
         );
         break;
@@ -4562,6 +4597,7 @@ export default function App() {
           <CreateSessionPage
             onStart={(s) => void loadSessionData(s)}
             onGoJournal={(sessionId) => goAppTab('trades', sessionId ?? null)}
+            onGoLogbook={() => goAppTab('journal')}
             onGoDashboard={() => goAppTab('dashboard')}
             openCreateNonce={createSessionNonce}
           />

@@ -39,7 +39,7 @@ export function AppPageNav({
       )}
       {onGoTrades && current !== 'trades' && (
         <Button variant="ghost" size="sm" className={LINK} onPress={onGoTrades}>
-          Trades
+          Chart trades
         </Button>
       )}
     </div>

@@ -11,7 +11,8 @@ export interface ShellNavItem {
 export const SHELL_NAV_MAIN: readonly ShellNavItem[] = [
   { id: 'backtest', label: 'Sessions' },
   { id: 'dashboard', label: 'Dashboard' },
-  { id: 'trades', label: 'Trade View' },
+  { id: 'journal', label: 'Journal' },
+  { id: 'trades', label: 'Chart trades' },
   { id: 'strategy', label: 'Strategies' },
   { id: 'resources', label: 'Resources' },
 ];
@@ -64,7 +65,19 @@ export function ShellIconDashboard({ className = 'w-5 h-5' }: { className?: stri
   );
 }
 
-/** Trade View — candlesticks */
+/** Journal — notebook */
+export function ShellIconJournal({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden {...ICON}>
+      <Soft d="M7 4h11a2 2 0 012 2v14H9a2 2 0 01-2-2V4z" />
+      <path d="M7 4h11a2 2 0 012 2v14H9a2 2 0 01-2-2V4z" />
+      <path d="M7 4a2 2 0 00-2 2v12a2 2 0 002 2" />
+      <path d="M10 8h7M10 12h7M10 16h4" opacity={0.7} />
+    </svg>
+  );
+}
+
+/** Chart trades — candlesticks */
 export function ShellIconTrades({ className = 'w-5 h-5' }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden {...ICON}>
@@ -127,6 +140,7 @@ export function ShellIconAdmin({ className = 'w-5 h-5' }: { className?: string }
 
 export const SHELL_ICONS: Record<AppTab, ShellIcon> = {
   dashboard: ShellIconDashboard,
+  journal: ShellIconJournal,
   trades: ShellIconTrades,
   backtest: ShellIconBacktest,
   strategy: ShellIconStrategy,

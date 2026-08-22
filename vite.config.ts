@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 import { dukascopyApiPlugin } from './server/dukascopyPlugin';
+import { finnhubApiPlugin } from './server/finnhubPlugin';
 import { talariaApiPlugin } from './server/apiPlugin';
 
 /**
@@ -29,6 +30,7 @@ export default defineConfig(({ mode }) => {
       react(),
       tailwindcss(),
       dukascopyApiPlugin(),
+      finnhubApiPlugin(env.FINNHUB_API_KEY),
       talariaApiPlugin(),
       ...(proxyLog ? [proxyLog] : []),
     ],

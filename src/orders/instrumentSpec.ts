@@ -207,16 +207,17 @@ export function defaultSpecForSymbol(symbol: string): InstrumentSpec {
   const { baseCurrency, quoteCurrency } = parseSymbolCurrencies(symbol);
   const jpy = quoteCurrency === 'JPY' || baseCurrency === 'JPY';
   const xau = baseCurrency === 'XAU' || symbol.toUpperCase().includes('XAU');
-  const tickSize = xau ? 0.01 : jpy ? 0.001 : 0.00001;
-  const pipSize = xau ? 0.1 : jpy ? 0.01 : 0.0001;
-  const digits = xau ? 2 : jpy ? 3 : 5;
+  const xag = baseCurrency === 'XAG' || symbol.toUpperCase().includes('XAG');
+  const tickSize = xau ? 0.01 : xag ? 0.001 : jpy ? 0.001 : 0.00001;
+  const pipSize = xau ? 0.1 : xag ? 0.01 : jpy ? 0.01 : 0.0001;
+  const digits = xau ? 2 : xag ? 3 : jpy ? 3 : 5;
   return applyCostPolicy({
     symbol: key.slice(0, 6) || key,
     assetClass: 'forex',
     quantityUnit: 'lot',
     baseCurrency,
     quoteCurrency,
-    contractSize: xau ? 100 : 100_000,
+    contractSize: xau ? 100 : xag ? 5_000 : 100_000,
     tickSize,
     digits,
     pipSize,

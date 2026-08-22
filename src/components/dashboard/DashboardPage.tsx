@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Button } from '@heroui/react';
 import { useAuth } from '@/auth/AuthContext';
 import { ensureExampleAnalyticsSession } from '@/analytics/exampleSession';
 import { AnalyticsDashboard } from '@/components/analytics/AnalyticsDashboard';
-import { ThemeToggle } from '@/components/ThemeToggle';
+import { DeskFrame, DeskMore } from '@/components/desk/DeskFrame';
+import { useTheme } from '@/hooks/useTheme';
 import { listJournalEntries } from '@/journal/journalStore';
 import type { OrderJournal } from '@/orders/journal';
 import { listOrderJournalViews } from '@/orders/tradeJournal';
@@ -14,19 +14,19 @@ interface DashboardPageProps {
   liveJournal?: OrderJournal | null;
   onGoBacktest: () => void;
   onGoTrades: () => void;
+  onGoJournal: () => void;
   onGoStrategy: () => void;
 }
 
-/**
- * Full-viewport Dashboard — analytics board fills the shell (no page scroll).
- */
 export function DashboardPage({
   liveJournal = null,
   onGoBacktest,
   onGoTrades,
+  onGoJournal,
   onGoStrategy,
 }: DashboardPageProps) {
   const { user } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const [dataTick, setDataTick] = useState(0);
 
   useEffect(() => {
@@ -49,65 +49,59 @@ export function DashboardPage({
   }, [liveJournal, dataTick]);
 
   return (
-    <div className="h-full min-h-0 w-full flex flex-col overflow-hidden bg-background text-foreground">
-      <header
-        className={[
-          'shrink-0 flex flex-wrap items-center gap-x-3 gap-y-2',
-          'px-3 sm:px-4 py-2 border-b border-border',
-          'bg-surface/80 backdrop-blur-sm',
-          'pt-[max(0.5rem,env(safe-area-inset-top))]',
-        ].join(' ')}
-      >
-        <div className="min-w-0">
-          <h1 className="text-base sm:text-lg font-semibold tracking-tight leading-tight">
-            Dashboard
-          </h1>
-          <p className="text-[11px] text-muted tabular-nums truncate">
-            {stats.closedTrades} trades · {stats.sessions} sessions ·{' '}
-            {stats.strategies} strategies
-          </p>
+    <DeskFrame
+      fill
+      brand="Dashboard"
+      actions={
+        <>
+          <button type="button" className="jd-btn jd-btn-ghost" onClick={onGoJournal}>
+            Journal
+          </button>
+          <button type="button" className="jd-btn jd-btn-ghost" onClick={onGoTrades}>
+            Chart trades
+          </button>
+          <button type="button" className="jd-btn jd-btn-ink" onClick={onGoBacktest}>
+            New session
+          </button>
+          <DeskMore>
+            <button type="button" onClick={onGoStrategy}>
+              Strategies
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                ensureExampleAnalyticsSession({ force: true });
+                setDataTick((n) => n + 1);
+              }}
+            >
+              Reset example
+            </button>
+            <button type="button" onClick={toggleTheme}>
+              {isDark ? 'Light theme' : 'Dark theme'}
+            </button>
+          </DeskMore>
+        </>
+      }
+    >
+      <div className="jd-kpis" style={{ marginBottom: 20 }}>
+        <div>
+          <div className="jd-kpi-n">{stats.closedTrades}</div>
+          <div className="jd-kpi-l">Chart fills</div>
         </div>
-        <div className="flex flex-wrap gap-1.5 ml-auto">
-          <Button
-            size="sm"
-            variant="primary"
-            className="min-h-11 sm:min-h-9"
-            onPress={onGoBacktest}
-          >
-            New backtest
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            className="min-h-11 sm:min-h-9"
-            onPress={onGoTrades}
-          >
-            Trades
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="min-h-11 sm:min-h-9"
-            onPress={onGoStrategy}
-          >
-            Strategies
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="min-h-11 sm:min-h-9"
-            onPress={() => {
-              ensureExampleAnalyticsSession({ force: true });
-              setDataTick((n) => n + 1);
-            }}
-          >
-            Reset example
-          </Button>
-          <ThemeToggle compact />
+        <div>
+          <div className="jd-kpi-n">{stats.sessions}</div>
+          <div className="jd-kpi-l">Sessions</div>
         </div>
-      </header>
-
-      <div className="flex-1 min-h-0 min-w-0 w-full">
+        <div>
+          <div className="jd-kpi-n">{stats.strategies}</div>
+          <div className="jd-kpi-l">Strategies</div>
+        </div>
+        <div>
+          <div className="jd-kpi-n">{stats.backtestRuns}</div>
+          <div className="jd-kpi-l">Runs</div>
+        </div>
+      </div>
+      <section className="jd-card jd-analytics">
         <AnalyticsDashboard
           key={dataTick}
           liveJournal={liveJournal}
@@ -115,7 +109,7 @@ export function DashboardPage({
           immersive
           onOpenJournal={onGoTrades}
         />
-      </div>
-    </div>
+      </section>
+    </DeskFrame>
   );
 }

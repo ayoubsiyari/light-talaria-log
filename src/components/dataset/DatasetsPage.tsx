@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Button, Card, Label } from '@heroui/react';
+import { Card, Label } from '@heroui/react';
 import { AppPageFrame } from '@/components/shell/AppPageFrame';
 import {
   datasetLabel,
@@ -54,8 +54,7 @@ function defaultDates(): { start: string; end: string } {
   return { start: toIso(start), end: toIso(end) };
 }
 
-const fieldClass =
-  'w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent';
+const fieldClass = 'jd-field';
 
 export function DatasetsPage({
   onGoBacktest,
@@ -289,8 +288,8 @@ export function DatasetsPage({
     <div className="space-y-8">
         {adminBanner}
         {datasets.length > 0 && (
-          <Card className="bg-surface border border-border border-l-4 border-l-accent">
-            <Card.Content className="px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <Card className="jd-card">
+            <Card.Content className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-sm font-medium">
                   {datasets.length} dataset{datasets.length === 1 ? '' : 's'} ready
@@ -299,18 +298,14 @@ export function DatasetsPage({
                   After save-to-server, create a session — users fetch by date on Start.
                 </p>
               </div>
-              <Button
-                variant="primary"
-                className="min-h-11 shrink-0"
-                onPress={goBacktest}
-              >
+              <button type="button" className="jd-btn jd-btn-ink shrink-0" onClick={goBacktest}>
                 Create session
-              </Button>
+              </button>
             </Card.Content>
           </Card>
         )}
 
-        <Card className="bg-surface border border-border">
+        <Card className="jd-card">
           <Card.Header className="px-6 pt-6 pb-2">
             <Card.Title className="text-lg">Download from Dukascopy</Card.Title>
             <Card.Description className="text-muted text-sm">
@@ -424,11 +419,11 @@ export function DatasetsPage({
             )}
 
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-2">
-              <Button
-                variant="primary"
-                className="min-h-11"
-                onPress={() => void handleDownload()}
-                isDisabled={downloading || sizeAssess.level === 'block'}
+              <button
+                type="button"
+                className="jd-btn jd-btn-ink"
+                disabled={downloading || sizeAssess.level === 'block'}
+                onClick={() => void handleDownload()}
               >
                 {downloading
                   ? 'Downloading…'
@@ -437,7 +432,7 @@ export function DatasetsPage({
                     : sizeAssess.level === 'confirm'
                       ? 'Download (confirm)…'
                       : 'Download'}
-              </Button>
+              </button>
               <p className="text-xs text-muted min-w-0 break-words">
                 {pair} · {timeframe} · {startDate} → {endDate}
                 {sizeAssess.estimatedRows > 0
@@ -449,7 +444,7 @@ export function DatasetsPage({
         </Card>
 
         {remoteStatus === 'ready' && apiUser && (
-          <Card className="bg-surface border border-border">
+          <Card className="jd-card">
             <Card.Header className="px-6 pt-6 pb-2">
               <Card.Title className="text-lg">API session</Card.Title>
               <Card.Description className="text-muted text-sm">
@@ -464,11 +459,11 @@ export function DatasetsPage({
                   Signed in as <span className="font-medium">{apiUser.email}</span>
                   {apiUser.displayName ? ` · ${apiUser.displayName}` : ''}
                 </p>
-                <Button
-                  variant="secondary"
-                  className="min-h-11"
-                  isDisabled={authBusy}
-                  onPress={() => {
+                <button
+                  type="button"
+                  className="jd-btn jd-btn-ghost"
+                  disabled={authBusy}
+                  onClick={() => {
                     setAuthBusy(true);
                     void signOut()
                       .then(() => loadRemote())
@@ -476,13 +471,13 @@ export function DatasetsPage({
                   }}
                 >
                   Sign out
-                </Button>
+                </button>
               </div>
             </Card.Content>
           </Card>
         )}
 
-        <Card className="bg-surface border border-border">
+        <Card className="jd-card">
           <Card.Header className="px-6 pt-6 pb-2">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 space-y-1">
@@ -492,15 +487,14 @@ export function DatasetsPage({
                   by date from the server when you start.
                 </Card.Description>
               </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="min-h-11 shrink-0"
-                onPress={loadRemote}
-                isDisabled={remoteStatus === 'loading' || importingId != null}
+              <button
+                type="button"
+                className="jd-btn jd-btn-ghost shrink-0"
+                onClick={loadRemote}
+                disabled={remoteStatus === 'loading' || importingId != null}
               >
                 {remoteStatus === 'loading' ? 'Checking…' : 'Refresh'}
-              </Button>
+              </button>
             </div>
           </Card.Header>
           <Card.Content className="px-6 pb-6 space-y-3">
@@ -530,10 +524,7 @@ export function DatasetsPage({
                     Object.values(r.rowCounts ?? {})[0] ??
                     0;
                   return (
-                    <li
-                      key={r.id}
-                      className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-background px-4 py-3"
-                    >
+                    <li key={r.id} className="jd-row flex flex-wrap items-center gap-3 px-4 py-3">
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium truncate">{r.name}</p>
                         <p className="text-xs text-muted tabular-nums break-words">
@@ -541,12 +532,11 @@ export function DatasetsPage({
                           {imported ? ' · imported' : ''}
                         </p>
                       </div>
-                      <Button
-                        variant={imported ? 'secondary' : 'primary'}
-                        size="sm"
-                        className="min-h-11"
-                        onPress={() => void handleImportRemote(r)}
-                        isDisabled={importingId != null}
+                      <button
+                        type="button"
+                        className={imported ? 'jd-btn jd-btn-ghost' : 'jd-btn jd-btn-ink'}
+                        onClick={() => void handleImportRemote(r)}
+                        disabled={importingId != null}
                         aria-label={
                           imported
                             ? `Sync missing timeframes for ${r.name}`
@@ -558,7 +548,7 @@ export function DatasetsPage({
                           : imported
                             ? 'Sync timeframes'
                             : 'Import'}
-                      </Button>
+                      </button>
                     </li>
                   );
                 })}
@@ -577,7 +567,7 @@ export function DatasetsPage({
           </Card.Content>
         </Card>
 
-        <Card className="bg-surface border border-border">
+        <Card className="jd-card">
           <Card.Header className="px-6 pt-6 pb-2">
             <Card.Title className="text-lg">Browser cache</Card.Title>
             <Card.Description className="text-muted text-sm">
@@ -586,14 +576,14 @@ export function DatasetsPage({
             </Card.Description>
           </Card.Header>
           <Card.Content className="px-6 pb-6">
-            <Button
-              variant="secondary"
-              className="min-h-11"
-              isDisabled={clearingCache || downloading || publishingId != null}
-              onPress={handleClearChartCache}
+            <button
+              type="button"
+              className="jd-btn jd-btn-ghost"
+              disabled={clearingCache || downloading || publishingId != null}
+              onClick={handleClearChartCache}
             >
               {clearingCache ? 'Clearing…' : 'Clear chart cache'}
-            </Button>
+            </button>
           </Card.Content>
         </Card>
 
@@ -608,7 +598,7 @@ export function DatasetsPage({
               {datasets.map((d) => (
                 <li
                   key={d.id}
-                  className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3"
+                  className="jd-row flex flex-wrap items-center gap-3 px-4 py-3"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{datasetLabel(d)}</p>
@@ -622,16 +612,15 @@ export function DatasetsPage({
                     </p>
                   </div>
                   {d.source !== 'remote' && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="min-h-11"
-                      isDisabled={
+                    <button
+                      type="button"
+                      className="jd-btn jd-btn-ghost"
+                      disabled={
                         downloading ||
                         publishingId != null ||
                         remoteStatus === 'error'
                       }
-                      onPress={() => void handlePublish(d.id)}
+                      onClick={() => void handlePublish(d.id)}
                       aria-label={`Save ${datasetLabel(d)} to server`}
                     >
                       {publishingId === d.id
@@ -639,17 +628,16 @@ export function DatasetsPage({
                         : d.serverSyncedAt
                           ? 'Re-save to server'
                           : 'Save to server'}
-                    </Button>
+                    </button>
                   )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="min-h-11"
-                    isDisabled={publishingId != null || downloading}
-                    onPress={() => handleDelete(d.id)}
+                  <button
+                    type="button"
+                    className="jd-btn jd-btn-ghost"
+                    disabled={publishingId != null || downloading}
+                    onClick={() => handleDelete(d.id)}
                   >
                     Delete
-                  </Button>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -672,13 +660,13 @@ export function DatasetsPage({
       }
       actions={
         <>
-          <Button variant="secondary" className="min-h-11" onPress={goBacktest}>
+          <button type="button" className="jd-btn jd-btn-ghost" onClick={goBacktest}>
             Backtest
-          </Button>
+          </button>
           {goTrades && (
-            <Button variant="ghost" className="min-h-11" onPress={goTrades}>
-              Trades
-            </Button>
+            <button type="button" className="jd-btn jd-btn-ghost" onClick={goTrades}>
+              Chart trades
+            </button>
           )}
         </>
       }

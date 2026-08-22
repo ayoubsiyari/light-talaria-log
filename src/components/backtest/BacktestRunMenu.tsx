@@ -210,7 +210,7 @@ export function BacktestRunMenu({
           )}
 
           <section className="space-y-2 rounded-md border border-border bg-background/50 p-2.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">
               Automation rules
             </p>
 
@@ -324,9 +324,9 @@ export function BacktestRunMenu({
             />
           </div>
 
-          <p className="text-[11px] text-muted leading-snug">
+          <p className="text-xs text-muted leading-snug">
             Run paints condition marks on the chart. Stop clears them. Caps at{' '}
-            {MAX_BACKTEST_BARS.toLocaleString()} bars · saved under Trades → Strategy runs.
+            {MAX_BACKTEST_BARS.toLocaleString()} bars · saved under Chart trades → Strategy runs.
           </p>
 
           <div className="flex gap-2">

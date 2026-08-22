@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Button, Card } from '@heroui/react';
 import { useAuth } from '@/auth/AuthContext';
 import { AdminCatalogPanel } from '@/components/admin/AdminCatalog';
 import { AdminJobsPanel } from '@/components/admin/AdminJobs';
@@ -30,71 +29,49 @@ interface AdminPageProps {
   onGoBacktest: () => void;
 }
 
-/**
- * Admin control plane — only mounted when role === admin (client UX).
- * Mutations (publish, Dukascopy, roles) are enforced server-side with Admin required.
- */
 export function AdminPage({ onGoBacktest }: AdminPageProps) {
   const { user } = useAuth();
   const [section, setSection] = useState<AdminSection>('overview');
 
   return (
     <AppPageFrame
-      eyebrow="Admin"
-      title="Control plane"
-      description="Platform management: datasets, users, jobs, and system health. Regular traders never see this page."
-      actions={
-        <Button variant="secondary" className="min-h-11" onPress={onGoBacktest}>
-          Backtest
-        </Button>
-      }
-    >
-      <Card className="bg-surface border border-border">
-        <Card.Content className="px-4 sm:px-6 py-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
-          <div>
-            <span className="text-muted">Signed in as </span>
-            <span className="font-medium break-all">{user?.email ?? '—'}</span>
-          </div>
-          <div>
-            <span className="text-muted">Role </span>
-            <span className="font-medium text-accent font-mono">admin</span>
-          </div>
-        </Card.Content>
-      </Card>
-
-      <nav
-        className="flex gap-1 overflow-x-auto -mx-1 px-1 pb-1"
-        aria-label="Admin sections"
-      >
-        {SECTIONS.map((s) => {
-          const active = section === s.id;
-          return (
-            <Button
+      title="Admin"
+      description="Platform management: datasets, users, jobs, and system health."
+      nav={
+        <div className="jd-nav">
+          {SECTIONS.map((s) => (
+            <button
               key={s.id}
-              size="sm"
-              variant={active ? 'primary' : 'ghost'}
-              className={[
-                'min-h-11 shrink-0 rounded-md',
-                active ? '' : 'text-muted',
-              ].join(' ')}
-              onPress={() => setSection(s.id)}
+              type="button"
+              data-active={section === s.id ? '1' : '0'}
+              onClick={() => setSection(s.id)}
             >
               {s.label}
-            </Button>
-          );
-        })}
-      </nav>
-
-      {section === 'overview' && (
-        <AdminOverviewPanel onGoSection={setSection} />
-      )}
-      {section === 'datasets' && (
-        <DatasetsPage adminMode bare onGoBacktest={onGoBacktest} />
-      )}
-      {section === 'catalog' && <AdminCatalogPanel />}
-      {section === 'users' && <AdminUsersPanel />}
-      {section === 'jobs' && <AdminJobsPanel />}
-      {section === 'system' && <AdminSystemPanel />}
+            </button>
+          ))}
+        </div>
+      }
+      actions={
+        <button type="button" className="jd-btn jd-btn-ghost" onClick={onGoBacktest}>
+          Sessions
+        </button>
+      }
+    >
+      <p className="jd-muted" style={{ marginBottom: 16 }}>
+        Signed in as {user?.email ?? '—'} · admin
+      </p>
+      <div className="jd-card">
+        {section === 'overview' && (
+          <AdminOverviewPanel onGoSection={setSection} />
+        )}
+        {section === 'datasets' && (
+          <DatasetsPage adminMode bare onGoBacktest={onGoBacktest} />
+        )}
+        {section === 'catalog' && <AdminCatalogPanel />}
+        {section === 'users' && <AdminUsersPanel />}
+        {section === 'jobs' && <AdminJobsPanel />}
+        {section === 'system' && <AdminSystemPanel />}
+      </div>
     </AppPageFrame>
   );
 }

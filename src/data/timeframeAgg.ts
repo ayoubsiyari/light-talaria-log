@@ -3,6 +3,12 @@ import type { Timeframe } from '@/types/ui';
 import { MAX_BARS_IN_MEMORY, VISIBLE_BARS_TARGET } from '@/utils/constants';
 import { createBarStore, toChartBars, type BinaryBarStore } from './binaryBar';
 import { isPositiveOhlc, isValidOhlcBar } from './ohlcGuard';
+import {
+  inferDailySessionKind,
+  sessionDayBucketEnd,
+  sessionDayBucketStart,
+  type DailySessionKind,
+} from '@/data/sessionDay';
 
 /** Bar period in seconds for each UI timeframe. */
 export function timeframeSeconds(tf: Timeframe): number {
@@ -34,6 +40,39 @@ export function aggregatableTimeframes(baseTf: Timeframe): Timeframe[] {
 
 export function bucketStart(timeSec: number, periodSec: number): number {
   return Math.floor(timeSec / periodSec) * periodSec;
+}
+
+export type AggregateBarsOpts = {
+  /** Pair / root — selects FX NY / CME CT / UTC crypto daily sessions. */
+  symbol?: string | null;
+  /** Explicit override; wins over `symbol` when set. */
+  dailySession?: DailySessionKind;
+};
+
+/**
+ * Bucket open for a TF. Intraday stays on the UTC period grid; 1D uses
+ * market session days when `symbol` / `dailySession` says so.
+ */
+export function tfBucketStart(
+  timeSec: number,
+  tf: Timeframe,
+  opts?: AggregateBarsOpts,
+): number {
+  const period = timeframeSeconds(tf);
+  if (tf !== '1D') return bucketStart(timeSec, period);
+  const kind = opts?.dailySession ?? inferDailySessionKind(opts?.symbol);
+  return sessionDayBucketStart(timeSec, kind);
+}
+
+export function tfBucketEnd(
+  bucketOpen: number,
+  tf: Timeframe,
+  opts?: AggregateBarsOpts,
+): number {
+  const period = timeframeSeconds(tf);
+  if (tf !== '1D') return bucketOpen + period;
+  const kind = opts?.dailySession ?? inferDailySessionKind(opts?.symbol);
+  return sessionDayBucketEnd(bucketOpen, kind);
 }
 
 const TF_ORDER: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D'];
@@ -74,10 +113,12 @@ export function smallestTimeframe(tfs: readonly Timeframe[]): Timeframe {
 /**
  * Aggregate ChartBar[] (typically 1m viewport) into a coarser TF.
  * Used for on-demand HTF when packed series is missing from IDB/remote.
+ * Pass `opts.symbol` so 1D uses FX NY / CME CT / UTC crypto sessions.
  */
 export function aggregateChartBars(
   base: readonly ChartBar[],
   targetTf: Timeframe,
+  opts?: AggregateBarsOpts,
 ): ChartBar[] {
   if (base.length === 0) return [];
   const period = timeframeSeconds(targetTf);
@@ -96,7 +137,7 @@ export function aggregateChartBars(
     const bar = base[i]!;
     // Drop zero/corrupt prints so they never become HTF low=0 spikes.
     if (!isValidOhlcBar(bar)) continue;
-    const b = bucketStart(bar.time, period);
+    const b = tfBucketStart(bar.time, targetTf, opts);
     if (!started) {
       started = true;
       curBucket = b;

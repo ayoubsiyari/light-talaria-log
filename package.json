@@ -15,7 +15,7 @@
     "test:strategy": "node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/strategy/__tests__/*.test.ts",
     "test:logbook": "node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/logbook/__tests__/*.test.ts",
     "test:chart": "node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/chart/__tests__/*.test.ts",
-    "test:pipeline": "node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/datasets/__tests__/pipelineHardening.test.ts src/utils/__tests__/viewportEdge.test.ts src/session/__tests__/warmCacheAgg.test.ts",
+    "test:pipeline": "node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/datasets/__tests__/pipelineHardening.test.ts src/utils/__tests__/viewportEdge.test.ts src/session/__tests__/warmCacheAgg.test.ts src/data/__tests__/sessionDay.test.ts",
     "bench:analytics": "node --experimental-strip-types --import ./scripts/register-alias.mjs ./scripts/bench-analytics.mjs",
     "check:orders-determinism": "node ./scripts/check-orders-determinism.mjs",
     "saas:up": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis minio createbuckets",

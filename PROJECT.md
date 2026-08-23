@@ -979,6 +979,7 @@ Standalone discretionary journal. **Not** Trade View / chart-saved fills / backt
 | 2026-08-22 | Layout picker capped at 6 panels (7/8 retired); legacy 7/8 clamp to 6 | Layouts → only 1–6; old 8-layout sessions open as 6 |
 | 2026-08-22 | Mixed pair/TF Play stuck: arm awaits tip runway (awaitRemote multi); starved panes get aggressive fill-ahead; pin via liveCacheTargets | 6 layout mixed pairs+TFs → Play — secondary panes keep advancing |
 | 2026-08-22 | Pane warm UX: soft dim veil + centered 3-dot loader (TV-style) on TF/pair/layout/Play arm | Switch TF or expand layout — chart dims softly with … until ready |
+| 2026-08-23 | 1D session days: FX = NY 17:00 (Sun→Mon), futures = CME CT 17:00, crypto = UTC midnight; client agg preferred over UTC packs | EURUSD 1D — no Sunday candle; BTCUSD 1D still UTC day |
 | 2026-08-12 | Color/style flyout: opaque `--surface-raised` plate (was near-black `--surface`, looked transparent on chart) | Open drawing style — panel reads solid vs chart |
 | 2026-08-12 | Style trigger: one icon-sized button (color + line chip) matching toolbar peers | Floating bar — style control same size as settings/lock |
 | 2026-08-12 | Style flyout chrome = drawing toolbar (`bg-surface` / border / accent segments) | Open style — same plate + blue active as settings bar |

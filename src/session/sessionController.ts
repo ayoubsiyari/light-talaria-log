@@ -1,6 +1,7 @@
 import {
   bucketStart,
   neighborTimeframes,
+  tfBucketStart,
   timeRangeFromVisible,
   timeframeSeconds,
   visibleRangeFromTimeWindow,
@@ -896,7 +897,9 @@ function extendRevealInPlace(
     const baseBars =
       basePeek && barsMatchTimeframe(basePeek, s.baseTf) ? basePeek : [];
 
-    const openBucket = bucketStart(s.cursorTime, tfPeriod);
+    const openBucket = tfBucketStart(s.cursorTime, cfg.tf, {
+      symbol: cfg.pair,
+    });
     const rawEnd = raw && raw.length > 0 ? raw[raw.length - 1]!.time : null;
     const rawStart = raw && raw.length > 0 ? raw[0]!.time : null;
     const aheadBars =
@@ -987,6 +990,7 @@ function extendRevealInPlace(
       'replay',
       s.baseTf,
       baseBars,
+      { symbol: cfg.pair },
     );
 
     const bars = view.bars as ChartBar[];

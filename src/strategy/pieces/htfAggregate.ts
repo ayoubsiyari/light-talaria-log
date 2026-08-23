@@ -1,13 +1,15 @@
 /**
  * Aggregate LTF SoA bars → HTF in the Worker (no extra IDB fetch).
+ * Pass `symbol` so 1D uses FX NY / CME CT / UTC crypto sessions.
  */
 import type { Timeframe } from '@/types/ui';
-import { timeframeSeconds } from '@/data/timeframeAgg';
+import { tfBucketStart, timeframeSeconds } from '@/data/timeframeAgg';
 import type { BarSeries } from '@/strategy/pieces/evalHelpers';
 
 export function aggregateSeriesToHtf(
   series: BarSeries,
   htf: Timeframe,
+  symbol?: string | null,
 ): BarSeries {
   const period = timeframeSeconds(htf);
   const n = series.closes.length;
@@ -21,13 +23,14 @@ export function aggregateSeriesToHtf(
     };
   }
 
+  const opts = { symbol };
   const times: number[] = [];
   const opens: number[] = [];
   const highs: number[] = [];
   const lows: number[] = [];
   const closes: number[] = [];
 
-  let bucket = Math.floor(series.times[0]! / period) * period;
+  let bucket = tfBucketStart(series.times[0]!, htf, opts);
   let o = series.opens[0]!;
   let h = series.highs[0]!;
   let l = series.lows[0]!;
@@ -35,7 +38,7 @@ export function aggregateSeriesToHtf(
 
   for (let i = 1; i < n; i++) {
     const t = series.times[i]!;
-    const b = Math.floor(t / period) * period;
+    const b = tfBucketStart(t, htf, opts);
     if (b !== bucket) {
       times.push(bucket);
       opens.push(o);

@@ -6,7 +6,12 @@ import { barsMatchTimeframe } from '@/session/barTfGuard';
 import type { PaneView, SessionState } from '@/session/sessionState';
 import { warmCache } from '@/session/warmCache';
 import { sanitizeChartBars } from '@/data/ohlcGuard';
-import { bucketStart, timeframeSeconds } from '@/data/timeframeAgg';
+import {
+  tfBucketEnd,
+  tfBucketStart,
+  timeframeSeconds,
+  type AggregateBarsOpts,
+} from '@/data/timeframeAgg';
 import { formBucketFromClock } from '@/replay/formingBars';
 import { rangeRightAnchored } from '@/chart/rangeAnchor';
 import type { ChartBar } from '@/types/bar';
@@ -39,11 +44,12 @@ export function derivePaneSync(s: SessionState, paneId: string): PaneView | null
       s.revealMode,
       s.baseTf,
       baseBars,
+      { symbol: cfg.pair },
     ),
   );
 
   if (import.meta.env?.DEV && s.revealMode === 'replay') {
-    assertNoLookahead(bars, s.cursorTime, cfg.tf, paneId);
+    assertNoLookahead(bars, s.cursorTime, cfg.tf, paneId, cfg.pair);
   }
 
   if (bars.length === 0) {
@@ -94,7 +100,7 @@ export async function derivePaneAsync(
       s.span,
       s.cursorTime,
       s.revealMode,
-      { baseTf: s.baseTf, baseBars },
+      { baseTf: s.baseTf, baseBars, symbol: cfg.pair },
     );
     if (result.bars.length > 0) {
       warmCache.put(cfg.datasetId, cfg.tf, result.bars, s.anchorTime);
@@ -104,7 +110,7 @@ export async function derivePaneAsync(
     const cleaned =
       warmCache.peek(cfg.datasetId, cfg.tf) ?? sanitizeChartBars(result.bars);
     if (import.meta.env?.DEV && s.revealMode === 'replay') {
-      assertNoLookahead(cleaned, s.cursorTime, cfg.tf, paneId);
+      assertNoLookahead(cleaned, s.cursorTime, cfg.tf, paneId, cfg.pair);
     }
     return {
       bars: cleaned,
@@ -130,11 +136,13 @@ export function truncateAtCursor(
   revealMode: SessionState['revealMode'],
   baseTf: Timeframe,
   baseBars: readonly ChartBar[],
+  aggOpts?: AggregateBarsOpts,
 ): ChartBar[] {
   if (revealMode === 'full' || raw.length === 0) return raw.slice() as ChartBar[];
 
   const period = timeframeSeconds(tf);
-  const openBucket = bucketStart(cursorTime, period);
+  const openBucket = tfBucketStart(cursorTime, tf, aggOpts);
+  const bucketEnd = tfBucketEnd(openBucket, tf, aggOpts);
   const closed: ChartBar[] = [];
   for (const b of raw) {
     if (b.time < openBucket) closed.push(b);
@@ -143,10 +151,17 @@ export function truncateAtCursor(
 
   let forming: ChartBar | null = null;
   if (timeframeSeconds(tf) > timeframeSeconds(baseTf) && baseBars.length > 0) {
-    forming = formBucketFromClock(baseBars, openBucket, period, cursorTime);
+    forming = formBucketFromClock(
+      baseBars,
+      openBucket,
+      period,
+      cursorTime,
+      bucketEnd,
+    );
   } else {
     const inBucket = raw.filter(
-      (b) => b.time >= openBucket && b.time <= cursorTime && b.time < openBucket + period,
+      (b) =>
+        b.time >= openBucket && b.time <= cursorTime && b.time < bucketEnd,
     );
     if (inBucket.length > 0) {
       const first = inBucket[0]!;

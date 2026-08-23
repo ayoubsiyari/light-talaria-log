@@ -30,9 +30,22 @@ export {
   logicalIndexAtTime,
   neighborTimeframes,
   smallestTimeframe,
+  tfBucketEnd,
+  tfBucketStart,
   timeAtLogicalIndex,
   timeRangeFromVisible,
   timeframeSeconds,
   viewportAroundTime,
   visibleRangeFromTimeWindow,
 } from './timeframeAgg';
+export type { AggregateBarsOpts } from './timeframeAgg';
+export {
+  dailyBucketEnd,
+  dailyBucketStart,
+  inferDailySessionKind,
+  sessionDayBucketEnd,
+  sessionDayBucketStart,
+  usesSessionDaily,
+  wallClockToUnixSec,
+} from './sessionDay';
+export type { DailySessionKind } from './sessionDay';

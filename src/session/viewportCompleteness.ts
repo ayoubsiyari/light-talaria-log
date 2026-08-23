@@ -89,7 +89,9 @@ export function scanBarIntegrity(
       return { ok: false, reason: 'bad_ohlc', badIndex: i };
     }
     // Every candle (incl. forming tip) must sit on a TF bucket start.
-    if (b.time !== bucketStart(b.time, period)) {
+    // 1D may use session opens (NY/CME 17:00), not UTC midnight — skip strict
+    // UTC grid check for daily; spacing still validated via barsMatchTimeframe.
+    if (tf !== '1D' && b.time !== bucketStart(b.time, period)) {
       return { ok: false, reason: 'misaligned_bucket', badIndex: i };
     }
     if (i > 0) {

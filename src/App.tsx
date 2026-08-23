@@ -1135,7 +1135,6 @@ export default function App() {
               'replay',
               sess.baseTf,
               baseBars,
-              { symbol: p.pair },
             );
             if (truncated.length > 0) {
               bars = truncated;

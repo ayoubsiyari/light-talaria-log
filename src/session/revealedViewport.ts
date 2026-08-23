@@ -1,7 +1,6 @@
 import {
+  bucketStart,
   indexAtOrBeforeBars,
-  tfBucketEnd,
-  tfBucketStart,
   timeframeSeconds,
 } from '@/data/timeframeAgg';
 import { formBucketFromClock } from '@/replay/formingBars';
@@ -34,13 +33,10 @@ export async function revealedViewport(
   opts?: {
     baseTf?: Timeframe;
     baseBars?: readonly ChartBar[];
-    /** Pair for session-aware 1D (FX NY / CME CT / UTC crypto). */
-    symbol?: string | null;
   },
 ): Promise<RevealedViewportResult> {
   const safeSpan = Math.max(1, Math.min(span, MAX_BARS_IN_MEMORY));
   const period = timeframeSeconds(tf);
-  const aggOpts = { symbol: opts?.symbol };
 
   if (revealMode === 'full') {
     const vp = await loadViewportAroundTime(datasetId, tf, anchorTime, safeSpan);
@@ -59,8 +55,7 @@ export async function revealedViewport(
   }
 
   // Containing bucket of cursor — NOT last-closed (would rewind up to a full period).
-  const openBucket = tfBucketStart(cursorTime, tf, aggOpts);
-  const bucketEnd = tfBucketEnd(openBucket, tf, aggOpts);
+  const openBucket = bucketStart(cursorTime, period);
   const vp = await loadViewportAroundTime(
     datasetId,
     tf,
@@ -84,13 +79,7 @@ export async function revealedViewport(
   const baseBars = opts?.baseBars;
   let forming: ChartBar | null = null;
   if (baseBars && baseBars.length > 0 && timeframeSeconds(tf) > timeframeSeconds(baseTf)) {
-    forming = formBucketFromClock(
-      baseBars,
-      openBucket,
-      period,
-      cursorTime,
-      bucketEnd,
-    );
+    forming = formBucketFromClock(baseBars, openBucket, period, cursorTime);
   } else {
     // Same TF as clock / no base buffer: use partial from loaded series or synthesize from last ≤ cursor.
     const idx = indexAtOrBeforeBars(vp.bars, cursorTime);
@@ -107,8 +96,7 @@ export async function revealedViewport(
     // but truncate display set: prefer building from same-TF bars ≤ cursor inside bucket.
     if (!forming && at) {
       const sameBucket = vp.bars.filter(
-        (b) =>
-          b.time >= openBucket && b.time <= cursorTime && b.time < bucketEnd,
+        (b) => b.time >= openBucket && b.time <= cursorTime && b.time < openBucket + period,
       );
       if (sameBucket.length > 0) {
         const first = sameBucket[0]!;
@@ -167,11 +155,10 @@ export function assertNoLookahead(
   cursorTime: number,
   tf: Timeframe,
   paneId: string,
-  symbol?: string | null,
 ): void {
   if (!import.meta.env?.DEV || bars.length === 0) return;
   const last = bars[bars.length - 1]!;
-  const open = tfBucketStart(cursorTime, tf, { symbol });
+  const open = bucketStart(cursorTime, timeframeSeconds(tf));
   if (last.time > open) {
     console.error('[reveal] lookahead leak', {
       paneId,

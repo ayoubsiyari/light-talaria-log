@@ -12,10 +12,6 @@
  */
 import { sanitizeChartBars } from '@/data/ohlcGuard';
 import {
-  inferDailySessionKind,
-  usesSessionDaily,
-} from '@/data/sessionDay';
-import {
   aggregateChartBars,
   canAggregateFrom,
   timeframeSeconds,
@@ -227,25 +223,11 @@ export class WarmCache {
       if (this.epochs.get(k) !== epoch) return this.store.get(k)?.bars ?? [];
       let usedClientAgg = false;
 
-      let pair: string | null = null;
-      try {
-        const { getDataset } = await import('@/datasets/datasetStore');
-        pair = getDataset(datasetId)?.pair ?? null;
-      } catch {
-        pair = null;
-      }
-      const dailyKind = inferDailySessionKind(pair);
-      // Packed IDB/remote 1D is usually UTC midnight — prefer client session rollup
-      // for FX/CME so Sunday open folds into Monday (TradingView-style).
-      const preferSessionDailyAgg =
-        tf === '1D' && usesSessionDaily(dailyKind) && !opts?.skipAggregate;
-
       // Packed HTF missing / wrong period under this key → roll up from finer TF.
       // Critical for lazy remote sessions (base+open only) e.g. NQ M1 → 5m click.
       if (
-        preferSessionDailyAgg ||
-        (!opts?.skipAggregate &&
-          (bars.length === 0 || !barsMatchTimeframe(bars, tf)))
+        !opts?.skipAggregate &&
+        (bars.length === 0 || !barsMatchTimeframe(bars, tf))
       ) {
         const aggregated = await this.aggregateFromFiner(
           datasetId,
@@ -255,7 +237,6 @@ export class WarmCache {
           windowBars,
           opts,
           epoch,
-          pair,
         );
         if (this.epochs.get(k) !== epoch) return this.store.get(k)?.bars ?? [];
         if (aggregated && aggregated.length > 0) {
@@ -273,12 +254,10 @@ export class WarmCache {
 
       // Client-aggregated HTF already matches — paint immediately. Optionally
       // upgrade to a server pack in the background (never wipe agg on miss).
-      // Do not upgrade session 1D with UTC packs — that reintroduces Sunday bars.
       if (
         usedClientAgg &&
         bars.length > 0 &&
-        barsMatchTimeframe(bars, tf) &&
-        !preferSessionDailyAgg
+        barsMatchTimeframe(bars, tf)
       ) {
         void this.tryUpgradePacked(
           datasetId,
@@ -430,7 +409,6 @@ export class WarmCache {
     windowBars: number,
     opts: WarmCacheFillOpts | undefined,
     targetEpoch: number,
-    pair: string | null = null,
   ): Promise<ChartBar[] | null> {
     const k = key(datasetId, tf);
     const targetSec = timeframeSeconds(tf);
@@ -440,7 +418,7 @@ export class WarmCache {
         timeframeSeconds(src) < targetSec && canAggregateFrom(src, tf),
     );
 
-      for (const src of sources) {
+    for (const src of sources) {
       if (this.epochs.get(k) !== targetEpoch) return null;
       const srcSec = timeframeSeconds(src);
       const srcWindow = Math.min(
@@ -468,9 +446,7 @@ export class WarmCache {
       if (!srcBars || srcBars.length < 3) continue;
       if (!barsMatchTimeframe(srcBars, src)) continue;
 
-      const aggregated = aggregateChartBars(srcBars, tf, {
-        symbol: pair,
-      });
+      const aggregated = aggregateChartBars(srcBars, tf);
       if (aggregated.length >= 2 && barsMatchTimeframe(aggregated, tf)) {
         return aggregated;
       }

@@ -1,9 +1,7 @@
 import {
+  bucketStart,
   indexAtOrBeforeBars,
-  tfBucketEnd,
-  tfBucketStart,
   timeframeSeconds,
-  type AggregateBarsOpts,
 } from '@/data/timeframeAgg';
 import type { ChartBar } from '@/types/bar';
 import type { Timeframe } from '@/types/ui';
@@ -11,17 +9,15 @@ import type { Timeframe } from '@/types/ui';
 /**
  * Build OHLC for an open coarse bucket from finer (clock) bars up to cursorTime.
  * Returns null when no clock bars fall inside the open interval yet.
- * Optional `bucketEnd` for session days that are not exactly `periodSec` long (DST).
  */
 export function formBucketFromClock(
   clockBars: readonly ChartBar[],
   bucketOpen: number,
   periodSec: number,
   cursorTime: number,
-  bucketEndExclusive?: number,
 ): ChartBar | null {
   if (clockBars.length === 0 || cursorTime < bucketOpen) return null;
-  const bucketEnd = bucketEndExclusive ?? bucketOpen + periodSec;
+  const bucketEnd = bucketOpen + periodSec;
   const lastAllowed = Math.min(cursorTime, bucketEnd - 1);
 
   let i = indexAtOrBeforeBars(clockBars, bucketOpen);
@@ -53,7 +49,6 @@ export function formBucketFromClock(
  * For panes coarser than the replay clock: keep closed IDB bars, but replace the
  * open candle with a tick-by-tick forming OHLC from clock bars.
  * Same TF as clock → returned unchanged (reveal mask handles visibility).
- * Pass `aggOpts.symbol` so 1D forming uses FX NY / CME CT / UTC crypto.
  */
 export function withFormingOpenBar(
   coarseBars: readonly ChartBar[],
@@ -61,26 +56,18 @@ export function withFormingOpenBar(
   coarseTf: Timeframe,
   clockTf: Timeframe,
   cursorTime: number,
-  aggOpts?: AggregateBarsOpts,
 ): readonly ChartBar[] {
   const coarsePeriod = timeframeSeconds(coarseTf);
   const clockPeriod = timeframeSeconds(clockTf);
   if (coarsePeriod <= clockPeriod) return coarseBars;
   if (coarseBars.length === 0 || clockBars.length === 0) return coarseBars;
 
-  const openBucket = tfBucketStart(cursorTime, coarseTf, aggOpts);
-  const bucketEnd = tfBucketEnd(openBucket, coarseTf, aggOpts);
+  const openBucket = bucketStart(cursorTime, coarsePeriod);
   const idx = indexAtOrBeforeBars(coarseBars, cursorTime);
   const at = coarseBars[idx];
   if (!at) return coarseBars;
 
-  const formed = formBucketFromClock(
-    clockBars,
-    openBucket,
-    coarsePeriod,
-    cursorTime,
-    bucketEnd,
-  );
+  const formed = formBucketFromClock(clockBars, openBucket, coarsePeriod, cursorTime);
   if (!formed) return coarseBars;
 
   if (at.time === openBucket) {
